@@ -1,5 +1,5 @@
 {
-  "name": "beteseb-bingo",
+  "name": "sisters-bingo",
   "version": "1.0.0",
   "description": "Real-time Multiplayer Bingo Engine with Synchronized Selection Lobby",
   "main": "server.js",
