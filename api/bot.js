@@ -6,6 +6,7 @@
  *           GAME_URL=https://your-render-app.onrender.com
  */
 
+const { Bot, webhookCallback } = require("grammy");
 const TelegramBot = require('node-telegram-bot-api');
 const db = require('../db');
 
