@@ -7,7 +7,7 @@
  */
 
 const TelegramBot = require('node-telegram-bot-api');
-const db = require('./db');
+const db = require('../db');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const GAME_URL  = process.env.GAME_URL || 'https://your-app.onrender.com';
