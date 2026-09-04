@@ -5,7 +5,7 @@
  * Set env:  BOT_TOKEN=your_telegram_bot_token
  *           GAME_URL=https://your-render-app.onrender.com
  */
-console.log("Using grammy version:", require("grammy").version);
+
 const { Bot, webhookCallback } = require("grammy");
 const TelegramBot = require('node-telegram-bot-api');
 const db = require('../db');
