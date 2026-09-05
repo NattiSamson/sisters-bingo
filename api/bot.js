@@ -306,6 +306,18 @@ bot.callbackQuery("deposit", async (ctx) => {
   await showDeposit(ctx);
 });
 
+bot.callbackQuery("telebirr", async (ctx) => {
+  await ctx.answerCallbackQuery();
+
+  await ctx.editMessageText(
+    "1. ከታች ባለው የቴሌብር አካውንት ብር ያስገቡ\n\n" +
+    "📞 *Telebirr:* `09XXXXXXXX`\n" +
+    "2. የከፈሉበትን አጭር የጹሁፍ መልዕክት(message) copy በማድረግ እዚ ላይ Past አድረገው ያስገቡና ይላኩት👇👇👇",
+    {
+      parse_mode: "Markdown",
+    }
+  );
+});
 // ─────────────────────────────────────────────────────────────
 // /Support
 // ─────────────────────────────────────────────────────────────
