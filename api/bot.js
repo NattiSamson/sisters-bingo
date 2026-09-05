@@ -14,7 +14,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const GAME_URL  = process.env.GAME_URL || 'https://sisters-bingo.vercel.app';
 
 //const bot = new TelegramBot(BOT_TOKEN, { polling: true });
-const bot = new Bot("8667148010:AAHJRAPAzG1lDhxqmxcde2wuSu8E-5O8h4U");
+const bot = new Bot(BOT_TOKEN);
 
 // State machine: pending registrations waiting for phone
 const pendingPhone = {}; // telegramId -> { name, step }
