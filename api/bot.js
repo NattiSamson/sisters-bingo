@@ -48,7 +48,7 @@ bot.command("start", async (ctx) => {
             inline_keyboard: [
               [
                 {
-                  text: "🎮 Play Beteseb Bingo",
+                  text: "🎮 Play Sisters Bingo",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
@@ -67,7 +67,7 @@ bot.command("start", async (ctx) => {
     };
 
     await ctx.reply(
-      `👋 Welcome to *Beteseb Bingo!*\n\n` +
+      `👋 Welcome to *Sisters Bingo!*\n\n` +
       `Let's get you registered.\n` +
       `What should we call you?`,
       {
