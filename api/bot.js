@@ -324,11 +324,13 @@ bot.on("message:text", async (ctx, next) => {
   const text = ctx.message.text;
 
   // Is this user currently making a deposit?
-  if (pendingDeposit[telegramId]) {
+  //pendingDeposit[telegramId]
+  //if (pendingDeposit[telegramId]) 
+  {
     console.log("📩 Telebirr message received:", text);
 
     // Remove waiting state
-    delete pendingDeposit[telegramId];
+   // delete pendingDeposit[telegramId];
 
     await ctx.reply(
       "✅ የክፍያ መልዕክትዎ ደርሶናል።\n\n" +
