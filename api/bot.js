@@ -63,9 +63,7 @@ bot.command("start", async (ctx) => {
               [
               {
                   text: "Check Balance 💰",
-                  web_app: {
-                    url: `${GAME_URL}?tid=${telegramId}`,
-                  },
+                  callback_data: "balance",
                 },
               {
                   text: "Transfer 🔄",
