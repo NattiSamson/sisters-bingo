@@ -39,8 +39,8 @@ bot.command("start", async (ctx) => {
     const existing = await db.getUserByTelegramId(telegramId);
 
     if (existing) {
-      return await ctx.replyWithPhoto(
-        {source: "../MainLogo.png"},
+      return await ctx.reply(
+       // {source: "../MainLogo.png"},
         {
           caption:
         `Welcome back, *${existing.name}!* 🎱\n` +
