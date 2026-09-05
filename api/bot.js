@@ -54,6 +54,12 @@ bot.command("start", async (ctx) => {
                   },
                 },
               ],
+              {
+                  text: "🎮 Play Sisters",
+                  web_app: {
+                    url: `${GAME_URL}?tid=${telegramId}`,
+                  },
+                },
             ],
           },
         }
@@ -184,10 +190,7 @@ bot.on("message:contact", async (ctx) => {
     // Remove the phone keyboard
     await ctx.reply("Choose an option:", {
       reply_markup: {
-        keyboard: [
-          ["🎮 Play", "💰 Balance"],
-          ["📊 Leaderboard"],
-        ],
+        keyboard: [["🎮 Play", "💰 Balance"], ["📊 Leaderboard"], ],
         resize_keyboard: true,
       },
     });
