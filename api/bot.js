@@ -1,152 +1,304 @@
 /**
  * telegram-bot.js — Beteseb Bingo Telegram Bot
- * 
- * Install: npm install node-telegram-bot-api
- * Set env:  BOT_TOKEN=your_telegram_bot_token
- *           GAME_URL=https://your-render-app.onrender.com
+ *
+ * Install:
+ *   npm install grammy
+ *
+ * Environment:
+ *   BOT_TOKEN=your_telegram_bot_token
+ *   GAME_URL=https://sisters-bingo.vercel.app
  */
 
 const { Bot, webhookCallback } = require("grammy");
-//const TelegramBot = require('node-telegram-bot-api');
-const db = require('../db');
+const db = require("../db");
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const GAME_URL  = process.env.GAME_URL || 'https://sisters-bingo.vercel.app';
+const GAME_URL =
+  process.env.GAME_URL || "https://sisters-bingo.vercel.app";
 
-//const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+if (!BOT_TOKEN) {
+  throw new Error("BOT_TOKEN environment variable is missing");
+}
+
 const bot = new Bot(BOT_TOKEN);
 
 // State machine: pending registrations waiting for phone
 const pendingPhone = {}; // telegramId -> { name, step }
 
-// ─── /start command ──────────────────────────────────────────
-bot.hears("start", async (ctx) => {
-  const telegramId = ctx.from.id;
-  const firstName  = ctx.from.first_name || 'Player';
 
-  // Check if already registered
-  const existing = await db.getUserByTelegramId(telegramId);
-  if (existing) {
-    return bot.sendMessage(ctx.chat.id,
-      `Welcome back, *${existing.name}!* 🎱\nYour balance: *${existing.balance} ETB*`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [[{
-            text: '🎮 Play Beteseb Bingo',
-            web_app: { url: `${GAME_URL}?tid=${telegramId}` }
-          }]]
+// ─────────────────────────────────────────────────────────────
+// /start
+// ─────────────────────────────────────────────────────────────
+
+bot.command("start", async (ctx) => {
+  const telegramId = ctx.from.id;
+  const firstName = ctx.from.first_name || "Player";
+
+  try {
+    // Check if already registered
+    const existing = await db.getUserByTelegramId(telegramId);
+
+    if (existing) {
+      return await ctx.reply(
+        `Welcome back, *${existing.name}!* 🎱\n` +
+        `Your balance: *${existing.balance} ETB*`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🎮 Play Beteseb Bingo",
+                  web_app: {
+                    url: `${GAME_URL}?tid=${telegramId}`,
+                  },
+                },
+              ],
+            ],
+          },
         }
+      );
+    }
+
+    // New user — start registration
+    pendingPhone[telegramId] = {
+      name: firstName,
+      step: "ask_name",
+    };
+
+    await ctx.reply(
+      `👋 Welcome to *Beteseb Bingo!*\n\n` +
+      `Let's get you registered.\n` +
+      `What should we call you?`,
+      {
+        parse_mode: "Markdown",
       }
     );
+  } catch (err) {
+    console.error("Start error:", err);
+    await ctx.reply("❌ Something went wrong. Please try again.");
   }
-
-  // New user — start registration
-  pendingPhone[telegramId] = { name: firstName, step: 'ask_name' };
-
-  bot.sendMessage(ctx.chat.id,
-    `👋 Welcome to *Beteseb Bingo!*\n\nLet's get you registered.\nWhat should we call you?`,
-    { parse_mode: 'Markdown' }
-  );
 });
 
-// ─── Handle text messages (registration flow) ─────────────────
-bot.on('message:text', async (ctx) => {
+
+// ─────────────────────────────────────────────────────────────
+// Handle text messages — registration flow
+// ─────────────────────────────────────────────────────────────
+
+bot.on("message:text", async (ctx) => {
   const telegramId = ctx.from.id;
   const text = ctx.message.text;
   const pending = pendingPhone[telegramId];
 
   if (!pending) return;
 
-  if (pending.step === 'ask_name' && text && !text.startsWith('/')) {
+  // User is entering their name
+  if (
+    pending.step === "ask_name" &&
+    text &&
+    !text.startsWith("/")
+  ) {
     pending.name = text.trim().substring(0, 30);
-    pending.step = 'ask_phone';
+    pending.step = "ask_phone";
 
-    bot.sendMessage(ctx.chat.id,
-      `Nice to meet you, *${pending.name}!*\n\nPlease share your phone number so we can verify your account:`,
+    await ctx.reply(
+      `Nice to meet you, *${pending.name}!*\n\n` +
+      `Please share your phone number so we can verify your account:`,
       {
-        parse_mode: 'Markdown',
+        parse_mode: "Markdown",
         reply_markup: {
-          keyboard: [[{
-            text: '📱 Share My Phone Number',
-            request_contact: true
-          }]],
+          keyboard: [
+            [
+              {
+                text: "📱 Share My Phone Number",
+                request_contact: true,
+              },
+            ],
+          ],
           resize_keyboard: true,
-          one_time_keyboard: true
-        }
+          one_time_keyboard: true,
+        },
       }
     );
   }
 });
 
-// ─── Handle contact (phone number sharing) ───────────────────
-bot.on('message:contact', async (ctx) => {
+
+// ─────────────────────────────────────────────────────────────
+// Handle contact / phone number
+// ─────────────────────────────────────────────────────────────
+
+bot.on("message:contact", async (ctx) => {
   const telegramId = ctx.from.id;
   const pending = pendingPhone[telegramId];
 
-  if (!pending || pending.step !== 'ask_phone') return;
+  if (!pending || pending.step !== "ask_phone") {
+    return;
+  }
 
-  const phone = ctx.message.contact.phone_number;
-  const name  = pending.name;
+  const contact = ctx.message.contact;
+  const phone = contact.phone_number;
+  const name = pending.name;
+
+  // Optional security check:
+  // Make sure the shared contact belongs to the Telegram user
+  if (contact.user_id && contact.user_id !== telegramId) {
+    await ctx.reply(
+      "❌ Please use the button to share your own phone number."
+    );
+    return;
+  }
 
   try {
-    const user = await db.registerUser(telegramId, name, phone);
+    const user = await db.registerUser(
+      telegramId,
+      name,
+      phone
+    );
+
     delete pendingPhone[telegramId];
 
-    bot.sendMessage(ctx.chat.id,
-      `✅ *Registered successfully!*\n\nName: *${user.name}*\nPhone: ${phone}\nStarting balance: *${user.balance} ETB*\n\nYou're all set — tap below to play! 🎱`,
+    await ctx.reply(
+      `✅ *Registered successfully!*\n\n` +
+      `Name: *${user.name}*\n` +
+      `Phone: ${phone}\n` +
+      `Starting balance: *${user.balance} ETB*\n\n` +
+      `You're all set — tap below to play! 🎱`,
       {
-        parse_mode: 'Markdown',
+        parse_mode: "Markdown",
         reply_markup: {
-          inline_keyboard: [[{
-            text: '🎮 Play Beteseb Bingo',
-            web_app: { url: `${GAME_URL}?tid=${telegramId}` }
-          }]],
-          keyboard: [['🎮 Play', '💰 Balance', '📊 Leaderboard']],
-          resize_keyboard: true
-        }
+          inline_keyboard: [
+            [
+              {
+                text: "🎮 Play Beteseb Bingo",
+                web_app: {
+                  url: `${GAME_URL}?tid=${telegramId}`,
+                },
+              },
+            ],
+          ],
+        },
       }
     );
+
+    // Remove the phone keyboard
+    await ctx.reply("Choose an option:", {
+      reply_markup: {
+        keyboard: [
+          ["🎮 Play", "💰 Balance"],
+          ["📊 Leaderboard"],
+        ],
+        resize_keyboard: true,
+      },
+    });
   } catch (err) {
-    bot.sendMessage(ctx.chat.id, '❌ Registration failed. Please try /start again.');
-    console.error('Registration error:', err);
+    console.error("Registration error:", err);
+
+    await ctx.reply(
+      "❌ Registration failed. Please try /start again."
+    );
   }
 });
 
-// ─── /balance command ─────────────────────────────────────────
-bot.hears("balance|💰 Balance", async (ctx) => {
+
+// ─────────────────────────────────────────────────────────────
+// /balance
+// ─────────────────────────────────────────────────────────────
+
+async function showBalance(ctx) {
   const user = await db.getUserByTelegramId(ctx.from.id);
-  if (!user) return bot.sendMessage(ctx.chat.id, 'Please /start to register first.');
-  bot.sendMessage(ctx.chat.id, `💰 Your balance: *${user.balance} ETB*`, { parse_mode:'Markdown' });
-});
 
-// ─── /leaderboard command ─────────────────────────────────────
-bot.hears("leaderboard|📊 Leaderboard", async (ctx) => {
-  const rows = await db.getLeaderboard(10);
-  const medals = ['🥇','🥈','🥉'];
-  const text = rows.map((r,i) =>
-    `${medals[i]||`${i+1}.`} *${r.name}* — ${r.total_winnings} ETB (${r.total_wins} wins)`
-  ).join('\n');
-  bot.sendMessage(ctx.chat.id, `🏆 *Leaderboard*\n\n${text||'No games yet!'}`, { parse_mode:'Markdown' });
-});
+  if (!user) {
+    return await ctx.reply(
+      "Please /start to register first."
+    );
+  }
 
-// ─── /play command ────────────────────────────────────────────
-bot.hears("play|🎮 Play", async (ctx) => {
-  const user = await db.getUserByTelegramId(ctx.from.id);
-  if (!user) return bot.sendMessage(ctx.chat.id, 'Please /start to register first.');
-
-  bot.sendMessage(ctx.chat.id,
-    `Ready to play, *${user.name}*? 🎱\nBalance: *${user.balance} ETB*`,
+  await ctx.reply(
+    `💰 Your balance: *${user.balance} ETB*`,
     {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[{
-          text: '🎮 Open Beteseb Bingo',
-          web_app: { url: `${GAME_URL}?tid=${ctx.from.id}` }
-        }]]
-      }
+      parse_mode: "Markdown",
     }
   );
-});
+}
+
+bot.command("balance", showBalance);
+bot.hears("💰 Balance", showBalance);
+
+
+// ─────────────────────────────────────────────────────────────
+// /leaderboard
+// ─────────────────────────────────────────────────────────────
+
+async function showLeaderboard(ctx) {
+  const rows = await db.getLeaderboard(10);
+
+  const medals = ["🥇", "🥈", "🥉"];
+
+  const text = rows
+    .map((r, i) => {
+      const position = medals[i] || `${i + 1}.`;
+
+      return (
+        `${position} *${r.name}* — ` +
+        `${r.total_winnings} ETB ` +
+        `(${r.total_wins} wins)`
+      );
+    })
+    .join("\n");
+
+  await ctx.reply(
+    `🏆 *Leaderboard*\n\n${text || "No games yet!"}`,
+    {
+      parse_mode: "Markdown",
+    }
+  );
+}
+
+bot.command("leaderboard", showLeaderboard);
+bot.hears("📊 Leaderboard", showLeaderboard);
+
+
+// ─────────────────────────────────────────────────────────────
+// /play
+// ─────────────────────────────────────────────────────────────
+
+async function showPlay(ctx) {
+  const user = await db.getUserByTelegramId(ctx.from.id);
+
+  if (!user) {
+    return await ctx.reply(
+      "Please /start to register first."
+    );
+  }
+
+  await ctx.reply(
+    `Ready to play, *${user.name}*? 🎱\n` +
+    `Balance: *${user.balance} ETB*`,
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "🎮 Open Beteseb Bingo",
+              web_app: {
+                url: `${GAME_URL}?tid=${ctx.from.id}`,
+              },
+            },
+          ],
+        ],
+      },
+    }
+  );
+}
+
+bot.command("play", showPlay);
+bot.hears("🎮 Play", showPlay);
+
+
+// ─────────────────────────────────────────────────────────────
+// Vercel webhook handler
+// ─────────────────────────────────────────────────────────────
+
 module.exports = webhookCallback(bot, "http");
-console.log('🤖 Beteseb Bingo Telegram Bot running...');
