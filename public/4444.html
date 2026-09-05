@@ -91,8 +91,8 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .bingo-col-head{display:flex;align-items:center;justify-content:center;height:40px;font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900}
 .bh-b{background:var(--b);color:#fff}.bh-i{background:var(--i);color:#fff}.bh-n{background:var(--n);color:#fff}.bh-g{background:var(--g);color:#fff}.bh-o{background:var(--o);color:#fff}
 .bingo-body{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
-.bingo-cell{display:flex;align-items:center;justify-content:center;height:48px;background:#fff;font-size:15px;font-weight:700;color:#1a0a2e;border-radius:6px;cursor:default;user-select:none;transition:background .1s,color .1s,transform .1s}
-.bingo-cell:active{transform:none}
+.bingo-cell{display:flex;align-items:center;justify-content:center;height:48px;background:#fff;font-size:15px;font-weight:700;color:#1a0a2e;border-radius:6px;cursor:pointer;user-select:none;transition:background .1s,color .1s,transform .1s}
+.bingo-cell:active{transform:scale(.93)}
 .bingo-cell.marked{background:var(--purple)!important;color:#fff!important}
 .bingo-cell.called-not-marked{background:#fff8dc!important;color:#8b6914!important}
 .bingo-cell.free{background:var(--purple)!important;color:#fff!important;cursor:default}
@@ -298,7 +298,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
       <div id="cardBody2" class="bingo-body"></div>
     </div>
   </div>
-  <button id="bingoBtn" class="bingo-btn" disabled>🤖 AUTO BINGO</button>
+  <button id="bingoBtn" class="bingo-btn" onclick="claimBingo()">🎉 BINGO!</button>
   <div class="tracker-wrap"><div id="trackerGrid" class="tracker-grid"></div></div>
 </div>
 
@@ -605,7 +605,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
           <div style="width:28px;height:28px;background:var(--blue);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">📌</div>
           <div>
             <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">Marking Numbers</div>
-            <div style="font-size:12px;color:var(--gold);line-height:1.5">የሚጠራው ቁጥር በእኛ መጫወቻ ካርድ ውስጥ ካለ በራሱ ይምረጣል (mark ይደረጋል)</div>
+            <div style="font-size:12px;color:var(--gold);line-height:1.5">የሚጠራው ቁጥር የኛ መጫወቻ ካርዱ ዉስጥ ካለ የተጠራዉን ቁጥር ክሊክ በማርግ መምረጥ እንቻላለን</div>
           </div>
         </div>
       </div>
@@ -616,7 +616,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px">
         <div><div style="color:#fff;font-weight:600;margin-bottom:2px">Number Range</div><div style="color:var(--gray)">Numbers 1 to 75</div></div>
         <div><div style="color:#fff;font-weight:600;margin-bottom:2px">Card Layout</div><div style="color:var(--gray)">5×5 grid + FREE center</div></div>
-        <div><div style="color:#fff;font-weight:600;margin-bottom:2px">Marking</div><div style="color:var(--gray)">Numbers are marked automatically</div></div>
+        <div><div style="color:#fff;font-weight:600;margin-bottom:2px">Marking</div><div style="color:var(--gray)">Tap to mark/unmark</div></div>
         <div><div style="color:#fff;font-weight:600;margin-bottom:2px">Timer</div><div style="color:var(--gray)">Countdown to start</div></div>
       </div>
     </div>
@@ -630,7 +630,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
     </div>
     <div style="background:rgba(250,204,21,.08);border:1px solid rgba(250,204,21,.3);border-radius:10px;padding:12px;margin-bottom:10px">
       <div style="color:var(--gold);font-weight:700;font-size:13px;margin-bottom:6px">✨ Main Winning Rule</div>
-      <div style="font-size:12px;color:var(--gold);line-height:1.7">ቁጥሮቹ ሲጠሩ በካርዱ ላይ በራሳቸው ይመረጣሉ። የማሸነፊያ ንድፍ ሲሟላ ሲስተሙ በራሱ Bingo ይጠይቃል።</div>
+      <div style="font-size:12px;color:var(--gold);line-height:1.7">ቁጥሮቹ ሲጠሩ ከመጫወቻ ካርዱችን ላይ አየመረጥን ወደን ወይም ወደታች ወይም ወደሁለቱም አግዳሚ ወይም አራቱን ማእዘናት ከምረጥን ወዲያዉን ከታች bingo የሚለዉን በመንካት ማሽነፍ እንችላለን</div>
     </div>
     <div style="display:flex;flex-direction:column;gap:10px">
       <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
@@ -678,7 +678,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
     </div>
     <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.3);border-radius:10px;padding:12px">
       <div style="color:var(--blue);font-weight:700;font-size:13px;margin-bottom:8px">✨ Pro Tips to Avoid Penalties</div>
-      <div style="font-size:12px;color:var(--gray);line-height:1.8">• Numbers are marked automatically<br>• The system checks winning patterns automatically<br>• Valid Bingo claims are submitted automatically<br>• No manual marking or Bingo button is required</div>
+      <div style="font-size:12px;color:var(--gray);line-height:1.8">• Double-check your pattern before clicking BINGO<br>• Make sure you have exactly 5 numbers in a line<br>• Verify all four corners are marked for corner wins<br>• Take your time — there's no rush to call BINGO<br>• If unsure, wait for more numbers to be called</div>
     </div>
   </div>
 </div>
@@ -1268,54 +1268,6 @@ async function loadPaymentInfo(){
   }catch(e){/* keep defaults */}
 }
 
-// ─── GAME: AUTOMATIC MARKING ───────────────────────────────────
-function autoMarkCalledNumber(n, nums, marked){
-  if(!nums || !nums.length) return false;
-  let changed=false;
-  nums.forEach((value,i)=>{
-    if(i===12) return; // FREE center is already marked
-    if(Number(value)===Number(n) && !marked.has(i)){
-      marked.add(i);
-      changed=true;
-    }
-  });
-  return changed;
-}
-
-function hasWinningPattern(marked){
-  const isMarked=i=>marked.has(i) || i===12;
-  // Horizontal rows
-  for(let r=0;r<5;r++){
-    let ok=true;
-    for(let c=0;c<5;c++) if(!isMarked(r*5+c)) {ok=false;break;}
-    if(ok) return true;
-  }
-  // Vertical columns
-  for(let c=0;c<5;c++){
-    let ok=true;
-    for(let r=0;r<5;r++) if(!isMarked(r*5+c)) {ok=false;break;}
-    if(ok) return true;
-  }
-  // Diagonals
-  if([0,6,12,18,24].every(isMarked)) return true;
-  if([4,8,12,16,20].every(isMarked)) return true;
-  // Four corners
-  if([0,4,20,24].every(isMarked)) return true;
-  return false;
-}
-
-function autoCheckAndClaim(){
-  if(!claimWindowOpen || !myCardId) return;
-  const card1Wins=hasWinningPattern(markedIndices);
-  const card2Wins=myCardId2 && hasWinningPattern(markedIndices2);
-  if(card1Wins || card2Wins){
-    claimWindowOpen=false;
-    setBingoBtn('locked');
-    wsSend({type:'claimBingo',cardId:myCardId,markedIndices:Array.from(markedIndices),
-      cardId2:myCardId2||null,markedIndices2:myCardId2?Array.from(markedIndices2):null});
-  }
-}
-
 // ─── GAME: NUMBER CALLED ──────────────────────────────────────
 function onNumberCalled(msg){
   const n=msg.number, cfg=numConfig(n);
@@ -1333,17 +1285,8 @@ function onNumberCalled(msg){
   // 🔊 Play the audio for this number
   playBallAudio(n);
 
-  // Automatically mark the called number on every card. Players no longer
-  // need to listen for the number and manually tap their card.
-  autoMarkCalledNumber(n,myCardNumbers,markedIndices);
-  if(myCardId2) autoMarkCalledNumber(n,myCardNumbers2,markedIndices2);
+  claimWindowOpen=true; setBingoBtn('ready'); startClaimBar(msg.claimWindowMs||4800);
   refreshCardCells();
-
-  claimWindowOpen=true;
-  setBingoBtn('ready');
-  startClaimBar(msg.claimWindowMs||4800);
-  // Automatically submit a valid Bingo claim as soon as the pattern is complete.
-  autoCheckAndClaim();
 }
 function startClaimBar(ms){
   const bar=document.getElementById('claimBar');
@@ -1358,14 +1301,14 @@ function cf_safe_func(){}
 function setBingoBtn(state){
   const btn=document.getElementById('bingoBtn');
   btn.className='bingo-btn';
-  if(state==='ready') { btn.classList.add('ready'); btn.innerText='🤖 AUTO BINGO — SCANNING'; }
-  else if(state==='locked') btn.innerText='🤖 AUTO BINGO';
-  else btn.innerText='🤖 AUTO BINGO';
+  if(state==='ready') btn.classList.add('ready');
   if(state==='locked') btn.classList.add('locked');
 }
 function claimBingo(){
-  // Manual Bingo claims are disabled. Winning claims are submitted automatically.
-  return;
+  if(!claimWindowOpen){showToast('⏰ Window closed — wait for next number','warn');return;}
+  if(!myCardId){showToast('No card selected','error');return;}
+  wsSend({type:'claimBingo',cardId:myCardId,markedIndices:Array.from(markedIndices),
+    cardId2:myCardId2||null,markedIndices2:myCardId2?Array.from(markedIndices2):null});
 }
 
 // ─── WINNER OVERLAY ───────────────────────────────────────────
@@ -1407,7 +1350,7 @@ function renderCard(nums, bodyId, prefix){
   nums.forEach((n,i)=>{
     const cell=document.createElement('div'); cell.className='bingo-cell'; cell.id=pfx+'cell'+i;
     if(i===12){cell.classList.add('free','marked');cell.innerText='FREE';}
-    else{cell.innerText=n;}
+    else{cell.innerText=n;cell.addEventListener('click',()=>toggleCell(i,cell,pfx));}
     body.appendChild(cell);
   });
 }
