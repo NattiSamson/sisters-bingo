@@ -13,18 +13,18 @@
   --b:#3b82f6;--i:#f59e0b;--n:#8b5cf6;--g:#22c55e;--o:#ef4444;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bottom:80px;overflow-x:hidden}
+body{background:linear-gradient(135deg,#4b167e 0%,#151a35 48%,#302b88 100%);color:#fff;font-family:'Inter',sans-serif;padding-bottom:78px;overflow-x:hidden;min-height:100vh}
 
 /* NAVBAR */
-.navbar{display:flex;align-items:center;justify-content:space-between;background:var(--panel);padding:14px 16px;border-bottom:2px solid #2d174d;position:sticky;top:0;z-index:100}
+.navbar{display:none}
 .brand{font-family:'Orbitron',sans-serif;font-weight:900;color:var(--gold);font-size:18px;display:flex;align-items:center;gap:8px}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--red);transition:background .3s}
 .dot.on{background:var(--green)}
 .balance-pill{background:var(--gold);color:#000;font-weight:700;padding:7px 14px;border-radius:20px;font-size:14px;cursor:pointer}
 
 /* SCREENS */
-.screen{display:none;padding:15px;max-width:500px;margin:0 auto;animation:fadeIn .2s ease}
-.screen.active{display:block}
+.screen{display:none;padding:18px 28px 24px;max-width:720px;margin:0 auto;animation:fadeIn .2s ease}
+
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 
 /* LOADING */
@@ -44,6 +44,35 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .stake-card:active{transform:scale(.95)}
 .stake-etb{font-family:'Orbitron',sans-serif;font-size:22px;color:var(--gold);margin-bottom:4px}
 .stake-info{font-size:12px;color:var(--gray)}
+
+/* ── REFERENCE-STYLE HOME ───────────────────────── */
+#screenLobby{padding-top:22px}
+.home-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:46px}
+.home-brand{display:flex;align-items:center;gap:12px}
+.home-brand-b{width:44px;height:44px;border-radius:50%;background:#fff;color:#7c22ce;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;box-shadow:0 4px 18px rgba(0,0,0,.18)}
+.home-brand-name{font-size:20px;font-weight:800;letter-spacing:-.4px}
+.home-rules{height:46px;padding:0 18px;border:1px solid rgba(255,255,255,.25);background:rgba(20,22,48,.18);border-radius:12px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px}
+.home-rules:active{transform:scale(.97)}
+.home-welcome{text-align:center;font-size:36px;line-height:1.1;font-weight:800;letter-spacing:-1px;margin:0 auto 54px;max-width:620px}
+.home-welcome .accent{color:#facc15}
+.home-stake-card{background:linear-gradient(135deg,rgba(118,52,145,.72),rgba(37,48,70,.82));border:3px solid rgba(198,151,23,.9);border-radius:24px;padding:30px 16px 28px;box-shadow:0 12px 35px rgba(0,0,0,.18);margin-bottom:28px}
+.home-stake-title{display:flex;align-items:center;justify-content:center;gap:12px;font-size:22px;font-weight:800;margin-bottom:30px}
+.home-stake-title .play{color:#facc15;font-size:26px}
+.home-stakes{display:flex;flex-direction:column;gap:20px}
+.home-stake-btn{width:100%;border:0;border-radius:22px;padding:17px 20px;color:#fff;font-size:24px;font-weight:800;cursor:pointer;box-shadow:0 8px 18px rgba(0,0,0,.12);transition:transform .12s,filter .15s}
+.home-stake-btn.green{background:linear-gradient(90deg,#00d5a0,#08a994)}
+.home-stake-btn.blue{background:linear-gradient(90deg,#08a8e8,#4b35f2)}
+.home-stake-btn:active{transform:scale(.985);filter:brightness(.95)}
+.home-stake-btn .play-icon{font-weight:400;margin-right:12px}
+.home-stats{background:linear-gradient(135deg,rgba(58,57,79,.78),rgba(64,67,128,.72));border:1px solid rgba(255,255,255,.2);border-radius:22px;padding:34px 20px 38px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.12)}
+.home-stat{margin:0 0 38px}.home-stat:last-child{margin-bottom:0}
+.home-stat-value{font-size:34px;font-weight:800;line-height:1.05;margin-bottom:10px}.home-stat-label{font-size:19px;color:#ddd0ef}
+@media(max-width:520px){
+  #screenLobby{padding:18px 24px 24px}
+  .home-top{margin-bottom:52px}.home-brand-name{font-size:19px}.home-rules{padding:0 15px;font-size:14px}
+  .home-welcome{font-size:34px;margin-bottom:52px}.home-stake-card{padding:28px 14px 26px;border-radius:24px}.home-stake-title{font-size:20px;margin-bottom:28px}
+  .home-stake-btn{font-size:22px;padding:16px}.home-stats{padding:34px 18px}.home-stat-value{font-size:34px}.home-stat-label{font-size:18px}
+}
 
 /* CARD SELECTION */
 .cd-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
@@ -202,11 +231,11 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .disq-msg{color:var(--gray);font-size:14px;max-width:260px}
 
 /* BOTTOM NAV */
-.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:64px;background:var(--panel);border-top:2px solid #2d174d;display:flex;justify-content:space-around;align-items:center;z-index:200}
-.nav-item{display:flex;flex-direction:column;align-items:center;color:var(--gray);font-size:10px;cursor:pointer;font-weight:600;padding:4px 10px;position:relative}
-.nav-item.active{color:var(--gold)}
-.nav-icon{font-size:22px;margin-bottom:2px}
-.nav-center{width:54px;height:54px;background:linear-gradient(145deg,#ffcc00,#d4aa00);border-radius:50%;border:3px solid var(--bg);transform:translateY(-12px);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 10px rgba(0,0,0,.4);cursor:pointer}
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:74px;background:#172940;border-top:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-around;align-items:center;z-index:200;padding:5px 8px}
+.nav-item{display:flex;flex-direction:column;align-items:center;justify-content:center;color:#93a4bd;font-size:11px;cursor:pointer;font-weight:600;padding:7px 18px;position:relative;min-width:70px;border-radius:16px;transition:.15s}
+.nav-item.active{color:#58a6ff;background:rgba(54,107,180,.22)}
+.nav-icon{font-size:21px;margin-bottom:4px}
+.nav-center{display:none}
 .nav-dot{position:absolute;top:2px;right:6px;width:8px;height:8px;background:var(--red);border-radius:50%;display:none}
 .nav-dot.show{display:block}
 
@@ -231,13 +260,27 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div class="loading-text" id="loadingText">Connecting...</div>
 </div>
 
-<div id="screenLobby" class="screen">
-  <div class="welcome-banner">
-    <div class="welcome-name">Welcome, <span id="welcomeName">Player</span>!</div>
-    <div style="font-size:12px;color:var(--gray)" id="welcomeStatus">Ready to play</div>
+<div id="screenLobby" class="screen active">
+  <div class="home-top">
+    <div class="home-brand">
+      <div class="home-brand-b">B</div>
+      <div class="home-brand-name">Beteseb Bingo</div>
+    </div>
+    <button class="home-rules" onclick="navGo('screenRules','navCards')"><span>?</span> Rules</button>
   </div>
-  <h2 class="screen-title">SELECT STAKE TIER</h2>
-  <div id="stakesGrid" class="stakes-grid"></div>
+
+  <div class="home-welcome">Welcome to <span class="accent">Beteseb Bingo</span></div>
+
+  <div class="home-stake-card">
+    <div class="home-stake-title"><span class="play">▷</span> Choose Your Stake</div>
+    <div id="stakesGrid" class="home-stakes"></div>
+  </div>
+
+  <div class="home-stats">
+    <div class="home-stat"><div class="home-stat-value" id="homeStatPlayers">Live</div><div class="home-stat-label">Players Online</div></div>
+    <div class="home-stat"><div class="home-stat-value">75</div><div class="home-stat-label">Numbers Per Game</div></div>
+    <div class="home-stat"><div class="home-stat-value">24/7</div><div class="home-stat-label">Bingo Games</div></div>
+  </div>
 </div>
 
 <div id="screenCards" class="screen">
@@ -685,16 +728,13 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 
 <div class="bottom-nav">
   <div class="nav-item active" id="navHome" onclick="navGo('screenLobby','navHome')">
-    <span class="nav-icon">🏠</span><span>HOME</span>
+    <span class="nav-icon">🎮</span><span>Game</span>
   </div>
   <div class="nav-item" id="navGame" onclick="navGo('screenGame','navGame')">
-    <span class="nav-icon">🟨</span><span>GAME</span>
-  </div>
-  <div class="nav-center" onclick="navGo('screenLobby','navHome')">
-    <span style="font-size:24px">👑</span>
+    <span class="nav-icon">🟨</span><span>Play</span>
   </div>
   <div class="nav-item" id="navWallet" onclick="navGo('screenWallet','navWallet')">
-    <span class="nav-icon">💰</span><span>WALLET</span>
+    <span class="nav-icon">💼</span><span>Wallet</span>
     <span class="nav-dot" id="walletDot"></span>
   </div>
   <div class="nav-item" id="navAdmin" onclick="navGo('screenAdmin','navAdmin')" style="display:none">
@@ -702,7 +742,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
     <span class="nav-dot show" id="adminDot" style="display:none"></span>
   </div>
   <div class="nav-item" id="navCards" onclick="navGo('screenRules','navCards')">
-  <span class="nav-icon">📋</span><span>RULES</span>
+  <span class="nav-icon">📋</span><span>Rules</span>
   </div>
 </div>
 
@@ -1545,13 +1585,17 @@ document.getElementById('cardSearch').addEventListener('input',()=>{
 
 // ─── STAKES ───────────────────────────────────────────────────
 function renderStakes(arr){
-  const grid=document.getElementById('stakesGrid'); grid.innerHTML='';
-  arr.forEach(s=>{
-    const d=document.createElement('div'); d.className='stake-card';
-    d.innerHTML=`<div class="stake-etb">${s.amount} ETB</div><div class="stake-info">${s.playerCount} players • ${s.status}${s.status==='countdown'?' ('+s.countdown+'s)':''}</div>`;
+  const grid=document.getElementById('stakesGrid'); if(!grid) return; grid.innerHTML='';
+  arr.forEach((s,i)=>{
+    const d=document.createElement('button');
+    d.type='button'; d.className='home-stake-btn '+(i%2===0?'green':'blue');
+    d.innerHTML=`<span class="play-icon">▷</span> Play ${s.amount}`;
+    d.title=`${s.playerCount||0} players • ${s.status||'open'}`;
     d.onclick=()=>wsSend({type:'joinRoom',stakeId:s.stakeId});
     grid.appendChild(d);
   });
+  const live=document.getElementById('homeStatPlayers');
+  if(live){const total=arr.reduce((n,s)=>n+(Number(s.playerCount)||0),0); live.innerText=total>0?String(total):'Live';}
 }
 
 // ─── TRACKER ─────────────────────────────────────────────────
