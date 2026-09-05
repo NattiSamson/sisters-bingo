@@ -8,6 +8,9 @@
  *   BOT_TOKEN=your_telegram_bot_token
  *   GAME_URL=https://sisters-bingo.vercel.app
  */
+import { InputFile } from "grammy";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const { Bot, webhookCallback } = require("grammy");
 const db = require("../db");
@@ -26,6 +29,11 @@ const bot = new Bot(BOT_TOKEN);
 const pendingPhone = {}; // telegramId -> { name, step }
 
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const logoPath = path.join(__dirname, "../MainLogo.png");
+
 // ─────────────────────────────────────────────────────────────
 // /start
 // ─────────────────────────────────────────────────────────────
@@ -40,7 +48,7 @@ bot.command("start", async (ctx) => {
 
     if (existing) {
       return await ctx.replyWithPhoto(
-        { source: '../MainLogo.png' },
+        new InputFile(logoPath),
         {
           caption:
         `Welcome back, *${existing.name}!* 🎱\n` +
