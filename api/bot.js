@@ -273,9 +273,9 @@ async function showSupport(ctx) {
   }
 
   await ctx.reply(
-    "🆘 ድጋፍ ይፈልጋሉ?" + 
-    "👇 ለማንኛውም ጥያቄ ወይም አስተያየት 👇"+
-    "👤 @sistersbingosupport (https://t.me/sistersbingosupport)",
+    "🆘 ድጋፍ ይፈልጋሉ?\n\n" + 
+    "👇 ለማንኛውም ጥያቄ ወይም አስተያየት 👇\n\n"+
+    "👤 @sistersbingosupport",
     {
       parse_mode: "Markdown",
     }
