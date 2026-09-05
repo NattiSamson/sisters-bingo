@@ -289,7 +289,7 @@ async function showDeposit(ctx) {
           [
             {
               text: "Cancel ❌",
-              callback_data: "cancel",
+              callback_data: "canceldeposit",
             },
           ],
         ],
@@ -311,7 +311,7 @@ bot.callbackQuery("telebirr", async (ctx) => {
 
   await ctx.editMessageText(
     "1. ከታች ባለው የቴሌብር አካውንት ብር ያስገቡ\n\n" +
-    "📞 *Telebirr:* `09XXXXXXXX`\n" +
+    "📞 *Telebirr:* `09XXXXXXXX`\n\n" +
     "2. የከፈሉበትን አጭር የጹሁፍ መልዕክት(message) copy በማድረግ እዚ ላይ Past አድረገው ያስገቡና ይላኩት👇👇👇",
     {
       parse_mode: "Markdown",
@@ -344,6 +344,16 @@ bot.on("message:text", async (ctx, next) => {
 
   // Let the other handlers process this message
   return next();
+});
+bot.callbackQuery("canceldeposit", async (ctx) => {
+  await ctx.answerCallbackQuery();
+
+  await ctx.editMessageText(
+    "የገቢ ጥያቄዎ ተሰርዟል። ❌" +
+    {
+      parse_mode: "Markdown",
+    }
+  );
 });
 // ─────────────────────────────────────────────────────────────
 // /Support
