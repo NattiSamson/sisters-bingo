@@ -124,7 +124,9 @@ bot.on("message:text", async (ctx) => {
   const text = ctx.message.text;
   const pending = pendingPhone[telegramId];
 
-  if (!pending) return;
+   if (!pending) {
+    return next();
+  }
 
   // User is entering their name
   if (
@@ -326,7 +328,7 @@ bot.command("leaderboard", showLeaderboard);
 bot.hears("📊 Leaderboard", showLeaderboard);
 bot.callbackQuery("leaderboard", async (ctx) => {
   await ctx.answerCallbackQuery();
-  await showBalance(ctx);
+  await showLeaderboard(ctx);
 });
 
 
