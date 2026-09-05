@@ -20,7 +20,7 @@ const bot = new Bot(BOT_TOKEN);
 const pendingPhone = {}; // telegramId -> { name, step }
 
 // ─── /start command ──────────────────────────────────────────
-bot.onText(/\/start/, async (msg) => {
+bot.command(/\/start/, async (msg) => {
   const telegramId = msg.from.id;
   const firstName  = msg.from.first_name || 'Player';
 
