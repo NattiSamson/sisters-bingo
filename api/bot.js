@@ -20,14 +20,14 @@ const bot = new Bot(BOT_TOKEN);
 const pendingPhone = {}; // telegramId -> { name, step }
 
 // ─── /start command ──────────────────────────────────────────
-bot.hears("start", async (msg) => {
-  const telegramId = msg.from.id;
-  const firstName  = msg.from.first_name || 'Player';
+bot.hears("start", async (ctx) => {
+  const telegramId = ctx.from.id;
+  const firstName  = ctx.from.first_name || 'Player';
 
   // Check if already registered
   const existing = await db.getUserByTelegramId(telegramId);
   if (existing) {
-    return bot.sendMessage(msg.chat.id,
+    return bot.sendMessage(ctx.chat.id,
       `Welcome back, *${existing.name}!* 🎱\nYour balance: *${existing.balance} ETB*`,
       {
         parse_mode: 'Markdown',
@@ -44,16 +44,16 @@ bot.hears("start", async (msg) => {
   // New user — start registration
   pendingPhone[telegramId] = { name: firstName, step: 'ask_name' };
 
-  bot.sendMessage(msg.chat.id,
+  bot.sendMessage(ctx.chat.id,
     `👋 Welcome to *Beteseb Bingo!*\n\nLet's get you registered.\nWhat should we call you?`,
     { parse_mode: 'Markdown' }
   );
 });
 
 // ─── Handle text messages (registration flow) ─────────────────
-bot.on('message', async (msg) => {
-  const telegramId = msg.from.id;
-  const text = msg.text;
+bot.on('message', async (ctx) => {
+  const telegramId = ctx.from.id;
+  const text = ctx.text;
   const pending = pendingPhone[telegramId];
 
   if (!pending) return;
@@ -62,7 +62,7 @@ bot.on('message', async (msg) => {
     pending.name = text.trim().substring(0, 30);
     pending.step = 'ask_phone';
 
-    bot.sendMessage(msg.chat.id,
+    bot.sendMessage(ctx.chat.id,
       `Nice to meet you, *${pending.name}!*\n\nPlease share your phone number so we can verify your account:`,
       {
         parse_mode: 'Markdown',
@@ -80,20 +80,20 @@ bot.on('message', async (msg) => {
 });
 
 // ─── Handle contact (phone number sharing) ───────────────────
-bot.on('contact', async (msg) => {
-  const telegramId = msg.from.id;
+bot.on('contact', async (ctx) => {
+  const telegramId = ctx.from.id;
   const pending = pendingPhone[telegramId];
 
   if (!pending || pending.step !== 'ask_phone') return;
 
-  const phone = msg.contact.phone_number;
+  const phone = ctx.contact.phone_number;
   const name  = pending.name;
 
   try {
     const user = await db.registerUser(telegramId, name, phone);
     delete pendingPhone[telegramId];
 
-    bot.sendMessage(msg.chat.id,
+    bot.sendMessage(ctx.chat.id,
       `✅ *Registered successfully!*\n\nName: *${user.name}*\nPhone: ${phone}\nStarting balance: *${user.balance} ETB*\n\nYou're all set — tap below to play! 🎱`,
       {
         parse_mode: 'Markdown',
@@ -108,41 +108,41 @@ bot.on('contact', async (msg) => {
       }
     );
   } catch (err) {
-    bot.sendMessage(msg.chat.id, '❌ Registration failed. Please try /start again.');
+    bot.sendMessage(ctx.chat.id, '❌ Registration failed. Please try /start again.');
     console.error('Registration error:', err);
   }
 });
 
 // ─── /balance command ─────────────────────────────────────────
-bot.hears("balance|💰 Balance", async (msg) => {
-  const user = await db.getUserByTelegramId(msg.from.id);
-  if (!user) return bot.sendMessage(msg.chat.id, 'Please /start to register first.');
-  bot.sendMessage(msg.chat.id, `💰 Your balance: *${user.balance} ETB*`, { parse_mode:'Markdown' });
+bot.hears("balance|💰 Balance", async (ctx) => {
+  const user = await db.getUserByTelegramId(ctx.from.id);
+  if (!user) return bot.sendMessage(ctx.chat.id, 'Please /start to register first.');
+  bot.sendMessage(ctx.chat.id, `💰 Your balance: *${user.balance} ETB*`, { parse_mode:'Markdown' });
 });
 
 // ─── /leaderboard command ─────────────────────────────────────
-bot.hears("leaderboard|📊 Leaderboard", async (msg) => {
+bot.hears("leaderboard|📊 Leaderboard", async (ctx) => {
   const rows = await db.getLeaderboard(10);
   const medals = ['🥇','🥈','🥉'];
   const text = rows.map((r,i) =>
     `${medals[i]||`${i+1}.`} *${r.name}* — ${r.total_winnings} ETB (${r.total_wins} wins)`
   ).join('\n');
-  bot.sendMessage(msg.chat.id, `🏆 *Leaderboard*\n\n${text||'No games yet!'}`, { parse_mode:'Markdown' });
+  bot.sendMessage(ctx.chat.id, `🏆 *Leaderboard*\n\n${text||'No games yet!'}`, { parse_mode:'Markdown' });
 });
 
 // ─── /play command ────────────────────────────────────────────
-bot.hears("play|🎮 Play", async (msg) => {
-  const user = await db.getUserByTelegramId(msg.from.id);
-  if (!user) return bot.sendMessage(msg.chat.id, 'Please /start to register first.');
+bot.hears("play|🎮 Play", async (ctx) => {
+  const user = await db.getUserByTelegramId(ctx.from.id);
+  if (!user) return bot.sendMessage(ctx.chat.id, 'Please /start to register first.');
 
-  bot.sendMessage(msg.chat.id,
+  bot.sendMessage(ctx.chat.id,
     `Ready to play, *${user.name}*? 🎱\nBalance: *${user.balance} ETB*`,
     {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[{
           text: '🎮 Open Beteseb Bingo',
-          web_app: { url: `${GAME_URL}?tid=${msg.from.id}` }
+          web_app: { url: `${GAME_URL}?tid=${ctx.from.id}` }
         }]]
       }
     }
