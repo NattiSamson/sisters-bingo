@@ -48,13 +48,13 @@ bot.command("start", async (ctx) => {
             inline_keyboard: [
               [
                 {
-                  text: "Play 🎮",
+                  text: "Play 🎱",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
                 },
               {
-                  text: "Register 📝",
+                  text: "Register ✨",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
@@ -68,7 +68,7 @@ bot.command("start", async (ctx) => {
                   },
                 },
               {
-                  text: "Transfer 💸",
+                  text: "Transfer 🔄",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
@@ -76,13 +76,13 @@ bot.command("start", async (ctx) => {
               ],
               [
               {
-                  text: "Deposit 💳",
+                  text: "Deposit 🆘",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
                 },
               {
-                  text: "Withdraw 💵",
+                  text: "Withdraw 🏧",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
@@ -90,7 +90,7 @@ bot.command("start", async (ctx) => {
               ],
               [
               {
-                  text: "Instruction 📖",
+                  text: "Instruction 📚",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
