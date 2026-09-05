@@ -351,7 +351,7 @@ bot.callbackQuery("canceldeposit", async (ctx) => {
   await ctx.answerCallbackQuery();
 
   await ctx.editMessageText(
-    "የገቢ ጥያቄዎ ተሰርዟል። ❌" +
+    "የገቢ ጥያቄዎ ተሰርዟል። ❌",
     {
       parse_mode: "Markdown",
     }
