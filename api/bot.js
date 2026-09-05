@@ -55,9 +55,7 @@ bot.command("start", async (ctx) => {
                 },
               {
                   text: "Register ✨",
-                  web_app: {
-                    url: `${GAME_URL}?tid=${telegramId}`,
-                  },
+                  callback_data: "register",
                 },
               ],
               [
@@ -67,37 +65,27 @@ bot.command("start", async (ctx) => {
                 },
               {
                   text: "Transfer 🔄",
-                  web_app: {
-                    url: `${GAME_URL}?tid=${telegramId}`,
-                  },
+                  callback_data: "transfer",
                 },
               ],
               [
               {
                   text: "Deposit 💎",
-                  web_app: {
-                    url: `${GAME_URL}?tid=${telegramId}`,
-                  },
+                  callback_data: "deposit",
                 },
               {
                   text: "Withdraw 🏧",
-                  web_app: {
-                    url: `${GAME_URL}?tid=${telegramId}`,
-                  },
+                  callback_data: "withdraw",
                 },
               ],
               [
               {
                   text: "Instruction 📚",
-                  web_app: {
-                    url: `${GAME_URL}?tid=${telegramId}`,
-                  },
+                  callback_data: "instruction",
                 },
               {
                   text: "Contact Support 🆘",
-                  web_app: {
-                    url: `${GAME_URL}?tid=${telegramId}`,
-                  },
+                  callback_data: "support",
                 },
               ],              
             ],
@@ -266,6 +254,7 @@ async function showBalance(ctx) {
 }
 
 bot.command("balance", showBalance);
+bot.hears("balance", showBalance);
 bot.callbackQuery("balance", async (ctx) => {
   await ctx.answerCallbackQuery();
   await showBalance(ctx);
@@ -303,6 +292,10 @@ async function showLeaderboard(ctx) {
 
 bot.command("leaderboard", showLeaderboard);
 bot.hears("📊 Leaderboard", showLeaderboard);
+bot.callbackQuery("leaderboard", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await showBalance(ctx);
+});
 
 
 // ─────────────────────────────────────────────────────────────
@@ -341,6 +334,7 @@ async function showPlay(ctx) {
 
 bot.command("play", showPlay);
 bot.hears("🎮 Play", showPlay);
+
 
 
 // ─────────────────────────────────────────────────────────────
