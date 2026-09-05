@@ -51,9 +51,9 @@ bot.hears("start", async (ctx) => {
 });
 
 // ─── Handle text messages (registration flow) ─────────────────
-bot.on('message', async (ctx) => {
+bot.on('message:text', async (ctx) => {
   const telegramId = ctx.from.id;
-  const text = ctx.text;
+  const text = ctx.message.text;
   const pending = pendingPhone[telegramId];
 
   if (!pending) return;
@@ -80,13 +80,13 @@ bot.on('message', async (ctx) => {
 });
 
 // ─── Handle contact (phone number sharing) ───────────────────
-bot.on('contact', async (ctx) => {
+bot.on('message:contact', async (ctx) => {
   const telegramId = ctx.from.id;
   const pending = pendingPhone[telegramId];
 
   if (!pending || pending.step !== 'ask_phone') return;
 
-  const phone = ctx.contact.phone_number;
+  const phone = ctx.message.contact.phone_number;
   const name  = pending.name;
 
   try {
