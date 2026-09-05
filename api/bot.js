@@ -41,9 +41,11 @@ bot.command("start", async (ctx) => {
     if (existing) {
       return await ctx.replyWithPhoto(
         { source: '../MainLogo.png' },
+        {
+          caption:
         `Welcome back, *${existing.name}!* 🎱\n` +
         `Your balance: *${existing.balance} ETB*`,
-        {
+        
           parse_mode: "Markdown",
           reply_markup: {
             inline_keyboard: [
