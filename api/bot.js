@@ -285,11 +285,7 @@ async function showSupport(ctx) {
   );
 }
 
-bot.command("support", async (ctx) => {
-  console.log("🔥 SUPPORT COMMAND DETECTED");
-
-  await ctx.reply("Support detected!");
-});
+bot.command("support", showSupport);
 bot.hears("support", showSupport);
 bot.callbackQuery("support", async (ctx) => {
   await ctx.answerCallbackQuery();
