@@ -148,5 +148,5 @@ bot.onText(/\/play|🎮 Play/, async (msg) => {
     }
   );
 });
-module.exports = webhookCallback(bot, "std/http");
+module.exports = webhookCallback(bot, "http");
 console.log('🤖 Beteseb Bingo Telegram Bot running...');
