@@ -715,8 +715,6 @@ let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0;
 let myCardId2=null, myCardNumbers2=[], markedIndices2=new Set();
 let claimWindowOpen=false, claimBarAnim=null, prevLastCalled=null;
 let telegramId=null, isAdmin=false, adminToken='';
-// Preserve the user's deposited/account balance so a stale game-end 0 cannot erase it.
-let preservedBalance=null;
 let cardPool=[];
 
 // ─── HELPERS ─────────────────────────────────────────────────
@@ -738,7 +736,6 @@ function setBalance(amt){
   const parsed=parseFloat(amt);
   if(!Number.isFinite(parsed)) return;
   currentBalance=parsed;
-  if(parsed>0) preservedBalance=parsed;
   const f=`ETB ${currentBalance.toFixed(2)}`;
   document.getElementById('balanceEl').innerText=f;
   document.getElementById('walletBalAmt').innerText=f;
@@ -755,17 +752,9 @@ async function refreshAccountBalance(retries=5){
       if(res.ok){
         const u=await res.json();
         if(u && u.balance!==undefined && u.balance!==null){
-            const serverBalance=parseFloat(u.balance);
-            // Never erase a real deposited balance with a transient game-end 0.
-            if(serverBalance>0 || preservedBalance===null){
-              setBalance(serverBalance);
-              return;
-            }
-            if(preservedBalance!==null){
-              setBalance(preservedBalance);
-              return;
-            }
-          }
+          setBalance(u.balance);
+          return;
+        }
       }
     }catch(e){}
     await new Promise(resolve=>setTimeout(resolve,500));
@@ -799,7 +788,7 @@ function handle(msg){
 
     case 'connected':
       myPlayerId=msg.playerId;
-      // Do not reset the displayed/deposited balance to 0 while authenticating.
+      setBalance(0);
       if(msg.stakes) renderStakes(msg.stakes);
       telegramId=getTelegramId();
       const pageParam = new URLSearchParams(location.search).get('page');
@@ -969,21 +958,13 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       // Refresh it from the account after the round has settled.
       if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>0){
         setBalance(msg.balance);
-      } else if(preservedBalance!==null){
-        setBalance(preservedBalance);
       }
       setTimeout(()=>refreshAccountBalance(),300);
       resetTrackerBoard(); setBingoBtn('idle'); resetSlotUI();
       document.getElementById('cdCountdown').innerText='Waiting...';
       navGo('screenCards','navCards'); break;
 
-    case 'balanceUpdate':
-      if(Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>0){
-        setBalance(msg.balance);
-      } else if(preservedBalance!==null){
-        setBalance(preservedBalance);
-      }
-      break;
+    case 'balanceUpdate': setBalance(msg.balance); break;
 
     case 'leftRoom': localStorage.removeItem('roomId'); myRoomId=null; myCardId=null; myCardId2=null; navGo('screenLobby','navHome'); break;
 
