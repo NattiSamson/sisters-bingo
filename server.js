@@ -23,7 +23,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/audio', express.static(path.join(__dirname, 'audio')));
 app.use(express.json());
 
-const ADMIN_PHONE = '251934255415';
+const ADMIN_PHONE = '251965666656';
 function isAdminPhone(phone) {
   if (!phone) return false;
   const normalized = String(phone).replace(/^\+/, '');
