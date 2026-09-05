@@ -56,12 +56,60 @@ bot.command("start", async (ctx) => {
               ],
               [
               {
-                  text: "🎮 Play Sisters",
+                  text: "🎮 Register",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
                 },
               ],
+              [
+              {
+                  text: "🎮 Check Balance",
+                  web_app: {
+                    url: `${GAME_URL}?tid=${telegramId}`,
+                  },
+                },
+              ],
+              [
+              {
+                  text: "🎮 Transfer",
+                  web_app: {
+                    url: `${GAME_URL}?tid=${telegramId}`,
+                  },
+                },
+              ],
+              [
+              {
+                  text: "🎮 Deposit",
+                  web_app: {
+                    url: `${GAME_URL}?tid=${telegramId}`,
+                  },
+                },
+              ],
+              [
+              {
+                  text: "🎮 Withdraw",
+                  web_app: {
+                    url: `${GAME_URL}?tid=${telegramId}`,
+                  },
+                },
+              ],
+              [
+              {
+                  text: "🎮 Contact Support",
+                  web_app: {
+                    url: `${GAME_URL}?tid=${telegramId}`,
+                  },
+                },
+              ],
+              [
+              {
+                  text: "🎮 Instruction",
+                  web_app: {
+                    url: `${GAME_URL}?tid=${telegramId}`,
+                  },
+                },
+              ],              
             ],
           },
         }
