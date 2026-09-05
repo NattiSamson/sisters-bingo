@@ -368,5 +368,5 @@ bot.hears("🎮 Play", showPlay);
 // ─────────────────────────────────────────────────────────────
 // Vercel webhook handler
 // ─────────────────────────────────────────────────────────────
-
+bot.launch();
 module.exports = webhookCallback(bot, "http");
