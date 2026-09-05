@@ -20,7 +20,7 @@ const bot = new Bot(BOT_TOKEN);
 const pendingPhone = {}; // telegramId -> { name, step }
 
 // ─── /start command ──────────────────────────────────────────
-bot.command("start", async (msg) => {
+bot.hears("start", async (msg) => {
   const telegramId = msg.from.id;
   const firstName  = msg.from.first_name || 'Player';
 
@@ -114,14 +114,14 @@ bot.on('contact', async (msg) => {
 });
 
 // ─── /balance command ─────────────────────────────────────────
-bot.command("balance|💰 Balance", async (msg) => {
+bot.hears("balance|💰 Balance", async (msg) => {
   const user = await db.getUserByTelegramId(msg.from.id);
   if (!user) return bot.sendMessage(msg.chat.id, 'Please /start to register first.');
   bot.sendMessage(msg.chat.id, `💰 Your balance: *${user.balance} ETB*`, { parse_mode:'Markdown' });
 });
 
 // ─── /leaderboard command ─────────────────────────────────────
-bot.command("leaderboard|📊 Leaderboard", async (msg) => {
+bot.hears("leaderboard|📊 Leaderboard", async (msg) => {
   const rows = await db.getLeaderboard(10);
   const medals = ['🥇','🥈','🥉'];
   const text = rows.map((r,i) =>
@@ -131,7 +131,7 @@ bot.command("leaderboard|📊 Leaderboard", async (msg) => {
 });
 
 // ─── /play command ────────────────────────────────────────────
-bot.command("play|🎮 Play", async (msg) => {
+bot.hears("play|🎮 Play", async (msg) => {
   const user = await db.getUserByTelegramId(msg.from.id);
   if (!user) return bot.sendMessage(msg.chat.id, 'Please /start to register first.');
 
