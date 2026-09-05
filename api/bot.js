@@ -48,27 +48,13 @@ bot.command("start", async (ctx) => {
             inline_keyboard: [
               [
                 {
-                  text: "🎮 Play Sisters Bingo",
+                  text: "Play 🎮",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
                 },
               {
-                  text: "🎮 Register",
-                  web_app: {
-                    url: `${GAME_URL}?tid=${telegramId}`,
-                  },
-                },
-              ],
-              [
-              {
-                  text: "🎮 Check Balance",
-                  web_app: {
-                    url: `${GAME_URL}?tid=${telegramId}`,
-                  },
-                },
-              {
-                  text: "🎮 Transfer",
+                  text: "Register 📝",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
@@ -76,13 +62,13 @@ bot.command("start", async (ctx) => {
               ],
               [
               {
-                  text: "🎮 Deposit",
+                  text: "Check Balance 💰",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
                 },
               {
-                  text: "🎮 Withdraw",
+                  text: "Transfer 💸",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
@@ -90,13 +76,27 @@ bot.command("start", async (ctx) => {
               ],
               [
               {
-                  text: "🎮 Instruction",
+                  text: "Deposit 💳",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
                 },
               {
-                  text: "🎮 Contact Support",
+                  text: "Withdraw 💵",
+                  web_app: {
+                    url: `${GAME_URL}?tid=${telegramId}`,
+                  },
+                },
+              ],
+              [
+              {
+                  text: "Instruction 📖",
+                  web_app: {
+                    url: `${GAME_URL}?tid=${telegramId}`,
+                  },
+                },
+              {
+                  text: "Contact Support 🆘",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
