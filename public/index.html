@@ -717,6 +717,8 @@ let claimWindowOpen=false, claimBarAnim=null, prevLastCalled=null;
 let telegramId=null, isAdmin=false, adminToken='';
 // Preserve the user's deposited/account balance so a stale game-end 0 cannot erase it.
 let preservedBalance=null;
+// Immutable snapshot of the user's initial deposited balance for this session.
+let initialDepositAmount=null;
 let cardPool=[];
 
 // ─── HELPERS ─────────────────────────────────────────────────
@@ -738,7 +740,10 @@ function setBalance(amt){
   const parsed=parseFloat(amt);
   if(!Number.isFinite(parsed)) return;
   currentBalance=parsed;
-  if(parsed>0) preservedBalance=parsed;
+  if(parsed>0){
+    preservedBalance=parsed;
+    if(initialDepositAmount===null) initialDepositAmount=parsed;
+  }
   const f=`ETB ${currentBalance.toFixed(2)}`;
   document.getElementById('balanceEl').innerText=f;
   document.getElementById('walletBalAmt').innerText=f;
