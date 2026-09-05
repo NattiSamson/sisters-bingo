@@ -54,12 +54,14 @@ bot.command("start", async (ctx) => {
                   },
                 },
               ],
+              [
               {
                   text: "🎮 Play Sisters",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
                 },
+              ],
             ],
           },
         }
