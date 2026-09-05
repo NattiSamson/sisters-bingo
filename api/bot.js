@@ -53,10 +53,6 @@ bot.command("start", async (ctx) => {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
                 },
-              {
-                  text: "Register ✨",
-                  callback_data: "register",
-                },
               ],
               [
               {
