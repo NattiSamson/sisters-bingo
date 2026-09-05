@@ -282,11 +282,11 @@ async function showSupport(ctx) {
   );
 }
 
-bot.command("support", showBalance);
-bot.hears("support", showBalance);
+bot.command("support", showSupport);
+bot.hears("support", showSupport);
 bot.callbackQuery("support", async (ctx) => {
   await ctx.answerCallbackQuery();
-  await showBalance(ctx);
+  await showSupport(ctx);
 });
 
 // ─────────────────────────────────────────────────────────────
