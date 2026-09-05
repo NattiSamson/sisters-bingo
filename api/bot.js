@@ -312,7 +312,7 @@ bot.callbackQuery("telebirr", async (ctx) => {
   await ctx.editMessageText(
     "1. ከታች ባለው የቴሌብር አካውንት ብር ያስገቡ\n\n" +
     "📞 *Telebirr:* `09XXXXXXXX`\n\n" +
-    "2. የከፈሉበትን አጭር የጹሁፍ መልዕክት(message) copy በማድረግ እዚ ላይ Paste አድረገው ያስገቡና ይላኩት👇👇👇",
+    "2. የከፈሉበትን አጭር የጹሁፍ መልዕክት(message) copy በማድረግ እዚህ ላይ Paste አድረገው ያስገቡና ይላኩት👇👇👇",
     {
       parse_mode: "Markdown",
     }
