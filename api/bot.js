@@ -273,34 +273,34 @@ async function showDeposit(ctx) {
   }
 
   await ctx.reply(
-        "❇️ ብር ማስገባት የሚችሉት አሁን በተቀመጠዉ የTelebirr አካዉንት ብቻ ነዉ።\n\n" +
-        "🚫 ከዚህ ዉጭ የላከ አናስተናግድም 🚫\n\n", +
-        "👇 Telebirr የሚለዉን ይምረጡ👇",
-    
-          {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "Telebirr",
-                  callback_data: "telebirr",
-                },
-              ],
-              [
-                {
-                  text: "Cancel ❌",
-                  callback_data: "cancel",
-                },
-              ],
-              ],
-          }
-          },
-    );
+    "❇️ ብር ማስገባት የሚችሉት አሁን በተቀመጠዉ የTelebirr አካዉንት ብቻ ነዉ።\n\n" +
+    "🚫 ከዚህ ዉጭ የላከ አናስተናግድም 🚫\n\n" +
+    "👇 Telebirr የሚለዉን ይምረጡ 👇",
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "📱 Telebirr",
+              callback_data: "telebirr",
+            },
+          ],
+          [
+            {
+              text: "Cancel ❌",
+              callback_data: "cancel",
+            },
+          ],
+        ],
+      },
+    }
+  );
 }
 
 bot.command("deposit", showDeposit);
 bot.hears("deposit", showDeposit);
+
 bot.callbackQuery("deposit", async (ctx) => {
   await ctx.answerCallbackQuery();
   await showDeposit(ctx);
