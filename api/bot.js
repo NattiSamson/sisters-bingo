@@ -40,7 +40,7 @@ bot.command("start", async (ctx) => {
 
     if (existing) {
       return await ctx.replyWithPhoto(
-        new InputFile('../MainLogo.png'),
+        {source: "../MainLogo.png"},
         {
           caption:
         `Welcome back, *${existing.name}!* 🎱\n` +
