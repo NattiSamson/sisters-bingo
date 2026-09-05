@@ -150,3 +150,4 @@ bot.hears("play|🎮 Play", async (ctx) => {
 });
 module.exports = webhookCallback(bot, "http");
 console.log('🤖 Beteseb Bingo Telegram Bot running...');
+console.log(BOT_TOKEN);
