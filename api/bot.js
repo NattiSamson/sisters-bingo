@@ -76,12 +76,12 @@ bot.command("start", async (ctx) => {
               ],
               [
               {
-                  text: "Instruction 📚",
-                  callback_data: "instruction",
-                },
-              {
                   text: "Support 🆘",
                   callback_data: "support",
+                },
+              {
+                  text: "Delete 🗑️",
+                  callback_data: "delete",
                 },
               ],              
             ],
