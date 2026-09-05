@@ -273,9 +273,9 @@ async function showDeposit(ctx) {
   }
 
   await ctx.reply(
-        '❇️ ብር ማስገባት የሚችሉት አሁን በተቀመጠዉ የTelebirr አካዉንት ብቻ ነዉ።\n\n' +
-        '🚫 ከዚህ ዉጭ የላከ አናስተናግድም 🚫\n\n', +
-        '👇 Telebirr የሚለዉን ይምረጡ👇',
+        "❇️ ብር ማስገባት የሚችሉት አሁን በተቀመጠዉ የTelebirr አካዉንት ብቻ ነዉ።\n\n" +
+        "🚫 ከዚህ ዉጭ የላከ አናስተናግድም 🚫\n\n", +
+        "👇 Telebirr የሚለዉን ይምረጡ👇",
     
           {
           parse_mode: "Markdown",
