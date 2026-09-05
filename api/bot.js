@@ -114,14 +114,14 @@ bot.on('contact', async (msg) => {
 });
 
 // ─── /balance command ─────────────────────────────────────────
-bot.onText(/\/balance|💰 Balance/, async (msg) => {
+bot.command(/\/balance|💰 Balance/, async (msg) => {
   const user = await db.getUserByTelegramId(msg.from.id);
   if (!user) return bot.sendMessage(msg.chat.id, 'Please /start to register first.');
   bot.sendMessage(msg.chat.id, `💰 Your balance: *${user.balance} ETB*`, { parse_mode:'Markdown' });
 });
 
 // ─── /leaderboard command ─────────────────────────────────────
-bot.onText(/\/leaderboard|📊 Leaderboard/, async (msg) => {
+bot.command(/\/leaderboard|📊 Leaderboard/, async (msg) => {
   const rows = await db.getLeaderboard(10);
   const medals = ['🥇','🥈','🥉'];
   const text = rows.map((r,i) =>
@@ -131,7 +131,7 @@ bot.onText(/\/leaderboard|📊 Leaderboard/, async (msg) => {
 });
 
 // ─── /play command ────────────────────────────────────────────
-bot.onText(/\/play|🎮 Play/, async (msg) => {
+bot.command(/\/play|🎮 Play/, async (msg) => {
   const user = await db.getUserByTelegramId(msg.from.id);
   if (!user) return bot.sendMessage(msg.chat.id, 'Please /start to register first.');
 
