@@ -76,7 +76,7 @@ bot.command("start", async (ctx) => {
               ],
               [
               {
-                  text: "Deposit 🆘",
+                  text: "Deposit 💎",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
