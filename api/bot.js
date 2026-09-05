@@ -90,15 +90,13 @@ bot.command("start", async (ctx) => {
               ],
               [
               {
-                  text: "🎮 Contact Support",
+                  text: "🎮 Instruction",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
                 },
-              ],
-              [
               {
-                  text: "🎮 Instruction",
+                  text: "🎮 Contact Support",
                   web_app: {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
