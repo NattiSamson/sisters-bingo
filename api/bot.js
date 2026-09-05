@@ -266,7 +266,10 @@ async function showBalance(ctx) {
 }
 
 bot.command("balance", showBalance);
-bot.hears("💰 Balance", showBalance);
+bot.callbackQuery("balance", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await showBalance(ctx);
+});
 
 
 // ─────────────────────────────────────────────────────────────
