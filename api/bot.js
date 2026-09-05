@@ -53,8 +53,6 @@ bot.command("start", async (ctx) => {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
                 },
-              ],
-              [
               {
                   text: "🎮 Register",
                   web_app: {
@@ -69,8 +67,6 @@ bot.command("start", async (ctx) => {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
                 },
-              ],
-              [
               {
                   text: "🎮 Transfer",
                   web_app: {
@@ -85,8 +81,6 @@ bot.command("start", async (ctx) => {
                     url: `${GAME_URL}?tid=${telegramId}`,
                   },
                 },
-              ],
-              [
               {
                   text: "🎮 Withdraw",
                   web_app: {
