@@ -60,7 +60,7 @@ bot.command("start", async (ctx) => {
               ],
               [
               {
-                  text: "Check Balance 💰",
+                  text: "Balance 💰",
                   callback_data: "balance",
                 },
               {
@@ -84,7 +84,7 @@ bot.command("start", async (ctx) => {
                   callback_data: "instruction",
                 },
               {
-                  text: "Contact Support 🆘",
+                  text: "Support 🆘",
                   callback_data: "support",
                 },
               ],              
@@ -260,6 +260,34 @@ bot.callbackQuery("balance", async (ctx) => {
   await showBalance(ctx);
 });
 
+// ─────────────────────────────────────────────────────────────
+// /Support
+// ─────────────────────────────────────────────────────────────
+async function showSupport(ctx) {
+  const user = await db.getUserByTelegramId(ctx.from.id);
+
+  if (!user) {
+    return await ctx.reply(
+      "Please /start to register first."
+    );
+  }
+
+  await ctx.reply(
+    "🆘 ድጋፍ ይፈልጋሉ?" + 
+    "👇 ለማንኛውም ጥያቄ ወይም አስተያየት 👇"+
+    "👤 @sistersbingosupport (https://t.me/sistersbingosupport)",
+    {
+      parse_mode: "Markdown",
+    }
+  );
+}
+
+bot.command("support", showBalance);
+bot.hears("support", showBalance);
+bot.callbackQuery("support", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await showBalance(ctx);
+});
 
 // ─────────────────────────────────────────────────────────────
 // /leaderboard
