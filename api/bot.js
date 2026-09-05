@@ -119,7 +119,7 @@ bot.command("start", async (ctx) => {
 // Handle text messages — registration flow
 // ─────────────────────────────────────────────────────────────
 
-bot.on("message:text", async (ctx) => {
+bot.on("message:text", async (ctx, next) => {
   const telegramId = ctx.from.id;
   const text = ctx.message.text;
   const pending = pendingPhone[telegramId];
@@ -157,6 +157,7 @@ bot.on("message:text", async (ctx) => {
       }
     );
   }
+   return next();
 });
 
 
