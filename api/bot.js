@@ -7,13 +7,14 @@
  */
 
 const { Bot, webhookCallback } = require("grammy");
-const TelegramBot = require('node-telegram-bot-api');
+//const TelegramBot = require('node-telegram-bot-api');
 const db = require('../db');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const GAME_URL  = process.env.GAME_URL || 'https://your-app.onrender.com';
 
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+//const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+const bot = new Bot(token);
 
 // State machine: pending registrations waiting for phone
 const pendingPhone = {}; // telegramId -> { name, step }
