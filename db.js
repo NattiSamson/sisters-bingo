@@ -12,6 +12,10 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
+pool.query("SELECT NOW()")
+  .then(() => console.log("PostgreSQL connected"))
+  .catch((err) => console.error("PostgreSQL error:", err));
+
 module.exports = {
   // ── User operations ──
   async registerUser(telegramId, name, phone) {
