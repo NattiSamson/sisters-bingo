@@ -733,32 +733,10 @@ function numConfig(n){
 }
 function colClass(n){if(n<=15)return 'cb';if(n<=30)return 'ci';if(n<=45)return 'cn';if(n<=60)return 'cg';return 'co';}
 function setBalance(amt){
-  const parsed=parseFloat(amt);
-  if(!Number.isFinite(parsed)) return;
-  currentBalance=parsed;
+  currentBalance=parseFloat(amt);
   const f=`ETB ${currentBalance.toFixed(2)}`;
   document.getElementById('balanceEl').innerText=f;
   document.getElementById('walletBalAmt').innerText=f;
-}
-
-// Refresh the balance from the account after a game ends.
-// Some game-end messages can contain a stale/zero balance before the
-// prize transaction has finished updating the account.
-async function refreshAccountBalance(retries=5){
-  if(!telegramId) return;
-  for(let i=0;i<retries;i++){
-    try{
-      const res=await fetch(`/api/user/${telegramId}?_=${Date.now()}`);
-      if(res.ok){
-        const u=await res.json();
-        if(u && u.balance!==undefined && u.balance!==null){
-          setBalance(u.balance);
-          return;
-        }
-      }
-    }catch(e){}
-    await new Promise(resolve=>setTimeout(resolve,500));
-  }
 }
 function goScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');}
 function navGo(screen, navId){
@@ -940,26 +918,13 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
     case 'claimTooLate': showToast('⏰ Too late! Claim before next number.','warn'); break;
     case 'disqualified': showDisqualified(); break;
 
-    case 'gameOver':
-      localStorage.removeItem('roomId');
-      showWinnerOverlay(msg);
-      // Do not rely on the game-over message for the wallet balance.
-      // Re-read the user's actual account balance after the prize is processed.
-      setTimeout(()=>refreshAccountBalance(),300);
-      break;
+    case 'gameOver': localStorage.removeItem('roomId'); showWinnerOverlay(msg); break;
 
     case 'backToCardSelection':
       myRoomId=msg.roomId; myCardId=null; myCardId2=null;
       myCardNumbers=[]; myCardNumbers2=[];
       markedIndices=new Set([12]); markedIndices2=new Set([12]);
-      claimWindowOpen=false;
-      hideWinnerOverlay();
-      // Keep the displayed balance from being reset by a stale 0 value.
-      // Refresh it from the account after the round has settled.
-      if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>0){
-        setBalance(msg.balance);
-      }
-      setTimeout(()=>refreshAccountBalance(),300);
+      claimWindowOpen=false; hideWinnerOverlay(); if(msg.balance!==undefined)setBalance(msg.balance);
       resetTrackerBoard(); setBingoBtn('idle'); resetSlotUI();
       document.getElementById('cdCountdown').innerText='Waiting...';
       navGo('screenCards','navCards'); break;
