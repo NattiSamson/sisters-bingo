@@ -67,13 +67,12 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .cd-countdown{color:var(--gold);font-weight:700;font-size:14px}
 .card-search{width:100%;background:var(--card);border:1px solid #4a2d7a;color:#fff;padding:9px 12px;border-radius:8px;font-size:14px;margin-bottom:10px;outline:none}
 .card-search::placeholder{color:var(--gray)}
-.pool-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;height:360px;overflow-y:auto;padding:6px}
-.pool-btn{background:linear-gradient(145deg,#71668b,#4f4767);border:1px solid rgba(255,255,255,.28);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 2px 5px rgba(0,0,0,.22);color:#fff;padding:8px 4px;border-radius:6px;font-weight:800;cursor:pointer;text-align:center;font-size:15px;line-height:1;min-height:34px;transition:transform .12s,background .15s,box-shadow .15s,border-color .15s;user-select:none}
-.pool-btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.65);box-shadow:0 4px 10px rgba(0,0,0,.28)}
-.pool-btn:active{transform:scale(.94)}
-.pool-btn.taken{background:linear-gradient(145deg,#1267a3,#0b4f82)!important;color:#dff4ff!important;border-color:#39a8ff!important;box-shadow:0 0 10px rgba(30,144,255,.25)!important;cursor:not-allowed;opacity:1}
-.pool-btn.mine1{background:linear-gradient(145deg,#ff4b5f,#c91f3a)!important;color:#fff!important;border-color:#ff8793!important;box-shadow:0 0 14px rgba(255,65,88,.45)!important}
-.pool-btn.mine2{background:linear-gradient(145deg,#ff9f2f,#e45b00)!important;color:#fff!important;border-color:#ffc06b!important;box-shadow:0 0 14px rgba(255,140,30,.4)!important}
+.pool-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;height:320px;overflow-y:auto;padding:4px}
+.pool-btn{background:var(--card);border:1px solid #4a2d7a;color:#fff;padding:10px 4px;border-radius:8px;font-weight:700;cursor:pointer;text-align:center;font-size:12px;transition:all .15s}
+.pool-btn:hover{border-color:var(--gold)}
+.pool-btn.taken{background:#3a1515;color:#ff8888;cursor:not-allowed;opacity:.55}
+.pool-btn.mine1{background:var(--purple)!important;color:#fff!important;border-color:#a78bfa!important}
+.pool-btn.mine2{background:#d97706!important;color:#fff!important;border-color:#fbbf24!important}
 /* Selected card slots */
 .selected-cards-row{display:flex;gap:8px;margin-bottom:10px}
 .selected-slot{flex:1;background:var(--card);border:2px dashed #4a2d7a;border-radius:10px;padding:8px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:52px}
@@ -234,14 +233,14 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .sound-btn.muted{background:rgba(239,68,68,.2);border-color:var(--red);color:var(--red)}
 
 /* MELA BINGO START PAGE */
-#screenLobby{max-width:500px;padding:0 18px 28px;min-height:calc(100vh - 128px);background:radial-gradient(circle at 12% 8%,rgba(168,85,247,.42),transparent 30%),radial-gradient(circle at 92% 32%,rgba(59,130,246,.22),transparent 32%),radial-gradient(circle at 50% 100%,rgba(236,72,153,.16),transparent 35%),linear-gradient(155deg,#241044 0%,#151638 46%,#070d22 100%);box-shadow:inset 0 0 80px rgba(139,92,246,.08)}
+#screenLobby{max-width:500px;padding:0 18px 28px;min-height:calc(100vh - 128px);background:radial-gradient(circle at 8% 8%,rgba(124,58,237,.28),transparent 34%),linear-gradient(155deg,#3d176f 0%,#21134d 45%,#0d172d 100%)}
 #screenLobby .welcome-banner{display:block;background:transparent;border:0;border-radius:0;padding:48px 4px 26px;margin:0;text-align:center}
 .mela-welcome-title{font-size:34px;font-weight:800;line-height:1.15;color:#fff}
 .mela-welcome-title span{display:block;color:#fbbf24}
 .mela-welcome-player{margin-top:10px;color:#d8c9f4;font-size:14px}
 .mela-welcome-player span{color:#fff;font-weight:700}
 #screenLobby #welcomeStatus{margin-top:7px;color:#d8c9f4!important;font-size:12px!important;opacity:.9}
-.lobby-stake-panel{background:linear-gradient(135deg,rgba(139,92,246,.20),rgba(30,41,90,.28));border:1px solid rgba(192,132,252,.48);border-radius:20px;padding:20px 12px 14px;box-shadow:0 16px 38px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.08);backdrop-filter:blur(10px)}
+.lobby-stake-panel{background:linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.08));border:2px solid rgba(234,179,8,.7);border-radius:20px;padding:20px 12px 14px;box-shadow:0 14px 35px rgba(0,0,0,.18)}
 .lobby-stake-heading{text-align:center;font-size:19px;font-weight:800;color:#fff;margin:0 0 18px}.lobby-stake-heading span{color:#facc15;font-size:24px;margin-right:7px;vertical-align:-2px}
 #screenLobby .stakes-grid{display:flex;flex-direction:column;gap:14px}
 #screenLobby .stake-card{min-height:62px;width:100%;border:0;border-radius:17px;padding:14px 18px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;color:#fff;background:linear-gradient(90deg,#08d3a0,#00a99d);box-shadow:0 7px 18px rgba(0,0,0,.18)}
@@ -252,7 +251,6 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 #screenLobby .stake-etb::before{content:'▷  ';font-size:20px;font-weight:400}
 #screenLobby .stake-info{display:none}
 #screenLobby .stake-unavailable{opacity:.45;cursor:not-allowed!important;filter:saturate(.55)}
-#screenCards .pool-grid{background:rgba(6,10,28,.35);border:1px solid rgba(167,139,250,.20);border-radius:10px}
 .lobby-players-card{margin:38px 0 10px;background:linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.07));border:1px solid rgba(255,255,255,.22);border-radius:17px;padding:32px 16px;text-align:center}.lobby-players-number{font-size:32px;font-weight:900}.lobby-players-label{margin-top:6px;color:#d8c9f4;font-size:16px}.lobby-players-sub{margin-top:5px;color:#9f8fc0;font-size:11px}
 @media(max-width:380px){.mela-welcome-title{font-size:30px}}
 /* Evenly spaced 4-item bottom navigation */
@@ -316,6 +314,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
       <div class="slot-num" style="color:#d97706" id="slot2Num">—</div>
     </div>
   </div>
+  <input class="card-search" type="number" id="cardSearch" placeholder="Search card # (1–400)..." min="1" max="400">
   <div id="poolGrid" class="pool-grid"></div>
   <button class="leave-btn" onclick="leaveRoom()">← Leave Room</button>
 </div>
@@ -336,7 +335,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <!-- Dual cards wrapper — becomes side-by-side when two cards selected -->
   <div id="cardsWrap">
     <div class="card-container" id="cardContainer1">
-      <div id="cardLabel" class="card-id-tag">Card ---</div>
+      <div id="cardLabel" class="card-id-tag">Card #---</div>
       <div class="bingo-header">
         <div class="bingo-col-head bh-b">B</div><div class="bingo-col-head bh-i">I</div>
         <div class="bingo-col-head bh-n">N</div><div class="bingo-col-head bh-g">G</div>
@@ -345,7 +344,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
       <div id="cardBody" class="bingo-body"></div>
     </div>
     <div class="card-container" id="cardContainer2" style="display:none">
-      <div id="cardLabel2" class="card-id-tag" style="color:#d97706">Card ---</div>
+      <div id="cardLabel2" class="card-id-tag" style="color:#d97706">Card #---</div>
       <div class="bingo-header">
         <div class="bingo-col-head bh-b">B</div><div class="bingo-col-head bh-i">I</div>
         <div class="bingo-col-head bh-n">N</div><div class="bingo-col-head bh-g">G</div>
@@ -1450,7 +1449,7 @@ function renderBothCards(){
   } else {
     wrap.classList.remove('dual-cards-wrap');
     c2.style.display='none';
-    document.getElementById('cardLabel').innerText=`Card ${myCardId}`;
+    document.getElementById('cardLabel').innerText=`Card #${myCardId}`;
     renderCard(myCardNumbers,'cardBody','');
   }
 }
@@ -1489,9 +1488,9 @@ function refreshCardCells(){
 function updateSlotUI(){
   const s1=document.getElementById('slot1'), s2=document.getElementById('slot2');
   const n1=document.getElementById('slot1Num'), n2=document.getElementById('slot2Num');
-  if(myCardId){s1.classList.add('filled1');n1.innerText=myCardId;}
+  if(myCardId){s1.classList.add('filled1');n1.innerText=`#${myCardId}`;}
   else{s1.classList.remove('filled1');n1.innerText='—';}
-  if(myCardId2){s2.classList.add('filled2');n2.innerText=myCardId2;}
+  if(myCardId2){s2.classList.add('filled2');n2.innerText=`#${myCardId2}`;}
   else{s2.classList.remove('filled2');n2.innerText='—';}
 }
 function resetSlotUI(){
@@ -1505,9 +1504,11 @@ function resetSlotUI(){
 // ─── CARD POOL ────────────────────────────────────────────────
 function renderCardPool(pool){
   const grid=document.getElementById('poolGrid');
+  const search=parseInt(document.getElementById('cardSearch').value)||0;
   grid.innerHTML='';
   pool.forEach(c=>{
-    const btn=document.createElement('div'); btn.className='pool-btn'; btn.id='cardbtn-'+c.id; btn.innerText=c.id;
+    if(search>0&&c.id!==search) return;
+    const btn=document.createElement('div'); btn.className='pool-btn'; btn.id='cardbtn-'+c.id; btn.innerText=`#${c.id}`;
     if(c.id===myCardId) btn.classList.add('mine1');
     else if(c.id===myCardId2) btn.classList.add('mine2');
     else if(c.taken) btn.classList.add('taken');
@@ -1540,7 +1541,7 @@ function pickCard(cardId){
     // Second card — wait for server to confirm before updating UI
     wsSend({type:'selectCard',cardId,slot:2});
   } else if(myCardId2){
-    showToast('Tap a selected card (red/orange) to deselect it first','warn');
+    showToast('Tap a selected card (purple/orange) to deselect it first','warn');
   }
 }
 function deselectCard(slot){
@@ -1554,7 +1555,13 @@ function deselectCard(slot){
   }
   updateSlotUI(); renderCardPool(cardPool);
 }
-
+document.getElementById('cardSearch').addEventListener('input',()=>{
+  const val=parseInt(document.getElementById('cardSearch').value)||0;
+  document.querySelectorAll('.pool-btn').forEach(b=>{
+    const id=parseInt(b.innerText.replace('#',''));
+    b.style.display=(val===0||id===val)?'':'none';
+  });
+});
 
 // ─── STAKES ───────────────────────────────────────────────────
 function renderStakes(arr){
