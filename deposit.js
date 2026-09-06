@@ -16,7 +16,7 @@ console.log("Invoice No:", invoiceNo);
   return invoiceNo;
 }
 
-async function builURLfromInvoiceNo(invoiceNo) {
+async builURLfromInvoiceNo(invoiceNo) {
 let urlFirst = "https://transactioninfo.ethiotelecom.et/";
 
 // Construct full URL
