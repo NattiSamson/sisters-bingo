@@ -11,7 +11,7 @@
 
 const { Bot, webhookCallback } = require("grammy");
 const db = require("../db");
-const deposit = require("../deposit");
+const {processDeposit} = require("../deposit");
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const GAME_URL =
@@ -337,7 +337,7 @@ bot.on("message:text", async (ctx, next) => {
       "✅ የክፍያ መልዕክትዎ ደርሶናል።\n\n" +
       "⏳ ክፍያዎ እየተረጋገጠ ነው።"
     );
-    const result = await deposit.processDeposit(text);
+    const result = await processDeposit(text);
     if (typeof result === "object" && result !== null) {
       await ctx.reply(
       "successfull " + result.invoiceNo + " " + result.payerName + result.payerTelebirrNo + " " + result.creditedPartyName+ result.creditedPartyAccountNo + " " + result.paymentDate+ " " + result.amount,
