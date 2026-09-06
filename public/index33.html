@@ -77,7 +77,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   color:#fff;
 }
 #screenLobby .welcome-name::after{
-  content:"Mela\\A Bingo";
+  content:"Beteseb\\A Bingo";
   white-space:pre;
   display:block;
   font-size:34px;
@@ -137,9 +137,6 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   box-shadow:0 7px 18px rgba(0,0,0,.18);
 }
 #screenLobby .stake-card:nth-child(2n){
-  background:linear-gradient(90deg,#0da5e9,#4b3df3);
-}
-#screenLobby .stake-card.stake-alt{
   background:linear-gradient(90deg,#0da5e9,#4b3df3);
 }
 #screenLobby .stake-card:hover{
@@ -399,7 +396,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div style="display:flex;align-items:center;gap:8px">
     <button class="lobby-rule-btn" onclick="navGo('screenRules','navCards')" title="View game rules">❔ <span>Rules</span></button>
     <button class="sound-btn" id="soundBtn" onclick="toggleSound()" title="Toggle sound">🔊</button>
-    <div class="balance-pill" id="balanceEl" onclick="goToWallet()">ETB --.--</div>
+    <div class="balance-pill" id="balanceEl" onclick="goToWallet()">ETB 0.00</div>
   </div>
 </div>
 
@@ -873,6 +870,9 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div class="nav-item active" id="navHome" onclick="navGo('screenLobby','navHome')">
     <span class="nav-icon">🏠</span><span>HOME</span>
   </div>
+  <div class="nav-item" id="navGame" onclick="navGo('screenGame','navGame')">
+    <span class="nav-icon">🟨</span><span>GAME</span>
+  </div>
   <div class="nav-center" onclick="navGo('screenLobby','navHome')">
     <span style="font-size:24px">👑</span>
   </div>
@@ -935,31 +935,29 @@ function setBalance(amt){
 // Refresh the balance from the account after a game ends.
 // Some game-end messages can contain a stale/zero balance before the
 // prize transaction has finished updating the account.
-async function refreshAccountBalance(retries=8){
+async function refreshAccountBalance(retries=5){
   if(!telegramId) return;
-  let lastServerBalance=null;
   for(let i=0;i<retries;i++){
     try{
       const res=await fetch(`/api/user/${telegramId}?_=${Date.now()}`);
       if(res.ok){
         const u=await res.json();
         if(u && u.balance!==undefined && u.balance!==null){
-          const serverBalance=parseFloat(u.balance);
-          if(Number.isFinite(serverBalance)){
-            lastServerBalance=serverBalance;
-            // Accept the real account balance, including 0. The server is
-            // the source of truth after the game has settled.
-            setBalance(serverBalance);
-            return;
+            const serverBalance=parseFloat(u.balance);
+            // Never erase a real deposited balance with a transient game-end 0.
+            if(serverBalance>0 || preservedBalance===null){
+              setBalance(serverBalance);
+              return;
+            }
+            if(preservedBalance!==null){
+              setBalance(preservedBalance);
+              return;
+            }
           }
-        }
       }
     }catch(e){}
     await new Promise(resolve=>setTimeout(resolve,500));
   }
-  // If the account endpoint was temporarily unavailable, preserve the
-  // balance already shown instead of inventing a zero.
-  if(lastServerBalance===null && preservedBalance!==null) setBalance(preservedBalance);
 }
 function goScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');}
 function navGo(screen, navId){
@@ -1005,9 +1003,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
 
     case 'authSuccess':
   myName=msg.playerName||'Player';
-  // Only update the displayed balance when the server actually sent one.
-  // Never replace the user's existing balance with an artificial 0.
-  if(msg.balance!==undefined && msg.balance!==null){ setBalance(msg.balance); }
+  setBalance(msg.balance||0);
   isAdmin=msg.isAdmin||false;
   adminToken=telegramId||'';
   document.getElementById('welcomeName').innerText=myName||'Player';
@@ -1732,27 +1728,15 @@ document.getElementById('cardSearch').addEventListener('input',()=>{
 
 // ─── STAKES ───────────────────────────────────────────────────
 function renderStakes(arr){
-  const grid=document.getElementById('stakesGrid');
-  grid.innerHTML='';
-  const stakes=Array.isArray(arr)?arr:[];
-  const activePlayers=stakes.reduce((total,s)=>total+(parseInt(s.playerCount,10)||0),0);
+  const grid=document.getElementById('stakesGrid'); grid.innerHTML='';
+  const activePlayers=(arr||[]).reduce((total,s)=>total+(parseInt(s.playerCount,10)||0),0);
   const activeEl=document.getElementById('lobbyActivePlayers');
   if(activeEl) activeEl.innerText=activePlayers.toLocaleString();
 
-  // Home screen always shows these four stake amounts.
-  [5,10,20,50].forEach((amount,index)=>{
-    const s=stakes.find(x=>Number(x.amount)===amount);
-    const d=document.createElement('div');
-    d.className='stake-card';
-    d.innerHTML=`<div class="stake-etb">Play ${amount}</div><div class="stake-info">${s?s.playerCount+' players • '+s.status+(s.status==='countdown'?' ('+s.countdown+'s)':''):'Unavailable'}</div>`;
-    if(s){
-      d.onclick=()=>wsSend({type:'joinRoom',stakeId:s.stakeId});
-    }else{
-      d.style.opacity='.45';
-      d.style.cursor='not-allowed';
-    }
-    // Keep the alternating visual treatment from the redesigned home.
-    if(index%2===1) d.classList.add('stake-alt');
+  (arr||[]).forEach(s=>{
+    const d=document.createElement('div'); d.className='stake-card';
+    d.innerHTML=`<div class="stake-etb">Play ${s.amount}</div><div class="stake-info">${s.playerCount} players • ${s.status}${s.status==='countdown'?' ('+s.countdown+'s)':''}</div>`;
+    d.onclick=()=>wsSend({type:'joinRoom',stakeId:s.stakeId});
     grid.appendChild(d);
   });
 }
