@@ -771,11 +771,6 @@ let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0;
 let myCardId2=null, myCardNumbers2=[], markedIndices2=new Set();
 let claimWindowOpen=false, claimBarAnim=null, prevLastCalled=null;
 let telegramId=null, isAdmin=false, adminToken='';
-// Preserve a real account balance so a transient/stale game message containing
-// zero cannot overwrite the user's actual starting/deposited balance.
-let preservedBalance=null;
-// Snapshot of the first real positive account balance seen in this session.
-let initialDepositAmount=null;
 let cardPool=[];
 
 // ─── HELPERS ─────────────────────────────────────────────────
@@ -797,21 +792,13 @@ function setBalance(amt){
   const parsed=parseFloat(amt);
   if(!Number.isFinite(parsed)) return;
   currentBalance=parsed;
-
-  // Keep the last known real positive balance. This protects the UI from
-  // transient/stale zero values while a game transaction is settling.
-  if(parsed>0){
-    preservedBalance=parsed;
-    if(initialDepositAmount===null) initialDepositAmount=parsed;
-  }
-
   const f=`ETB ${currentBalance.toFixed(2)}`;
   document.getElementById('balanceEl').innerText=f;
   document.getElementById('walletBalAmt').innerText=f;
 }
 
-// Read the actual account balance, but never replace a known real balance
-// with a transient zero returned while a game transaction is settling.
+// Always use the actual account balance from the server. This is important
+// after a round because a win or loss changes the player's real balance.
 async function refreshAccountBalance(retries=5){
   if(!telegramId) return;
   for(let i=0;i<retries;i++){
@@ -820,15 +807,8 @@ async function refreshAccountBalance(retries=5){
       if(res.ok){
         const u=await res.json();
         if(u && u.balance!==undefined && u.balance!==null){
-          const serverBalance=parseFloat(u.balance);
-          if(serverBalance>0 || preservedBalance===null){
-            setBalance(serverBalance);
-            return;
-          }
-          if(preservedBalance!==null){
-            setBalance(preservedBalance);
-            return;
-          }
+          setBalance(u.balance);
+          return;
         }
       }
     }catch(e){}
@@ -895,16 +875,12 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
 
     case 'authSuccess':
   myName=msg.playerName||'Player';
-
-  // Initialize the wallet immediately from the authenticated response.
-  // Then verify it from the account endpoint without allowing a transient
-  // zero to erase a real starting/deposited balance.
+  // Use the authenticated server balance first, then verify it directly from
+  // the account endpoint. There is no client-side initial/deposit amount.
   if(msg.balance!==undefined && msg.balance!==null && Number.isFinite(parseFloat(msg.balance))){
     setBalance(msg.balance);
-  } else if(telegramId){
-    refreshAccountBalance(5);
   }
-  if(telegramId) setTimeout(()=>refreshAccountBalance(5),100);
+  if(telegramId) setTimeout(()=>refreshAccountBalance(3),100);
   isAdmin=msg.isAdmin||false;
   adminToken=telegramId||'';
   document.getElementById('welcomeName').innerText=myName||'Player';
@@ -1063,14 +1039,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       navGo('screenCards','navCards'); break;
 
     case 'balanceUpdate':
-      if(Number.isFinite(parseFloat(msg.balance))){
-        const updatedBalance=parseFloat(msg.balance);
-        if(updatedBalance>0 || preservedBalance===null){
-          setBalance(updatedBalance);
-        } else if(preservedBalance!==null){
-          setBalance(preservedBalance);
-        }
-      }
+      if(Number.isFinite(parseFloat(msg.balance))) setBalance(msg.balance);
       break;
 
     case 'leftRoom': localStorage.removeItem('roomId'); myRoomId=null; myCardId=null; myCardId2=null; navGo('screenLobby','navHome'); break;
@@ -1575,32 +1544,21 @@ function renderStakes(arr){
   grid.innerHTML='';
   const stakes=Array.isArray(arr)?arr:[];
   const activeEl=document.getElementById('lobbyActivePlayers');
-
   if(activeEl){
     const total=stakes.reduce((sum,s)=>sum+(parseInt(s.playerCount,10)||0),0);
     activeEl.innerText=total.toLocaleString();
   }
-
-  // Always show all four stake tiers. Existing server entries use their real
-  // stakeId; missing tiers remain clickable instead of being disabled.
-  [5,10,20,50].forEach(amount=>{
+  [5,10,20,50].forEach((amount,index)=>{
     const s=stakes.find(x=>Number(x.amount)===amount);
     const d=document.createElement('div');
     d.className='stake-card';
     d.innerHTML=`<div class="stake-etb">Play ${amount}</div>`;
-
-    const stakeId=(s && s.stakeId!==undefined && s.stakeId!==null)
-      ? s.stakeId
-      : amount;
-
-    d.onclick=()=>{
-      wsSend({
-        type:'joinRoom',
-        stakeId:stakeId,
-        stakeAmount:amount
-      });
-    };
-
+    if(s){
+      d.onclick=()=>wsSend({type:'joinRoom',stakeId:s.stakeId});
+    }else{
+      d.classList.add('stake-unavailable');
+      d.title=`Play ${amount} is not currently available`;
+    }
     grid.appendChild(d);
   });
 }
