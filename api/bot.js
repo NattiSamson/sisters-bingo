@@ -340,6 +340,10 @@ bot.on("message:text", async (ctx, next) => {
     const result = await processDeposit(text);
     console.log("Verification API error:", "");
     if (typeof result === "object" && result !== null) {
+      await ctx.reply(
+      "🚫 ጥያቄው አልተሳካም። እባክዎ ስልክዎ ላይ የገባውን ትክክለኛ ሚሴጅ (SMS) ኮፒ አድርገው ይላኩ፡፡1" + result +
+      "❓ለድጋፍ @betesebbingosupport ላይ ይፃፉልን",
+    );
       //const receipt = result.receipt;
      // await ctx.reply(
     //  "successfull \n\n",// + receipt.receiptNo + "\n" + receipt.payerName + receipt.payerTelebirrNo + "\n" + receipt.creditedPartyName+ receipt.creditedPartyAccountNo + "\n" + receipt.paymentDate+ "\n" + receipt.amount,
