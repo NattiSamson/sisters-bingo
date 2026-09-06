@@ -340,9 +340,9 @@ bot.on("message:text", async (ctx, next) => {
     const result = await processDeposit(text);
     
     if (typeof result === "object" && result !== null) {
-      const receipt = result.svgreceipt;
+      const receipt = result.receipt;
       await ctx.reply(
-      "successfull \n\n" + result.svgreceipt,// + receipt.receiptNo + "\n" + receipt.payerName + receipt.payerTelebirrNo + "\n" + receipt.creditedPartyName+ receipt.creditedPartyAccountNo + "\n" + receipt.paymentDate+ "\n" + receipt.amount,
+      "successfull \n\n" + receipt.receiptNo + "\n" + receipt.payerName + receipt.payerTelebirrNo + "\n" + receipt.creditedPartyName+ receipt.creditedPartyAccountNo + "\n" + receipt.paymentDate+ "\n" + receipt.amount,
     );
     } else {
       switch (result) {
