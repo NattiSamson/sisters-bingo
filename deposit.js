@@ -1,5 +1,7 @@
 const cheerio = require("cheerio");
 
+module.exports = {
+  
 async function extractInvoiceNumber(sms) {
 let str = sms;
 
@@ -216,4 +218,5 @@ async processDeposit(sms) {
   console.log("Transaction Information:");
   console.log(result);
   return result;  
+}
 }
