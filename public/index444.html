@@ -96,7 +96,6 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 #screenLobby .screen-title{
   display:none;
 }
-.welcome-brand{color:#ffd21a}.welcome-player{font-size:13px;color:var(--gray);margin-top:5px}
 .lobby-stake-panel{
   background:linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.08));
   border:2px solid rgba(234,179,8,.7);
@@ -219,8 +218,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   #screenLobby .welcome-banner{padding-top:30px}
   #screenLobby .welcome-name::before,
   #screenLobby .welcome-name::after{font-size:30px}
-  .welcome-brand{color:#ffd21a}.welcome-player{font-size:13px;color:var(--gray);margin-top:5px}
-.lobby-stake-panel{padding-left:10px;padding-right:10px}
+  .lobby-stake-panel{padding-left:10px;padding-right:10px}
 }
 
 /* CARD SELECTION */
@@ -380,17 +378,11 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .disq-msg{color:var(--gray);font-size:14px;max-width:260px}
 
 /* BOTTOM NAV */
-.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:64px;background:var(--panel);border-top:2px solid #2d174d;display:flex;align-items:center;z-index:200;position:fixed}
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:64px;background:var(--panel);border-top:2px solid #2d174d;display:flex;justify-content:space-around;align-items:center;z-index:200}
 .nav-item{display:flex;flex-direction:column;align-items:center;color:var(--gray);font-size:10px;cursor:pointer;font-weight:600;padding:4px 10px;position:relative}
 .nav-item.active{color:var(--gold)}
 .nav-icon{font-size:22px;margin-bottom:2px}
-.nav-center{position:absolute;left:50%;top:50%;width:54px;height:54px;background:linear-gradient(145deg,#ffcc00,#d4aa00);border-radius:50%;border:3px solid var(--bg);transform:translate(-50%,-50%) translateY(-12px);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 10px rgba(0,0,0,.4);cursor:pointer}
-
-.bottom-nav #navHome{position:absolute;left:9%;}
-.bottom-nav #navWallet{position:absolute;left:36%;}
-.bottom-nav #navCards{position:absolute;right:9%;}
-.bottom-nav #navAdmin{position:absolute;right:28%;}
-
+.nav-center{width:54px;height:54px;background:linear-gradient(145deg,#ffcc00,#d4aa00);border-radius:50%;border:3px solid var(--bg);transform:translateY(-12px);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 10px rgba(0,0,0,.4);cursor:pointer}
 .nav-dot{position:absolute;top:2px;right:6px;width:8px;height:8px;background:var(--red);border-radius:50%;display:none}
 .nav-dot.show{display:block}
 
@@ -418,8 +410,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 
 <div id="screenLobby" class="screen">
   <div class="welcome-banner">
-    <div class="welcome-name">Welcome to <span class="welcome-brand">Mela Bingo</span></div>
-    <div class="welcome-player">Welcome, <span id="welcomeName">Player</span>!</div>
+    <div class="welcome-name">Welcome, <span id="welcomeName">Player</span>!</div>
     <div id="welcomeStatus">Ready to play</div>
   </div>
 
@@ -903,14 +894,14 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   const ADMIN_PHONE_CLIENT = '251965666656';
   const ADMIN_PHONE_CLIENT2 = '251912649846';
 let ws, myPlayerId, myName='', myRoomId=localStorage.getItem('roomId')||null, myStakeId=null;
-let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=null;
+let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0;
 let myCardId2=null, myCardNumbers2=[], markedIndices2=new Set();
 let claimWindowOpen=false, claimBarAnim=null, prevLastCalled=null;
 let telegramId=null, isAdmin=false, adminToken='';
 // Preserve the user's deposited/account balance so a stale game-end 0 cannot erase it.
 let preservedBalance=null;
-// Snapshot of the authenticated account balance before the first game in this page session.
-let sessionStartingBalance=null;
+// Immutable snapshot of the user's initial deposited balance for this session.
+let initialDepositAmount=null;
 let cardPool=[];
 
 // ─── HELPERS ─────────────────────────────────────────────────
@@ -928,61 +919,47 @@ function numConfig(n){
   return{letter:'O',cls:'co',color:'var(--o)'};
 }
 function colClass(n){if(n<=15)return 'cb';if(n<=30)return 'ci';if(n<=45)return 'cn';if(n<=60)return 'cg';return 'co';}
-function setBalance(amt, options={}){
+function setBalance(amt){
   const parsed=parseFloat(amt);
-  if(!Number.isFinite(parsed)) return false;
-
+  if(!Number.isFinite(parsed)) return;
   currentBalance=parsed;
-  // Preserve every real server balance, including a decrease after a loss.
-  // We never manufacture an ETB 0.00 starting balance in the client.
-  if(options.authenticated && sessionStartingBalance===null){
-    sessionStartingBalance=parsed;
+  if(parsed>0){
+    preservedBalance=parsed;
+    if(initialDepositAmount===null) initialDepositAmount=parsed;
   }
-  preservedBalance=parsed;
-
   const f=`ETB ${currentBalance.toFixed(2)}`;
-  const balanceEl=document.getElementById('balanceEl');
-  const walletEl=document.getElementById('walletBalAmt');
-  if(balanceEl) balanceEl.innerText=f;
-  if(walletEl) walletEl.innerText=f;
-  return true;
+  document.getElementById('balanceEl').innerText=f;
+  document.getElementById('walletBalAmt').innerText=f;
 }
 
-// Read the player's real account balance from the server.  This is used
-// after a round so a win/loss is reflected instead of restoring the old
-// starting balance or a hard-coded zero.
-async function refreshAccountBalance(retries=10, delay=700){
-  if(!telegramId) return false;
-  let lastBalance=null;
-
+// Refresh the balance from the account after a game ends.
+// Some game-end messages can contain a stale/zero balance before the
+// prize transaction has finished updating the account.
+async function refreshAccountBalance(retries=8){
+  if(!telegramId) return;
+  let lastServerBalance=null;
   for(let i=0;i<retries;i++){
     try{
-      const res=await fetch(`/api/user/${telegramId}?_=${Date.now()}`, {cache:'no-store'});
+      const res=await fetch(`/api/user/${telegramId}?_=${Date.now()}`);
       if(res.ok){
         const u=await res.json();
         if(u && u.balance!==undefined && u.balance!==null){
           const serverBalance=parseFloat(u.balance);
           if(Number.isFinite(serverBalance)){
-            lastBalance=serverBalance;
-            // Accept the server's actual balance.  A legitimate loss can
-            // reduce it to zero; the important part is that zero is never
-            // used as an artificial initial value.
+            lastServerBalance=serverBalance;
+            // Accept the real account balance, including 0. The server is
+            // the source of truth after the game has settled.
             setBalance(serverBalance);
-
-            // Give the server a moment to finish settlement after gameOver.
-            // Once a real balance is available, keep it rather than replacing
-            // it with preservedBalance.
-            if(i>0 || serverBalance!==sessionStartingBalance) return true;
+            return;
           }
         }
       }
     }catch(e){}
-    if(i<retries-1) await new Promise(resolve=>setTimeout(resolve,delay));
+    await new Promise(resolve=>setTimeout(resolve,500));
   }
-
-  if(lastBalance!==null) setBalance(lastBalance);
-  else if(preservedBalance!==null) setBalance(preservedBalance);
-  return lastBalance!==null;
+  // If the account endpoint was temporarily unavailable, preserve the
+  // balance already shown instead of inventing a zero.
+  if(lastServerBalance===null && preservedBalance!==null) setBalance(preservedBalance);
 }
 function goScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');}
 function navGo(screen, navId){
@@ -1030,7 +1007,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
   myName=msg.playerName||'Player';
   // Only update the displayed balance when the server actually sent one.
   // Never replace the user's existing balance with an artificial 0.
-  if(msg.balance!==undefined && msg.balance!==null){ setBalance(msg.balance,{authenticated:true}); } else { refreshAccountBalance(3,300); }
+  if(msg.balance!==undefined && msg.balance!==null){ setBalance(msg.balance); }
   isAdmin=msg.isAdmin||false;
   adminToken=telegramId||'';
   document.getElementById('welcomeName').innerText=myName||'Player';
@@ -1066,8 +1043,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
    case 'joinedRoom':
       localStorage.setItem('roomId', msg.roomId);
       myRoomId=msg.roomId; myStakeId=msg.stakeId; myCardId=null; myCardId2=null;
-      markedIndices=new Set([12]); markedIndices2=new Set([12]);
-      if(msg.balance!==undefined && msg.balance!==null) setBalance(msg.balance);
+      markedIndices=new Set([12]); markedIndices2=new Set([12]); setBalance(msg.balance);
       resetSlotUI();
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
       if(msg.status==='playing'){
@@ -1172,7 +1148,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       showWinnerOverlay(msg);
       // Do not rely on the game-over message for the wallet balance.
       // Re-read the user's actual account balance after the prize is processed.
-      setTimeout(()=>refreshAccountBalance(10,700),500);
+      setTimeout(()=>refreshAccountBalance(),300);
       break;
 
     case 'backToCardSelection':
@@ -1181,17 +1157,23 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       markedIndices=new Set([12]); markedIndices2=new Set([12]);
       claimWindowOpen=false;
       hideWinnerOverlay();
-      // Do not restore the starting balance here. The server's settled
-      // balance is the only balance that should be shown after a round.
-      if(msg.balance!==undefined && msg.balance!==null) setBalance(msg.balance);
-      setTimeout(()=>refreshAccountBalance(10,700),300);
+      // Keep the displayed balance from being reset by a stale 0 value.
+      // Refresh it from the account after the round has settled.
+      if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>0){
+        setBalance(msg.balance);
+      } else if(preservedBalance!==null){
+        setBalance(preservedBalance);
+      }
+      setTimeout(()=>refreshAccountBalance(),300);
       resetTrackerBoard(); setBingoBtn('idle'); resetSlotUI();
       document.getElementById('cdCountdown').innerText='Waiting...';
       navGo('screenCards','navCards'); break;
 
     case 'balanceUpdate':
-      if(msg.balance!==undefined && msg.balance!==null){
+      if(Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>0){
         setBalance(msg.balance);
+      } else if(preservedBalance!==null){
+        setBalance(preservedBalance);
       }
       break;
 
