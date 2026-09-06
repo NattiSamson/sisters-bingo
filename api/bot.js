@@ -11,7 +11,7 @@
 
 const { Bot, webhookCallback } = require("grammy");
 const db = require("../db");
-const deposit = require("../deposit");
+const {processDeposit} = require("../deposit");
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const GAME_URL =
