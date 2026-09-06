@@ -335,7 +335,7 @@ bot.on("message:text", async (ctx, next) => {
       "⏳ ክፍያዎ እየተረጋገጠ ነው።"
     );
     const result = await processDeposit(text);
-    console.log("Verification API error:", "");
+    
     if (typeof result === "object" && result !== null) {
       
       const receipt = result.receipt;
