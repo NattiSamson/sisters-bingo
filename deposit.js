@@ -197,14 +197,14 @@ async extractTransactionInfo(url) {
 
 async processDeposit(sms) {
 
- const invoiceNo = extractInvoiceNumber(sms);
+ const invoiceNo = await extractInvoiceNumber(sms);
   if (invoiceNo == null) {
     console.log("No invoice number found.");
     return 1;
   }
 
   // Build URL
-  const url = builURLfromInvoiceNo(invoiceNo);
+  const url = await builURLfromInvoiceNo(invoiceNo);
 
   const isValid = await checkUrl(url);
 
