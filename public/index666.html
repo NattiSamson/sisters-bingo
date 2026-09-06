@@ -236,14 +236,13 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 #screenLobby .stake-unavailable{opacity:.45;cursor:not-allowed!important;filter:saturate(.55)}
 .lobby-players-card{margin:38px 0 10px;background:linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.07));border:1px solid rgba(255,255,255,.22);border-radius:17px;padding:32px 16px;text-align:center}.lobby-players-number{font-size:32px;font-weight:900}.lobby-players-label{margin-top:6px;color:#d8c9f4;font-size:16px}.lobby-players-sub{margin-top:5px;color:#9f8fc0;font-size:11px}
 @media(max-width:380px){.mela-welcome-title{font-size:30px}}
-/* Evenly spaced 4-item bottom navigation */
-.bottom-nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));justify-content:initial;padding:0;gap:0}
-.bottom-nav .nav-item,.bottom-nav .nav-center-wrap{width:100%;min-width:0;justify-self:stretch}
+/* Evenly spaced 3-item bottom navigation */
+.bottom-nav{display:grid;grid-template-columns:1fr 1fr 1fr;justify-content:initial;padding:0 8px;gap:0}
+.bottom-nav .nav-item,.bottom-nav .nav-center{width:100%;min-width:0;justify-self:stretch}
 .bottom-nav .nav-item{padding:4px 0;justify-content:center}
-.bottom-nav .nav-center-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:64px;cursor:pointer}
-.bottom-nav .nav-center{height:54px;width:54px;flex:0 0 54px;justify-self:center;align-self:center;transform:translateY(-10px)}
+.bottom-nav .nav-center{height:54px;width:54px;justify-self:center;align-self:center;transform:translateY(-10px)}
+.bottom-nav .nav-center-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:64px}
 .bottom-nav .nav-center-label{font-size:10px;color:var(--gray);font-weight:600;margin-top:-8px}
-.bottom-nav .nav-game-label{color:var(--gray)}
 </style>
 </head>
 <body>
@@ -725,20 +724,13 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div class="nav-item active" id="navHome" onclick="navGo('screenLobby','navHome')">
     <span class="nav-icon">🏠</span><span>HOME</span>
   </div>
-
-  <div class="nav-center-wrap" id="navGame" onclick="goToGame()">
+  <div class="nav-center-wrap" onclick="goToWallet()">
     <div class="nav-center"><span style="font-size:24px">👑</span></div>
-    <span class="nav-center-label nav-game-label">GAME</span>
+    <span class="nav-center-label">WALLET</span>
   </div>
-
-  <div class="nav-item" id="navWallet" onclick="goToWallet()">
-    <span class="nav-icon">💰</span><span>WALLET</span>
-  </div>
-
   <div class="nav-item" id="navCards" onclick="navGo('screenRules','navCards')">
     <span class="nav-icon">📋</span><span>RULES</span>
   </div>
-
   <div class="nav-item" id="navAdmin" onclick="navGo('screenAdmin','navAdmin')" style="display:none">
     <span class="nav-icon">⚙️</span><span>ADMIN</span>
     <span class="nav-dot show" id="adminDot" style="display:none"></span>
@@ -804,22 +796,6 @@ function navGo(screen, navId){
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById(navId)?.classList.add('active');
   if(screen==='screenAdmin') adminLoadDeposits();
-}
-function goToGame(){
-  // The crown button is the quick return to the active game.
-  // Keep the room id while navigating between screens so the player can always return.
-  const roomId = myRoomId || localStorage.getItem('roomId');
-  if(!roomId){
-    showToast('No active game right now','warn');
-    return;
-  }
-  myRoomId = roomId;
-  // If cards have not been selected yet, return to card selection; otherwise return to the game.
-  if(myCardId){
-    navGo('screenGame','navGame');
-  }else{
-    navGo('screenCards','navGame');
-  }
 }
 function goToWallet(){navGo('screenWallet','navWallet');}
 
