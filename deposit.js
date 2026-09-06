@@ -181,7 +181,8 @@ async function extractTransactionInfofromThirdParty(url) {
     url: url
   })
 });
-  return response;
+  const data = await response.json();
+  return data;
   
 }
 // ─────────────────────────────────────────────
