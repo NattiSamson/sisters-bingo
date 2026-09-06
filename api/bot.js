@@ -338,9 +338,11 @@ bot.on("message:text", async (ctx, next) => {
       "⏳ ክፍያዎ እየተረጋገጠ ነው።"
     );
     const result = await processDeposit(text);
+    
     if (typeof result === "object" && result !== null) {
+      const receipt = result.svgreceipt;
       await ctx.reply(
-      "successfull " + result.invoiceNo + " " + result.payerName + result.payerTelebirrNo + " " + result.creditedPartyName+ result.creditedPartyAccountNo + " " + result.paymentDate+ " " + result.amount,
+      "successfull \n\n" + receipt.receiptNo + "\n" + receipt.payerName + receipt.payerTelebirrNo + "\n" + receipt.creditedPartyName+ receipt.creditedPartyAccountNo + "\n" + receipt.paymentDate+ "\n" + receipt.amount,
     );
     } else {
       switch (result) {
