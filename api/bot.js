@@ -12,6 +12,7 @@
 const { Bot, webhookCallback } = require("grammy");
 const db = require("../db");
 const {processDeposit} = require("../deposit");
+const pendingDeposit = {};
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const GAME_URL =
@@ -309,7 +310,7 @@ bot.callbackQuery("deposit", async (ctx) => {
 
 bot.callbackQuery("telebirr", async (ctx) => {
   await ctx.answerCallbackQuery();
-
+ pendingDeposit[ctx.from.id] = true;
   await ctx.editMessageText(
     "1. ከታች ባለው የቴሌብር አካውንት ብር ያስገቡ\n\n" +
     "📞 *Telebirr:* `09XXXXXXXX`\n\n" +
@@ -326,13 +327,9 @@ bot.on("message:text", async (ctx, next) => {
 
   // Is this user currently making a deposit?
   //pendingDeposit[telegramId]
-  //if (pendingDeposit[telegramId]) 
+  if (pendingDeposit[telegramId]) 
   {
     console.log("📩 Telebirr message received:", text);
-
-    // Remove waiting state
-   // delete pendingDeposit[telegramId];
-
     await ctx.reply(
       "✅ የክፍያ መልዕክትዎ ደርሶናል።\n\n" +
       "⏳ ክፍያዎ እየተረጋገጠ ነው።"
@@ -340,10 +337,14 @@ bot.on("message:text", async (ctx, next) => {
     const result = await processDeposit(text);
     console.log("Verification API error:", "");
     if (typeof result === "object" && result !== null) {
+      
       const receipt = result.receipt;
       await ctx.reply(
-      "successfull \n\n" + receipt.receiptNo + "\n" + receipt.payerName + receipt.payerTelebirrNo + "\n" + receipt.creditedPartyName+ receipt.creditedPartyAccountNo + "\n" + receipt.paymentDate+ "\n" + receipt.settledAmount,
+      "successfull \n\n" + receipt.receiptNo + "\n" + receipt.payerName + receipt.payerTelebirrNo + "\n" + receipt.creditedPartyName+ receipt.creditedPartyAccountNo + "\n" + receipt.paymentDate+ "\n" + receipt.settledAmount.replace(/[^0-9.]/g, ""),        
     );
+      // Deposit was successfully processed
+    delete pendingDeposit[telegramId];
+      
     } else {
       switch (result) {
         case 1:
