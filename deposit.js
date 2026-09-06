@@ -22,12 +22,12 @@ async function builURLfromInvoiceNo(invoiceNo) {
 }
 
 
-async function checkUrl(url, timeout = 5000) {
+async function checkUrl(url, timeout = 9000) {
  try {
     const response = await fetch(url, {
       method: "GET",
       redirect: "follow",
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(9000),
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36",
