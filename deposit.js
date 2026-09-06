@@ -2,7 +2,7 @@ const cheerio = require("cheerio");
 
 module.exports = {
   
-async function extractInvoiceNumber(sms) {
+async extractInvoiceNumber(sms) {
 let str = sms;
 
 // Extract invoice number from the URL in the message
@@ -16,7 +16,7 @@ console.log("Invoice No:", invoiceNo);
   return invoiceNo;
 }
 
-async function builURLfromInvoiceNo(invoiceNo) {
+async builURLfromInvoiceNo(invoiceNo) {
 let urlFirst = "https://transactioninfo.ethiotelecom.et/";
 
 // Construct full URL
@@ -29,7 +29,7 @@ return url;
 // CHECK URL
 // --------------------------------------------------
 
-async function checkUrl(url) {
+async checkUrl(url) {
   try {
     const response = await fetch(url);
 
@@ -52,7 +52,7 @@ async function checkUrl(url) {
 // EXTRACT TRANSACTION INFORMATION
 // --------------------------------------------------
 
-async function extractTransactionInfo(url) {
+async extractTransactionInfo(url) {
   try {
     const response = await fetch(url);
 
@@ -195,7 +195,7 @@ async function extractTransactionInfo(url) {
 // MAIN
 // --------------------------------------------------
 
-async function processDeposit(sms) {
+async processDeposit(sms) {
 
  const invoiceNo = extractInvoiceNumber(sms);
   if (invoiceNo == null) {
