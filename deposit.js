@@ -36,7 +36,7 @@ const start = Date.now();
       controller.abort();
     }, timeout);
 
-    const response = await fetch("https://ipify.org/", {
+    const response = await fetch(url, {
       method: "GET",
       redirect: "follow",
       signal: controller.signal,
