@@ -1,35 +1,28 @@
 const cheerio = require("cheerio");
 
-module.exports = {
-  
-async extractInvoiceNumber(sms) {
-let str = sms;
+async function extractInvoiceNumber(sms) {
+  const match = sms.match(
+    /https:\/\/transactioninfo\.ethiotelecom\.et\/receipt\/([^.\s]+)/i
+  );
 
-// Extract invoice number from the URL in the message
-const match = str.match(
-  /https:\/\/transactioninfo\.ethiotelecom\.et\/receipt\/([^.\s]+)/i
-);
+  const invoiceNo = match ? match[1] : null;
 
-const invoiceNo = match ? match[1] : null;
+  console.log("Invoice No:", invoiceNo);
 
-console.log("Invoice No:", invoiceNo);
   return invoiceNo;
-},
+}
 
-async builURLfromInvoiceNo(invoiceNo) {
-let urlFirst = "https://transactioninfo.ethiotelecom.et/";
 
-// Construct full URL
-const url = `${urlFirst}receipt/${invoiceNo}`;
+async function builURLfromInvoiceNo(invoiceNo) {
+  const url = `https://transactioninfo.ethiotelecom.et/receipt/${invoiceNo}`;
 
-console.log("Receipt URL:", url);
-return url;
-},
-// --------------------------------------------------
-// CHECK URL
-// --------------------------------------------------
+  console.log("Receipt URL:", url);
 
-async checkUrl(url) {
+  return url;
+}
+
+
+async function checkUrl(url) {
   try {
     const response = await fetch(url);
 
@@ -45,14 +38,10 @@ async checkUrl(url) {
     console.log("URL is invalid:", error.message);
     return false;
   }
-},
+}
 
 
-// --------------------------------------------------
-// EXTRACT TRANSACTION INFORMATION
-// --------------------------------------------------
-
-async extractTransactionInfo(url) {
+async function extractTransactionInfo(url) {
   try {
     const response = await fetch(url);
 
@@ -90,14 +79,12 @@ async extractTransactionInfo(url) {
       const label = cells[0].toLowerCase();
       const value = cells[1];
 
-
       // Invoice No.
       if (
         cells.some(cell =>
           cell.toLowerCase().includes("invoice no")
         )
       ) {
-
         const invoiceIndex = cells.findIndex(cell =>
           cell.toLowerCase().includes("invoice no")
         );
@@ -112,38 +99,32 @@ async extractTransactionInfo(url) {
           .trim();
       }
 
-
       // Payer Name
       if (label.includes("payer name")) {
         result.payerName = value;
       }
 
-
-      // Payer telebirr no.
+      // Payer Telebirr No.
       if (label.includes("payer telebirr")) {
         result.payerTelebirrNo = value;
       }
 
-
-      // Credited Party name
+      // Credited Party Name
       if (label.includes("credited party name")) {
         result.creditedPartyName = value;
       }
 
-
-      // Credited party account no.
+      // Credited Party Account No.
       if (label.includes("credited party account")) {
         result.creditedPartyAccountNo = value;
       }
 
-
-      // Payment date
+      // Payment Date
       if (
         cells.some(cell =>
           cell.toLowerCase().includes("payment date")
         )
       ) {
-
         const paymentDateIndex = cells.findIndex(cell =>
           cell.toLowerCase().includes("payment date")
         );
@@ -158,14 +139,12 @@ async extractTransactionInfo(url) {
           .trim();
       }
 
-
-      // Amount / Settled Amount
+      // Settled Amount
       if (
         cells.some(cell =>
           cell.toLowerCase().includes("settled amount")
         )
       ) {
-
         const amountIndex = cells.findIndex(cell =>
           cell.toLowerCase().includes("settled amount")
         );
@@ -179,7 +158,6 @@ async extractTransactionInfo(url) {
           .replace(/\s+/g, " ")
           .trim();
       }
-
     });
 
     return result;
@@ -188,35 +166,48 @@ async extractTransactionInfo(url) {
     console.error("Extraction Error:", error.message);
     return null;
   }
-},
+}
 
 
-// --------------------------------------------------
-// MAIN
-// --------------------------------------------------
+// ─────────────────────────────────────────────
+// MAIN DEPOSIT PROCESS
+// ─────────────────────────────────────────────
 
-async processDeposit(sms) {
+async function processDeposit(sms) {
 
- const invoiceNo = await this.extractInvoiceNumber(sms);
+  const invoiceNo = await extractInvoiceNumber(sms);
+
   if (invoiceNo == null) {
     console.log("No invoice number found.");
     return 1;
   }
 
   // Build URL
-  const url = await this.builURLfromInvoiceNo(invoiceNo);
+  const url = await builURLfromInvoiceNo(invoiceNo);
 
+  // Check URL
   const isValid = await checkUrl(url);
 
   if (!isValid) {
-    console.log("Stopping. Receipt URL is invalid.");    
+    console.log("Stopping. Receipt URL is invalid.");
     return 2;
   }
 
-  // Only continue if URL is valid
-  const result = await this.extractTransactionInfo(url);
+  // Extract transaction information
+  const result = await extractTransactionInfo(url);
+
   console.log("Transaction Information:");
   console.log(result);
-  return result;  
+
+  return result;
 }
+
+
+// Export functions
+module.exports = {
+  extractInvoiceNumber,
+  builURLfromInvoiceNo,
+  checkUrl,
+  extractTransactionInfo,
+  processDeposit
 };
