@@ -22,48 +22,21 @@ async function builURLfromInvoiceNo(invoiceNo) {
 }
 
 
-async function checkUrl(url, timeout = 9000) {
+async function checkUrl(url) {
   
-const start = Date.now();
+try {
+    const response = await fetch(url);
 
-  try {
-    console.log("Checking:", url);
+    if (!response.ok) {
+      console.log(`Invalid URL. HTTP status: ${response.status}`);
+      return false;
+    }
 
-    const controller = new AbortController();
-
-    const timer = setTimeout(() => {
-      console.log("Aborting request...");
-      controller.abort();
-    }, timeout);
-
-    const response = await fetch(url, {
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "*/*"
-      }
-    });
-
-    clearTimeout(timer);
-
-    console.log(`Response received in ${Date.now() - start}ms`);
-    console.log("Status:", response.status);
-    console.log("Final URL:", response.url);
-
-    // IMPORTANT:
-    // Don't wait for the entire response body if you only
-    // need to know whether the URL is reachable.
-
-    return response.ok;
+    console.log("URL is valid.");
+    return true;
 
   } catch (error) {
-    console.error(
-      `URL check failed after ${Date.now() - start}ms:`,
-      error
-    );
-
+    console.log("URL is invalid:", error.message);
     return false;
   }
 }
@@ -196,7 +169,21 @@ async function extractTransactionInfo(url) {
   }
 }
 
+async function extractTransactionInfofromThirdParty(url) {
 
+  const response = await fetch("https://links.et/api/verify", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "x-api-key": process.env.LINKS_API_KEY
+  },
+  body: JSON.stringify({
+    url: url
+  })
+});
+  return response;
+  
+}
 // ─────────────────────────────────────────────
 // MAIN DEPOSIT PROCESS
 // ─────────────────────────────────────────────
@@ -212,17 +199,22 @@ async function processDeposit(sms) {
 
   // Build URL
   const url = await builURLfromInvoiceNo(invoiceNo);
-
+  
   // Check URL
-  const isValid = await checkUrl(url);
+  //const isValid = await checkUrl("https://links.et/");
+  
+  // since https://transactioninfo.ethiotelecom.et/ domain is blocked from outside ethiopia. we will only check and use https://links.et/
+  const isValid = await checkUrl("https://links.et/");
 
   if (!isValid) {
     console.log("Stopping. Receipt URL is invalid.");
     return 2;
   }
 
-  // Extract transaction information
-  const result = await extractTransactionInfo(url);
+
+  //const result = await extractTransactionInfo(url);
+  const result = await extractTransactionInfofromThirdParty(url);
+  
 
   console.log("Transaction Information:");
   console.log(result);
