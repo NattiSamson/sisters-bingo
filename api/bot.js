@@ -310,7 +310,7 @@ bot.callbackQuery("deposit", async (ctx) => {
 
 bot.callbackQuery("telebirr", async (ctx) => {
   await ctx.answerCallbackQuery();
- pendingDeposit[ctx.from.id] = true;
+  pendingDeposit[ctx.from.id] = true;
   await ctx.editMessageText(
     "1. ከታች ባለው የቴሌብር አካውንት ብር ያስገቡ\n\n" +
     "📞 *Telebirr:* `09XXXXXXXX`\n\n" +
