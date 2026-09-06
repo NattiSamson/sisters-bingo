@@ -23,30 +23,46 @@ async function builURLfromInvoiceNo(invoiceNo) {
 
 
 async function checkUrl(url, timeout = 9000) {
- try {
+  
+const start = Date.now();
+
+  try {
+    console.log("Checking:", url);
+
+    const controller = new AbortController();
+
+    const timer = setTimeout(() => {
+      console.log("Aborting request...");
+      controller.abort();
+    }, timeout);
+
     const response = await fetch(url, {
       method: "GET",
       redirect: "follow",
-      signal: AbortSignal.timeout(9000),
+      signal: controller.signal,
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      },
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "*/*"
+      }
     });
 
-    console.log(`URL: ${url}`);
-    console.log(`HTTP status: ${response.status}`);
+    clearTimeout(timer);
 
-    if (!response.ok) {
-      console.log("URL returned an error");
-      return false;
-    }
+    console.log(`Response received in ${Date.now() - start}ms`);
+    console.log("Status:", response.status);
+    console.log("Final URL:", response.url);
 
-    return true;
+    // IMPORTANT:
+    // Don't wait for the entire response body if you only
+    // need to know whether the URL is reachable.
+
+    return response.ok;
 
   } catch (error) {
-    console.error("URL check failed:", error);
+    console.error(
+      `URL check failed after ${Date.now() - start}ms:`,
+      error
+    );
 
     return false;
   }
