@@ -23,8 +23,16 @@ async function builURLfromInvoiceNo(invoiceNo) {
 
 
 async function checkUrl(url) {
+ const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      signal: controller.signal,
+      redirect: "follow",
+    });
+
+    clearTimeout(timer);
 
     if (!response.ok) {
       console.log(`Invalid URL. HTTP status: ${response.status}`);
@@ -35,7 +43,14 @@ async function checkUrl(url) {
     return true;
 
   } catch (error) {
-    console.log("URL is invalid:", error.message);
+    clearTimeout(timer);
+
+    if (error.name === "AbortError") {
+      console.log("URL check timed out.");
+    } else {
+      console.log("URL is invalid:", error.message);
+    }
+
     return false;
   }
 }
