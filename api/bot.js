@@ -340,7 +340,7 @@ bot.on("message:text", async (ctx, next) => {
       
       const receipt = result.receipt;
       await ctx.reply(
-      "successfull \n\n" + receipt.receiptNo + "\n" + receipt.payerName + receipt.payerTelebirrNo + "\n" + receipt.creditedPartyName+ receipt.creditedPartyAccountNo + "\n" + receipt.paymentDate+ "\n" + receipt.settledAmount.replace(/[^0-9.]/g, ""),        
+      "successfull \n\n" + receipt.receiptNo + "\n" + receipt.payerName + "\n" + receipt.payerTelebirrNo + "\n" + receipt.creditedPartyName + "\n" + receipt.creditedPartyAccountNo + "\n" + receipt.paymentDate+ "\n" + receipt.settledAmount.replace(/[^0-9.]/g, ""),        
     );
       // Deposit was successfully processed
     delete pendingDeposit[telegramId];
