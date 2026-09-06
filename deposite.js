@@ -1,10 +1,7 @@
 const cheerio = require("cheerio");
 
-let str = `Dear Zelalem 
-You have transferred ETB 60.00 to EBA BEKELE (2519****2998) on 05/09/2026 14:58:29. Your transaction number is DI51GT7815. The service fee is  ETB 0.87 and  15% VAT on the service fee is ETB 0.13. Your current E-Money Account  balance is ETB 0.00. To download your payment information please click this link: https://transactioninfo.ethiotelecom.et/receipt/DI51GT7815.
-
-Thank you for using telebirr
-Ethio telecom`;
+async function extractInvoiceNumber(sms) {
+let str = sms;
 
 // Extract invoice number from the URL in the message
 const match = str.match(
@@ -14,15 +11,18 @@ const match = str.match(
 const invoiceNo = match ? match[1] : null;
 
 console.log("Invoice No:", invoiceNo);
+  return invoiceNo;
+}
 
+async function builURLfromInvoiceNo(invoiceNo) {
 let urlFirst = "https://transactioninfo.ethiotelecom.et/";
 
 // Construct full URL
 const url = `${urlFirst}receipt/${invoiceNo}`;
 
 console.log("Receipt URL:", url);
-
-
+return url;
+}
 // --------------------------------------------------
 // CHECK URL
 // --------------------------------------------------
@@ -193,26 +193,27 @@ async function extractTransactionInfo(url) {
 // MAIN
 // --------------------------------------------------
 
-async function main() {
+async function processDepoit(sms) {
 
-  if (!invoiceNo) {
+ const invoiceNo = extractInvoiceNumber(sms);
+  if (invoiceNo == null) {
     console.log("No invoice number found.");
-    return;
+    return 1;
   }
 
-  // First check URL
+  // Build URL
+  const url = builURLfromInvoiceNo(invoiceNo);
+
   const isValid = await checkUrl(url);
 
   if (!isValid) {
-    console.log("Stopping. Receipt URL is invalid.");
-    return;
+    console.log("Stopping. Receipt URL is invalid.");    
+    return 2;
   }
 
   // Only continue if URL is valid
   const result = await extractTransactionInfo(url);
-
   console.log("Transaction Information:");
   console.log(result);
+  return result;  
 }
-
-main();
