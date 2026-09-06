@@ -771,6 +771,11 @@ let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0;
 let myCardId2=null, myCardNumbers2=[], markedIndices2=new Set();
 let claimWindowOpen=false, claimBarAnim=null, prevLastCalled=null;
 let telegramId=null, isAdmin=false, adminToken='';
+// Preserve a real account balance so a transient/stale game message containing
+// zero cannot overwrite the user's actual starting/deposited balance.
+let preservedBalance=null;
+// Snapshot of the first real positive account balance seen in this session.
+let initialDepositAmount=null;
 let cardPool=[];
 
 // ─── HELPERS ─────────────────────────────────────────────────
@@ -899,6 +904,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
   } else if(telegramId){
     refreshAccountBalance(5);
   }
+  if(telegramId) setTimeout(()=>refreshAccountBalance(5),100);
   isAdmin=msg.isAdmin||false;
   adminToken=telegramId||'';
   document.getElementById('welcomeName').innerText=myName||'Player';
