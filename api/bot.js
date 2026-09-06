@@ -11,6 +11,7 @@
 
 const { Bot, webhookCallback } = require("grammy");
 const db = require("../db");
+const deposit = require("../deposit");
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const GAME_URL =
@@ -336,7 +337,35 @@ bot.on("message:text", async (ctx, next) => {
       "✅ የክፍያ መልዕክትዎ ደርሶናል።\n\n" +
       "⏳ ክፍያዎ እየተረጋገጠ ነው።"
     );
-
+    const result = deposit.processDepoit(text);
+    if (typeof result === "object" && result !== null) {
+      await ctx.reply(
+      "successfull " + result.invoiceNo + " " + result.payerName + result.payerTelebirrNo + " " + result.creditedPartyName+ result.creditedPartyAccountNo + " " + result.paymentDate+ " " + result.amount,
+    );
+    } else {
+      switch (result) {
+        case 1:
+          await ctx.reply(
+      "🚫 ጥያቄው አልተሳካም። እባክዎ ስልክዎ ላይ የገባውን ትክክለኛ ሚሴጅ (SMS) ኮፒ አድርገው ይላኩ፡፡" + 
+      "❓ለድጋፍ @betesebbingosupport ላይ ይፃፉልን",
+    );
+          break;
+    
+        case 2:
+          await ctx.reply(
+      "🚫 ጥያቄው አልተሳካም። እባክዎ ስልክዎ ላይ የገባውን ትክክለኛ ሚሴጅ (SMS) ኮፒ አድርገው ይላኩ፡፡" + 
+      "❓ለድጋፍ @betesebbingosupport ላይ ይፃፉልን",
+    );
+          break;
+    
+        default:
+          await ctx.reply(
+      "🚫 ጥያቄው አልተሳካም። እባክዎ ስልክዎ ላይ የገባውን ትክክለኛ ሚሴጅ (SMS) ኮፒ አድርገው ይላኩ፡፡" + 
+      "❓ለድጋፍ @betesebbingosupport ላይ ይፃፉልን",
+    );
+          break;
+      }
+    }
     // Later you can process the Telebirr SMS here
     // Example:
     // await processTelebirrPayment(ctx.from.id, text);
