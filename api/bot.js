@@ -346,21 +346,21 @@ bot.on("message:text", async (ctx, next) => {
       switch (result) {
         case 1:
           await ctx.reply(
-      "🚫 ጥያቄው አልተሳካም። እባክዎ ስልክዎ ላይ የገባውን ትክክለኛ ሚሴጅ (SMS) ኮፒ አድርገው ይላኩ፡፡" + 
+      "🚫 ጥያቄው አልተሳካም። እባክዎ ስልክዎ ላይ የገባውን ትክክለኛ ሚሴጅ (SMS) ኮፒ አድርገው ይላኩ፡፡1" + result +
       "❓ለድጋፍ @betesebbingosupport ላይ ይፃፉልን",
     );
           break;
     
         case 2:
           await ctx.reply(
-      "🚫 ጥያቄው አልተሳካም። እባክዎ ስልክዎ ላይ የገባውን ትክክለኛ ሚሴጅ (SMS) ኮፒ አድርገው ይላኩ፡፡" + 
+      "🚫 ጥያቄው አልተሳካም። እባክዎ ስልክዎ ላይ የገባውን ትክክለኛ ሚሴጅ (SMS) ኮፒ አድርገው ይላኩ፡፡2" + result +
       "❓ለድጋፍ @betesebbingosupport ላይ ይፃፉልን",
     );
           break;
     
         default:
           await ctx.reply(
-      "🚫 ጥያቄው አልተሳካም። እባክዎ ስልክዎ ላይ የገባውን ትክክለኛ ሚሴጅ (SMS) ኮፒ አድርገው ይላኩ፡፡" + 
+      "🚫 ጥያቄው አልተሳካም። እባክዎ ስልክዎ ላይ የገባውን ትክክለኛ ሚሴጅ (SMS) ኮፒ አድርገው ይላኩ፡፡else" + result +
       "❓ለድጋፍ @betesebbingosupport ላይ ይፃፉልን",
     );
           break;
