@@ -193,7 +193,7 @@ async function extractTransactionInfo(url) {
 // MAIN
 // --------------------------------------------------
 
-async function processDepoit(sms) {
+async function processDeposit(sms) {
 
  const invoiceNo = extractInvoiceNumber(sms);
   if (invoiceNo == null) {
