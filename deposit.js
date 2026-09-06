@@ -22,7 +22,7 @@ async function builURLfromInvoiceNo(invoiceNo) {
 }
 
 
-async function checkUrl(url) {
+async function checkUrl(url, timeout = 5000) {
  const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
 
