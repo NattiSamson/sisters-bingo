@@ -342,7 +342,7 @@ bot.on("message:text", async (ctx, next) => {
     if (typeof result === "object" && result !== null) {
       const receipt = result.svgreceipt;
       await ctx.reply(
-      "successfull \n\n" + receipt.receiptNo + "\n" + receipt.payerName + receipt.payerTelebirrNo + "\n" + receipt.creditedPartyName+ receipt.creditedPartyAccountNo + "\n" + receipt.paymentDate+ "\n" + receipt.amount,
+     // "successfull \n\n" + receipt.receiptNo + "\n" + receipt.payerName + receipt.payerTelebirrNo + "\n" + receipt.creditedPartyName+ receipt.creditedPartyAccountNo + "\n" + receipt.paymentDate+ "\n" + receipt.amount,
     );
     } else {
       switch (result) {
