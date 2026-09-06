@@ -14,7 +14,7 @@ const invoiceNo = match ? match[1] : null;
 
 console.log("Invoice No:", invoiceNo);
   return invoiceNo;
-}
+},
 
 async builURLfromInvoiceNo(invoiceNo) {
 let urlFirst = "https://transactioninfo.ethiotelecom.et/";
@@ -24,7 +24,7 @@ const url = `${urlFirst}receipt/${invoiceNo}`;
 
 console.log("Receipt URL:", url);
 return url;
-}
+},
 // --------------------------------------------------
 // CHECK URL
 // --------------------------------------------------
@@ -45,7 +45,7 @@ async checkUrl(url) {
     console.log("URL is invalid:", error.message);
     return false;
   }
-}
+},
 
 
 // --------------------------------------------------
@@ -188,7 +188,7 @@ async extractTransactionInfo(url) {
     console.error("Extraction Error:", error.message);
     return null;
   }
-}
+},
 
 
 // --------------------------------------------------
