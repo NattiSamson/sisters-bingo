@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none">
-<title>Mela Bingo</title>
+<title>Beteseb Bingo</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -44,179 +44,6 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .stake-card:active{transform:scale(.95)}
 .stake-etb{font-family:'Orbitron',sans-serif;font-size:22px;color:var(--gold);margin-bottom:4px}
 .stake-info{font-size:12px;color:var(--gray)}
-
-
-/* ── START / LOBBY REDESIGN ───────────────────── */
-#screenLobby{
-  max-width:500px;
-  padding:0 18px 28px;
-  min-height:calc(100vh - 128px);
-  background:
-    radial-gradient(circle at 8% 8%, rgba(124,58,237,.28), transparent 34%),
-    linear-gradient(155deg,#3d176f 0%,#21134d 45%,#0d172d 100%);
-}
-#screenLobby.active{animation:fadeIn .25s ease}
-#screenLobby .welcome-banner{
-  display:block;
-  background:transparent;
-  border:0;
-  border-radius:0;
-  padding:42px 4px 24px;
-  margin:0;
-  text-align:center;
-}
-#screenLobby .welcome-name{
-  font-size:0;
-  color:#fff;
-  line-height:1.15;
-}
-#screenLobby .welcome-name::before{
-  content:"Welcome to ";
-  font-size:34px;
-  font-weight:800;
-  color:#fff;
-}
-#screenLobby .welcome-name::after{
-  content:"Beteseb\\A Bingo";
-  white-space:pre;
-  display:block;
-  font-size:34px;
-  line-height:1.15;
-  font-weight:800;
-  color:#fbbf24;
-}
-#screenLobby #welcomeName{display:none}
-#screenLobby #welcomeStatus{
-  display:block;
-  margin-top:10px;
-  color:#d8c9f4!important;
-  font-size:12px!important;
-  opacity:.9;
-}
-#screenLobby .screen-title{
-  display:none;
-}
-.lobby-stake-panel{
-  background:linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.08));
-  border:2px solid rgba(234,179,8,.7);
-  border-radius:20px;
-  padding:20px 12px 14px;
-  box-shadow:0 14px 35px rgba(0,0,0,.18);
-}
-.lobby-stake-heading{
-  text-align:center;
-  font-size:19px;
-  font-weight:800;
-  color:#fff;
-  margin:0 0 18px;
-}
-.lobby-stake-heading span{
-  color:#facc15;
-  font-size:24px;
-  margin-right:7px;
-  vertical-align:-2px;
-}
-#screenLobby .stakes-grid{
-  display:flex;
-  flex-direction:column;
-  gap:14px;
-}
-#screenLobby .stake-card{
-  min-height:62px;
-  width:100%;
-  border:0;
-  border-radius:17px;
-  padding:14px 18px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  position:relative;
-  overflow:hidden;
-  color:#fff;
-  background:linear-gradient(90deg,#08d3a0,#00a99d);
-  box-shadow:0 7px 18px rgba(0,0,0,.18);
-}
-#screenLobby .stake-card:nth-child(2n){
-  background:linear-gradient(90deg,#0da5e9,#4b3df3);
-}
-#screenLobby .stake-card:hover{
-  border-color:transparent;
-  transform:translateY(-1px);
-  filter:brightness(1.05);
-}
-#screenLobby .stake-card:active{transform:scale(.98)}
-#screenLobby .stake-card::before{
-  content:"▷";
-  position:absolute;
-  left:19px;
-  font-size:25px;
-  line-height:1;
-  color:#fff;
-  font-weight:400;
-}
-#screenLobby .stake-etb{
-  font-family:'Inter',sans-serif;
-  font-size:21px;
-  font-weight:800;
-  color:#fff;
-  margin:0;
-  line-height:1.15;
-}
-#screenLobby .stake-info{
-  position:absolute;
-  left:18px;
-  right:18px;
-  bottom:4px;
-  opacity:0;
-  pointer-events:none;
-}
-.lobby-players-card{
-  margin-top:38px;
-  background:linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.08));
-  border:1px solid rgba(255,255,255,.22);
-  border-radius:17px;
-  padding:31px 18px 26px;
-  text-align:center;
-  box-shadow:0 12px 30px rgba(0,0,0,.16);
-}
-.lobby-players-number{
-  font-size:32px;
-  line-height:1;
-  font-weight:900;
-  color:#fff;
-  letter-spacing:.2px;
-}
-.lobby-players-label{
-  margin-top:9px;
-  color:#dbcff1;
-  font-size:16px;
-  font-weight:600;
-}
-.lobby-players-sub{
-  margin-top:7px;
-  color:rgba(219,207,241,.65);
-  font-size:11px;
-}
-.lobby-rule-btn{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  background:transparent;
-  color:#fff;
-  border:1px solid rgba(255,255,255,.25);
-  border-radius:10px;
-  padding:10px 15px;
-  font-size:14px;
-  font-weight:700;
-  cursor:pointer;
-}
-.lobby-rule-btn:hover{background:rgba(255,255,255,.08)}
-@media(max-width:380px){
-  #screenLobby .welcome-banner{padding-top:30px}
-  #screenLobby .welcome-name::before,
-  #screenLobby .welcome-name::after{font-size:30px}
-  .lobby-stake-panel{padding-left:10px;padding-right:10px}
-}
 
 /* CARD SELECTION */
 .cd-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
@@ -392,9 +219,8 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 <body>
 
 <div class="navbar">
-  <div class="brand">MELA BINGO <span class="dot" id="connDot"></span></div>
-  <div style="display:flex;align-items:center;gap:8px">
-    <button class="lobby-rule-btn" onclick="navGo('screenRules','navCards')" title="View game rules">❔ <span>Rules</span></button>
+  <div class="brand">BETESEB BINGO <span class="dot" id="connDot"></span></div>
+  <div style="display:flex;align-items:center;gap:10px">
     <button class="sound-btn" id="soundBtn" onclick="toggleSound()" title="Toggle sound">🔊</button>
     <div class="balance-pill" id="balanceEl" onclick="goToWallet()">ETB 0.00</div>
   </div>
@@ -408,19 +234,10 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 <div id="screenLobby" class="screen">
   <div class="welcome-banner">
     <div class="welcome-name">Welcome, <span id="welcomeName">Player</span>!</div>
-    <div id="welcomeStatus">Ready to play</div>
+    <div style="font-size:12px;color:var(--gray)" id="welcomeStatus">Ready to play</div>
   </div>
-
-  <div class="lobby-stake-panel">
-    <div class="lobby-stake-heading"><span>▷</span>Choose Your Stake</div>
-    <div id="stakesGrid" class="stakes-grid"></div>
-  </div>
-
-  <div class="lobby-players-card">
-    <div class="lobby-players-number" id="lobbyActivePlayers">0</div>
-    <div class="lobby-players-label">Active Players</div>
-    <div class="lobby-players-sub">Players currently in the game lobby</div>
-  </div>
+  <h2 class="screen-title">SELECT STAKE TIER</h2>
+  <div id="stakesGrid" class="stakes-grid"></div>
 </div>
 
 <div id="screenCards" class="screen">
@@ -514,7 +331,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
         <button onclick="copyPhone()" id="copyBtn" style="background:rgba(250,204,21,.15);border:1px solid var(--gold);color:var(--gold);padding:5px 12px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s">📋 Copy</button>
       </div>
       <div class="telebirr-name" id="telebirrName" style="font-size:13px;color:#fff;font-weight:600">Lidetua</div>
-      <div style="font-size:11px;color:var(--gray);margin-top:2px">Mela Bingo</div>
+      <div style="font-size:11px;color:var(--gray);margin-top:2px">Beteseb Bingo</div>
     </div>
       <!-- Amharic Deposit Steps -->
 <div style="background:var(--panel);border:1px solid #3c2463;border-radius:14px;padding:16px;margin-bottom:16px">
@@ -704,7 +521,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div style="background:linear-gradient(135deg,#2d1b4e,#1a0a3e);border-radius:16px;padding:20px;text-align:center;margin-bottom:20px;border:1px solid #6d28d9">
     <div style="font-size:36px;margin-bottom:8px">📋</div>
     <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;color:var(--gold)">የቢንጎ ጨዋታ ሕጎች</div>
-    <div style="font-size:12px;color:var(--gray);margin-top:4px">Mela Bingo Rules</div>
+    <div style="font-size:12px;color:var(--gray);margin-top:4px">Beteseb Bingo Rules</div>
   </div>
 
   <!-- Section 1: Card Selection -->
@@ -1729,13 +1546,9 @@ document.getElementById('cardSearch').addEventListener('input',()=>{
 // ─── STAKES ───────────────────────────────────────────────────
 function renderStakes(arr){
   const grid=document.getElementById('stakesGrid'); grid.innerHTML='';
-  const activePlayers=(arr||[]).reduce((total,s)=>total+(parseInt(s.playerCount,10)||0),0);
-  const activeEl=document.getElementById('lobbyActivePlayers');
-  if(activeEl) activeEl.innerText=activePlayers.toLocaleString();
-
-  (arr||[]).forEach(s=>{
+  arr.forEach(s=>{
     const d=document.createElement('div'); d.className='stake-card';
-    d.innerHTML=`<div class="stake-etb">Play ${s.amount}</div><div class="stake-info">${s.playerCount} players • ${s.status}${s.status==='countdown'?' ('+s.countdown+'s)':''}</div>`;
+    d.innerHTML=`<div class="stake-etb">${s.amount} ETB</div><div class="stake-info">${s.playerCount} players • ${s.status}${s.status==='countdown'?' ('+s.countdown+'s)':''}</div>`;
     d.onclick=()=>wsSend({type:'joinRoom',stakeId:s.stakeId});
     grid.appendChild(d);
   });
