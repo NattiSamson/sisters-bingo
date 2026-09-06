@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none">
-<title>Beteseb Bingo</title>
+<title>Mela Bingo</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -91,8 +91,8 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .bingo-col-head{display:flex;align-items:center;justify-content:center;height:40px;font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900}
 .bh-b{background:var(--b);color:#fff}.bh-i{background:var(--i);color:#fff}.bh-n{background:var(--n);color:#fff}.bh-g{background:var(--g);color:#fff}.bh-o{background:var(--o);color:#fff}
 .bingo-body{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
-.bingo-cell{display:flex;align-items:center;justify-content:center;height:48px;background:#fff;font-size:15px;font-weight:700;color:#1a0a2e;border-radius:6px;cursor:default;user-select:none;transition:background .1s,color .1s,transform .1s}
-.bingo-cell:active{transform:none}
+.bingo-cell{display:flex;align-items:center;justify-content:center;height:48px;background:#fff;font-size:15px;font-weight:700;color:#1a0a2e;border-radius:6px;cursor:pointer;user-select:none;transition:background .1s,color .1s,transform .1s}
+.bingo-cell:active{transform:scale(.93)}
 .bingo-cell.marked{background:var(--purple)!important;color:#fff!important}
 .bingo-cell.called-not-marked{background:#fff8dc!important;color:#8b6914!important}
 .bingo-cell.free{background:var(--purple)!important;color:#fff!important;cursor:default}
@@ -214,12 +214,42 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .sound-btn{background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.25);color:#fff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:background .2s,border-color .2s;flex-shrink:0}
 .sound-btn:hover{background:rgba(255,255,255,.2)}
 .sound-btn.muted{background:rgba(239,68,68,.2);border-color:var(--red);color:var(--red)}
+
+/* MELA BINGO START PAGE */
+#screenLobby{max-width:500px;padding:0 18px 28px;min-height:calc(100vh - 128px);background:radial-gradient(circle at 8% 8%,rgba(124,58,237,.28),transparent 34%),linear-gradient(155deg,#3d176f 0%,#21134d 45%,#0d172d 100%)}
+#screenLobby .welcome-banner{display:block;background:transparent;border:0;border-radius:0;padding:48px 4px 26px;margin:0;text-align:center}
+.mela-welcome-title{font-size:34px;font-weight:800;line-height:1.15;color:#fff}
+.mela-welcome-title span{display:block;color:#fbbf24}
+.mela-welcome-player{margin-top:10px;color:#d8c9f4;font-size:14px}
+.mela-welcome-player span{color:#fff;font-weight:700}
+#screenLobby #welcomeStatus{margin-top:7px;color:#d8c9f4!important;font-size:12px!important;opacity:.9}
+.lobby-stake-panel{background:linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.08));border:2px solid rgba(234,179,8,.7);border-radius:20px;padding:20px 12px 14px;box-shadow:0 14px 35px rgba(0,0,0,.18)}
+.lobby-stake-heading{text-align:center;font-size:19px;font-weight:800;color:#fff;margin:0 0 18px}.lobby-stake-heading span{color:#facc15;font-size:24px;margin-right:7px;vertical-align:-2px}
+#screenLobby .stakes-grid{display:flex;flex-direction:column;gap:14px}
+#screenLobby .stake-card{min-height:62px;width:100%;border:0;border-radius:17px;padding:14px 18px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;color:#fff;background:linear-gradient(90deg,#08d3a0,#00a99d);box-shadow:0 7px 18px rgba(0,0,0,.18)}
+#screenLobby .stake-card:nth-child(2){background:linear-gradient(90deg,#0ea5e9,#4f46e5)}
+#screenLobby .stake-card:nth-child(3){background:linear-gradient(90deg,#08d3a0,#00a99d)}
+#screenLobby .stake-card:nth-child(4){background:linear-gradient(90deg,#f59e0b,#f97316)}
+#screenLobby .stake-etb{font-family:'Inter',sans-serif;font-size:23px;font-weight:800;color:#fff;margin:0}
+#screenLobby .stake-etb::before{content:'▷  ';font-size:20px;font-weight:400}
+#screenLobby .stake-info{display:none}
+#screenLobby .stake-unavailable{opacity:.45;cursor:not-allowed!important;filter:saturate(.55)}
+.lobby-players-card{margin:38px 0 10px;background:linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.07));border:1px solid rgba(255,255,255,.22);border-radius:17px;padding:32px 16px;text-align:center}.lobby-players-number{font-size:32px;font-weight:900}.lobby-players-label{margin-top:6px;color:#d8c9f4;font-size:16px}.lobby-players-sub{margin-top:5px;color:#9f8fc0;font-size:11px}
+@media(max-width:380px){.mela-welcome-title{font-size:30px}}
+/* Evenly spaced 4-item bottom navigation */
+.bottom-nav{display:grid;grid-template-columns:repeat(4,1fr);justify-content:initial;padding:0;gap:0}
+.bottom-nav .nav-item,.bottom-nav .nav-center-wrap{width:100%;min-width:0;justify-self:stretch}
+.bottom-nav .nav-item{padding:4px 0;justify-content:center}
+.bottom-nav .nav-center-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:64px;cursor:pointer}
+.bottom-nav .nav-center{height:54px;width:54px;flex:0 0 54px;justify-self:center;align-self:center;transform:translateY(-10px)}
+.bottom-nav .nav-center-label{font-size:10px;color:var(--gray);font-weight:600;margin-top:-8px}
+.bottom-nav .nav-game-label{color:var(--gray)}
 </style>
 </head>
 <body>
 
 <div class="navbar">
-  <div class="brand">BETESEB BINGO <span class="dot" id="connDot"></span></div>
+  <div class="brand">MELA BINGO <span class="dot" id="connDot"></span></div>
   <div style="display:flex;align-items:center;gap:10px">
     <button class="sound-btn" id="soundBtn" onclick="toggleSound()" title="Toggle sound">🔊</button>
     <div class="balance-pill" id="balanceEl" onclick="goToWallet()">ETB 0.00</div>
@@ -233,16 +263,24 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 
 <div id="screenLobby" class="screen">
   <div class="welcome-banner">
-    <div class="welcome-name">Welcome, <span id="welcomeName">Player</span>!</div>
-    <div style="font-size:12px;color:var(--gray)" id="welcomeStatus">Ready to play</div>
+    <div class="mela-welcome-title">Welcome to <span>Mela Bingo</span></div>
+    <div class="mela-welcome-player">Welcome, <span id="welcomeName">Player</span>!</div>
+    <div id="welcomeStatus">Ready to play</div>
   </div>
-  <h2 class="screen-title">SELECT STAKE TIER</h2>
-  <div id="stakesGrid" class="stakes-grid"></div>
+  <div class="lobby-stake-panel">
+    <div class="lobby-stake-heading"><span>▷</span>Choose Your Stake</div>
+    <div id="stakesGrid" class="stakes-grid"></div>
+  </div>
+  <div class="lobby-players-card">
+    <div class="lobby-players-number" id="lobbyActivePlayers">0</div>
+    <div class="lobby-players-label">Active Players</div>
+    <div class="lobby-players-sub">Players currently in the game lobby</div>
+  </div>
 </div>
 
 <div id="screenCards" class="screen">
  <div class="cd-header">
-    <h2 class="screen-title" style="margin:0">CHOOSE YOUR CARDSss</h2>
+    <h2 class="screen-title" style="margin:0">CHOOSE YOUR CARDS</h2>
     <div class="cd-countdown" id="cdCountdown">Waiting...</div>
   </div>
   <div id="cdPrizePot" style="background:linear-gradient(135deg,rgba(250,204,21,.15),rgba(139,92,246,.15));border:1px solid rgba(250,204,21,.4);border-radius:10px;padding:10px 14px;text-align:center;font-weight:700;color:var(--gold);font-size:14px;margin-bottom:10px">
@@ -298,7 +336,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
       <div id="cardBody2" class="bingo-body"></div>
     </div>
   </div>
-  <button id="bingoBtn" class="bingo-btn" disabled>🤖 AUTO BINGO</button>
+  <button id="bingoBtn" class="bingo-btn" onclick="claimBingo()">🎉 BINGO!</button>
   <div class="tracker-wrap"><div id="trackerGrid" class="tracker-grid"></div></div>
 </div>
 
@@ -331,7 +369,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
         <button onclick="copyPhone()" id="copyBtn" style="background:rgba(250,204,21,.15);border:1px solid var(--gold);color:var(--gold);padding:5px 12px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s">📋 Copy</button>
       </div>
       <div class="telebirr-name" id="telebirrName" style="font-size:13px;color:#fff;font-weight:600">Lidetua</div>
-      <div style="font-size:11px;color:var(--gray);margin-top:2px">Beteseb Bingo</div>
+      <div style="font-size:11px;color:var(--gray);margin-top:2px">Mela Bingo</div>
     </div>
       <!-- Amharic Deposit Steps -->
 <div style="background:var(--panel);border:1px solid #3c2463;border-radius:14px;padding:16px;margin-bottom:16px">
@@ -521,7 +559,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div style="background:linear-gradient(135deg,#2d1b4e,#1a0a3e);border-radius:16px;padding:20px;text-align:center;margin-bottom:20px;border:1px solid #6d28d9">
     <div style="font-size:36px;margin-bottom:8px">📋</div>
     <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;color:var(--gold)">የቢንጎ ጨዋታ ሕጎች</div>
-    <div style="font-size:12px;color:var(--gray);margin-top:4px">Beteseb Bingo Rules</div>
+    <div style="font-size:12px;color:var(--gray);margin-top:4px">Mela Bingo Rules</div>
   </div>
 
   <!-- Section 1: Card Selection -->
@@ -605,7 +643,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
           <div style="width:28px;height:28px;background:var(--blue);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">📌</div>
           <div>
             <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">Marking Numbers</div>
-            <div style="font-size:12px;color:var(--gold);line-height:1.5">የሚጠራው ቁጥር በእኛ መጫወቻ ካርድ ውስጥ ካለ በራሱ ይምረጣል (mark ይደረጋል)</div>
+            <div style="font-size:12px;color:var(--gold);line-height:1.5">የሚጠራው ቁጥር የኛ መጫወቻ ካርዱ ዉስጥ ካለ የተጠራዉን ቁጥር ክሊክ በማርግ መምረጥ እንቻላለን</div>
           </div>
         </div>
       </div>
@@ -616,7 +654,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px">
         <div><div style="color:#fff;font-weight:600;margin-bottom:2px">Number Range</div><div style="color:var(--gray)">Numbers 1 to 75</div></div>
         <div><div style="color:#fff;font-weight:600;margin-bottom:2px">Card Layout</div><div style="color:var(--gray)">5×5 grid + FREE center</div></div>
-        <div><div style="color:#fff;font-weight:600;margin-bottom:2px">Marking</div><div style="color:var(--gray)">Numbers are marked automatically</div></div>
+        <div><div style="color:#fff;font-weight:600;margin-bottom:2px">Marking</div><div style="color:var(--gray)">Tap to mark/unmark</div></div>
         <div><div style="color:#fff;font-weight:600;margin-bottom:2px">Timer</div><div style="color:var(--gray)">Countdown to start</div></div>
       </div>
     </div>
@@ -630,7 +668,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
     </div>
     <div style="background:rgba(250,204,21,.08);border:1px solid rgba(250,204,21,.3);border-radius:10px;padding:12px;margin-bottom:10px">
       <div style="color:var(--gold);font-weight:700;font-size:13px;margin-bottom:6px">✨ Main Winning Rule</div>
-      <div style="font-size:12px;color:var(--gold);line-height:1.7">ቁጥሮቹ ሲጠሩ በካርዱ ላይ በራሳቸው ይመረጣሉ። የማሸነፊያ ንድፍ ሲሟላ ሲስተሙ በራሱ Bingo ይጠይቃል።</div>
+      <div style="font-size:12px;color:var(--gold);line-height:1.7">ቁጥሮቹ ሲጠሩ ከመጫወቻ ካርዱችን ላይ አየመረጥን ወደን ወይም ወደታች ወይም ወደሁለቱም አግዳሚ ወይም አራቱን ማእዘናት ከምረጥን ወዲያዉን ከታች bingo የሚለዉን በመንካት ማሽነፍ እንችላለን</div>
     </div>
     <div style="display:flex;flex-direction:column;gap:10px">
       <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
@@ -678,7 +716,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
     </div>
     <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.3);border-radius:10px;padding:12px">
       <div style="color:var(--blue);font-weight:700;font-size:13px;margin-bottom:8px">✨ Pro Tips to Avoid Penalties</div>
-      <div style="font-size:12px;color:var(--gray);line-height:1.8">• Numbers are marked automatically<br>• The system checks winning patterns automatically<br>• Valid Bingo claims are submitted automatically<br>• No manual marking or Bingo button is required</div>
+      <div style="font-size:12px;color:var(--gray);line-height:1.8">• Double-check your pattern before clicking BINGO<br>• Make sure you have exactly 5 numbers in a line<br>• Verify all four corners are marked for corner wins<br>• Take your time — there's no rush to call BINGO<br>• If unsure, wait for more numbers to be called</div>
     </div>
   </div>
 </div>
@@ -687,22 +725,23 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div class="nav-item active" id="navHome" onclick="navGo('screenLobby','navHome')">
     <span class="nav-icon">🏠</span><span>HOME</span>
   </div>
-  <div class="nav-item" id="navGame" onclick="navGo('screenGame','navGame')">
-    <span class="nav-icon">🟨</span><span>GAME</span>
+
+  <div class="nav-center-wrap" id="navGame" onclick="goToGame()">
+    <div class="nav-center"><span style="font-size:24px">👑</span></div>
+    <span class="nav-center-label nav-game-label">GAME</span>
   </div>
-  <div class="nav-center" onclick="navGo('screenLobby','navHome')">
-    <span style="font-size:24px">👑</span>
-  </div>
-  <div class="nav-item" id="navWallet" onclick="navGo('screenWallet','navWallet')">
+
+  <div class="nav-item" id="navWallet" onclick="goToWallet()">
     <span class="nav-icon">💰</span><span>WALLET</span>
-    <span class="nav-dot" id="walletDot"></span>
   </div>
+
+  <div class="nav-item" id="navCards" onclick="navGo('screenRules','navCards')">
+    <span class="nav-icon">📋</span><span>RULES</span>
+  </div>
+
   <div class="nav-item" id="navAdmin" onclick="navGo('screenAdmin','navAdmin')" style="display:none">
     <span class="nav-icon">⚙️</span><span>ADMIN</span>
     <span class="nav-dot show" id="adminDot" style="display:none"></span>
-  </div>
-  <div class="nav-item" id="navCards" onclick="navGo('screenRules','navCards')">
-  <span class="nav-icon">📋</span><span>RULES</span>
   </div>
 </div>
 
@@ -715,11 +754,10 @@ let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0;
 let myCardId2=null, myCardNumbers2=[], markedIndices2=new Set();
 let claimWindowOpen=false, claimBarAnim=null, prevLastCalled=null;
 let telegramId=null, isAdmin=false, adminToken='';
-// The server/account is authoritative for the wallet balance.
-// Keep the last displayed value only while the account is being re-read; never
-// use it to override a legitimate server balance of 0.
-let lastKnownBalance=0;
-let balanceRefreshTimer=null;
+// Preserve the user's deposited/account balance so a stale game-end 0 cannot erase it.
+let preservedBalance=null;
+// Immutable snapshot of the user's initial deposited balance for this session.
+let initialDepositAmount=null;
 let cardPool=[];
 
 // ─── HELPERS ─────────────────────────────────────────────────
@@ -739,38 +777,43 @@ function numConfig(n){
 function colClass(n){if(n<=15)return 'cb';if(n<=30)return 'ci';if(n<=45)return 'cn';if(n<=60)return 'cg';return 'co';}
 function setBalance(amt){
   const parsed=parseFloat(amt);
-  if(!Number.isFinite(parsed) || parsed<0) return;
+  if(!Number.isFinite(parsed)) return;
   currentBalance=parsed;
-  lastKnownBalance=parsed;
+  if(parsed>0){
+    preservedBalance=parsed;
+    if(initialDepositAmount===null) initialDepositAmount=parsed;
+  }
   const f=`ETB ${currentBalance.toFixed(2)}`;
-  const balanceEl=document.getElementById('balanceEl');
-  const walletEl=document.getElementById('walletBalAmt');
-  if(balanceEl) balanceEl.innerText=f;
-  if(walletEl) walletEl.innerText=f;
+  document.getElementById('balanceEl').innerText=f;
+  document.getElementById('walletBalAmt').innerText=f;
 }
 
-// Read the wallet from the user's account. The account/server is authoritative.
-// This intentionally accepts 0: if the real balance is zero, the UI must show 0.
-// After a game, retry for a short period so the prize/stake transaction has time
-// to finish before the final wallet value is displayed.
-async function refreshAccountBalance(retries=6, delayMs=500){
-  if(!telegramId) return false;
-  if(balanceRefreshTimer) clearTimeout(balanceRefreshTimer);
+// Refresh the balance from the account after a game ends.
+// Some game-end messages can contain a stale/zero balance before the
+// prize transaction has finished updating the account.
+async function refreshAccountBalance(retries=5){
+  if(!telegramId) return;
   for(let i=0;i<retries;i++){
     try{
-      const res=await fetch(`/api/user/${encodeURIComponent(telegramId)}?_=${Date.now()}`,{cache:'no-store'});
+      const res=await fetch(`/api/user/${telegramId}?_=${Date.now()}`);
       if(res.ok){
         const u=await res.json();
-        const serverBalance=parseFloat(u?.balance);
-        if(Number.isFinite(serverBalance) && serverBalance>=0){
-          setBalance(serverBalance);
-          return true;
-        }
+        if(u && u.balance!==undefined && u.balance!==null){
+            const serverBalance=parseFloat(u.balance);
+            // Never erase a real deposited balance with a transient game-end 0.
+            if(serverBalance>0 || preservedBalance===null){
+              setBalance(serverBalance);
+              return;
+            }
+            if(preservedBalance!==null){
+              setBalance(preservedBalance);
+              return;
+            }
+          }
       }
     }catch(e){}
-    if(i<retries-1) await new Promise(resolve=>setTimeout(resolve,delayMs));
+    await new Promise(resolve=>setTimeout(resolve,500));
   }
-  return false;
 }
 function goScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');}
 function navGo(screen, navId){
@@ -778,6 +821,22 @@ function navGo(screen, navId){
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById(navId)?.classList.add('active');
   if(screen==='screenAdmin') adminLoadDeposits();
+}
+function goToGame(){
+  // The crown button is the quick return to the active game.
+  // Keep the room id while navigating between screens so the player can always return.
+  const roomId = myRoomId || localStorage.getItem('roomId');
+  if(!roomId){
+    showToast('No active game right now','warn');
+    return;
+  }
+  myRoomId = roomId;
+  // If cards have not been selected yet, return to card selection; otherwise return to the game.
+  if(myCardId){
+    navGo('screenGame','navGame');
+  }else{
+    navGo('screenCards','navGame');
+  }
 }
 function goToWallet(){navGo('screenWallet','navWallet');}
 
@@ -816,13 +875,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
 
     case 'authSuccess':
   myName=msg.playerName||'Player';
-  // Show the auth value immediately, then replace it with the authoritative
-  // account balance. This prevents an old/stale auth value from becoming the
-  // user's new 'initial balance'.
-  if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
-    setBalance(msg.balance);
-  }
-  setTimeout(()=>refreshAccountBalance(3,250),50);
+  setBalance(msg.balance||0);
   isAdmin=msg.isAdmin||false;
   adminToken=telegramId||'';
   document.getElementById('welcomeName').innerText=myName||'Player';
@@ -858,14 +911,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
    case 'joinedRoom':
       localStorage.setItem('roomId', msg.roomId);
       myRoomId=msg.roomId; myStakeId=msg.stakeId; myCardId=null; myCardId2=null;
-      markedIndices=new Set([12]); markedIndices2=new Set([12]);
-      // A room message can contain a balance from before the latest account
-      // transaction. Refresh from the account instead of treating room state
-      // as the permanent wallet balance.
-      if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
-        setBalance(msg.balance);
-      }
-      setTimeout(()=>refreshAccountBalance(3,250),50);
+      markedIndices=new Set([12]); markedIndices2=new Set([12]); setBalance(msg.balance);
       resetSlotUI();
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
       if(msg.status==='playing'){
@@ -968,11 +1014,9 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
     case 'gameOver':
       localStorage.removeItem('roomId');
       showWinnerOverlay(msg);
-      // Never reset the wallet to an 'initial' value at game end. The server
-      // account is authoritative: losing subtracts the stake, winning adds the
-      // prize, and a legitimate zero balance remains zero. Give settlement a
-      // moment, then read the final account balance.
-      setTimeout(()=>refreshAccountBalance(8,500),700);
+      // Do not rely on the game-over message for the wallet balance.
+      // Re-read the user's actual account balance after the prize is processed.
+      setTimeout(()=>refreshAccountBalance(),300);
       break;
 
     case 'backToCardSelection':
@@ -981,19 +1025,23 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       markedIndices=new Set([12]); markedIndices2=new Set([12]);
       claimWindowOpen=false;
       hideWinnerOverlay();
-      // Refresh the actual account value after the previous round settles.
-      if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
+      // Keep the displayed balance from being reset by a stale 0 value.
+      // Refresh it from the account after the round has settled.
+      if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>0){
         setBalance(msg.balance);
+      } else if(preservedBalance!==null){
+        setBalance(preservedBalance);
       }
-      setTimeout(()=>refreshAccountBalance(6,400),300);
+      setTimeout(()=>refreshAccountBalance(),300);
       resetTrackerBoard(); setBingoBtn('idle'); resetSlotUI();
       document.getElementById('cdCountdown').innerText='Waiting...';
       navGo('screenCards','navCards'); break;
 
     case 'balanceUpdate':
-      // Balance updates are authoritative, including a legitimate 0.00.
-      if(Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
+      if(Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>0){
         setBalance(msg.balance);
+      } else if(preservedBalance!==null){
+        setBalance(preservedBalance);
       }
       break;
 
@@ -1280,54 +1328,6 @@ async function loadPaymentInfo(){
   }catch(e){/* keep defaults */}
 }
 
-// ─── GAME: AUTOMATIC MARKING ───────────────────────────────────
-function autoMarkCalledNumber(n, nums, marked){
-  if(!nums || !nums.length) return false;
-  let changed=false;
-  nums.forEach((value,i)=>{
-    if(i===12) return; // FREE center is already marked
-    if(Number(value)===Number(n) && !marked.has(i)){
-      marked.add(i);
-      changed=true;
-    }
-  });
-  return changed;
-}
-
-function hasWinningPattern(marked){
-  const isMarked=i=>marked.has(i) || i===12;
-  // Horizontal rows
-  for(let r=0;r<5;r++){
-    let ok=true;
-    for(let c=0;c<5;c++) if(!isMarked(r*5+c)) {ok=false;break;}
-    if(ok) return true;
-  }
-  // Vertical columns
-  for(let c=0;c<5;c++){
-    let ok=true;
-    for(let r=0;r<5;r++) if(!isMarked(r*5+c)) {ok=false;break;}
-    if(ok) return true;
-  }
-  // Diagonals
-  if([0,6,12,18,24].every(isMarked)) return true;
-  if([4,8,12,16,20].every(isMarked)) return true;
-  // Four corners
-  if([0,4,20,24].every(isMarked)) return true;
-  return false;
-}
-
-function autoCheckAndClaim(){
-  if(!claimWindowOpen || !myCardId) return;
-  const card1Wins=hasWinningPattern(markedIndices);
-  const card2Wins=myCardId2 && hasWinningPattern(markedIndices2);
-  if(card1Wins || card2Wins){
-    claimWindowOpen=false;
-    setBingoBtn('locked');
-    wsSend({type:'claimBingo',cardId:myCardId,markedIndices:Array.from(markedIndices),
-      cardId2:myCardId2||null,markedIndices2:myCardId2?Array.from(markedIndices2):null});
-  }
-}
-
 // ─── GAME: NUMBER CALLED ──────────────────────────────────────
 function onNumberCalled(msg){
   const n=msg.number, cfg=numConfig(n);
@@ -1345,17 +1345,8 @@ function onNumberCalled(msg){
   // 🔊 Play the audio for this number
   playBallAudio(n);
 
-  // Automatically mark the called number on every card. Players no longer
-  // need to listen for the number and manually tap their card.
-  autoMarkCalledNumber(n,myCardNumbers,markedIndices);
-  if(myCardId2) autoMarkCalledNumber(n,myCardNumbers2,markedIndices2);
+  claimWindowOpen=true; setBingoBtn('ready'); startClaimBar(msg.claimWindowMs||4800);
   refreshCardCells();
-
-  claimWindowOpen=true;
-  setBingoBtn('ready');
-  startClaimBar(msg.claimWindowMs||4800);
-  // Automatically submit a valid Bingo claim as soon as the pattern is complete.
-  autoCheckAndClaim();
 }
 function startClaimBar(ms){
   const bar=document.getElementById('claimBar');
@@ -1370,14 +1361,14 @@ function cf_safe_func(){}
 function setBingoBtn(state){
   const btn=document.getElementById('bingoBtn');
   btn.className='bingo-btn';
-  if(state==='ready') { btn.classList.add('ready'); btn.innerText='🤖 AUTO BINGO — SCANNING'; }
-  else if(state==='locked') btn.innerText='🤖 AUTO BINGO';
-  else btn.innerText='🤖 AUTO BINGO';
+  if(state==='ready') btn.classList.add('ready');
   if(state==='locked') btn.classList.add('locked');
 }
 function claimBingo(){
-  // Manual Bingo claims are disabled. Winning claims are submitted automatically.
-  return;
+  if(!claimWindowOpen){showToast('⏰ Window closed — wait for next number','warn');return;}
+  if(!myCardId){showToast('No card selected','error');return;}
+  wsSend({type:'claimBingo',cardId:myCardId,markedIndices:Array.from(markedIndices),
+    cardId2:myCardId2||null,markedIndices2:myCardId2?Array.from(markedIndices2):null});
 }
 
 // ─── WINNER OVERLAY ───────────────────────────────────────────
@@ -1419,7 +1410,7 @@ function renderCard(nums, bodyId, prefix){
   nums.forEach((n,i)=>{
     const cell=document.createElement('div'); cell.className='bingo-cell'; cell.id=pfx+'cell'+i;
     if(i===12){cell.classList.add('free','marked');cell.innerText='FREE';}
-    else{cell.innerText=n;}
+    else{cell.innerText=n;cell.addEventListener('click',()=>toggleCell(i,cell,pfx));}
     body.appendChild(cell);
   });
 }
@@ -1552,11 +1543,25 @@ document.getElementById('cardSearch').addEventListener('input',()=>{
 
 // ─── STAKES ───────────────────────────────────────────────────
 function renderStakes(arr){
-  const grid=document.getElementById('stakesGrid'); grid.innerHTML='';
-  arr.forEach(s=>{
-    const d=document.createElement('div'); d.className='stake-card';
-    d.innerHTML=`<div class="stake-etb">${s.amount} ETB</div><div class="stake-info">${s.playerCount} players • ${s.status}${s.status==='countdown'?' ('+s.countdown+'s)':''}</div>`;
-    d.onclick=()=>wsSend({type:'joinRoom',stakeId:s.stakeId});
+  const grid=document.getElementById('stakesGrid');
+  grid.innerHTML='';
+  const stakes=Array.isArray(arr)?arr:[];
+  const activeEl=document.getElementById('lobbyActivePlayers');
+  if(activeEl){
+    const total=stakes.reduce((sum,s)=>sum+(parseInt(s.playerCount,10)||0),0);
+    activeEl.innerText=total.toLocaleString();
+  }
+  [5,10,20,50].forEach((amount,index)=>{
+    const s=stakes.find(x=>Number(x.amount)===amount);
+    const d=document.createElement('div');
+    d.className='stake-card';
+    d.innerHTML=`<div class="stake-etb">Play ${amount}</div>`;
+    if(s){
+      d.onclick=()=>wsSend({type:'joinRoom',stakeId:s.stakeId});
+    }else{
+      d.classList.add('stake-unavailable');
+      d.title=`Play ${amount} is not currently available`;
+    }
     grid.appendChild(d);
   });
 }
