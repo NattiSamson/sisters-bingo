@@ -197,14 +197,14 @@ async extractTransactionInfo(url) {
 
 async processDeposit(sms) {
 
- const invoiceNo = await extractInvoiceNumber(sms);
+ const invoiceNo = await this.extractInvoiceNumber(sms);
   if (invoiceNo == null) {
     console.log("No invoice number found.");
     return 1;
   }
 
   // Build URL
-  const url = await builURLfromInvoiceNo(invoiceNo);
+  const url = await this.builURLfromInvoiceNo(invoiceNo);
 
   const isValid = await checkUrl(url);
 
@@ -214,7 +214,7 @@ async processDeposit(sms) {
   }
 
   // Only continue if URL is valid
-  const result = await extractTransactionInfo(url);
+  const result = await this.extractTransactionInfo(url);
   console.log("Transaction Information:");
   console.log(result);
   return result;  
