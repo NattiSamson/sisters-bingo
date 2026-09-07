@@ -343,7 +343,7 @@ bot.on("message:text", async (ctx, next) => {
 
 
 		
-      const result2 = await db.approveDepositttttttttttt(receipt);
+      const result2 = await db.approveDepositttttttttttt(receipt,telegramId);
 		console.log('after call');
     if(result2)
 	{
