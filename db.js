@@ -34,20 +34,20 @@ const { u }  = await pool.query('SELECT count(id) FROM deposits WHERE reference=
   
 		  return 1;
 		}
-const { u } = await pool.query('SELECT count(id) FROM payment_accounts WHERE IsActive = TRUE && RIGHT(account_number,4) = RIGHT($1,4)', receipt.creditedPartyAccountNo);
+{ u } = await pool.query('SELECT count(id) FROM payment_accounts WHERE IsActive = TRUE && RIGHT(account_number,4) = RIGHT($1,4)', receipt.creditedPartyAccountNo);
 		if(u.count > 0)
 		{
 		  
    return 2;
 		}
-	const { u } = await pool.query('SELECT count(id) FROM payment_accounts WHERE IsActive = TRUE && account_name=$1', receipt.creditedPartyName);
-		if(u > 0)
+	{ u } = await pool.query('SELECT count(id) FROM payment_accounts WHERE IsActive = TRUE && account_name=$1', receipt.creditedPartyName);
+		if(u.count > 0)
 		{
 		 
    return 3;
 		}
 		const {rows} = await pool.query('SELECT amount FROM users WHERE telegram_id=$1', id);
-		const { u } = await pool.query('INSERT INTO deposits(user_id,payment_account_id,deposit_method_id,depositor_name,depositor_account,amount,amount_after,reference,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NOW()) RETURNING id', [user_id,1,1,creditedPartyName,receipt.creditedPartyAccountNo,receipt.settledAmount.replace(/[^0-9.]/g, ""),rows[0].amount + receipt.settledAmount.replace(/[^0-9.]/g, ""),receipt.receiptNo]);
+		{ u } = await pool.query('INSERT INTO deposits(user_id,payment_account_id,deposit_method_id,depositor_name,depositor_account,amount,amount_after,reference,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NOW()) RETURNING id', [user_id,1,1,creditedPartyName,receipt.creditedPartyAccountNo,receipt.settledAmount.replace(/[^0-9.]/g, ""),rows[0].amount + receipt.settledAmount.replace(/[^0-9.]/g, ""),receipt.receiptNo]);
 		return true;
       },
 
