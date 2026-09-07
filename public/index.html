@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none">
@@ -74,10 +75,6 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .dual-cards-wrap .bingo-header{margin-bottom:5px}
 
 /* GAME */
-.active-players-banner{display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(34,197,94,.10);border:1px solid rgba(34,197,94,.45);border-radius:12px;padding:10px 14px;margin-bottom:12px;color:#fff;font-size:12px;font-weight:800;letter-spacing:.5px}
-.active-players-banner strong{font-family:'Orbitron',sans-serif;color:var(--green);font-size:18px;margin-left:3px}
-.active-players-dot{width:9px;height:9px;background:var(--green);border-radius:50%;box-shadow:0 0 10px var(--green);animation:activePulse 1.2s infinite}
-@keyframes activePulse{50%{opacity:.35;transform:scale(.8)}}
 .game-stats-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
 .stat-box{background:var(--panel);padding:10px 14px;border-radius:10px;border:1px solid #3c2463;text-align:center;min-width:85px}
 .stat-box .lbl{font-size:10px;color:var(--gray);text-transform:uppercase;margin-bottom:3px}
@@ -95,7 +92,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .bingo-col-head{display:flex;align-items:center;justify-content:center;height:40px;font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900}
 .bh-b{background:var(--b);color:#fff}.bh-i{background:var(--i);color:#fff}.bh-n{background:var(--n);color:#fff}.bh-g{background:var(--g);color:#fff}.bh-o{background:var(--o);color:#fff}
 .bingo-body{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
-.bingo-cell{display:flex;align-items:center;justify-content:center;height:48px;background:#fff;font-size:15px;font-weight:700;color:#1a0a2e;border-radius:6px;cursor:default;user-select:none;transition:background .1s,color .1s,transform .1s}
+.bingo-cell{display:flex;align-items:center;justify-content:center;height:48px;background:#fff;font-size:15px;font-weight:700;color:#1a0a2e;border-radius:6px;cursor:pointer;user-select:none;transition:background .1s,color .1s,transform .1s}
 .bingo-cell:active{transform:scale(.93)}
 .bingo-cell.marked{background:var(--purple)!important;color:#fff!important}
 .bingo-cell.called-not-marked{background:#fff8dc!important;color:#8b6914!important}
@@ -307,11 +304,6 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 </div>
 
 <div id="screenGame" class="screen">
-  <div class="active-players-banner" id="activePlayersBanner">
-    <span class="active-players-dot"></span>
-    <span>ACTIVE PLAYERS</span>
-    <strong id="activePlayersTop">0</strong>
-  </div>
   <div class="game-stats-row">
     <div class="stat-box"><div class="lbl">Prize Pot</div><div id="potVal" class="val">0</div></div>
     <div>
@@ -323,6 +315,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
     </div>
     <div class="stat-box"><div class="lbl">Players</div><div id="playerCountVal" class="val">0</div><div style="font-size:9px;color:var(--green)">in game</div></div>
   </div>
+  <div class="claim-bar-wrap"><div class="claim-bar" id="claimBar"></div></div>
   <!-- Dual cards wrapper — becomes side-by-side when two cards selected -->
   <div id="cardsWrap">
     <div class="card-container" id="cardContainer1">
@@ -344,6 +337,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
       <div id="cardBody2" class="bingo-body"></div>
     </div>
   </div>
+  <button id="bingoBtn" class="bingo-btn" onclick="claimBingo()">🎉 BINGO!</button>
   <div class="tracker-wrap"><div id="trackerGrid" class="tracker-grid"></div></div>
 </div>
 
@@ -760,7 +754,6 @@ let ws, myPlayerId, myName='', myRoomId=localStorage.getItem('roomId')||null, my
 let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0;
 let myCardId2=null, myCardNumbers2=[], markedIndices2=new Set();
 let claimWindowOpen=false, claimBarAnim=null, prevLastCalled=null;
-let calledNumbersSet=new Set(), autoClaimSent=false, roundFinished=false;
 let telegramId=null, isAdmin=false, adminToken='';
 // The Telegram/database account is the source of truth for the player's name and wallet.
 // These values are refreshed from /api/user/:telegramId after Telegram authentication
@@ -874,15 +867,6 @@ function connect(){
   ws.onmessage=e=>{try{handle(JSON.parse(e.data));}catch(err){console.error(err);}};
 }
 function wsSend(obj){if(ws&&ws.readyState===1)ws.send(JSON.stringify(obj));}
-
-// ─── ACTIVE PLAYERS ─────────────────────────────────────────
-function setActivePlayerCount(count){
-  const n=Math.max(0,parseInt(count,10)||0);
-  const a=document.getElementById('activePlayersTop');
-  const b=document.getElementById('playerCountVal');
-  if(a) a.innerText=n.toLocaleString();
-  if(b) b.innerText=n.toLocaleString();
-}
 
 // ─── MESSAGE HANDLER ─────────────────────────────────────────
 function handle(msg){
@@ -1000,9 +984,8 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
       myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
-      setActivePlayerCount(msg.playerCount);
+      document.getElementById('playerCountVal').innerText=msg.playerCount;
       markedIndices=new Set([12]); markedIndices2=new Set([12]);
-      markCalledNumbersOnCard(myCardNumbers,markedIndices,''); if(myCardId2) markCalledNumbersOnCard(myCardNumbers2,markedIndices2,'b2_');
       renderBothCards();
       document.getElementById('bingoBtn').style.display='flex';
       break;
@@ -1010,7 +993,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
     case 'spectating':
       myCardId=null; myCardNumbers=[]; myCardId2=null; myCardNumbers2=[];
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
-      setActivePlayerCount(msg.playerCount);
+      document.getElementById('playerCountVal').innerText=msg.playerCount;
       document.getElementById('cardLabel').innerText='👀 Watching';
       document.getElementById('cardContainer2').style.display='none';
       document.getElementById('cardsWrap').classList.remove('dual-cards-wrap');
@@ -1038,17 +1021,16 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
 
     case 'gameStart':
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
-      setActivePlayerCount(msg.players.length);
-      resetTrackerBoard(); calledNumbersSet=new Set(); autoClaimSent=false; roundFinished=false; claimWindowOpen=false;
+      document.getElementById('playerCountVal').innerText=msg.players.length;
+      resetTrackerBoard(); claimWindowOpen=false; setBingoBtn('idle');
       navGo('screenGame','navGame'); break;
 
     case 'reconnected':
       myRoomId=msg.roomId; myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
       myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
       markedIndices=new Set([12]); markedIndices2=new Set([12]);
-      calledNumbersSet=new Set((msg.calledNumbers||[]).map(Number)); autoClaimSent=false; roundFinished=false;
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
-      setActivePlayerCount(msg.playerCount);
+      document.getElementById('playerCountVal').innerText=msg.playerCount;
       msg.calledNumbers.forEach(n=>{const el=document.getElementById('tb'+n);if(el)el.className='t-ball '+colClass(n);});
       renderBothCards(); navGo('screenGame','navGame'); break;
 
@@ -1057,7 +1039,6 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
     case 'disqualified': showDisqualified(); break;
 
     case 'gameOver':
-      roundFinished=true; claimWindowOpen=false;
       localStorage.removeItem('roomId');
       showWinnerOverlay(msg);
       // Do not rely on the game-over message for the wallet balance.
@@ -1069,7 +1050,6 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       myRoomId=msg.roomId; myCardId=null; myCardId2=null;
       myCardNumbers=[]; myCardNumbers2=[];
       markedIndices=new Set([12]); markedIndices2=new Set([12]);
-      calledNumbersSet=new Set(); autoClaimSent=false; roundFinished=false;
       claimWindowOpen=false;
       hideWinnerOverlay();
       // Refresh the actual Telegram/database account after the round settles.
@@ -1078,7 +1058,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
         setBalance(msg.balance);
       }
       setTimeout(()=>refreshAccountProfile(8,500),700);
-      resetTrackerBoard(); resetSlotUI();
+      resetTrackerBoard(); setBingoBtn('idle'); resetSlotUI();
       document.getElementById('cdCountdown').innerText='Waiting...';
       navGo('screenCards','navCards'); break;
 
@@ -1386,27 +1366,43 @@ function onNumberCalled(msg){
   const tb=document.getElementById('tb'+n);
   if(tb) tb.className='t-ball '+cfg.cls+' latest';
   prevLastCalled=n;
-  calledNumbersSet.add(Number(n));
-  markCalledNumbersOnCard(myCardNumbers,markedIndices,'');
-  if(myCardId2) markCalledNumbersOnCard(myCardNumbers2,markedIndices2,'b2_');
-  refreshCardCells();
 
   // 🔊 Play the audio for this number
   playBallAudio(n);
 
-  claimWindowOpen=true;
+  claimWindowOpen=true; setBingoBtn('ready'); startClaimBar(msg.claimWindowMs||4800);
   refreshCardCells();
 }
+function startClaimBar(ms){
+  const bar=document.getElementById('claimBar');
+  if(claimBarAnim) clearTimeout(claimBarAnim);
+  bar.style.transition='none'; bar.style.width='100%'; bar.className='claim-bar';
+  bar.offsetWidth;
+  bar.style.transition=`width ${ms}ms linear`; bar.style.width='0%';
+  if(ms<2000) bar.className='claim-bar urgent';
+  claimBarAnim=setTimeout(()=>{claimWindowOpen=false;setBingoBtn('locked');},ms);
+}
+function cf_safe_func(){}
+function setBingoBtn(state){
+  const btn=document.getElementById('bingoBtn');
+  btn.className='bingo-btn';
+  if(state==='ready') btn.classList.add('ready');
+  if(state==='locked') btn.classList.add('locked');
+}
+function claimBingo(){
+  if(!claimWindowOpen){showToast('⏰ Window closed — wait for next number','warn');return;}
+  if(!myCardId){showToast('No card selected','error');return;}
+  wsSend({type:'claimBingo',cardId:myCardId,markedIndices:Array.from(markedIndices),
+    cardId2:myCardId2||null,markedIndices2:myCardId2?Array.from(markedIndices2):null});
+}
+
 // ─── WINNER OVERLAY ───────────────────────────────────────────
 function showWinnerOverlay(msg){
   const ov=document.getElementById('winnerOverlay');
-  const winners=Array.isArray(msg.winners)?msg.winners:[];
-  const winnerText=winners.length?winners.join(' & '):msg.noWinner?'No Winner':'-';
-  const won=Boolean(myName&&winners.some(w=>String(w).toLowerCase()===String(myName).toLowerCase()));
-  document.getElementById('winnerName').innerText=winnerText;
-  document.getElementById('winnerAmount').innerText=msg.noWinner?'—':`${msg.winAmount||0} ETB`;
+  document.getElementById('winnerName').innerText=msg.winners&&msg.winners.length?msg.winners.join(' & '):msg.noWinner?'No Winner':'-';
+  document.getElementById('winnerAmount').innerText=msg.noWinner?'—':`${msg.winAmount} ETB`;
   document.getElementById('splitTag').style.display=msg.isSplit?'inline-block':'none';
-  document.getElementById('winnerMsg').innerText=msg.message || (msg.noWinner ? 'No winner this round.' : won ? '🎉 You won! Your Telegram-linked balance has been updated.' : 'Round finished. Your stake was settled by the game server.');
+  document.getElementById('winnerMsg').innerText=msg.message||'';
   ov.classList.add('show'); startConfetti();
 }
 function hideWinnerOverlay(){document.getElementById('winnerOverlay').classList.remove('show');stopConfetti();}
@@ -1439,10 +1435,9 @@ function renderCard(nums, bodyId, prefix){
   nums.forEach((n,i)=>{
     const cell=document.createElement('div'); cell.className='bingo-cell'; cell.id=pfx+'cell'+i;
     if(i===12){cell.classList.add('free','marked');cell.innerText='FREE';}
-    else{cell.innerText=n;}
+    else{cell.innerText=n;cell.addEventListener('click',()=>toggleCell(i,cell,pfx));}
     body.appendChild(cell);
   });
-  refreshCardCells();
 }
 function renderBothCards(){
   const wrap=document.getElementById('cardsWrap');
@@ -1450,50 +1445,40 @@ function renderBothCards(){
   if(myCardId2&&myCardNumbers2.length){
     wrap.classList.add('dual-cards-wrap');
     c2.style.display='';
-    document.getElementById('cardLabel').innerText=`#${myCardId}`;
-    document.getElementById('cardLabel2').innerText=`#${myCardId2}`;
+    document.getElementById('cardLabel').innerText=`${myCardId}`;
+    document.getElementById('cardLabel2').innerText=`${myCardId2}`;
     renderCard(myCardNumbers,'cardBody','');
     renderCard(myCardNumbers2,'cardBody2','b2_');
   } else {
     wrap.classList.remove('dual-cards-wrap');
     c2.style.display='none';
-    document.getElementById('cardLabel').innerText=`Card #${myCardId}`;
+    document.getElementById('cardLabel').innerText=`Card ${myCardId}`;
     renderCard(myCardNumbers,'cardBody','');
   }
 }
-function hasWinningPattern(marked){
-  const wins=[
-    [0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],
-    [0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],
-    [0,6,12,18,24],[4,8,12,16,20],[0,4,20,24]
-  ];
-  return wins.some(pattern=>pattern.every(i=>marked.has(i)));
-}
-function markCalledNumbersOnCard(nums, ms, pfx){
-  if(!nums.length) return false;
-  nums.forEach((n,i)=>{
-    if(i!==12 && calledNumbersSet.has(Number(n))) ms.add(i);
-  });
-  return hasWinningPattern(ms);
+function toggleCell(i,cell,prefix){
+  if(i===12) return;
+  const isCard2=prefix==='b2_';
+  const ms=isCard2?markedIndices2:markedIndices;
+  if(ms.has(i)){ms.delete(i);cell.classList.remove('marked');}
+  else{ms.add(i);cell.classList.add('marked');}
+  refreshCardCells();
 }
 function refreshCardCells(){
   const refreshOne=(nums,ms,pfx)=>{
-    if(!nums.length) return false;
+    if(!nums.length) return;
     nums.forEach((n,i)=>{
+      if(i===12) return;
       const cell=document.getElementById(pfx+'cell'+i); if(!cell) return;
-      if(i===12 || ms.has(i)) cell.classList.add('marked');
+      if(ms.has(i)) cell.classList.add('marked');
       else cell.classList.remove('marked');
     });
-    return hasWinningPattern(ms);
   };
-  const win1=refreshOne(myCardNumbers,markedIndices,'');
-  const win2=myCardId2 ? refreshOne(myCardNumbers2,markedIndices2,'b2_') : false;
-  if((win1||win2) && !autoClaimSent && !roundFinished){
-    autoClaimSent=true;
-    claimWindowOpen=true;
-    wsSend({type:'claimBingo',cardId:win1?myCardId:myCardId2,markedIndices:Array.from(win1?markedIndices:markedIndices2),
-      cardId2:win1&&myCardId2?myCardId2:null,markedIndices2:win1&&myCardId2?Array.from(markedIndices2):null});
-  }
+  refreshOne(myCardNumbers,markedIndices,'');
+  if(myCardId2) refreshOne(myCardNumbers2,markedIndices2,'b2_');
+  const btn=document.getElementById('bingoBtn');
+  const hasWin=(markedIndices.size>=5)||(myCardId2&&markedIndices2.size>=5);
+  if(btn&&!btn.classList.contains('locked')&&hasWin) btn.classList.add('ready');
 }
 
 // ─── SLOT UI (card selection indicators) ──────────────────────
@@ -1526,9 +1511,11 @@ function renderCardPool(pool){
   grid.innerHTML='';
   pool.forEach(c=>{
     if(search>0&&c.id!==search) return;
-    const btn=document.createElement('div'); btn.className='pool-btn'; btn.id='cardbtn-'+c.id; btn.innerText=`#${c.id}`;
+    const btn=document.createElement('div'); btn.className='pool-btn'; btn.id='cardbtn-'+c.id; btn.innerText=`${c.id}`;
     if(c.id===myCardId) btn.classList.add('mine1');
     else if(c.id===myCardId2) btn.classList.add('mine2');
+
+    
     else if(c.taken) btn.classList.add('taken');
     else btn.onclick=()=>pickCard(c.id);
     // Allow deselecting own cards
@@ -1616,6 +1603,7 @@ function buildTracker(){
 function resetTrackerBoard(){
   for(let i=1;i<=75;i++){const el=document.getElementById('tb'+i);if(el)el.className='t-ball';}
   prevLastCalled=null;
+  const bar=document.getElementById('claimBar'); bar.style.transition='none'; bar.style.width='100%'; bar.className='claim-bar';
   const c=document.getElementById('ballCircle'); c.style.background='var(--card)';
   document.getElementById('ballLetter').innerText='-';
   document.getElementById('ballNumber').innerText='--';
