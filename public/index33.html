@@ -789,18 +789,17 @@ let cardPool=[];
 
 // ─── HELPERS ─────────────────────────────────────────────────
 function getTelegramId(){
-  // The bot passes the player's Telegram ID in ?tid. This is the ID used by
-  // the working Mela Bingo balance/authentication flow, so prefer it first.
-  const p=new URLSearchParams(location.search);
-  const tid=(p.get('tid')||'').trim();
-  if(tid) return tid;
+  // Prefer the real Telegram WebApp user ID when opened inside Telegram.
   try{
     if(window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe){
       const u=Telegram.WebApp.initDataUnsafe.user;
       if(u && u.id) return String(u.id);
     }
   }catch(e){}
-  return null;
+  // Fallback to the bot-provided ?tid= value used by the existing integration.
+  const p=new URLSearchParams(location.search);
+  const tid=(p.get('tid')||'').trim();
+  return tid || null;
 }
 function numConfig(n){
   if(n<=15)return{letter:'B',cls:'cb',color:'var(--b)'};
@@ -925,23 +924,15 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
   // account and sends the real account balance in this message.
   // Use that WebSocket balance as the PRIMARY initial wallet value.
   myName=msg.playerName||'Player';
-  if(msg.balance!==undefined && msg.balance!==null && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
-    setBalance(msg.balance);
-  }
-  document.getElementById('welcomeName').innerText=myName||'Player';
-  // IMPORTANT: the Telegram-authenticated server response is the initial balance.
-  // Do not immediately overwrite it with /api/user, because that endpoint can lag behind
-  // the bot/auth transaction. Only use the HTTP account lookup when auth did not send a balance.
-  const authBalance = parseFloat(
-    msg.balance ?? msg.walletBalance ?? msg.initialBalance ?? msg.user?.balance
-  );
-  if(Number.isFinite(authBalance) && authBalance >= 0){
+  const authBalance=parseFloat(msg.balance);
+  if(Number.isFinite(authBalance) && authBalance>=0){
     setBalance(authBalance);
     accountLoaded=true;
   }else if(telegramId){
+    // HTTP account lookup is only a fallback when auth did not include balance.
     refreshAccountProfile(6,300);
   }
-
+  document.getElementById('welcomeName').innerText=myName||'Player';
   isAdmin=msg.isAdmin||false;
   adminToken=telegramId||'';
   document.getElementById('welcomeName').innerText=myName||'Player';
@@ -979,13 +970,14 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       myRoomId=msg.roomId; myStakeId=msg.stakeId; myCardId=null; myCardId2=null;
       resetAutomaticGameState();
       activePlayers=[]; updateActivePlayers(msg.players||msg.activePlayers||[]);
-      if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
-        setBalance(msg.balance);
+      const roomBalance=parseFloat(msg.balance);
+      if(Number.isFinite(roomBalance) && roomBalance>=0){
+        // Keep the balance returned by the Telegram-authenticated game server.
+        setBalance(roomBalance);
         accountLoaded=true;
+      }else if(telegramId){
+        refreshAccountProfile(4,300);
       }
-      // After joining, re-read the Telegram-linked account so a stake/deposit transaction
-      // is reflected by the actual account balance.
-      if(telegramId) refreshAccountProfile(4,300);
       resetSlotUI();
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
       if(msg.status==='playing'){
@@ -1104,8 +1096,19 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
                  winnerList.includes(String(myPlayerId)) ||
                  (msg.winnerTelegramId && String(msg.winnerTelegramId)===String(telegramId));
       showToast(iWon?'🏆 You won! Your prize has been added to your account.':'Round finished — your balance was settled by the game server.','');
-      // Re-read the user's actual Telegram/database account balance after the prize is processed.
-      setTimeout(()=>refreshAccountBalance(),300);
+      // Prefer the settled balance supplied by the authenticated game server.
+      // Fall back to the Telegram account endpoint only if gameOver has no balance.
+      const settledBalance=parseFloat(msg.balance);
+      if(Number.isFinite(settledBalance) && settledBalance>=0){
+        setBalance(settledBalance);
+      }else{
+        setTimeout(()=>refreshAccountBalance(8,500),300);
+      }
+      // After showing the winner/loser result, automatically return to Card Selection.
+      // Balance handling above is intentionally unchanged.
+      setTimeout(()=>{
+        navGo('screenCards','navCards');
+      },5000);
       break;
 
     case 'backToCardSelection':
@@ -1115,22 +1118,24 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       claimWindowOpen=false;
       activePlayers=[]; updateActivePlayers([]);
       hideWinnerOverlay();
-      // Refresh the actual Telegram/database account after the round settles.
-      // A legitimate 0.00 balance is preserved because the API is authoritative.
-      if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
-        setBalance(msg.balance);
+      // Keep the balance supplied by the authenticated game server.
+      // Use the HTTP Telegram account endpoint only if no valid balance was supplied.
+      const returnedBalance=parseFloat(msg.balance);
+      if(Number.isFinite(returnedBalance) && returnedBalance>=0){
+        setBalance(returnedBalance);
+      }else{
+        setTimeout(()=>refreshAccountProfile(8,500),700);
       }
-      setTimeout(()=>refreshAccountProfile(8,500),700);
       resetTrackerBoard(); setBingoBtn('idle'); resetSlotUI();
       document.getElementById('cdCountdown').innerText='Waiting...';
       navGo('screenCards','navCards'); break;
 
     case 'balanceUpdate':
       if(Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
+        // Server-pushed balance for this authenticated Telegram player.
         setBalance(msg.balance);
         accountLoaded=true;
       }
-      if(telegramId) setTimeout(()=>refreshAccountProfile(3,300),100);
       break;
 
     case 'leftRoom': localStorage.removeItem('roomId'); myRoomId=null; myCardId=null; myCardId2=null; navGo('screenLobby','navHome'); break;
