@@ -26,6 +26,7 @@ module.exports = {
   },
 
   async approveDepositttttttttttt(receipt) {
+	  await ctx.reply("pro \n\n");
 const u = await pool.query('SELECT count(id) FROM deposits WHERE reference=$1', receipt.receiptNo);
 		 await ctx.reply("already used receipt no \n\n");
 		if(u > 0)
