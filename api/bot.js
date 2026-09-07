@@ -340,7 +340,7 @@ bot.on("message:text", async (ctx, next) => {
     if (typeof result === "object" && result !== null) {
       
       const receipt = result.receipt;
-      const result2 = await approveDepositttttttttttt(receipt);
+      const result2 = await approveDepositttttttttttt.db.approveDepositttttttttttt(receipt);
     if(result2)
 	{
       await ctx.reply(
