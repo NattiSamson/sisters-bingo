@@ -345,7 +345,7 @@ bot.on("message:text", async (ctx, next) => {
 		
       const result2 = await db.approveDepositttttttttttt(receipt,telegramId);
 		console.log('after call');
-    if(result2)
+    if(result2 == 4)
 	{
       await ctx.reply(
       "successfull \n\n",// + receipt.receiptNo + "\n" + receipt.payerName + "\n" + receipt.payerTelebirrNo.slice(-4) + "\n" + receipt.creditedPartyName + "\n" + receipt.creditedPartyAccountNo.slice(-4) + "\n" + receipt.paymentDate.split(" ")[0] + "\n" + receipt.settledAmount.replace(/[^0-9.]/g, ""),        
