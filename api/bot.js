@@ -12,6 +12,7 @@
 const { Bot, webhookCallback } = require("grammy");
 const db = require("../db");
 const {processDeposit} = require("../deposit");
+const {approveDepositttttttttttt} = require("../server");
 const pendingDeposit = {};
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -339,20 +340,19 @@ bot.on("message:text", async (ctx, next) => {
     if (typeof result === "object" && result !== null) {
       
       const receipt = result.receipt;
-      
-    const u = await this.q('SELECT count(id) FROM deposits WHERE reference=$1', receipt.receiptNo);
-		if(u > 0)
-		{
-		  return await ctx.reply("already used receipt no \n\n");
-		}
-		const amount = await this.q('SELECT amount FROM users WHERE telegram_id=$1', ctx.from.id);
-		u = await this.q('INSERT INTO deposits(user_id,payment_account_id,deposit_method_id,depositor_name,depositor_account,amount,amount_after,reference,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NOW()) RETURNING id', [user_id,1,1,creditedPartyName,receipt.creditedPartyAccountNo,receipt.settledAmount.replace(/[^0-9.]/g, ""),amount + receipt.settledAmount.replace(/[^0-9.]/g, ""),receipt.receiptNo]);
-		
+      const result2 = await approveDepositttttttttttt(receipt);
+    if(result2)
+	{
       await ctx.reply(
-      "successfull \n\n" + receipt.receiptNo + "\n" + receipt.payerName + "\n" + receipt.payerTelebirrNo.slice(-4) + "\n" + receipt.creditedPartyName + "\n" + receipt.creditedPartyAccountNo.slice(-4) + "\n" + receipt.paymentDate.split(" ")[0] + "\n" + receipt.settledAmount.replace(/[^0-9.]/g, ""),        
+      "successfull \n\n",// + receipt.receiptNo + "\n" + receipt.payerName + "\n" + receipt.payerTelebirrNo.slice(-4) + "\n" + receipt.creditedPartyName + "\n" + receipt.creditedPartyAccountNo.slice(-4) + "\n" + receipt.paymentDate.split(" ")[0] + "\n" + receipt.settledAmount.replace(/[^0-9.]/g, ""),        
     );
-      // Deposit was successfully processed
+		  // Deposit was successfully processed
     delete pendingDeposit[telegramId];
+	}
+		else{
+			      await ctx.reply("unsuccessfull\n\n");
+		}
+    
       
     } else {
       switch (result) {
