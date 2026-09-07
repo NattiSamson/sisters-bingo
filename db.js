@@ -27,21 +27,21 @@ module.exports = {
 
   async approveDepositttttttttttt(receipt,id) {
 	  
-const { u }  = await pool.query('SELECT count(id) FROM deposits WHERE reference=$1', receipt.receiptNo);
+const  u   = await pool.query('SELECT count(id) FROM deposits WHERE reference=$1', receipt.receiptNo);
 		 
-		if(u.rows[0].count > 0)
+		if(Number(u.rows[0].count) > 0)
 		{
   
 		  return 1;
 		}
 const { u2 } = await pool.query('SELECT count(id) FROM payment_accounts WHERE IsActive = TRUE AND RIGHT(account_number,4) = RIGHT($1,4)', receipt.creditedPartyAccountNo);
-		if(u2.rows[0].count > 0)
+		if(Number(u2.rows[0].count) > 0)
 		{
 		  
    return 2;
 		}
-	const { u3 } = await pool.query('SELECT count(id) FROM payment_accounts WHERE IsActive = TRUE AND account_name=$1', receipt.creditedPartyName);
-		if(u.rows[0].count > 0)
+	const u3 = await pool.query('SELECT count(id) FROM payment_accounts WHERE IsActive = TRUE AND account_name=$1', receipt.creditedPartyName);
+		if(Number(u3.rows[0].count) > 0)
 		{
 		 
    return 3;
