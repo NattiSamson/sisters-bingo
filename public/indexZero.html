@@ -6,11 +6,28 @@
 <title>Mela Bingo</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-:root{
-  --bg:#120626;--panel:#21123a;--card:#2d1b4e;
-  --gold:#facc15;--purple:#8b5cf6;--green:#22c55e;--red:#ef4444;--blue:#3b82f6;
-  --gray:#a78bfa;
-  --b:#3b82f6;--i:#f59e0b;--n:#8b5cf6;--g:#22c55e;--o:#ef4444;
+:root {
+  /* Backgrounds */
+  --bg: #0B1020;
+  --panel: #11182B;
+  --card: #18223A;
+
+  /* Primary accents */
+  --gold: #F5C542;
+  --purple: #A78BFA;
+  --green: #34D399;
+  --red: #FB7185;
+  --blue: #60A5FA;
+
+  /* Neutral */
+  --gray: #94A3B8;
+
+  /* Status / category colors */
+  --b: #60A5FA;  /* Blue */
+  --i: #FBBF24;  /* Amber */
+  --n: #A78BFA;  /* Purple */
+  --g: #34D399;  /* Green */
+  --o: #FB7185;  /* Red */
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bottom:80px;overflow-x:hidden}
@@ -236,13 +253,14 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 #screenLobby .stake-unavailable{opacity:.45;cursor:not-allowed!important;filter:saturate(.55)}
 .lobby-players-card{margin:38px 0 10px;background:linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.07));border:1px solid rgba(255,255,255,.22);border-radius:17px;padding:32px 16px;text-align:center}.lobby-players-number{font-size:32px;font-weight:900}.lobby-players-label{margin-top:6px;color:#d8c9f4;font-size:16px}.lobby-players-sub{margin-top:5px;color:#9f8fc0;font-size:11px}
 @media(max-width:380px){.mela-welcome-title{font-size:30px}}
-/* Evenly spaced 3-item bottom navigation */
-.bottom-nav{display:grid;grid-template-columns:1fr 1fr 1fr;justify-content:initial;padding:0 8px;gap:0}
-.bottom-nav .nav-item,.bottom-nav .nav-center{width:100%;min-width:0;justify-self:stretch}
+/* Evenly spaced 4-item bottom navigation */
+.bottom-nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));justify-content:initial;padding:0;gap:0}
+.bottom-nav .nav-item,.bottom-nav .nav-center-wrap{width:100%;min-width:0;justify-self:stretch}
 .bottom-nav .nav-item{padding:4px 0;justify-content:center}
-.bottom-nav .nav-center{height:54px;width:54px;justify-self:center;align-self:center;transform:translateY(-10px)}
-.bottom-nav .nav-center-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:64px}
+.bottom-nav .nav-center-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:64px;cursor:pointer}
+.bottom-nav .nav-center{height:54px;width:54px;flex:0 0 54px;justify-self:center;align-self:center;transform:translateY(-10px)}
 .bottom-nav .nav-center-label{font-size:10px;color:var(--gray);font-weight:600;margin-top:-8px}
+.bottom-nav .nav-game-label{color:var(--gray)}
 </style>
 </head>
 <body>
@@ -724,13 +742,20 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div class="nav-item active" id="navHome" onclick="navGo('screenLobby','navHome')">
     <span class="nav-icon">🏠</span><span>HOME</span>
   </div>
-  <div class="nav-center-wrap" onclick="goToWallet()">
+
+  <div class="nav-center-wrap" id="navGame" onclick="goToGame()">
     <div class="nav-center"><span style="font-size:24px">👑</span></div>
-    <span class="nav-center-label">WALLET</span>
+    <span class="nav-center-label nav-game-label">GAME</span>
   </div>
+
+  <div class="nav-item" id="navWallet" onclick="goToWallet()">
+    <span class="nav-icon">💰</span><span>WALLET</span>
+  </div>
+
   <div class="nav-item" id="navCards" onclick="navGo('screenRules','navCards')">
     <span class="nav-icon">📋</span><span>RULES</span>
   </div>
+
   <div class="nav-item" id="navAdmin" onclick="navGo('screenAdmin','navAdmin')" style="display:none">
     <span class="nav-icon">⚙️</span><span>ADMIN</span>
     <span class="nav-dot show" id="adminDot" style="display:none"></span>
@@ -767,13 +792,21 @@ function setBalance(amt){
   const parsed=parseFloat(amt);
   if(!Number.isFinite(parsed)) return;
   currentBalance=parsed;
+
+  // Keep the last known real positive balance. This protects the UI from
+  // transient/stale zero values while a game transaction is settling.
+  if(parsed>0){
+    preservedBalance=parsed;
+    if(initialDepositAmount===null) initialDepositAmount=parsed;
+  }
+
   const f=`ETB ${currentBalance.toFixed(2)}`;
   document.getElementById('balanceEl').innerText=f;
   document.getElementById('walletBalAmt').innerText=f;
 }
 
-// Always use the actual account balance from the server. This is important
-// after a round because a win or loss changes the player's real balance.
+// Read the actual account balance, but never replace a known real balance
+// with a transient zero returned while a game transaction is settling.
 async function refreshAccountBalance(retries=5){
   if(!telegramId) return;
   for(let i=0;i<retries;i++){
@@ -782,8 +815,15 @@ async function refreshAccountBalance(retries=5){
       if(res.ok){
         const u=await res.json();
         if(u && u.balance!==undefined && u.balance!==null){
-          setBalance(u.balance);
-          return;
+          const serverBalance=parseFloat(u.balance);
+          if(serverBalance>0 || preservedBalance===null){
+            setBalance(serverBalance);
+            return;
+          }
+          if(preservedBalance!==null){
+            setBalance(preservedBalance);
+            return;
+          }
         }
       }
     }catch(e){}
@@ -796,6 +836,22 @@ function navGo(screen, navId){
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById(navId)?.classList.add('active');
   if(screen==='screenAdmin') adminLoadDeposits();
+}
+function goToGame(){
+  // The crown button is the quick return to the active game.
+  // Keep the room id while navigating between screens so the player can always return.
+  const roomId = myRoomId || localStorage.getItem('roomId');
+  if(!roomId){
+    showToast('No active game right now','warn');
+    return;
+  }
+  myRoomId = roomId;
+  // If cards have not been selected yet, return to card selection; otherwise return to the game.
+  if(myCardId){
+    navGo('screenGame','navGame');
+  }else{
+    navGo('screenCards','navGame');
+  }
 }
 function goToWallet(){navGo('screenWallet','navWallet');}
 
@@ -834,12 +890,15 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
 
     case 'authSuccess':
   myName=msg.playerName||'Player';
-  // Use the authenticated server balance first, then verify it directly from
-  // the account endpoint. There is no client-side initial/deposit amount.
+
+  // Initialize the wallet immediately from the authenticated response.
+  // Then verify it from the account endpoint without allowing a transient
+  // zero to erase a real starting/deposited balance.
   if(msg.balance!==undefined && msg.balance!==null && Number.isFinite(parseFloat(msg.balance))){
     setBalance(msg.balance);
+  } else if(telegramId){
+    refreshAccountBalance(5);
   }
-  if(telegramId) setTimeout(()=>refreshAccountBalance(3),100);
   isAdmin=msg.isAdmin||false;
   adminToken=telegramId||'';
   document.getElementById('welcomeName').innerText=myName||'Player';
@@ -998,7 +1057,14 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       navGo('screenCards','navCards'); break;
 
     case 'balanceUpdate':
-      if(Number.isFinite(parseFloat(msg.balance))) setBalance(msg.balance);
+      if(Number.isFinite(parseFloat(msg.balance))){
+        const updatedBalance=parseFloat(msg.balance);
+        if(updatedBalance>0 || preservedBalance===null){
+          setBalance(updatedBalance);
+        } else if(preservedBalance!==null){
+          setBalance(preservedBalance);
+        }
+      }
       break;
 
     case 'leftRoom': localStorage.removeItem('roomId'); myRoomId=null; myCardId=null; myCardId2=null; navGo('screenLobby','navHome'); break;
@@ -1503,21 +1569,32 @@ function renderStakes(arr){
   grid.innerHTML='';
   const stakes=Array.isArray(arr)?arr:[];
   const activeEl=document.getElementById('lobbyActivePlayers');
+
   if(activeEl){
     const total=stakes.reduce((sum,s)=>sum+(parseInt(s.playerCount,10)||0),0);
     activeEl.innerText=total.toLocaleString();
   }
-  [5,10,20,50].forEach((amount,index)=>{
+
+  // Always show all four stake tiers. Existing server entries use their real
+  // stakeId; missing tiers remain clickable instead of being disabled.
+  [5,10,20,50].forEach(amount=>{
     const s=stakes.find(x=>Number(x.amount)===amount);
     const d=document.createElement('div');
     d.className='stake-card';
     d.innerHTML=`<div class="stake-etb">Play ${amount}</div>`;
-    if(s){
-      d.onclick=()=>wsSend({type:'joinRoom',stakeId:s.stakeId});
-    }else{
-      d.classList.add('stake-unavailable');
-      d.title=`Play ${amount} is not currently available`;
-    }
+
+    const stakeId=(s && s.stakeId!==undefined && s.stakeId!==null)
+      ? s.stakeId
+      : amount;
+
+    d.onclick=()=>{
+      wsSend({
+        type:'joinRoom',
+        stakeId:stakeId,
+        stakeAmount:amount
+      });
+    };
+
     grid.appendChild(d);
   });
 }
