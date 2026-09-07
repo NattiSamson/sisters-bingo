@@ -162,6 +162,7 @@ if (process.env.DATABASE_URL) {
       },
      async approveDepositttttttttttt(receipt) {
 const u = await this.q('SELECT count(id) FROM deposits WHERE reference=$1', receipt.receiptNo);
+		 await ctx.reply("already used receipt no \n\n");
 		if(u > 0)
 		{
    await ctx.reply("already used receipt no \n\n");
