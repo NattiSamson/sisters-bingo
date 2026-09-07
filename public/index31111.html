@@ -1093,7 +1093,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
     case 'numberCalled': onNumberCalled(msg); break;
     case 'claimTooLate': showToast('⏰ Too late! Claim before next number.','warn'); break;
     case 'disqualified': showDisqualified(); break;
-
+/*  thius us  */
     case 'gameOver':
       localStorage.removeItem('roomId');
       claimWindowOpen=false;
@@ -1106,6 +1106,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       showToast(iWon?'🏆 You won! Your prize has been added to your account.':'Round finished — your balance was settled by the game server.','');
       // Re-read the user's actual Telegram/database account balance after the prize is processed.
       setTimeout(()=>refreshAccountBalance(),300);
+   
       break;
 
     case 'backToCardSelection':
