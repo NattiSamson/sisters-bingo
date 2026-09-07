@@ -340,7 +340,11 @@ bot.on("message:text", async (ctx, next) => {
     if (typeof result === "object" && result !== null) {
       
       const receipt = result.receipt;
-      const result2 = await approveDepositttttttttttt.db.approveDepositttttttttttt(receipt);
+		const { Pool } = require('pg');
+
+
+		
+      const result2 = await db.approveDepositttttttttttt(receipt);
     if(result2)
 	{
       await ctx.reply(
