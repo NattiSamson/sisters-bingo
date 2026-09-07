@@ -34,13 +34,13 @@ const { u }  = await pool.query('SELECT count(id) FROM deposits WHERE reference=
   
 		  return 1;
 		}
-{ u } = await pool.query('SELECT count(id) FROM payment_accounts WHERE IsActive = TRUE && RIGHT(account_number,4) = RIGHT($1,4)', receipt.creditedPartyAccountNo);
+{ u } = await pool.query('SELECT count(id) FROM payment_accounts WHERE IsActive = TRUE AND RIGHT(account_number,4) = RIGHT($1,4)', receipt.creditedPartyAccountNo);
 		if(u.count > 0)
 		{
 		  
    return 2;
 		}
-	{ u } = await pool.query('SELECT count(id) FROM payment_accounts WHERE IsActive = TRUE && account_name=$1', receipt.creditedPartyName);
+	{ u } = await pool.query('SELECT count(id) FROM payment_accounts WHERE IsActive = TRUE AND account_name=$1', receipt.creditedPartyName);
 		if(u.count > 0)
 		{
 		 
