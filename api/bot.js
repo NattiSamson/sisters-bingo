@@ -340,7 +340,7 @@ bot.on("message:text", async (ctx, next) => {
       
       const receipt = result.receipt;
       await ctx.reply(
-      "successfull \n\n" + receipt.receiptNo + "\n" + receipt.payerName + "\n" + receipt.payerTelebirrNo.slice(-4) + "\n" + receipt.creditedPartyName + "\n" + receipt.creditedPartyAccountNo + "\n" + receipt.paymentDate.split(" ")[0] + "\n" + receipt.settledAmount.replace(/[^0-9.]/g, ""),        
+      "successfull \n\n" + receipt.receiptNo + "\n" + receipt.payerName + "\n" + receipt.payerTelebirrNo.slice(-4) + "\n" + receipt.creditedPartyName + "\n" + receipt.creditedPartyAccountNo.slice(-4) + "\n" + receipt.paymentDate.split(" ")[0] + "\n" + receipt.settledAmount.replace(/[^0-9.]/g, ""),        
     );
       // Deposit was successfully processed
     delete pendingDeposit[telegramId];
@@ -349,21 +349,21 @@ bot.on("message:text", async (ctx, next) => {
       switch (result) {
         case 1:
           await ctx.reply(
-      "🚫 ጥያቄው አልተሳካም። እባክዎ ስልክዎ ላይ የገባውን ትክክለኛ ሚሴጅ (SMS) ኮፒ አድርገው ይላኩ፡፡1" + result +
+      "🚫 ጥያቄው አልተሳካም። እባክዎ ስልክዎ ላይ የገባውን ትክክለኛ ሚሴጅ (SMS) ኮፒ አድርገው ይላኩ፡፡" + 
       "❓ለድጋፍ @betesebbingosupport ላይ ይፃፉልን",
     );
           break;
     
         case 2:
           await ctx.reply(
-      "🚫 ጥያቄው አልተሳካም። እባክዎ ስልክዎ ላይ የገባውን ትክክለኛ ሚሴጅ (SMS) ኮፒ አድርገው ይላኩ፡፡2" + result +
+      "🚫 ጥያቄው አልተሳካም። እባክዎ ስልክዎ ላይ የገባውን ትክክለኛ ሚሴጅ (SMS) ኮፒ አድርገው ይላኩ፡፡" + 
       "❓ለድጋፍ @betesebbingosupport ላይ ይፃፉልን",
     );
           break;
     
         default:
           await ctx.reply(
-      "🚫 ጥያቄው አልተሳካም። እባክዎ ስልክዎ ላይ የገባውን ትክክለኛ ሚሴጅ (SMS) ኮፒ አድርገው ይላኩ፡፡else" + result +
+      "🚫 ጥያቄው አልተሳካም። እባክዎ ስልክዎ ላይ የገባውን ትክክለኛ ሚሴጅ (SMS) ኮፒ አድርገው ይላኩ፡፡" + 
       "❓ለድጋፍ @betesebbingosupport ላይ ይፃፉልን",
     );
           break;
