@@ -1106,6 +1106,9 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       showToast(iWon?'🏆 You won! Your prize has been added to your account.':'Round finished — your balance was settled by the game server.','');
       // Re-read the user's actual Telegram/database account balance after the prize is processed.
       setTimeout(()=>refreshAccountBalance(),300);
+      setTimeout(()=>{
+  navGo('screenCards','navCards');
+},5000);
       break;
 
     case 'backToCardSelection':
