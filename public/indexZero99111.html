@@ -754,12 +754,10 @@ let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0;
 let myCardId2=null, myCardNumbers2=[], markedIndices2=new Set();
 let claimWindowOpen=false, claimBarAnim=null, prevLastCalled=null;
 let telegramId=null, isAdmin=false, adminToken='';
-// The Telegram/database account is the source of truth for the player's name and wallet.
-// These values are refreshed from /api/user/:telegramId after Telegram authentication
-// and after game settlement so the UI never creates an artificial initial balance.
-let lastKnownBalance=0;
-let balanceRefreshTimer=null;
-let accountLoaded=false;
+// Preserve the user's deposited/account balance so a stale game-end 0 cannot erase it.
+let preservedBalance=null;
+// Immutable snapshot of the user's initial deposited balance for this session.
+let initialDepositAmount=null;
 let cardPool=[];
 
 // ─── HELPERS ─────────────────────────────────────────────────
@@ -779,55 +777,43 @@ function numConfig(n){
 function colClass(n){if(n<=15)return 'cb';if(n<=30)return 'ci';if(n<=45)return 'cn';if(n<=60)return 'cg';return 'co';}
 function setBalance(amt){
   const parsed=parseFloat(amt);
-  if(!Number.isFinite(parsed) || parsed<0) return;
+  if(!Number.isFinite(parsed)) return;
   currentBalance=parsed;
-  lastKnownBalance=parsed;
+  if(parsed>0){
+    preservedBalance=parsed;
+    if(initialDepositAmount===null) initialDepositAmount=parsed;
+  }
   const f=`ETB ${currentBalance.toFixed(2)}`;
-  const balanceEl=document.getElementById('balanceEl');
-  const walletEl=document.getElementById('walletBalAmt');
-  if(balanceEl) balanceEl.innerText=f;
-  if(walletEl) walletEl.innerText=f;
+  document.getElementById('balanceEl').innerText=f;
+  document.getElementById('walletBalAmt').innerText=f;
 }
 
-// Load the player's authoritative account record from the Telegram-linked database.
-// The HTML cannot access the database directly; the server exposes the account through
-// /api/user/:telegramId. Name and balance are both taken from that response.
-async function refreshAccountProfile(retries=6, delayMs=500){
-  if(!telegramId) return false;
-  if(balanceRefreshTimer) clearTimeout(balanceRefreshTimer);
+// Refresh the balance from the account after a game ends.
+// Some game-end messages can contain a stale/zero balance before the
+// prize transaction has finished updating the account.
+async function refreshAccountBalance(retries=5){
+  if(!telegramId) return;
   for(let i=0;i<retries;i++){
     try{
-      const res=await fetch(`/api/user/${encodeURIComponent(telegramId)}?_=${Date.now()}`,{cache:'no-store'});
+      const res=await fetch(`/api/user/${telegramId}?_=${Date.now()}`);
       if(res.ok){
         const u=await res.json();
-        const balance=parseFloat(u?.balance);
-        const name=String(u?.name || u?.playerName || '').trim();
-        if(Number.isFinite(balance) && balance>=0){
-          setBalance(balance);
-        }
-        if(name){
-          myName=name;
-          const welcome=document.getElementById('welcomeName');
-          if(welcome) welcome.innerText=name;
-        }
-        if(Number.isFinite(balance) && balance>=0 && name){
-          accountLoaded=true;
-          return true;
-        }
-        if(Number.isFinite(balance) && balance>=0){
-          accountLoaded=true;
-          return true;
-        }
+        if(u && u.balance!==undefined && u.balance!==null){
+            const serverBalance=parseFloat(u.balance);
+            // Never erase a real deposited balance with a transient game-end 0.
+            if(serverBalance>0 || preservedBalance===null){
+              setBalance(serverBalance);
+              return;
+            }
+            if(preservedBalance!==null){
+              setBalance(preservedBalance);
+              return;
+            }
+          }
       }
     }catch(e){}
-    if(i<retries-1) await new Promise(resolve=>setTimeout(resolve,delayMs));
+    await new Promise(resolve=>setTimeout(resolve,500));
   }
-  return false;
-}
-
-// Refresh the authoritative account after game settlement.
-async function refreshAccountBalance(retries=6, delayMs=500){
-  return refreshAccountProfile(retries,delayMs);
 }
 function goScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');}
 function navGo(screen, navId){
@@ -888,15 +874,8 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       break;
 
     case 'authSuccess':
-  // Do not use `msg.balance || 0` as the player's initial deposit.
-  // The Telegram-linked database account is authoritative.
   myName=msg.playerName||'Player';
-  if(msg.balance!==undefined && msg.balance!==null && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
-    setBalance(msg.balance);
-  }
-  document.getElementById('welcomeName').innerText=myName||'Player';
-  // Immediately replace any websocket/auth snapshot with the database record.
-  refreshAccountProfile(6,300);
+  setBalance(msg.balance||0);
   isAdmin=msg.isAdmin||false;
   adminToken=telegramId||'';
   document.getElementById('welcomeName').innerText=myName||'Player';
@@ -932,12 +911,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
    case 'joinedRoom':
       localStorage.setItem('roomId', msg.roomId);
       myRoomId=msg.roomId; myStakeId=msg.stakeId; myCardId=null; myCardId2=null;
-      markedIndices=new Set([12]); markedIndices2=new Set([12]);
-      if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
-        setBalance(msg.balance);
-      }
-      // Room balance can be stale after a deposit/stake transaction; re-read the account.
-      refreshAccountProfile(4,300);
+      markedIndices=new Set([12]); markedIndices2=new Set([12]); setBalance(msg.balance);
       resetSlotUI();
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
       if(msg.status==='playing'){
@@ -1051,22 +1025,24 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       markedIndices=new Set([12]); markedIndices2=new Set([12]);
       claimWindowOpen=false;
       hideWinnerOverlay();
-      // Refresh the actual Telegram/database account after the round settles.
-      // A legitimate 0.00 balance is preserved because the API is authoritative.
-      if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
+      // Keep the displayed balance from being reset by a stale 0 value.
+      // Refresh it from the account after the round has settled.
+      if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>0){
         setBalance(msg.balance);
+      } else if(preservedBalance!==null){
+        setBalance(preservedBalance);
       }
-      setTimeout(()=>refreshAccountProfile(8,500),700);
+      setTimeout(()=>refreshAccountBalance(),300);
       resetTrackerBoard(); setBingoBtn('idle'); resetSlotUI();
       document.getElementById('cdCountdown').innerText='Waiting...';
       navGo('screenCards','navCards'); break;
 
     case 'balanceUpdate':
-      if(Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
+      if(Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>0){
         setBalance(msg.balance);
+      } else if(preservedBalance!==null){
+        setBalance(preservedBalance);
       }
-      // Periodically reconcile with the Telegram-linked database account.
-      if(telegramId) setTimeout(()=>refreshAccountProfile(3,300),100);
       break;
 
     case 'leftRoom': localStorage.removeItem('roomId'); myRoomId=null; myCardId=null; myCardId2=null; navGo('screenLobby','navHome'); break;
