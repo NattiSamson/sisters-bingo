@@ -160,30 +160,7 @@ if (process.env.DATABASE_URL) {
            JOIN users u ON u.id=wr.user_id ${where} ORDER BY wr.created_at DESC LIMIT 50`, params
         );
       },
-     async approveDepositttttttttttt(receipt) {
-const u = await this.q('SELECT count(id) FROM deposits WHERE reference=$1', receipt.receiptNo);
-		 await ctx.reply("already used receipt no \n\n");
-		if(u > 0)
-		{
-   await ctx.reply("already used receipt no \n\n");
-		  return false;
-		}
-	u = await this.q('SELECT count(id) FROM payment_accounts WHERE IsActive = TRUE && RIGHT(account_number,4) = RIGHT($1,4)', receipt.creditedPartyAccountNo);
-		if(u > 0)
-		{
-		  await ctx.reply("invalid account number! \n\n");
-   return false;
-		}
-	u = await this.q('SELECT count(id) FROM payment_accounts WHERE IsActive = TRUE && account_name=$1', receipt.creditedPartyName);
-		if(u > 0)
-		{
-		  await ctx.reply("invalid account name! \n\n");
-   return false;
-		}
-		const amount = await this.q('SELECT amount FROM users WHERE telegram_id=$1', ctx.from.id);
-		u = await this.q('INSERT INTO deposits(user_id,payment_account_id,deposit_method_id,depositor_name,depositor_account,amount,amount_after,reference,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NOW()) RETURNING id', [user_id,1,1,creditedPartyName,receipt.creditedPartyAccountNo,receipt.settledAmount.replace(/[^0-9.]/g, ""),amount + receipt.settledAmount.replace(/[^0-9.]/g, ""),receipt.receiptNo]);
-		return true;
-      },
+     
       async approveWithdrawal(id) {
         const r = await this.q(
           `UPDATE withdrawal_requests SET status='approved',handled_at=NOW() WHERE id=$1 AND status='pending' RETURNING *`, [id]
