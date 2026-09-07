@@ -29,25 +29,25 @@ module.exports = {
 	  
 const { u }  = await pool.query('SELECT count(id) FROM deposits WHERE reference=$1', receipt.receiptNo);
 		 
-		if(u.count > 0)
+		if(u.rows[0].count > 0)
 		{
   
 		  return 1;
 		}
-{ u } = await pool.query('SELECT count(id) FROM payment_accounts WHERE IsActive = TRUE AND RIGHT(account_number,4) = RIGHT($1,4)', receipt.creditedPartyAccountNo);
-		if(u.count > 0)
+const { u2 } = await pool.query('SELECT count(id) FROM payment_accounts WHERE IsActive = TRUE AND RIGHT(account_number,4) = RIGHT($1,4)', receipt.creditedPartyAccountNo);
+		if(u2.rows[0].count > 0)
 		{
 		  
    return 2;
 		}
-	{ u } = await pool.query('SELECT count(id) FROM payment_accounts WHERE IsActive = TRUE AND account_name=$1', receipt.creditedPartyName);
-		if(u.count > 0)
+	const { u3 } = await pool.query('SELECT count(id) FROM payment_accounts WHERE IsActive = TRUE AND account_name=$1', receipt.creditedPartyName);
+		if(u.rows[0].count > 0)
 		{
 		 
    return 3;
 		}
 		const {rows} = await pool.query('SELECT amount FROM users WHERE telegram_id=$1', id);
-		{ u } = await pool.query('INSERT INTO deposits(user_id,payment_account_id,deposit_method_id,depositor_name,depositor_account,amount,amount_after,reference,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NOW()) RETURNING id', [user_id,1,1,creditedPartyName,receipt.creditedPartyAccountNo,receipt.settledAmount.replace(/[^0-9.]/g, ""),rows[0].amount + receipt.settledAmount.replace(/[^0-9.]/g, ""),receipt.receiptNo]);
+		const { u4 } = await pool.query('INSERT INTO deposits(user_id,payment_account_id,deposit_method_id,depositor_name,depositor_account,amount,amount_after,reference,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NOW()) RETURNING id', [user_id,1,1,creditedPartyName,receipt.creditedPartyAccountNo,receipt.settledAmount.replace(/[^0-9.]/g, ""),rows.rows[0].amount + receipt.settledAmount.replace(/[^0-9.]/g, ""),receipt.receiptNo]);
 		return true;
       },
 
