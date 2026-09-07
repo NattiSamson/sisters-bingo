@@ -93,10 +93,11 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .bh-b{background:var(--b);color:#fff}.bh-i{background:var(--i);color:#fff}.bh-n{background:var(--n);color:#fff}.bh-g{background:var(--g);color:#fff}.bh-o{background:var(--o);color:#fff}
 .bingo-body{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
 .bingo-cell{display:flex;align-items:center;justify-content:center;height:48px;background:#fff;font-size:15px;font-weight:700;color:#1a0a2e;border-radius:6px;cursor:default;user-select:none;transition:background .1s,color .1s,transform .1s}
+
 .bingo-cell.marked{background:var(--purple)!important;color:#fff!important}
 .bingo-cell.called-not-marked{background:#fff8dc!important;color:#8b6914!important}
 .bingo-cell.free{background:var(--purple)!important;color:#fff!important;cursor:default}
-.bingo-btn{display:none;align-items:center;justify-content:center;gap:8px;width:100%;background:#271447;border:1px solid #3d226b;color:var(--gray);font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;padding:14px;border-radius:12px;cursor:pointer;margin-top:14px;transition:all .2s}
+.bingo-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:#271447;border:1px solid #3d226b;color:var(--gray);font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;padding:14px;border-radius:12px;cursor:pointer;margin-top:14px;transition:all .2s}
 .bingo-btn.ready{animation:flashPulse .7s infinite alternate;background:var(--green)!important;color:#fff!important;border-color:#fff!important;box-shadow:0 0 22px var(--green)}
 .bingo-btn.locked{background:#1a0a0a!important;color:#666!important;cursor:not-allowed;border-color:#333!important}
 @keyframes flashPulse{0%{transform:scale(1);filter:brightness(1)}100%{transform:scale(1.02);filter:brightness(1.25)}}
@@ -336,7 +337,6 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
       <div id="cardBody2" class="bingo-body"></div>
     </div>
   </div>
-  <button id="bingoBtn" class="bingo-btn" onclick="claimBingo()">🎉 BINGO!</button>
   <div class="tracker-wrap"><div id="trackerGrid" class="tracker-grid"></div></div>
 </div>
 
@@ -752,8 +752,8 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 let ws, myPlayerId, myName='', myRoomId=localStorage.getItem('roomId')||null, myStakeId=null;
 let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0;
 let myCardId2=null, myCardNumbers2=[], markedIndices2=new Set();
-// Numbers called by the server. Card cells are marked automatically from this set.
 let calledNumbersSet=new Set();
+let autoClaimSent=false;
 let claimWindowOpen=false, claimBarAnim=null, prevLastCalled=null;
 let telegramId=null, isAdmin=false, adminToken='';
 // The Telegram/database account is the source of truth for the player's name and wallet.
@@ -1006,7 +1006,6 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
         </div>`;
       document.getElementById('bingoBtn').style.display='none';
       resetTrackerBoard(); claimWindowOpen=false;
-      calledNumbersSet=new Set((msg.calledNumbers||[]).map(Number));
       if(msg.calledNumbers&&msg.calledNumbers.length){
         msg.calledNumbers.forEach(n=>{const el=document.getElementById('tb'+n);if(el)el.className='t-ball '+colClass(n);});
         prevLastCalled=msg.calledNumbers[msg.calledNumbers.length-1];
@@ -1024,16 +1023,22 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
     case 'gameStart':
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
       document.getElementById('playerCountVal').innerText=msg.players.length;
-      resetTrackerBoard(); calledNumbersSet.clear(); claimWindowOpen=false; setBingoBtn('idle');
+      resetTrackerBoard();
+      calledNumbersSet=new Set();
+      autoClaimSent=false;
+      markedIndices=new Set([12]);
+      markedIndices2=new Set([12]);
+      claimWindowOpen=false; setBingoBtn('idle');
       navGo('screenGame','navGame'); break;
 
     case 'reconnected':
       myRoomId=msg.roomId; myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
       myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
       markedIndices=new Set([12]); markedIndices2=new Set([12]);
+      calledNumbersSet=new Set((msg.calledNumbers||[]).map(Number));
+      autoClaimSent=false;
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
       document.getElementById('playerCountVal').innerText=msg.playerCount;
-      calledNumbersSet=new Set((msg.calledNumbers||[]).map(Number));
       msg.calledNumbers.forEach(n=>{const el=document.getElementById('tb'+n);if(el)el.className='t-ball '+colClass(n);});
       renderBothCards(); navGo('screenGame','navGame'); break;
 
@@ -1358,10 +1363,7 @@ async function loadPaymentInfo(){
 
 // ─── GAME: NUMBER CALLED ──────────────────────────────────────
 function onNumberCalled(msg){
-  const n=Number(msg.number), cfg=numConfig(n);
-  // Server is authoritative: once a number is called, every matching card cell
-  // is shaded automatically. Players cannot manually mark/unmark cells.
-  calledNumbersSet.add(n);
+  const n=msg.number, cfg=numConfig(n);
   const circle=document.getElementById('ballCircle');
   circle.style.background=cfg.color; circle.style.transform='scale(1.12)';
   setTimeout(()=>circle.style.transform='scale(1)',180);
@@ -1373,12 +1375,14 @@ function onNumberCalled(msg){
   if(tb) tb.className='t-ball '+cfg.cls+' latest';
   prevLastCalled=n;
 
+  // 🔊 Play the audio for this number
   playBallAudio(n);
 
-  refreshCardCells();
+  // The called number is the only source used to shade the player's card.
+  calledNumbersSet.add(Number(n));
   claimWindowOpen=true; setBingoBtn('ready'); startClaimBar(msg.claimWindowMs||4800);
+  refreshCardCells();
 }
-
 function startClaimBar(ms){
   const bar=document.getElementById('claimBar');
   if(claimBarAnim) clearTimeout(claimBarAnim);
@@ -1439,21 +1443,13 @@ function renderCard(nums, bodyId, prefix){
   const body=document.getElementById(bodyId||'cardBody'); body.innerHTML='';
   const pfx=prefix||'';
   nums.forEach((n,i)=>{
-    const cell=document.createElement('div');
-    cell.className='bingo-cell';
-    cell.id=pfx+'cell'+i;
-    if(i===12){
-      cell.classList.add('free','marked');
-      cell.innerText='FREE';
-    }else{
-      cell.innerText=n;
-      // No click handler: marking is controlled automatically by called numbers.
-    }
+    const cell=document.createElement('div'); cell.className='bingo-cell'; cell.id=pfx+'cell'+i;
+    if(i===12){cell.classList.add('free','marked');cell.innerText='FREE';}
+    else{cell.innerText=n;}
     body.appendChild(cell);
   });
   refreshCardCells();
 }
-
 function renderBothCards(){
   const wrap=document.getElementById('cardsWrap');
   const c2=document.getElementById('cardContainer2');
@@ -1471,9 +1467,19 @@ function renderBothCards(){
     renderCard(myCardNumbers,'cardBody','');
   }
 }
+function hasWinningPattern(ms){
+  const patterns = [
+    [0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],
+    [0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],
+    [0,6,12,18,24],[4,8,12,16,20],[0,4,20,24]
+  ];
+  return patterns.some(pattern => pattern.every(i => i===12 || ms.has(i)));
+}
 
 function refreshCardCells(){
-  const refreshOne=(nums,pfx)=>{
+  const called = calledNumbersSet || new Set();
+
+  const refreshOne=(nums,ms,pfx)=>{
     if(!nums.length) return;
     nums.forEach((n,i)=>{
       const cell=document.getElementById(pfx+'cell'+i);
@@ -1482,19 +1488,34 @@ function refreshCardCells(){
         cell.classList.add('free','marked');
         return;
       }
-      // Shade only when this exact card number has been called by the server.
-      cell.classList.toggle('marked', calledNumbersSet.has(Number(n)));
+      const isCalled = called.has(Number(n));
+      if(isCalled){
+        ms.add(i);
+        cell.classList.add('marked');
+      }else{
+        ms.delete(i);
+        cell.classList.remove('marked');
+      }
     });
   };
 
-  refreshOne(myCardNumbers,'');
-  if(myCardId2) refreshOne(myCardNumbers2,'b2_');
+  refreshOne(myCardNumbers,markedIndices,'');
+  if(myCardId2) refreshOne(myCardNumbers2,markedIndices2,'b2_');
 
-  // Keep the marked-index sets synchronized for the existing Bingo claim protocol.
-  markedIndices=new Set([12]);
-  myCardNumbers.forEach((n,i)=>{if(i!==12 && calledNumbersSet.has(Number(n))) markedIndices.add(i);});
-  markedIndices2=new Set([12]);
-  myCardNumbers2.forEach((n,i)=>{if(i!==12 && calledNumbersSet.has(Number(n))) markedIndices2.add(i);});
+  // Bingo is detected from the automatically marked cells.
+  if(!autoClaimSent && (hasWinningPattern(markedIndices) ||
+                         (myCardId2 && hasWinningPattern(markedIndices2)))){
+    autoClaimSent=true;
+    if(myCardId){
+      wsSend({
+        type:'claimBingo',
+        cardId:myCardId,
+        markedIndices:Array.from(markedIndices),
+        cardId2:myCardId2||null,
+        markedIndices2:myCardId2?Array.from(markedIndices2):null
+      });
+    }
+  }
 }
 
 // ─── SLOT UI (card selection indicators) ──────────────────────
@@ -1617,9 +1638,9 @@ function buildTracker(){
   }
 }
 function resetTrackerBoard(){
+  calledNumbersSet=new Set();
+  autoClaimSent=false;
   for(let i=1;i<=75;i++){const el=document.getElementById('tb'+i);if(el)el.className='t-ball';}
-  calledNumbersSet.clear();
-  markedIndices=new Set([12]); markedIndices2=new Set([12]);
   prevLastCalled=null;
   const bar=document.getElementById('claimBar'); bar.style.transition='none'; bar.style.width='100%'; bar.className='claim-bar';
   const c=document.getElementById('ballCircle'); c.style.background='var(--card)';
