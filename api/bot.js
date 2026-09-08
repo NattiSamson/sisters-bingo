@@ -273,7 +273,19 @@ async function showDeposit(ctx) {
       "Please /start to register first."
     );
   }
-
+  const accounts = await db.getPaymentMethods();
+  const buttons = accounts.map(account => [
+  {
+    text: `📱 ${account.amharic_name}`,
+    callback_data: `payment_${account.id}`
+  }
+]);	// Add cancel button at the end
+buttons.push([
+  {
+    text: "❌ ሰርዝ",
+    callback_data: "canceldeposit"
+  }
+]);
   await ctx.reply(
     "❇️ ብር ማስገባት የሚችሉት አሁን በተቀመጠዉ የTelebirr አካዉንት ብቻ ነዉ።\n\n" +
     "🚫 ከዚህ ዉጭ የላከ አናስተናግድም 🚫\n\n" +
@@ -281,20 +293,7 @@ async function showDeposit(ctx) {
     {
       parse_mode: "Markdown",
       reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: "📱 Telebirr",
-              callback_data: "telebirr",
-            },
-          ],
-          [
-            {
-              text: "Cancel ❌",
-              callback_data: "canceldeposit",
-            },
-          ],
-        ],
+        inline_keyboard: buttons
       },
     }
   );
