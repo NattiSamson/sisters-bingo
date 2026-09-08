@@ -600,11 +600,11 @@ bot.on("message:text", async (ctx, next) => {
       );
 
 
-      if (result2 == 4) {
+      if (result2 > 0) {
 
         await ctx.reply(
           "✅ *የገቢ ጥያቄዎ ተሳክቷል!*\n\n" +
-          "💰 ገንዘቡ ወደ ሂሳብዎ ተጨምሯል።",
+          "💰 " + result2 + " ብር ገንዘቡ ወደ ሂሳብዎ ተጨምሯል።",
           {
             parse_mode: "Markdown",
           }
