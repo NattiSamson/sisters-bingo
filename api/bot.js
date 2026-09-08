@@ -509,7 +509,7 @@ bot.callbackQuery(
         try {
           await ctx.api.deleteMessage(
             ctx.chat.id,
-            msg.message_id
+            dmsg.message_id
           );
         } catch (err) {
           console.error("Could not delete message:", err);
