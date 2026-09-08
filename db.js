@@ -32,8 +32,8 @@ module.exports = {
       pa.name,
       pa.amharic_name,
       pat.name AS type_name
-    FROM payment_accounts pa
-    JOIN payment_account_types pat
+    FROM payment_methods pa
+    JOIN payment_types pat
       ON pa.type_id = pat.id
     WHERE pa.is_active = TRUE
       AND pat.is_active = TRUE
