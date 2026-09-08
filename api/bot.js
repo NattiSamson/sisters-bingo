@@ -274,9 +274,11 @@ async function showDeposit(ctx) {
     );
   }
   const accounts = await db.getPaymentMethods();
+  
   const buttons = accounts.map(account => [
   {
-    text: `📱 ${account.amharic_name}`,
+
+    text: `${account.emoji} ${account.amharic_name}`,
     callback_data: `payment_${account.id}`
   }
 ]);	// Add cancel button at the end
