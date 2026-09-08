@@ -373,7 +373,7 @@ let meslast = "አማራጮች";
     mes += paymentmethodtypes[0].amharic_name;
   
   } else {
-    mes += some;
+    
     for (
       let i = 0;
       i < paymentmethodtypes.length - 1;
