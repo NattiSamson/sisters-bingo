@@ -437,9 +437,7 @@ bot.callbackQuery(
 
     // Answer Telegram immediately
     await answerCallback(ctx);
-  const telegramId = ctx.from.id;
 
-  clearPendingState(telegramId);
     const paymentMethodId =
       Number(ctx.match[1]);
 
