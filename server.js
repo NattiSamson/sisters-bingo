@@ -715,6 +715,17 @@ if(!ep&&msg.telegramId){
        case 'joinRoom':{
               const sc=STAKES.find(s=>s.id===msg.stakeId);
              if(!sc) return send(ws,{type:'error',message:'Invalid stake.'});
+
+             // Money games require a Telegram-linked Neon account. Never fall back
+             // to the in-memory balance (which starts at 0), otherwise a player can
+             // see a real wallet balance in the UI but get a misleading "Need 10 ETB".
+             if(!db || !client.telegramId){
+               return send(ws,{type:'error',message:'Account not authenticated. Please reopen the game from Telegram.'});
+             }
+             if(!(await refreshClientBalance(client))){
+               return send(ws,{type:'error',message:'Could not load your account balance. Please refresh and try again.'});
+             }
+
              await leaveRoom(client);
 
           // ── If a game for this stake is already in progress, join as a spectator ──
@@ -756,10 +767,13 @@ if(!ep&&msg.telegramId){
             // First card costs one stake only the first time. Re-selecting card 1
             // is free because that stake has already been paid.
             if(!p.hasPaid){
-              await refreshClientBalance(client);
+              if(!(await refreshClientBalance(client))){
+                return send(ws,{type:'error',message:'Could not load your account balance. Please refresh and try again.'});
+              }
+              const currentBalance=Number(client.balance)||0;
               const newBal=await changeClientBalance(client,-room.stake,'stake',room.roomId);
               if(newBal===null){
-                return send(ws,{type:'error',message:`Need ${room.stake} ETB. Please deposit.`});
+                return send(ws,{type:'error',message:`Insufficient balance. You have ${currentBalance.toFixed(2)} ETB; ${room.stake} ETB is required.`});
               }
               p.hasPaid=true;
               send(ws,{type:'balanceUpdate',balance:newBal});
@@ -775,10 +789,13 @@ if(!ep&&msg.telegramId){
               return send(ws,{type:'error',message:'Select your first card before choosing a second card.'});
             }
             if(!p.cardId2){
-              await refreshClientBalance(client);
+              if(!(await refreshClientBalance(client))){
+                return send(ws,{type:'error',message:'Could not load your account balance. Please refresh and try again.'});
+              }
+              const currentBalance=Number(client.balance)||0;
               const newBal=await changeClientBalance(client,-room.stake,'stake',room.roomId);
               if(newBal===null){
-                return send(ws,{type:'error',message:`Need ${room.stake} ETB more for second card.`});
+                return send(ws,{type:'error',message:`Insufficient balance. You have ${currentBalance.toFixed(2)} ETB; ${room.stake} ETB more is required for the second card.`});
               }
               send(ws,{type:'balanceUpdate',balance:newBal});
             }else{
