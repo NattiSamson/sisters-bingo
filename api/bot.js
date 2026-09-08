@@ -547,8 +547,8 @@ bot.on("message:text", async (ctx, next) => {
 
   // Tell user immediately
   await ctx.reply(
-    "✅ የክፍያ መልዕክትዎ ደርሶናል።\n\n" +
-    "⏳ ክፍያዎ እየተረጋገጠ ነው።"
+    "✅⏳ የክፍያ መልዕክትዎ ደርሶናል። ክፍያዎ እየተረጋገጠ ነው። እባክዎ ትንሽ ይጠብቁ።" +
+    
   );
 
 
