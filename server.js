@@ -91,7 +91,7 @@ if (process.env.DATABASE_URL) {
         // debit atomically.  We return the real current balance on an
         // insufficient-funds failure instead of treating every failed UPDATE
         // as "Need 10 ETB".
-        const client = await this.pool.connect();
+        const client = await pool.connect();
         try {
           await client.query('BEGIN');
 
@@ -991,7 +991,10 @@ wss.on('connection',(ws)=>{
 
                 if(!p.hasPaid){
 
-                  await refreshClientBalance(client);
+                  const refreshed=await refreshClientBalance(client);
+                  if(!refreshed){
+                    return send(ws,{type:'error',message:'Could not read your Neon account balance. Please reconnect Telegram and try again.'});
+                  }
 
                   let newBal;
 
@@ -1053,7 +1056,10 @@ wss.on('connection',(ws)=>{
 
                 if(!p.cardId2){
 
-                  await refreshClientBalance(client);
+                  const refreshed=await refreshClientBalance(client);
+                  if(!refreshed){
+                    return send(ws,{type:'error',message:'Could not read your Neon account balance. Please reconnect Telegram and try again.'});
+                  }
 
                   let newBal;
 
