@@ -31,7 +31,8 @@ module.exports = {
       pa.id,
       pa.name,
       pa.amharic_name,
-      pt.name AS type_name
+      pt.name AS type_name,
+	  pt.amharic_name AS am_type_name
     FROM payment_methods pa
     JOIN payment_types pt
       ON pa.type_id = pt.id
