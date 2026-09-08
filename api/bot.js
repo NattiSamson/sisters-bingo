@@ -493,7 +493,7 @@ bot.callbackQuery(
         return;
       }
 
-        await ctx.editMessageText(
+        const dmsg = await ctx.editMessageText(
           "1. ከታች ባለው የቴሌብር አካውንት ብር ያስገቡ\n\n" +
 
           "📞 *Telebirr:* `" + paymentaccount.account_number + "`\n\n" + 
@@ -505,7 +505,16 @@ bot.callbackQuery(
             parse_mode: "Markdown",
           }
         );
-
+        setTimeout(async () => {
+        try {
+          await ctx.api.deleteMessage(
+            ctx.chat.id,
+            msg.message_id
+          );
+        } catch (err) {
+          console.error("Could not delete message:", err);
+        }
+        }, 5000);
         return;
       }
 
