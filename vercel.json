@@ -3,6 +3,10 @@
     "api/bot.js": {
       "memory": 1024,
       "maxDuration": 30
+    },
+    "api/user/[tid].js": {
+      "memory": 1024,
+      "maxDuration": 30
     }
   }
 }
