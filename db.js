@@ -31,12 +31,12 @@ module.exports = {
       pa.id,
       pa.name,
       pa.amharic_name,
-      pat.name AS type_name
+      pt.name AS type_name
     FROM payment_methods pa
-    JOIN payment_types pat
-      ON pa.type_id = pat.id
+    JOIN payment_types pt
+      ON pa.type_id = pt.id
     WHERE pa.is_active = TRUE
-      AND pat.is_active = TRUE
+      AND pt.is_active = TRUE
     ORDER BY pa.id
   `);
 
