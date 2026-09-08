@@ -50,6 +50,7 @@ module.exports = {
       AND pm.is_active = TRUE
       AND pt.is_active = TRUE
 	  AND pa.payment_method_id = $1
+	  AND pa.balance < pt.maximum_balance
 
     ORDER BY pa.balance ASC, RANDOM()
     LIMIT 1
