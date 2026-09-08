@@ -354,7 +354,7 @@ bot.on("message:text", async (ctx, next) => {
     delete pendingDeposit[telegramId];
 	}
 		else{
-			      await ctx.reply("unsuccessfull\n\n");
+			      await ctx.reply("unsuccessfull \n\n" + result2);
 		}
     
       
