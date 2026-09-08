@@ -361,7 +361,7 @@ let mes = "❇️ ብር ማስገባት የሚችሉት ቀጥሎ በተቀመ�
         ", ";
     }
     mes = mes.replace(/,\s*$/, "");
-    mes += " እና " +
+    mes += " እና የ" +
       paymentmethodtypes[
         paymentmethodtypes.length - 1
       ].amharic_name;
