@@ -355,10 +355,14 @@ let mes = "❇️ ብር ማስገባት የሚችሉት ቀጥሎ ";
 
   let some = "በተቀመጡት የ"
 let meslast = "አማራጮች";
+  if(paymentmethods.length === 1)
+    {
+      some = "በተቀመጠው የ";
+      mes += some;
+    }
   if (paymentmethodtypes.length === 1) {
     meslast = "አማራጭ";
-    some = "በተቀመጠው የ";
-    mes += some;
+    
     mes += paymentmethodtypes[0].amharic_name;
   
   } else {
