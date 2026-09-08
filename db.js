@@ -27,13 +27,21 @@ module.exports = {
 	
 	async getPaymentMethodTypes() {
   const { rows } = await pool.query(`
-    SELECT
-      pt.id,
-      pt.name,
-      pt.amharic_name,
-	  pt.emoji
-    FROM payment_types pt
-    ORDER BY pt.id
+SELECT
+    pt.id,
+    pt.name,
+	pt.amharic_name,
+	pt.emoji,
+    pt.is_active
+FROM payment_types pt
+WHERE pt.is_active = TRUE
+  AND EXISTS (
+    SELECT 1
+    FROM payment_methods pm
+    WHERE pm.type_id = pt.id
+      AND pm.is_active = TRUE
+  )
+ORDER BY pt.id;
   `);
 
   return rows;
