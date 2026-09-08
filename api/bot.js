@@ -332,40 +332,38 @@ async function showDeposit(ctx) {
     );
   }
 
-  const paymentmethods =
-    await db.getPaymentMethods();
+  const paymentmethods =  await db.getPaymentMethods();
+  const paymentmethodtypes = db.getPaymentMethodTypes();
+if (!paymentmethodtypes ||  paymentmethodtypes.length === 0 ) 
+{
+    return await ctx.reply("ይቅርታ! ለጊዜው የክፍያ መንገድ አልተዘጋጀም::" );
+}
+if (!paymentmethods || paymentmethods.length === 0) 
+{
+    return await ctx.reply("ይቅርታ! ለጊዜው የክፍያ መንገድ አልተዘጋጀም::");
+}
 
-  if (
-    !paymentmethods ||
-    paymentmethods.length === 0
-  ) {
-    return await ctx.reply(
-      "ይቅርታ! ለጊዜው የክፍያ መንገድ አልተዘጋጀም::"
-    );
-  }
+let mes = "❇️ ብር ማስገባት የሚችሉት ቀጥሎ በተቀመጡት የ";
 
-  let mes =
-    "❇️ ብር ማስገባት የሚችሉት ቀጥሎ በተቀመጡት የ";
+  if (paymentmethodtypes.length === 1) {
 
-  if (paymentmethods.length === 1) {
-
-    mes += paymentmethods[0].amharic_name;
+    mes += paymentmethodtypes[0].amharic_name;
 
   } else {
 
     for (
       let i = 0;
-      i < paymentmethods.length - 1;
+      i < paymentmethodtypes.length - 1;
       i++
     ) {
       mes +=
-        paymentmethods[i].amharic_name +
+        paymentmethodtypes[i].amharic_name +
         ", ";
     }
 
     mes +=
-      paymentmethods[
-        paymentmethods.length - 1
+      paymentmethodtypes[
+        paymentmethodtypes.length - 1
       ].amharic_name;
   }
 
