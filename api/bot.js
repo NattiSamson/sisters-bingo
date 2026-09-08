@@ -40,6 +40,9 @@ const pendingPhone = {};
 // in PostgreSQL instead of memory.
 const pendingDeposit = {};
 
+function clearPendingState(telegramId) {
+  delete pendingDeposit[telegramId];
+}
 
 // ─────────────────────────────────────────────────────────────
 // Safe callback answer
@@ -71,6 +74,7 @@ bot.command("start", async (ctx) => {
   const telegramId = ctx.from.id;
   const firstName = ctx.from.first_name || "Player";
 
+  clearPendingState(telegramId);
   try {
     const existing = await db.getUserByTelegramId(telegramId);
 
@@ -159,6 +163,8 @@ bot.command("start", async (ctx) => {
 bot.on("message:text", async (ctx, next) => {
   const telegramId = ctx.from.id;
   const text = ctx.message.text;
+
+  clearPendingState(telegramId);
 
   const pending = pendingPhone[telegramId];
 
@@ -314,6 +320,9 @@ bot.hears("💰 Balance", showBalance);
 
 bot.callbackQuery("balance", async (ctx) => {
   await answerCallback(ctx);
+    const telegramId = ctx.from.id;
+
+  clearPendingState(telegramId);
 
   await showBalance(ctx);
 });
@@ -408,6 +417,9 @@ bot.hears("deposit", showDeposit);
 bot.callbackQuery("deposit", async (ctx) => {
   // Answer FIRST
   await answerCallback(ctx);
+    const telegramId = ctx.from.id;
+
+  clearPendingState(telegramId);
 
   await showDeposit(ctx);
 });
@@ -426,7 +438,9 @@ bot.callbackQuery(
 
     // Answer Telegram immediately
     await answerCallback(ctx);
+  const telegramId = ctx.from.id;
 
+  clearPendingState(telegramId);
     const paymentMethodId =
       Number(ctx.match[1]);
 
@@ -687,8 +701,9 @@ bot.callbackQuery(
 
     await answerCallback(ctx);
 
-    // Cancel pending deposit state
-    delete pendingDeposit[ctx.from.id];
+  const telegramId = ctx.from.id;
+
+  clearPendingState(telegramId);
 
 
     try {
@@ -755,6 +770,9 @@ bot.hears(
 bot.callbackQuery(
   "support",
   async (ctx) => {
+  const telegramId = ctx.from.id;
+
+  clearPendingState(telegramId);
 
     await answerCallback(ctx);
 
@@ -820,7 +838,9 @@ bot.hears(
 bot.callbackQuery(
   "leaderboard",
   async (ctx) => {
+  const telegramId = ctx.from.id;
 
+  clearPendingState(telegramId);
     await answerCallback(ctx);
 
     await showLeaderboard(ctx);
