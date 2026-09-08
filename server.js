@@ -980,10 +980,15 @@ app.get('/api/leaderboard', async(req,res)=>{
   if(!db) return res.json([]);
   res.json(await db.getLeaderboard());
 });
-
 app.get('/api/user/:tid', async(req,res)=>{
-  const u=await loadUser(req.params.tid);
+  console.log("🔎 Balance request for Telegram ID:", req.params.tid);
+
+  const u = await loadUser(req.params.tid);
+
+  console.log("🗄️ User returned from Neon:", u);
+
   if(!u) return res.status(404).json({error:'Not found'});
+
   res.json(u);
 });
 
@@ -1165,11 +1170,3 @@ bot.on('contact', async msg => {
 }
 
 
-app.get('/api/user/:tid', async(req,res)=>{
-console.log("🔎 Balance request for Telegram ID:", req.params.tid);
-
-const u = await loadUser(req.params.tid);
-
-console.log("🗄️ User returned from Neon:", u);
-
-})
