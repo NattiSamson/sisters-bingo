@@ -604,7 +604,7 @@ bot.on("message:text", async (ctx, next) => {
 
         await ctx.reply(
           "✅ *የገቢ ጥያቄዎ ተሳክቷል!*\n\n" +
-          "💰 " + result2 + " ብር ገንዘቡ ወደ ሂሳብዎ ተጨምሯል።",
+          "💰 " + result2 + " ብር ወደ ሂሳብዎ ተጨምሯል።",
           {
             parse_mode: "Markdown",
           }
