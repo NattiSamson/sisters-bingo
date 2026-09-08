@@ -83,8 +83,8 @@ await pool.query(
     receipt.receiptNo
   ]
 );
-	  await this.q("UPDATE users SET balance=$1 WHERE telegram_id=$2", [amountAfter,id]);
-     await this.q("UPDATE payment_accounts SET balance=balance+$1 WHERE id=$2", [depositAmount,u2[0].id]);
+	  await this.query("UPDATE users SET balance=$1 WHERE telegram_id=$2", [amountAfter,id]);
+     await this.query("UPDATE payment_accounts SET balance=balance+$1 WHERE id=$2", [depositAmount,u2[0].id]);
 	  
 	  return 4;
       },
