@@ -358,10 +358,17 @@ let meslast = "አማራጮች";
   if(paymentmethods.length === 1)
     {
       some = "በተቀመጠው የ";
-      mes += some;
+      meslast = "አማራጭ";
+      
     }
+  else
+  {
+    some = "በተቀመጡት የ";
+      
+  }
+  mes += some;
   if (paymentmethodtypes.length === 1) {
-    meslast = "አማራጭ";
+    
     
     mes += paymentmethodtypes[0].amharic_name;
   
