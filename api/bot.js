@@ -352,11 +352,11 @@ if (!paymentmethods || paymentmethods.length === 0)
 }
 
 let mes = "❇️ ብር ማስገባት የሚችሉት ቀጥሎ በተቀመጡት ";
-
+let meslast = "አማራጮች";
   if (paymentmethodtypes.length === 1) {
 
     mes += paymentmethodtypes[0].amharic_name;
-
+   meslast = "አማራጭ";
   } else {
 
     for (
@@ -376,7 +376,7 @@ let mes = "❇️ ብር ማስገባት የሚችሉት ቀጥሎ በተቀመ�
   }
 
   mes +=
-    " ክፍያ አማራጮች ብቻ ነው።\n\n";
+    " የክፍያ " + meslast + " ብቻ ነው።\n\n";
 
   mes +=
     "🚫 ከዚህ ዉጭ የላከ አናስተናግድም 🚫\n\n";
@@ -492,9 +492,9 @@ bot.callbackQuery(
       }
 const messageId = ctx.callbackQuery.message.message_id;
         await ctx.editMessageText(
-          "1. ከታች ባለው የቴሌብር አካውንት ብር ያስገቡ\n\n" +
+          "1. ከታች ባለው የ" + paymentMethod.amharic_name + " አካውንት ብር ያስገቡ\n\n" +
 
-          "📞 *Telebirr:* `" + paymentaccount.account_number + "`\n\n" + 
+          "📞 *" + paymentMethod.name + ":* `" + paymentaccount.account_number + "`\n\n" + 
 
           "2. የከፈሉበትን አጭር የጹሁፍ መልዕክት (SMS) " +
           "copy በማድረግ እዚህ ላይ Paste አድርገው " +
