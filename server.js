@@ -585,13 +585,18 @@ async function endGame(room, winners, customMsg, noWinner){
     isSplit?`🤝 Split! ${winnerNames.join(' & ')} each win ${winAmount} ETB!`
            :`🏆 ${winnerNames[0]} wins ${winAmount} ETB!`);
 
-  broadcast(room,{type:'gameOver',winners:winnerNames,winnerTelegramIds:winnerTids,winAmount,isSplit,message:msg,noWinner:!!noWinner});
+  // Broadcast the result to EVERY connected player in the room. Each client
+  // displays the same winner message/overlay before the room is reset.
+  broadcast(room,{type:'gameOver',winners:winnerNames,winAmount,isSplit,message:msg,noWinner:!!noWinner,winnerTelegramIds:winnerTids});
 
   setTimeout(()=>{
     if(!rooms[room.roomId]) return;
     room.status='waiting'; room.calledNumbers=[]; room.availableNumbers=Array.from({length:75},(_,i)=>i+1);
     room.pot=0; room.takenCardIds=new Set(); room.claimedThisRound=[]; room.claimWindowOpen=false; room.dbGameId=null;
-    room.players.forEach(p=>{p.cardId=null;p.cardId2=null;p.hasPaid=false;p.disqualified=false;});
+    room.callTimer=null; room.claimEvalTimer=null;
+    room.players.forEach(p=>{
+      p.cardId=null; p.cardId2=null; p.hasPaid=false; p.disqualified=false;
+    });
     room.players.forEach(p=>{
       const cl=clients[p.playerId];
       send(p.ws,{type:'backToCardSelection',roomId:room.roomId,stakeId:room.stakeId,balance:cl?cl.balance:0});
@@ -713,18 +718,28 @@ if(!ep&&msg.telegramId){
   break;
 }
        case 'joinRoom':{
-              // Joining/navigating to the card page must never depend on a DB round-trip.
-              // Carry the Telegram id with the request so the server can authenticate lazily
-              // when the player actually selects a paid card.
-              if(!client.telegramId && msg.telegramId){
-                client.telegramId=String(msg.telegramId).trim();
-                try{
-                  const u=await loadUser(client.telegramId);
-                  if(u){ client.playerName=u.name||client.playerName; client.balance=parseFloat(u.balance)||0; client.isAdmin=u.isAdmin||false; }
-                }catch(e){ console.error('joinRoom account lookup:',e.message); }
-              }
               const sc=STAKES.find(s=>s.id===msg.stakeId);
              if(!sc) return send(ws,{type:'error',message:'Invalid stake.'});
+
+             // Joining/navigating to page 2 must never be blocked by a database
+             // availability check. The wallet is validated only when a paid card
+             // is selected. Accept the Telegram ID here so the server can use it
+             // for that later validation even if telegramAuth arrived slightly late.
+             if(!client.telegramId && msg.telegramId){
+               const tid=String(msg.telegramId).trim();
+               if(tid){
+                 client.telegramId=tid;
+                 try{
+                   const u=await loadUser(tid);
+                   if(u){
+                     client.playerName=u.name||client.playerName;
+                     client.balance=parseFloat(u.balance)||0;
+                     client.isAdmin=u.isAdmin||isAdminPhone(u.phone);
+                   }
+                 }catch(e){ console.error('joinRoom account lookup:',e.message); }
+               }
+             }
+
              await leaveRoom(client);
 
           // ── If a game for this stake is already in progress, join as a spectator ──
@@ -766,9 +781,7 @@ if(!ep&&msg.telegramId){
             // First card costs one stake only the first time. Re-selecting card 1
             // is free because that stake has already been paid.
             if(!p.hasPaid){
-              if(db && client.telegramId){
-                if(!(await refreshClientBalance(client))) return send(ws,{type:'error',message:'Your Telegram account could not be loaded. Please reopen the game from Telegram.'});
-              }
+              await refreshClientBalance(client);
               const newBal=await changeClientBalance(client,-room.stake,'stake',room.roomId);
               if(newBal===null){
                 return send(ws,{type:'error',message:`Need ${room.stake} ETB. Please deposit.`});
@@ -787,9 +800,7 @@ if(!ep&&msg.telegramId){
               return send(ws,{type:'error',message:'Select your first card before choosing a second card.'});
             }
             if(!p.cardId2){
-              if(db && client.telegramId){
-                if(!(await refreshClientBalance(client))) return send(ws,{type:'error',message:'Your Telegram account could not be loaded. Please reopen the game from Telegram.'});
-              }
+              await refreshClientBalance(client);
               const newBal=await changeClientBalance(client,-room.stake,'stake',room.roomId);
               if(newBal===null){
                 return send(ws,{type:'error',message:`Need ${room.stake} ETB more for second card.`});
