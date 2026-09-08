@@ -54,7 +54,9 @@ module.exports = {
     ORDER BY pa.balance ASC, RANDOM()
     LIMIT 1
     `, [paymentMethodId]);
+		return rows[0] || null;
 	},
+	
 	async getPaymentMethodTypes() {
   const { rows } = await pool.query(`
 SELECT
