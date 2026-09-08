@@ -85,6 +85,7 @@ await pool.query(
     receipt.receiptNo
   ]
 );
+	  await this.q("UPDATE users SET balance=$1 WHERE telegram_id=$2", [amountAfter,id]);
 	  return 4;
       },
 
