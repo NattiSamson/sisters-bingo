@@ -275,7 +275,7 @@ async function showDeposit(ctx) {
   }
   const mes = "";
   const paymentmethods = await db.getPaymentMethods();
-  const paymentmethodtypes = getPaymentMethodTypes();
+  const paymentmethodtypes = db.getPaymentMethodTypes();
   if(paymentmethodtypes.length === 0)
   {
 	  mes = "ይቅርታ! ለጊዜው የክፍያ መንገድ አልተዘጋጀም::"
