@@ -79,14 +79,38 @@ if (process.env.DATABASE_URL) {
       async adjustBalance(tid, delta) {
         const amount = Number(delta);
         if(!Number.isFinite(amount)) throw new Error('Invalid balance adjustment');
+
+        const rows = await this.q(
+          `SELECT balance FROM users WHERE telegram_id=$1 LIMIT 1`,
+          [String(tid)]
+        );
+        if(!rows[0]){
+          const err=new Error('Account not found');
+          err.code='ACCOUNT_NOT_FOUND';
+          throw err;
+        }
+
+        const current=parseFloat(rows[0].balance)||0;
+        if(current + amount < 0){
+          const err=new Error('Insufficient balance');
+          err.code='INSUFFICIENT_BALANCE';
+          err.balance=current;
+          throw err;
+        }
+
         const r = await this.q(
           `UPDATE users
            SET balance = balance + $2
-           WHERE telegram_id=$1 AND balance + $2 >= 0
+           WHERE telegram_id=$1
            RETURNING balance`,
           [String(tid), amount]
         );
-        return r[0] ? parseFloat(r[0].balance) : null;
+        if(!r[0]){
+          const err=new Error('Account not found');
+          err.code='ACCOUNT_NOT_FOUND';
+          throw err;
+        }
+        return parseFloat(r[0].balance);
       },
       async logTx(tid, type, amount, balAfter, ref) {
         await this.q(
@@ -273,7 +297,7 @@ const TOTAL_CARDS      = 400;
 const STAKES = [
   { id:'st10', amount:10, maxPlayers:400 },
   { id:'st20', amount:20, maxPlayers:400 },
-  { id:'st50', amount:100, maxPlayers:400 },
+  { id:'st50', amount:50, maxPlayers:400 },
   { id:'st100', amount:100, maxPlayers:400 },
 ];
 
@@ -346,33 +370,44 @@ async function refreshClientBalance(client){
 // Positive delta = credit/refund; negative delta = charge.
 async function changeClientBalance(client, delta, txType, ref){
   const amount=Number(delta);
-  if(!client || !Number.isFinite(amount)) return null;
+  if(!client || !Number.isFinite(amount)){
+    if(client) client._balanceError='INVALID';
+    return null;
+  }
+
+  client._balanceError=null;
+
   if(db && client.telegramId){
     try{
       const newBal=await db.adjustBalance(String(client.telegramId),amount);
-      if(newBal===null) return null;
       client.balance=newBal;
       if(userCache[client.telegramId]) userCache[client.telegramId].balance=newBal;
       if(txType){
-        try{await db.logTx(String(client.telegramId),txType,amount,newBal,ref||'');}
-        catch(e){console.error('logTx:',e.message);}
+        try{
+          await db.logTx(String(client.telegramId),txType,amount,newBal,ref||'');
+        }catch(e){
+          // Balance is already committed; a log failure must not report a
+          // successful charge as a failed balance operation.
+          console.error('logTx:',e.message);
+        }
       }
       return newBal;
     }catch(e){
+      client._balanceError=e.code||'DB_ERROR';
+      if(Number.isFinite(e.balance)) client.balance=e.balance;
       console.error('changeClientBalance:',e.message);
       return null;
     }
   }
-  const next=(Number(client.balance)||0)+amount;
-  if(next<0) return null;
+
+  const current=Number(client.balance)||0;
+  const next=current+amount;
+  if(next<0){
+    client._balanceError='INSUFFICIENT_BALANCE';
+    return null;
+  }
   client.balance=next;
   return next;
-}
-
-async function saveBalance(tid, bal) {
-  // Kept for non-game compatibility. Game money paths use changeClientBalance().
-  if(userCache[tid]) userCache[tid].balance=bal;
-  if(db&&tid){try{await db.setBalance(tid,bal);}catch(e){console.error('saveBalance:',e.message);}}
 }
 
 // ─── ROOM HELPERS ────────────────────────────────────────────
@@ -784,7 +819,13 @@ if(!ep&&msg.telegramId){
               await refreshClientBalance(client);
               const newBal=await changeClientBalance(client,-room.stake,'stake',room.roomId);
               if(newBal===null){
-                return send(ws,{type:'error',message:`Need ${room.stake} ETB. Please deposit.`});
+                if(client._balanceError==='INSUFFICIENT_BALANCE'){
+                  return send(ws,{type:'error',message:`Insufficient balance. You have ${(Number(client.balance)||0).toFixed(2)} ETB; ${room.stake} ETB is required.`});
+                }
+                if(client._balanceError==='ACCOUNT_NOT_FOUND'){
+                  return send(ws,{type:'error',message:'Your account could not be found. Please reconnect Telegram and try again.'});
+                }
+                return send(ws,{type:'error',message:'Unable to verify your balance right now. Please try again.'});
               }
               p.hasPaid=true;
               send(ws,{type:'balanceUpdate',balance:newBal});
@@ -803,7 +844,13 @@ if(!ep&&msg.telegramId){
               await refreshClientBalance(client);
               const newBal=await changeClientBalance(client,-room.stake,'stake',room.roomId);
               if(newBal===null){
-                return send(ws,{type:'error',message:`Need ${room.stake} ETB more for second card.`});
+                if(client._balanceError==='INSUFFICIENT_BALANCE'){
+                  return send(ws,{type:'error',message:`Insufficient balance. You have ${(Number(client.balance)||0).toFixed(2)} ETB; ${room.stake} ETB is required for the second card.`});
+                }
+                if(client._balanceError==='ACCOUNT_NOT_FOUND'){
+                  return send(ws,{type:'error',message:'Your account could not be found. Please reconnect Telegram and try again.'});
+                }
+                return send(ws,{type:'error',message:'Unable to verify your balance right now. Please try again.'});
               }
               send(ws,{type:'balanceUpdate',balance:newBal});
             }else{
