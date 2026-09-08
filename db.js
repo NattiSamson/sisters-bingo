@@ -31,8 +31,10 @@ module.exports = {
       pa.id,
       pa.name,
       pa.amharic_name,
+	  pa.emoji,
       pt.name AS type_name,
-	  pt.amharic_name AS am_type_name
+	  pt.amharic_name AS am_type_name,
+	  pt.emoji AS type_emoji
     FROM payment_methods pa
     JOIN payment_types pt
       ON pa.type_id = pt.id
