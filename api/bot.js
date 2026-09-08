@@ -164,7 +164,6 @@ bot.on("message:text", async (ctx, next) => {
   const telegramId = ctx.from.id;
   const text = ctx.message.text;
 
-  clearPendingState(telegramId);
 
   const pending = pendingPhone[telegramId];
 
