@@ -15,6 +15,9 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bottom:80px;overflow-x:hidden}
 
+/* mama love */
+
+
 /* NAVBAR */
 .navbar{display:flex;align-items:center;justify-content:space-between;background:var(--panel);padding:14px 16px;border-bottom:2px solid #2d174d;position:sticky;top:0;z-index:100}
 .brand{font-family:'Orbitron',sans-serif;font-weight:900;color:var(--gold);font-size:18px;display:flex;align-items:center;gap:8px}
@@ -265,7 +268,6 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div style="display:flex;align-items:center;gap:10px">
     <button class="sound-btn" id="soundBtn" onclick="toggleSound()" title="Toggle sound">🔊</button>
     <div class="balance-pill" id="balanceEl" onclick="goToWallet()">ETB 0.00</div>
-    <button onclick="refreshAccountProfile()">🔄 Refresh Account</button>
   </div>
 </div>
 
@@ -768,7 +770,6 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   </div>
 </div>
 
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
 // ─── STATE ────────────────────────────────────────────────────
   const ADMIN_PHONE_CLIENT = '251965666656';
@@ -790,45 +791,12 @@ let accountLoaded=false;
 let cardPool=[];
 
 // ─── HELPERS ─────────────────────────────────────────────────
-function initTelegramWebApp(){
-  try{
-    if(window.Telegram && Telegram.WebApp){
-      Telegram.WebApp.ready();
-      if(typeof Telegram.WebApp.expand==='function') Telegram.WebApp.expand();
-      console.log('📱 Telegram WebApp detected');
-      console.log('📱 Telegram initDataUnsafe:', Telegram.WebApp.initDataUnsafe);
-      console.log('👤 Telegram user:', Telegram.WebApp.initDataUnsafe?.user || null);
-    }else{
-      console.log('🌐 Normal browser mode — Telegram WebApp not detected');
-    }
-  }catch(e){
-    console.warn('⚠️ Telegram WebApp initialization failed:', e);
-  }
-}
-
 function getTelegramId(){
-  // Primary source: the real Telegram WebApp user ID.
-  try{
-    const tg=window.Telegram?.WebApp;
-    const tgUser=tg?.initDataUnsafe?.user;
-    if(tgUser?.id){
-      const id=String(tgUser.id);
-      console.log('✅ Telegram ID detected from WebApp:', id);
-      return id;
-    }
-  }catch(e){
-    console.warn('⚠️ Could not read Telegram WebApp user:', e);
-  }
-
-  // Fallback for testing/existing bot links that provide ?tid=.
+  // Prefer the bot-provided ?tid value used by the existing integration.
   const p=new URLSearchParams(location.search);
-  const tid=(p.get('tid')||'').trim();
-  if(tid){
-    console.log('✅ Telegram ID detected from URL:', tid);
-    return tid;
-  }
-
-  console.warn('❌ No Telegram ID detected. Open the game from the Telegram bot or use ?tid= for testing.');
+  if(p.get('tid')) return p.get('tid');
+  // Fallback to the real Telegram WebApp user ID when opened inside Telegram.
+  try{if(window.Telegram&&Telegram.WebApp&&Telegram.WebApp.initDataUnsafe){const u=Telegram.WebApp.initDataUnsafe.user;if(u&&u.id)return String(u.id);}}catch(e){}
   return null;
 }
 function numConfig(n){
@@ -844,6 +812,9 @@ function setBalance(amt){
   if(!Number.isFinite(parsed) || parsed<0) return;
   currentBalance=parsed;
   lastKnownBalance=parsed;
+  // Keep the last known display value across screen navigation/reloads.
+  // The server/database remains authoritative; this is only a UI fallback.
+  try{localStorage.setItem('melaBingoBalance',String(parsed));}catch(e){}
   const f=`ETB ${currentBalance.toFixed(2)}`;
   const balanceEl=document.getElementById('balanceEl');
   const walletEl=document.getElementById('walletBalAmt');
@@ -851,13 +822,17 @@ function setBalance(amt){
   if(walletEl) walletEl.innerText=f;
 }
 
+function restoreCachedBalance(){
+  try{
+    const cached=parseFloat(localStorage.getItem('melaBingoBalance'));
+    if(Number.isFinite(cached) && cached>=0) setBalance(cached);
+  }catch(e){}
+}
+
 // Load the player's authoritative account record from the Telegram-linked database.
 // The HTML cannot access the database directly; the server exposes the account through
 // /api/user/:telegramId. Name and balance are both taken from that response.
 async function refreshAccountProfile(retries=6, delayMs=500){
-  console.log("telegram id"  , telegramId);
-  console.log("user of current",telebirrName);
-  console.log("tele  number",telebirrNumber);
   if(!telegramId) return false;
   if(balanceRefreshTimer) clearTimeout(balanceRefreshTimer);
   for(let i=0;i<retries;i++){
@@ -899,6 +874,21 @@ function navGo(screen, navId){
   goScreen(screen);
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById(navId)?.classList.add('active');
+
+  // Re-apply the known balance after the new screen becomes visible so a
+  // screen's default "ETB 0.00" never overwrites the real displayed balance.
+  if(Number.isFinite(currentBalance) && currentBalance>=0){
+    requestAnimationFrame(()=>setBalance(currentBalance));
+  }else{
+    restoreCachedBalance();
+  }
+
+  // Reconcile with Neon after navigation. This updates the UI only when the
+  // authoritative account endpoint returns a valid balance.
+  if(telegramId){
+    refreshAccountProfile(3,300);
+  }
+
   if(screen==='screenAdmin') adminLoadDeposits();
 }
 function goToGame(){
@@ -941,18 +931,6 @@ function handle(msg){
       // Do not reset the displayed/deposited balance to 0 while authenticating.
       if(msg.stakes) renderStakes(msg.stakes);
       telegramId=getTelegramId();
-      // Telegram normally exposes initDataUnsafe immediately, but retry once if the
-      // WebApp context is still initializing. This does not affect ?tid= fallback.
-      if(!telegramId){
-        setTimeout(()=>{
-          const detected=getTelegramId();
-          if(detected && !telegramId){
-            telegramId=detected;
-            document.getElementById('loadingText').innerText='Loading your account...';
-            wsSend({type:'telegramAuth',telegramId:parseInt(telegramId,10)});
-          }
-        },300);
-      }
       const pageParam = new URLSearchParams(location.search).get('page');
 if(pageParam === 'deposit') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('deposit'); }, 1500);
 if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('withdraw'); }, 1500);
@@ -969,15 +947,13 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
   // account and sends the real account balance in this message.
   // Use that WebSocket balance as the PRIMARY initial wallet value.
   myName=msg.playerName||'Player';
-  const authBalance=parseFloat(msg.balance);
-  if(Number.isFinite(authBalance) && authBalance>=0){
-    setBalance(authBalance);
-    accountLoaded=true;
-  }else if(telegramId){
-    // HTTP account lookup is only a fallback when auth did not include balance.
-    refreshAccountProfile(6,300);
+  if(msg.balance!==undefined && msg.balance!==null && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
+    setBalance(msg.balance);
   }
   document.getElementById('welcomeName').innerText=myName||'Player';
+  // Immediately replace any websocket/auth snapshot with the Telegram/database account record.
+  refreshAccountProfile(6,300);
+
   isAdmin=msg.isAdmin||false;
   adminToken=telegramId||'';
   document.getElementById('welcomeName').innerText=myName||'Player';
@@ -1015,14 +991,11 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       myRoomId=msg.roomId; myStakeId=msg.stakeId; myCardId=null; myCardId2=null;
       resetAutomaticGameState();
       activePlayers=[]; updateActivePlayers(msg.players||msg.activePlayers||[]);
-      const roomBalance=parseFloat(msg.balance);
-      if(Number.isFinite(roomBalance) && roomBalance>=0){
-        // Keep the balance returned by the Telegram-authenticated game server.
-        setBalance(roomBalance);
-        accountLoaded=true;
-      }else if(telegramId){
-        refreshAccountProfile(4,300);
+      if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
+        setBalance(msg.balance);
       }
+      // Room balance can be stale after a deposit/stake transaction; re-read the Telegram/database account.
+      refreshAccountProfile(4,300);
       resetSlotUI();
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
       if(msg.status==='playing'){
@@ -1141,28 +1114,8 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
                  winnerList.includes(String(myPlayerId)) ||
                  (msg.winnerTelegramId && String(msg.winnerTelegramId)===String(telegramId));
       showToast(iWon?'🏆 You won! Your prize has been added to your account.':'Round finished — your balance was settled by the game server.','');
-      // Prefer the settled balance supplied by the authenticated game server.
-      // Fall back to the Telegram account endpoint only if gameOver has no balance.
-      const settledBalance=parseFloat(msg.balance);
-      if(Number.isFinite(settledBalance) && settledBalance>=0){
-        setBalance(settledBalance);
-      }else{
-        setTimeout(()=>refreshAccountBalance(8,500),300);
-      }
-      // After showing the winner/loser result, automatically return to Card Selection.
-      // Balance handling above is intentionally unchanged.
-      setTimeout(()=>{
-        // Finish the round cleanly: remove old cards, called numbers, claims and selections
-        // before showing the fresh card-selection page for the next round.
-        myCardId=null; myCardId2=null; myCardNumbers=[]; myCardNumbers2=[];
-        resetAutomaticGameState();
-        resetTrackerBoard();
-        resetSlotUI();
-        cardPool=[];
-        hideWinnerOverlay();
-        document.getElementById('cdCountdown').innerText='Waiting for players...';
-        navGo('screenCards','navCards');
-      },5500);
+      // Re-read the user's actual Telegram/database account balance after the prize is processed.
+      setTimeout(()=>refreshAccountBalance(),300);
       break;
 
     case 'backToCardSelection':
@@ -1172,14 +1125,12 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       claimWindowOpen=false;
       activePlayers=[]; updateActivePlayers([]);
       hideWinnerOverlay();
-      // Keep the balance supplied by the authenticated game server.
-      // Use the HTTP Telegram account endpoint only if no valid balance was supplied.
-      const returnedBalance=parseFloat(msg.balance);
-      if(Number.isFinite(returnedBalance) && returnedBalance>=0){
-        setBalance(returnedBalance);
-      }else{
-        setTimeout(()=>refreshAccountProfile(8,500),700);
+      // Refresh the actual Telegram/database account after the round settles.
+      // A legitimate 0.00 balance is preserved because the API is authoritative.
+      if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
+        setBalance(msg.balance);
       }
+      setTimeout(()=>refreshAccountProfile(8,500),700);
       resetTrackerBoard(); setBingoBtn('idle'); resetSlotUI();
       document.getElementById('cdCountdown').innerText='Waiting...';
       navGo('screenCards','navCards'); break;
@@ -1190,6 +1141,8 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
         setBalance(msg.balance);
         accountLoaded=true;
       }
+      // Periodically reconcile with the Telegram-linked database account.
+      if(telegramId) setTimeout(()=>refreshAccountProfile(3,300),100);
       break;
 
     case 'leftRoom': localStorage.removeItem('roomId'); myRoomId=null; myCardId=null; myCardId2=null; navGo('screenLobby','navHome'); break;
@@ -1759,7 +1712,7 @@ function renderStakes(arr){
     d.className='stake-card';
     d.innerHTML=`<div class="stake-etb">Play ${amount}</div>`;
     if(s){
-      d.onclick=()=>{ const tid=getTelegramId()||telegramId||''; if(tid) telegramId=String(tid); wsSend({type:'joinRoom',stakeId:s.stakeId,telegramId:tid?parseInt(tid,10):undefined}); };
+      d.onclick=()=>wsSend({type:'joinRoom',stakeId:s.stakeId});
     }else{
       d.classList.add('stake-unavailable');
       d.title=`Play ${amount} is not currently available`;
@@ -2168,7 +2121,7 @@ function renderAnalytics(d, from, to){
 
 // ─── INIT ────────────────────────────────────────────────────
 buildTracker();
-initTelegramWebApp();
+restoreCachedBalance();
 connect();
 loadPaymentInfo();
 // Set default analytics range to last 30 days
