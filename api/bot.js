@@ -329,6 +329,7 @@ bot.on("message:text", async (ctx, next) => {
   //pendingDeposit[telegramId]
   if (pendingDeposit[telegramId]) 
   {
+	  delete pendingDeposit[telegramId];
     console.log("📩 Telebirr message received:", text);
     await ctx.reply(
       "✅ የክፍያ መልዕክትዎ ደርሶናል።\n\n" +
@@ -351,7 +352,7 @@ bot.on("message:text", async (ctx, next) => {
       "successfull \n\n",// + receipt.receiptNo + "\n" + receipt.payerName + "\n" + receipt.payerTelebirrNo.slice(-4) + "\n" + receipt.creditedPartyName + "\n" + receipt.creditedPartyAccountNo.slice(-4) + "\n" + receipt.paymentDate.split(" ")[0] + "\n" + receipt.settledAmount.replace(/[^0-9.]/g, ""),        
     );
 		  // Deposit was successfully processed
-    delete pendingDeposit[telegramId];
+    
 	}
 		else{
 			      await ctx.reply("unsuccessfull \n\n" + result2);
