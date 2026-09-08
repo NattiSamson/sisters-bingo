@@ -34,7 +34,7 @@ const  u   = await pool.query('SELECT count(id) FROM deposits WHERE reference=$1
   
 		  return 1;
 		}
-const  {u2}= await pool.query('SELECT id FROM payment_accounts WHERE is_active = TRUE AND RIGHT(account_number,4) = RIGHT($1,4)', [receipt.creditedPartyAccountNo]);
+const  {rows: u2}= await pool.query('SELECT id FROM payment_accounts WHERE is_active = TRUE AND RIGHT(account_number,4) = RIGHT($1,4)', [receipt.creditedPartyAccountNo]);
 	  if (u2.length === 0) {
   return 2;
      }		
