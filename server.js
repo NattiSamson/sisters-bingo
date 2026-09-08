@@ -716,14 +716,29 @@ if(!ep&&msg.telegramId){
               const sc=STAKES.find(s=>s.id===msg.stakeId);
              if(!sc) return send(ws,{type:'error',message:'Invalid stake.'});
 
-             // Money games require a Telegram-linked Neon account. Never fall back
-             // to the in-memory balance (which starts at 0), otherwise a player can
-             // see a real wallet balance in the UI but get a misleading "Need 10 ETB".
-             if(!db || !client.telegramId){
-               return send(ws,{type:'error',message:'Account not authenticated. Please reopen the game from Telegram.'});
+             // Money games require a Telegram-linked Neon account. If the player
+             // clicks a stake before the initial telegramAuth response arrives, use
+             // the Telegram ID sent by the client with joinRoom and authenticate it
+             // immediately instead of falsely reporting "Account not authenticated".
+             if(!db){
+               return send(ws,{type:'error',message:'Database is not connected. Please try again shortly.'});
+             }
+             if(!client.telegramId && msg.telegramId){
+               const tid=String(msg.telegramId).trim();
+               const user=await loadUser(tid);
+               if(user){
+                 client.telegramId=tid;
+                 client.playerName=user.name||client.playerName;
+                 client.balance=parseFloat(user.balance)||0;
+                 client.isAdmin=user.isAdmin||false;
+                 send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,isRegistered:true,isAdmin:client.isAdmin});
+               }
+             }
+             if(!client.telegramId){
+               return send(ws,{type:'error',message:'Telegram account not detected. Please open the game using the Play Now button in Telegram.'});
              }
              if(!(await refreshClientBalance(client))){
-               return send(ws,{type:'error',message:'Could not load your account balance. Please refresh and try again.'});
+               return send(ws,{type:'error',message:'Could not load your Telegram account. Please refresh the game and try again.'});
              }
 
              await leaveRoom(client);
