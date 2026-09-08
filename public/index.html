@@ -333,9 +333,7 @@ body{
 
 .screen{max-width:520px;padding:16px}
 .screen-title{font-family:'Inter',sans-serif;font-weight:800;letter-spacing:-.3px}
-.screen.active{animation:fadeIn .22s ease;display:block!important}
-#screenLoading.active{display:block!important}
-
+.screen.active{animation:fadeIn .22s ease}
 
 button,.stake-card,.pool-btn,.nav-item{touch-action:manipulation}
 
@@ -2456,18 +2454,6 @@ function renderAnalytics(d, from, to){
 buildTracker();
 restoreCachedBalance();
 connect();
-
-// UI failsafe: if a deployment/browser leaves every screen inactive,
-// return the user to the lobby without changing WebSocket/API behavior.
-setTimeout(()=>{
-  const anyVisible=[...document.querySelectorAll('.screen')].some(
-    s=>s.classList.contains('active')
-  );
-  if(!anyVisible){
-    const lobby=document.getElementById('screenLobby');
-    if(lobby) lobby.classList.add('active');
-  }
-},3500);
 loadPaymentInfo();
 // Set default analytics range to last 30 days
 (()=>{
