@@ -41,11 +41,33 @@ WHERE pt.is_active = TRUE
     WHERE pm.type_id = pt.id
       AND pm.is_active = TRUE
   )
-ORDER BY pt.id;
+ORDER BY pt.order;
   `);
 
   return rows;
 },
+
+async getPaymentMethodById(pm_id) {
+  const { rows } = await pool.query(`
+    SELECT
+      pa.id,
+      pa.name,
+      pa.amharic_name,
+      pa.emoji,
+      pt.name AS type_name,
+      pt.amharic_name AS am_type_name,
+      pt.emoji AS type_emoji
+    FROM payment_methods pa
+    JOIN payment_types pt
+      ON pa.type_id = pt.id
+    WHERE pa.id = $1
+      AND pa.is_active = TRUE
+      AND pt.is_active = TRUE
+    LIMIT 1
+  `, [pm_id]);
+
+  return rows[0] || null;
+}
 
 	async getPaymentMethods() {
   const { rows } = await pool.query(`
@@ -62,7 +84,7 @@ ORDER BY pt.id;
       ON pa.type_id = pt.id
     WHERE pa.is_active = TRUE
       AND pt.is_active = TRUE
-    ORDER BY pa.id
+    ORDER BY pa.order
   `);
 
   return rows;
