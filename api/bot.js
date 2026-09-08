@@ -483,7 +483,7 @@ bot.callbackQuery(
         await ctx.editMessageText(
           "1. ከታች ባለው የቴሌብር አካውንት ብር ያስገቡ\n\n" +
 
-          "📞 *Telebirr:* " + paymentaccount.account_number + "\n\n" + 
+          "📞 *Telebirr:* `" + paymentaccount.account_number + "`\n\n" + 
 
           "2. የከፈሉበትን አጭር የጹሁፍ መልዕክት (SMS) " +
           "copy በማድረግ እዚህ ላይ Paste አድርገው " +
