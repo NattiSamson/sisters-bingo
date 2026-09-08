@@ -8,7 +8,7 @@
  *  - Full DB integration
  this is zola
  */
-require('dotenv').config();
+
 const express   = require('express');
 const http      = require('http');
 const WebSocket = require('ws');
@@ -74,6 +74,20 @@ if (process.env.DATABASE_URL) {
       async setBalance(tid, bal) {
         await this.q('UPDATE users SET balance=$1 WHERE telegram_id=$2', [bal, String(tid)]);
       },
+      // Atomic balance change. This is the only method used by game money
+      // operations, so two simultaneous requests cannot overwrite each other.
+      async adjustBalance(tid, delta) {
+        const amount = Number(delta);
+        if(!Number.isFinite(amount)) throw new Error('Invalid balance adjustment');
+        const r = await this.q(
+          `UPDATE users
+           SET balance = balance + $2
+           WHERE telegram_id=$1 AND balance + $2 >= 0
+           RETURNING balance`,
+          [String(tid), amount]
+        );
+        return r[0] ? parseFloat(r[0].balance) : null;
+      },
       async logTx(tid, type, amount, balAfter, ref) {
         await this.q(
           `INSERT INTO transactions(user_id,type,amount,balance_after,reference)
@@ -124,11 +138,11 @@ if (process.env.DATABASE_URL) {
         );
         if (!r[0]) return null;
         const dep = r[0];
-        // Credit balance
-        const u = await this.q('SELECT telegram_id,balance FROM users WHERE id=$1', [dep.user_id]);
+        // Credit atomically so a simultaneous game charge cannot overwrite it.
+        const u = await this.q('SELECT telegram_id FROM users WHERE id=$1', [dep.user_id]);
         if (u[0]) {
-          const newBal = parseFloat(u[0].balance) + parseFloat(dep.amount);
-          await this.setBalance(u[0].telegram_id, newBal);
+          const newBal = await this.adjustBalance(u[0].telegram_id, parseFloat(dep.amount));
+          if(newBal===null) return null;
           await this.logTx(u[0].telegram_id, 'deposit', dep.amount, newBal, dep.tx_ref);
           return { telegramId: u[0].telegram_id, newBalance: newBal, amount: dep.amount };
         }
@@ -140,17 +154,22 @@ if (process.env.DATABASE_URL) {
 
       // ── Withdrawals ──
       async createWithdrawal(tid, amount) {
-        const u = await this.getUser(tid);
-        if (!u || parseFloat(u.balance) < amount) return { error: 'Insufficient balance' };
-        const newBal = parseFloat(u.balance) - amount;
-        await this.setBalance(tid, newBal);
-        await this.logTx(tid, 'withdrawal_pending', -amount, newBal, 'pending');
         const r = await this.q(
-          `INSERT INTO withdrawal_requests(user_id,amount,status)
-           SELECT id,$2,'pending' FROM users WHERE telegram_id=$1 RETURNING id`,
+          `WITH debited AS (
+             UPDATE users
+             SET balance=balance-$2
+             WHERE telegram_id=$1 AND balance >= $2
+             RETURNING id,telegram_id,balance
+           )
+           INSERT INTO withdrawal_requests(user_id,amount,status)
+           SELECT id,$2,'pending' FROM debited
+           RETURNING id, (SELECT balance FROM debited) AS new_balance`,
           [String(tid), amount]
         );
-        return { id: r[0]?.id, newBalance: newBal };
+        if(!r[0]) return { error:'Insufficient balance' };
+        const newBal=parseFloat(r[0].new_balance);
+        await this.logTx(tid,'withdrawal_pending',-amount,newBal,'pending');
+        return { id:r[0].id, newBalance:newBal };
       },
       async getWithdrawals(status) {
         const where = status ? 'WHERE wr.status=$1' : '';
@@ -160,7 +179,6 @@ if (process.env.DATABASE_URL) {
            JOIN users u ON u.id=wr.user_id ${where} ORDER BY wr.created_at DESC LIMIT 50`, params
         );
       },
-     
       async approveWithdrawal(id) {
         const r = await this.q(
           `UPDATE withdrawal_requests SET status='approved',handled_at=NOW() WHERE id=$1 AND status='pending' RETURNING *`, [id]
@@ -178,10 +196,10 @@ if (process.env.DATABASE_URL) {
         );
         if (!r[0]) return null;
         const wr = r[0];
-        const u = await this.q('SELECT telegram_id,balance FROM users WHERE id=$1', [wr.user_id]);
+        const u = await this.q('SELECT telegram_id FROM users WHERE id=$1', [wr.user_id]);
         if (u[0]) {
-          const newBal = parseFloat(u[0].balance) + parseFloat(wr.amount);
-          await this.setBalance(u[0].telegram_id, newBal);
+          const newBal = await this.adjustBalance(u[0].telegram_id, parseFloat(wr.amount));
+          if(newBal===null) return null;
           await this.logTx(u[0].telegram_id, 'withdrawal_refund', wr.amount, newBal, 'rejected');
           return { telegramId: u[0].telegram_id, newBalance: newBal };
         }
@@ -292,12 +310,69 @@ const clients={}, rooms={}, userCache={};
 
 // ─── USER HELPERS ────────────────────────────────────────────
 async function loadUser(tid) {
-  if(db){try{const u=await db.getUser(tid);if(u){userCache[tid] = { name: u.name, phone: u.phone, balance: parseFloat(u.balance), isAdmin: u.is_admin === true };}}catch(e){}}
+  if(db){
+    try{
+      const u=await db.getUser(tid);
+      if(u){
+        userCache[tid] = {
+          name:u.name,
+          phone:u.phone,
+          balance:parseFloat(u.balance)||0,
+          isAdmin:u.is_admin===true
+        };
+      }
+    }catch(e){ console.error('loadUser:',e.message); }
+  }
   return userCache[tid]||null;
 }
+
+async function refreshClientBalance(client){
+  if(!client?.telegramId || !db) return Number.isFinite(Number(client?.balance));
+  try{
+    const u=await db.getUser(String(client.telegramId));
+    if(!u) return false;
+    client.balance=parseFloat(u.balance)||0;
+    client.playerName=u.name||client.playerName;
+    client.isAdmin=u.is_admin===true || isAdminPhone(u.phone);
+    if(userCache[client.telegramId]) userCache[client.telegramId].balance=client.balance;
+    return true;
+  }catch(e){
+    console.error('refreshClientBalance:',e.message);
+    return false;
+  }
+}
+
+// Change money atomically in Neon and mirror the resulting balance in memory.
+// Positive delta = credit/refund; negative delta = charge.
+async function changeClientBalance(client, delta, txType, ref){
+  const amount=Number(delta);
+  if(!client || !Number.isFinite(amount)) return null;
+  if(db && client.telegramId){
+    try{
+      const newBal=await db.adjustBalance(String(client.telegramId),amount);
+      if(newBal===null) return null;
+      client.balance=newBal;
+      if(userCache[client.telegramId]) userCache[client.telegramId].balance=newBal;
+      if(txType){
+        try{await db.logTx(String(client.telegramId),txType,amount,newBal,ref||'');}
+        catch(e){console.error('logTx:',e.message);}
+      }
+      return newBal;
+    }catch(e){
+      console.error('changeClientBalance:',e.message);
+      return null;
+    }
+  }
+  const next=(Number(client.balance)||0)+amount;
+  if(next<0) return null;
+  client.balance=next;
+  return next;
+}
+
 async function saveBalance(tid, bal) {
+  // Kept for non-game compatibility. Game money paths use changeClientBalance().
   if(userCache[tid]) userCache[tid].balance=bal;
-  if(db&&tid){try{await db.setBalance(tid,bal);}catch(e){}}
+  if(db&&tid){try{await db.setBalance(tid,bal);}catch(e){console.error('saveBalance:',e.message);}}
 }
 
 // ─── ROOM HELPERS ────────────────────────────────────────────
@@ -362,32 +437,40 @@ function startCountdown(room){
 async function startGame(room){
   for(const p of room.players){
     if(!p.cardId&&!p.cardId2) continue; // spectator
+
     if(!p.hasPaid){
       const cl=clients[p.playerId];
-      // Charge once per card selected
       const numCards=(p.cardId?1:0)+(p.cardId2?1:0);
       const totalCost=room.stake*numCards;
-      if(cl&&cl.balance>=totalCost){
-        cl.balance-=totalCost; p.hasPaid=true;
-        await saveBalance(cl.telegramId,cl.balance);
-        if(db&&cl.telegramId){try{await db.logTx(cl.telegramId,'stake',-totalCost,cl.balance,room.roomId);}catch(e){}}
-        send(p.ws,{type:'balanceUpdate',balance:cl.balance});
-      } else {
-        // Can't afford — spectator
+
+      // This is normally already paid during card selection. This fallback
+      // protects the game if an older client reached startGame unpaid.
+      if(cl){
+        await refreshClientBalance(cl);
+        const newBal=await changeClientBalance(cl,-totalCost,'stake',room.roomId);
+        if(newBal!==null){
+          p.hasPaid=true;
+          send(p.ws,{type:'balanceUpdate',balance:newBal});
+        }else{
+          if(p.cardId){room.takenCardIds.delete(p.cardId);p.cardId=null;}
+          if(p.cardId2){room.takenCardIds.delete(p.cardId2);p.cardId2=null;}
+          continue;
+        }
+      }else{
         if(p.cardId){room.takenCardIds.delete(p.cardId);p.cardId=null;}
         if(p.cardId2){room.takenCardIds.delete(p.cardId2);p.cardId2=null;}
         continue;
       }
     }
   }
+
   room.status='playing';
-  // Count paid cards (each card = one stake)
   const paidCards=room.players.reduce((s,p)=>s+(p.hasPaid?((p.cardId?1:0)+(p.cardId2?1:0)):0),0);
-  const grossPot=paidCards*room.stake;                          // total stakes collected (gross)
-  room.pot=Math.floor(grossPot*(1-HOUSE_CUT));                  // 80% prize pool shown to players
+  const grossPot=paidCards*room.stake;
+  room.pot=Math.floor(grossPot*(1-HOUSE_CUT));
   room.calledNumbers=[]; room.availableNumbers=Array.from({length:75},(_,i)=>i+1);
   room.claimedThisRound=[]; room.claimWindowOpen=false;
-  if(db){try{room.dbGameId=await db.saveGame(room.roomId,room.stakeId,room.stake,grossPot);}catch(e){}}
+  if(db){try{room.dbGameId=await db.saveGame(room.roomId,room.stakeId,room.stake,grossPot);}catch(e){console.error('saveGame:',e.message);}}
 
   room.players.forEach(p=>{
     if(p.cardId||p.cardId2){
@@ -397,7 +480,7 @@ async function startGame(room){
         cardId:p.cardId,cardNumbers:card?card.numbers:[],
         cardId2:p.cardId2||null,cardNumbers2:card2?card2.numbers:[],
         pot:room.pot,playerCount:room.players.length,spectator:false});
-    } else {
+    }else{
       send(p.ws,{type:'spectating',pot:room.pot,playerCount:room.players.filter(p=>p.hasPaid).length,calledNumbers:room.calledNumbers});
     }
   });
@@ -459,18 +542,29 @@ async function endGame(room, winners, customMsg, noWinner){
   let winAmount=0, winnerNames=[], winnerTids=[];
 
   if(winners&&winners.length>0){
-     const prizePool=room.pot;
-    // Split prize pool equally among winners
+    const prizePool=room.pot;
     winAmount=Math.floor(prizePool/winners.length);
     winnerNames=winners.map(w=>w.playerName);
+
     for(const w of winners){
       const cl=clients[w.playerId];
-      if(cl){
-        cl.balance+=winAmount;
-        winnerTids.push(cl.telegramId||'');
-        await saveBalance(cl.telegramId,cl.balance);
-        if(db&&cl.telegramId){try{await db.logTx(cl.telegramId,'win',winAmount,cl.balance,room.roomId);}catch(e){}}
-        send(w.ws,{type:'balanceUpdate',balance:cl.balance});
+      const tid=String(w.telegramId||cl?.telegramId||'');
+      if(tid) winnerTids.push(tid);
+
+      // Pay from the authoritative Neon balance even if the winner refreshed,
+      // reconnected, or temporarily disconnected during the game.
+      if(tid && db){
+        const target=cl||{telegramId:tid,balance:0,ws:w.ws,playerId:w.playerId};
+        const newBal=await changeClientBalance(target,winAmount,'win',room.roomId);
+        if(newBal!==null){
+          if(cl) cl.balance=newBal;
+          send(w.ws,{type:'balanceUpdate',balance:newBal});
+        }else{
+          console.error('Failed to credit winner',tid,room.roomId);
+        }
+      }else if(cl){
+        const newBal=await changeClientBalance(cl,winAmount,'win',room.roomId);
+        send(w.ws,{type:'balanceUpdate',balance:newBal===null?cl.balance:newBal});
       }
     }
   }
@@ -478,8 +572,7 @@ async function endGame(room, winners, customMsg, noWinner){
   if(db&&room.dbGameId){
     try{await db.endGame(room.dbGameId,winnerTids,winAmount,winners.length>1,room.calledNumbers);}
     catch(e){console.error('endGame DB error:',e.message);}
-  } else if(db&&!room.dbGameId){
-    // saveGame failed earlier — create+close the record now so it never stays 'playing'
+  }else if(db&&!room.dbGameId){
     try{
       const grossPot=room.players.reduce((s,p)=>s+(p.hasPaid?((p.cardId?1:0)+(p.cardId2?1:0)):0),0)*room.stake;
       const gid=await db.saveGame(room.roomId,room.stakeId,room.stake,grossPot);
@@ -499,13 +592,16 @@ async function endGame(room, winners, customMsg, noWinner){
     room.status='waiting'; room.calledNumbers=[]; room.availableNumbers=Array.from({length:75},(_,i)=>i+1);
     room.pot=0; room.takenCardIds=new Set(); room.claimedThisRound=[]; room.claimWindowOpen=false; room.dbGameId=null;
     room.players.forEach(p=>{p.cardId=null;p.cardId2=null;p.hasPaid=false;p.disqualified=false;});
-    room.players.forEach(p=>{const cl=clients[p.playerId];send(p.ws,{type:'backToCardSelection',roomId:room.roomId,stakeId:room.stakeId,balance:cl?cl.balance:0});});
+    room.players.forEach(p=>{
+      const cl=clients[p.playerId];
+      send(p.ws,{type:'backToCardSelection',roomId:room.roomId,stakeId:room.stakeId,balance:cl?cl.balance:0});
+    });
     broadcastCardPool(room); broadcastLobby();
     if(room.players.length>=2) startCountdown(room);
   },6000);
 }
 
-function leaveRoom(client){
+async function leaveRoom(client){
   if(!client.roomId) return;
   const room=rooms[client.roomId];
   if(!room){client.roomId=null;return;}
@@ -513,15 +609,28 @@ function leaveRoom(client){
   if(p){
     if(p.cardId) room.takenCardIds.delete(p.cardId);
     if(p.cardId2) room.takenCardIds.delete(p.cardId2);
+
+    // Refund every paid card when leaving before the game starts.
     if(p.hasPaid&&(room.status==='waiting'||room.status==='countdown')){
-      client.balance+=room.stake; saveBalance(client.telegramId,client.balance);
-      send(client.ws,{type:'balanceUpdate',balance:client.balance});
+      const cardCount=(p.cardId?1:0)+(p.cardId2?1:0);
+      const refund=room.stake*cardCount;
+      if(refund>0){
+        const newBal=await changeClientBalance(client,refund,'stake_refund',room.roomId);
+        if(newBal!==null) send(client.ws,{type:'balanceUpdate',balance:newBal});
+        else console.error('Failed to refund player',client.telegramId,room.roomId);
+      }
+      p.hasPaid=false;
     }
   }
   room.players=room.players.filter(p=>p.playerId!==client.playerId);
   client.roomId=null;
-  if(room.players.length===0){if(room.callTimer)clearTimeout(room.callTimer);if(room.countdownTimer)clearInterval(room.countdownTimer);delete rooms[room.roomId];}
-  else{broadcastCardPool(room);broadcast(room,{type:'playerLeft',playerCount:room.players.length});}
+  if(room.players.length===0){
+    if(room.callTimer)clearTimeout(room.callTimer);
+    if(room.countdownTimer)clearInterval(room.countdownTimer);
+    delete rooms[room.roomId];
+  }else{
+    broadcastCardPool(room);broadcast(room,{type:'playerLeft',playerCount:room.players.length});
+  }
   broadcastLobby();
 }
 
@@ -590,6 +699,7 @@ if(!ep&&msg.telegramId){
     }
   }
   if(ep){
+    await refreshClientBalance(client);
     ep.ws=ws; client.roomId=msg.roomId;
     const card=ep.cardId?getCard(ep.cardId):null;
     const card2=ep.cardId2?getCard(ep.cardId2):null;
@@ -605,7 +715,7 @@ if(!ep&&msg.telegramId){
        case 'joinRoom':{
               const sc=STAKES.find(s=>s.id===msg.stakeId);
              if(!sc) return send(ws,{type:'error',message:'Invalid stake.'});
-             leaveRoom(client);
+             await leaveRoom(client);
 
           // ── If a game for this stake is already in progress, join as a spectator ──
           const liveRoom=Object.values(rooms).find(r=>r.stakeId===msg.stakeId&&r.status==='playing');
@@ -636,40 +746,54 @@ if(!ep&&msg.telegramId){
           const cardId=parseInt(msg.cardId);
           const slot=msg.slot===2?2:1;
           if(cardId<1||cardId>TOTAL_CARDS) break;
-          if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'Card already taken!'});
           const p=room.players.find(p=>p.playerId===client.playerId);
           if(!p) break;
-          // Charge only on first card pick; second card charges at game start
-          // Track which card IDs changed so we only broadcast the diff, not all 400 cards
+          if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'Card already taken!'});
+
           const changedIds=new Set([cardId]);
-    if(slot===1){
-  if(p.cardId) {room.takenCardIds.delete(p.cardId); changedIds.add(p.cardId);}
-  if(client.balance<room.stake) return send(ws,{type:'error',message:`Need ${room.stake} ETB. Please deposit.`});
-  if(!p.hasPaid){
-    client.balance-=room.stake; p.hasPaid=true;
-    await saveBalance(client.telegramId,client.balance);
-    if(db&&client.telegramId){try{await db.logTx(client.telegramId,'stake',-room.stake,client.balance,room.roomId);}catch(e){}}
-    send(ws,{type:'balanceUpdate',balance:client.balance});
-  }
-  p.cardId=cardId; room.takenCardIds.add(cardId);
+
+          if(slot===1){
+            // First card costs one stake only the first time. Re-selecting card 1
+            // is free because that stake has already been paid.
+            if(!p.hasPaid){
+              await refreshClientBalance(client);
+              const newBal=await changeClientBalance(client,-room.stake,'stake',room.roomId);
+              if(newBal===null){
+                return send(ws,{type:'error',message:`Need ${room.stake} ETB. Please deposit.`});
+              }
+              p.hasPaid=true;
+              send(ws,{type:'balanceUpdate',balance:newBal});
+            }
+            if(p.cardId){room.takenCardIds.delete(p.cardId);changedIds.add(p.cardId);}
+            p.cardId=cardId; room.takenCardIds.add(cardId);
             const card=getCard(cardId);
             send(ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot:1});
-          } else {
-            // Second card — check balance for extra stake, charge now
-            if(p.cardId2) {room.takenCardIds.delete(p.cardId2); changedIds.add(p.cardId2);}
-            if(client.balance<room.stake) return send(ws,{type:'error',message:`Need ${room.stake} ETB more for second card.`});
-            client.balance-=room.stake;
-            await saveBalance(client.telegramId,client.balance);
-            if(db&&client.telegramId){try{await db.logTx(client.telegramId,'stake',-room.stake,client.balance,room.roomId);}catch(e){}}
-            send(ws,{type:'balanceUpdate',balance:client.balance});
+          }else{
+            // Second card costs one additional stake only when adding it.
+            // Re-selecting card 2 is free instead of charging twice.
+            if(!p.cardId){
+              return send(ws,{type:'error',message:'Select your first card before choosing a second card.'});
+            }
+            if(!p.cardId2){
+              await refreshClientBalance(client);
+              const newBal=await changeClientBalance(client,-room.stake,'stake',room.roomId);
+              if(newBal===null){
+                return send(ws,{type:'error',message:`Need ${room.stake} ETB more for second card.`});
+              }
+              send(ws,{type:'balanceUpdate',balance:newBal});
+            }else{
+              changedIds.add(p.cardId2);
+              room.takenCardIds.delete(p.cardId2);
+            }
             p.cardId2=cardId; room.takenCardIds.add(cardId);
             const card=getCard(cardId);
             send(ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot:2});
           }
+
           broadcastCardDiff(room,Array.from(changedIds));
-const readyCount=room.players.filter(p=>p.cardId).length;
-if(readyCount>=2&&room.status==='waiting') startCountdown(room);
-break;
+          const readyCount=room.players.filter(p=>p.cardId).length;
+          if(readyCount>=2&&room.status==='waiting') startCountdown(room);
+          break;
         }
         case 'deselectCard':{
           if(!client.roomId) break;
@@ -677,31 +801,45 @@ break;
           if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
           const p=room.players.find(p=>p.playerId===client.playerId);
           if(!p) break;
+
           if(msg.slot===2&&p.cardId2){
             const releasedId=p.cardId2;
-            room.takenCardIds.delete(p.cardId2); p.cardId2=null;
-            // Refund second card stake
-            client.balance+=room.stake;
-            await saveBalance(client.telegramId,client.balance);
-            if(db&&client.telegramId){try{await db.logTx(client.telegramId,'stake_refund',room.stake,client.balance,room.roomId);}catch(e){}}
-            send(ws,{type:'balanceUpdate',balance:client.balance});
-            broadcastCardDiff(room,[releasedId]); break;
-          } else if(msg.slot===1&&p.cardId){
-            const releasedIds=[p.cardId];
-            room.takenCardIds.delete(p.cardId); p.cardId=null;
-            // If had second card, promote it to card1, refund would be complex so just clear both
-            if(p.cardId2){releasedIds.push(p.cardId2);room.takenCardIds.delete(p.cardId2);p.cardId2=null;
-              client.balance+=room.stake;
-              await saveBalance(client.telegramId,client.balance);
-              if(db&&client.telegramId){try{await db.logTx(client.telegramId,'stake_refund',room.stake,client.balance,room.roomId);}catch(e){}}
-              send(ws,{type:'balanceUpdate',balance:client.balance});
+            room.takenCardIds.delete(releasedId);
+            p.cardId2=null;
+            const newBal=await changeClientBalance(client,room.stake,'stake_refund',room.roomId);
+            if(newBal===null){
+              p.cardId2=releasedId;
+              room.takenCardIds.add(releasedId);
+              return send(ws,{type:'error',message:'Unable to refund the second-card stake. Please try again.'});
             }
-            // Refund card1 stake too
-            client.balance+=room.stake; p.hasPaid=false;
-            await saveBalance(client.telegramId,client.balance);
-            if(db&&client.telegramId){try{await db.logTx(client.telegramId,'stake_refund',room.stake,client.balance,room.roomId);}catch(e){}}
-            send(ws,{type:'balanceUpdate',balance:client.balance});
-            broadcastCardDiff(room,releasedIds); break;
+            send(ws,{type:'balanceUpdate',balance:newBal});
+            broadcastCardDiff(room,[releasedId]);
+            break;
+          }
+
+          if(msg.slot===1&&p.cardId){
+            const releasedIds=[p.cardId];
+            if(p.cardId2) releasedIds.push(p.cardId2);
+            releasedIds.forEach(id=>room.takenCardIds.delete(id));
+            p.cardId=null; p.cardId2=null;
+
+            // Both selected cards are refunded together. This avoids the old
+            // bug where two cards could be refunded/charged inconsistently.
+            const refundCount=p.hasPaid?releasedIds.length:0;
+            if(refundCount>0){
+              const newBal=await changeClientBalance(client,room.stake*refundCount,'stake_refund',room.roomId);
+              if(newBal===null){
+                // Restore room state if the DB refund fails.
+                p.cardId=releasedIds[0]||null;
+                p.cardId2=releasedIds[1]||null;
+                releasedIds.forEach(id=>room.takenCardIds.add(id));
+                return send(ws,{type:'error',message:'Unable to refund your stake. Please try again.'});
+              }
+              send(ws,{type:'balanceUpdate',balance:newBal});
+            }
+            p.hasPaid=false;
+            broadcastCardDiff(room,releasedIds);
+            break;
           }
           break;
         }
@@ -725,7 +863,7 @@ break;
           break;
         }
         case 'leaveRoom':
-          leaveRoom(client); send(ws,{type:'leftRoom',balance:client.balance}); break;
+          await leaveRoom(client); send(ws,{type:'leftRoom',balance:client.balance}); break;
 
         // ── Deposit request ──
         case 'depositRequest':{
@@ -752,8 +890,8 @@ break;
         case 'withdrawalRequest':{
           const{amount}=msg;
           if(!amount||amount<50) return send(ws,{type:'error',message:'Minimum withdrawal is 50 ETB.'});
-          if(client.balance<amount) return send(ws,{type:'error',message:'Insufficient balance.'});
           if(!client.telegramId) return send(ws,{type:'error',message:'Please register first.'});
+          await refreshClientBalance(client);
           if(db){
             try{
               const result=await db.createWithdrawal(client.telegramId,amount);
@@ -980,15 +1118,10 @@ app.get('/api/leaderboard', async(req,res)=>{
   if(!db) return res.json([]);
   res.json(await db.getLeaderboard());
 });
+
 app.get('/api/user/:tid', async(req,res)=>{
-  console.log("🔎 Balance request for Telegram ID:", req.params.tid);
-
-  const u = await loadUser(req.params.tid);
-
-  console.log("🗄️ User returned from Neon:", u);
-
+  const u=await loadUser(req.params.tid);
   if(!u) return res.status(404).json({error:'Not found'});
-
   res.json(u);
 });
 
@@ -1168,5 +1301,3 @@ bot.on('contact', async msg => {
 
   console.log('🤖 Telegram bot started!');
 }
-
-
