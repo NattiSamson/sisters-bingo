@@ -855,9 +855,8 @@ function setBalance(amt){
 // The HTML cannot access the database directly; the server exposes the account through
 // /api/user/:telegramId. Name and balance are both taken from that response.
 async function refreshAccountProfile(retries=6, delayMs=500){
-  console.log("telegram id"  , telegramId);
-  console.log("user of current",telebirrName);
-  console.log("tele  number",telebirrNumber);
+ 
+
   if(!telegramId) return false;
   if(balanceRefreshTimer) clearTimeout(balanceRefreshTimer);
   for(let i=0;i<retries;i++){
@@ -968,15 +967,14 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
   // The existing Telegram bot/server already resolves the Telegram user's
   // account and sends the real account balance in this message.
   // Use that WebSocket balance as the PRIMARY initial wallet value.
-  myName=msg.playerName||'Player';
-  const authBalance=parseFloat(msg.balance);
-  if(Number.isFinite(authBalance) && authBalance>=0){
-    setBalance(authBalance);
-    accountLoaded=true;
-  }else if(telegramId){
-    // HTTP account lookup is only a fallback when auth did not include balance.
-    refreshAccountProfile(6,300);
-  }
+ myName=msg.playerName||'Player';
+
+// Always load the authoritative account balance from Neon.
+// Do not trust the WebSocket balance for the initial wallet value.
+if(telegramId){
+  accountLoaded=false;
+  refreshAccountProfile(6,300);
+}
   document.getElementById('welcomeName').innerText=myName||'Player';
   isAdmin=msg.isAdmin||false;
   adminToken=telegramId||'';
