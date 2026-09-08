@@ -470,12 +470,12 @@ bot.callbackQuery(
       ) {
 
         pendingDeposit[ctx.from.id] = true;
-
+        const paymentaccount = await db.getPaymentAccount(paymentMethod.id);
 
         await ctx.editMessageText(
           "1. ከታች ባለው የቴሌብር አካውንት ብር ያስገቡ\n\n" +
 
-          "📞 *Telebirr:* `09XXXXXXXX`\n\n" +
+          "📞 *Telebirr:* " + paymentaccount.account_number + "\n\n" + 
 
           "2. የከፈሉበትን አጭር የጹሁፍ መልዕክት (SMS) " +
           "copy በማድረግ እዚህ ላይ Paste አድርገው " +
