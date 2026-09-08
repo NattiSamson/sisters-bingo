@@ -25,7 +25,7 @@ module.exports = {
     return rows[0];
   },
 
-	async function getPaymentMethods() {
+	async getPaymentMethods() {
   const { rows } = await pool.query(`
     SELECT
       pa.id,
