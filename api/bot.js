@@ -273,56 +273,54 @@ async function showDeposit(ctx) {
       "Please /start to register first."
     );
   }
-  const mes = "";
-  const paymentmethods = await db.getPaymentMethods();
-  const paymentmethodtypes = db.getPaymentMethodTypes();
-  if(paymentmethodtypes.length === 0)
-  {
-	  mes = "ይቅርታ! ለጊዜው የክፍያ መንገድ አልተዘጋጀም::"
-  }
-  if(paymentmethodtypes.length === 0)
-  {
-	  mes = "ይቅርታ! ለጊዜው የክፍያ መንገድ አልተዘጋጀም::"
-  }
-mes = "❇️ ብር ማስገባት የሚችሉት ቀጥሎ በተቀመጡት የ";
-if(paymentmethods.length === 1)
-{	
-	mes = mes + paymentmethods[0].amharic_name;
-	mes = mes + " አማራጮች ብቻ ነው።\n\n";	
-}
-else
-{
-	for (let i = 0; i < paymentmethods.length-1; i++) 
-		{
-			mes = mes + paymentmethods[i].amharic_name + ", ";
-		}
-	mes = mes + paymentmethods[paymentmethods.length-1].amharic_name;	
-	mes = mes + " አማራጮች ብቻ ነው።\n\n";
-	
-}
-mes = mes + "🚫 ከዚህ ዉጭ የላከ አናስተናግድም 🚫\n\n";
-  const buttons = paymentmethods.map(pm => [
-  {
 
-    text: `${pm.emoji} ${pm.amharic_name}`,
-    callback_data: `payment_${pm.id}`
+  const paymentmethods = await db.getPaymentMethods();
+
+  if (paymentmethods.length === 0) {
+    return await ctx.reply(
+      "ይቅርታ! ለጊዜው የክፍያ መንገድ አልተዘጋጀም::"
+    );
   }
-]);	
-	// Add cancel button at the end
-buttons.push([
-  {
-    text: "❌ ሰርዝ",
-    callback_data: "canceldeposit"
-  }
-]);
-  await ctx.reply(mes,
-    {
-      parse_mode: "Markdown",
-      reply_markup: {
-        inline_keyboard: buttons
-      },
+
+  let mes = "❇️ ብር ማስገባት የሚችሉት ቀጥሎ በተቀመጡት የ";
+
+  if (paymentmethods.length === 1) {
+
+    mes += paymentmethods[0].amharic_name;
+    
+  } else {
+
+    for (let i = 0; i < paymentmethods.length - 1; i++) {
+      mes += paymentmethods[i].amharic_name + ", ";
     }
-  );
+
+    mes += paymentmethods[paymentmethods.length - 1].amharic_name;
+  }
+
+  mes += " አማራጮች ብቻ ነው።\n\n";
+
+  mes += "🚫 ከዚህ ዉጭ የላከ አናስተናግድም 🚫\n\n";
+
+  const buttons = paymentmethods.map(pm => [
+    {
+      text: `${pm.emoji} ${pm.amharic_name}`,
+      callback_data: `payment_${pm.id}`
+    }
+  ]);
+
+  buttons.push([
+    {
+      text: "❌ ሰርዝ",
+      callback_data: "canceldeposit"
+    }
+  ]);
+
+  await ctx.reply(mes, {
+    parse_mode: "Markdown",
+    reply_markup: {
+      inline_keyboard: buttons
+    }
+  });
 }
 
 bot.command("deposit", showDeposit);
