@@ -24,6 +24,20 @@ module.exports = {
     );
     return rows[0];
   },
+	
+	async getPaymentMethodTypes() {
+  const { rows } = await pool.query(`
+    SELECT
+      pt.id,
+      pt.name,
+      pt.amharic_name,
+	  pt.emoji
+    FROM payment_types pt
+    ORDER BY pt.id
+  `);
+
+  return rows;
+},
 
 	async getPaymentMethods() {
   const { rows } = await pool.query(`
