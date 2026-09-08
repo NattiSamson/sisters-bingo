@@ -294,7 +294,7 @@ else
 {
 	for (let i = 0; i < paymentmethods.length-1; i++) 
 		{
-			mes = mes + paymentmethods[i].amharic_name ", ";
+			mes = mes + paymentmethods[i].amharic_name + ", ";
 		}
 	mes = mes + paymentmethods[paymentmethods.length-1].amharic_name;	
 	mes = mes + " አማራጮች ብቻ ነው።\n\n";
