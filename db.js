@@ -24,7 +24,36 @@ module.exports = {
     );
     return rows[0];
   },
-	
+
+	async getPaymentAccount(pm_id) {
+	  const { rows } = await pool.query(`
+    SELECT
+      pa.*,
+
+      pm.name AS pm_name,
+      pm.amharic_name AS pm_amharic_name,
+      pm.emoji AS pm_emoji,
+
+      pt.name AS pt_name,
+      pt.amharic_name AS pt_amharic_name,
+      pt.emoji AS pt_emoji
+
+    FROM payment_accounts pa
+
+    JOIN payment_methods pm
+      ON pa.payment_method_id = pm.id
+
+    JOIN payment_types pt
+      ON pm.type_id = pt.id
+
+    WHERE pa.is_active = TRUE
+      AND pm.is_active = TRUE
+      AND pt.is_active = TRUE
+
+    ORDER BY pa.balance ASC, RANDOM()
+    LIMIT 1
+  `);
+	},
 	async getPaymentMethodTypes() {
   const { rows } = await pool.query(`
 SELECT
