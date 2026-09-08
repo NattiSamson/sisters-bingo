@@ -67,7 +67,7 @@ async getPaymentMethodById(pm_id) {
   `, [pm_id]);
 
   return rows[0] || null;
-}
+},
 
 	async getPaymentMethods() {
   const { rows } = await pool.query(`
