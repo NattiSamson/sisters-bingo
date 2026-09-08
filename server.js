@@ -8,7 +8,7 @@
  *  - Full DB integration
  this is zola
  */
-
+require('dotenv').config();
 const express   = require('express');
 const http      = require('http');
 const WebSocket = require('ws');
@@ -316,6 +316,7 @@ if (process.env.DATABASE_URL) {
         if(stale.length) console.log(`🧹 Cleaned up ${stale.length} stale playing game(s):`, stale.map(r=>r.id));
       } catch(e) { console.error('⚠️ Stale game cleanup:', e.message); }
     }).catch(e => { console.error('❌ DB:', e.message); db = null; });
+
   } catch(e) { console.log('⚠️ pg error:', e.message); }
 } else {
   console.log('ℹ️ No DATABASE_URL — memory mode');
