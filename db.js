@@ -48,7 +48,7 @@ const  u2  = await pool.query('SELECT count(id) FROM payment_accounts WHERE is_a
 		}
 	  console.log('aaaaaa ' + id);
 		const {rows} = await pool.query('SELECT id,balance FROM users WHERE telegram_id=$1', [id]);
-		await pool.query('INSERT INTO deposits(user_id,payment_account_id,deposit_method_id,depositor_name,depositor_account,amount,amount_after,reference,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NOW()) RETURNING id', [rows.rows[0].id,1,1,creditedPartyName,receipt.creditedPartyAccountNo,receipt.settledAmount.replace(/[^0-9.]/g, ""),rows.rows[0].balance + receipt.settledAmount.replace(/[^0-9.]/g, ""),receipt.receiptNo]);
+		await pool.query('INSERT INTO deposits(user_id,payment_account_id,deposit_method_id,depositor_name,depositor_account,amount,amount_after,reference,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NOW()) RETURNING id', [rows[0].id,1,1,creditedPartyName,receipt.creditedPartyAccountNo,receipt.settledAmount.replace(/[^0-9.]/g, ""),rows[0].balance + receipt.settledAmount.replace(/[^0-9.]/g, ""),receipt.receiptNo]);
 		return 4;
       },
 
