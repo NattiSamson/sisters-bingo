@@ -557,8 +557,7 @@ bot.on("message:text", async (ctx, next) => {
   }
 
 
-  // Delete state immediately
-  delete pendingDeposit[telegramId];
+ 
 
 
   console.log(
@@ -623,6 +622,7 @@ bot.on("message:text", async (ctx, next) => {
 
 
       if (result2 > 0) {
+        clearPendingState(telegramId);
 
         await ctx.reply(
           "✅ *የገቢ ጥያቄዎ ተሳክቷል!*\n\n" +
