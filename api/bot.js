@@ -333,7 +333,7 @@ async function showDeposit(ctx) {
   }
 
   const paymentmethods =  await db.getPaymentMethods();
-  const paymentmethodtypes = db.getPaymentMethodTypes();
+  const paymentmethodtypes = await db.getPaymentMethodTypes();
 if (!paymentmethodtypes ||  paymentmethodtypes.length === 0 ) 
 {
     return await ctx.reply("ይቅርታ! ለጊዜው የክፍያ መንገድ አልተዘጋጀም::" );
