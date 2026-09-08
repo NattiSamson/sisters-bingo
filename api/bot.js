@@ -340,61 +340,54 @@ async function showDeposit(ctx) {
     );
   }
 
-  const paymentmethods =  await db.getPaymentMethods();
-  const paymentmethodtypes = await db.getPaymentMethodTypes();
-if (!paymentmethodtypes ||  paymentmethodtypes.length === 0 ) 
-{
-    return await ctx.reply("ይቅርታ! ለጊዜው የክፍያ መንገድ አልተዘጋጀም::" );
+const paymentmethods = await db.getPaymentMethods();
+const paymentmethodtypes = await db.getPaymentMethodTypes();
+
+if (!paymentmethodtypes || paymentmethodtypes.length === 0) {
+  return await ctx.reply(
+    "ይቅርታ! ለጊዜው የክፍያ መንገድ አልተዘጋጀም::"
+  );
 }
-if (!paymentmethods || paymentmethods.length === 0) 
-{
-    return await ctx.reply("ይቅርታ! ለጊዜው የክፍያ መንገድ አልተዘጋጀም::");
+
+if (!paymentmethods || paymentmethods.length === 0) {
+  return await ctx.reply(
+    "ይቅርታ! ለጊዜው የክፍያ መንገድ አልተዘጋጀም::"
+  );
 }
 
 let mes = "❇️ ብር ማስገባት የሚችሉት ቀጥሎ ";
 
-  let some = "በተቀመጡት የ"
-let meslast = "አማራጮች";
-  if(paymentmethods.length === 1)
-    {
-      some = "በተቀመጠው የ";
-      meslast = "አማራጭ";
-      
-    }
-  else
-  {
-    some = "በተቀመጡት የ";
-      
-  }
-  mes += some;
-  if (paymentmethodtypes.length === 1) {
-    
-    
-    mes += paymentmethodtypes[0].amharic_name;
-  
-  } else {
-    
-    for (
-      let i = 0;
-      i < paymentmethodtypes.length - 1;
-      i++
-    ) {
-      mes += "የ" + 
-        paymentmethodtypes[i].amharic_name +
-        ", ";
-    }
-    mes = mes.replace(/,\s*$/, "");
-    mes += " እና የ" +
-      paymentmethodtypes[
-        paymentmethodtypes.length - 1
-      ].amharic_name;
-  }
+const some =
+  paymentmethods.length <= 1
+    ? "በተቀመጠው የ"
+    : "በተቀመጡት የ";
 
-  mes +=
-    " ክፍያ " + meslast + " ብቻ ነው።\n\n";
+const meslast =
+  paymentmethods.length <= 1
+    ? "አማራጭ"
+    : "አማራጮች";
 
-  mes +=
-    "🚫 ከዚህ ዉጭ የላከ አናስተናግድም 🚫\n\n";
+mes += some;
+
+// Payment method types
+if (paymentmethodtypes.length === 1) {
+
+  mes += paymentmethodtypes[0].amharic_name;
+
+} else {
+
+  const typeNames = paymentmethodtypes.map(
+    (type) => `የ${type.amharic_name}`
+  );
+
+  const last = typeNames.pop();
+
+  mes += typeNames.join(", ") + " እና " + last;
+}
+
+mes += ` ክፍያ ${meslast} ብቻ ነው።\n\n`;
+
+mes += "🚫 ከዚህ ዉጭ የላከ አናስተናግድም 🚫\n\n";
 
 
   // Create buttons from database
