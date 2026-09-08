@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "cheerio": "^1.2.0",
+    "dotenv": "^17.4.2",
     "express": "^4.19.2",
     "grammy": "^1.46.0",
     "node-telegram-bot-api": "^0.67.0",

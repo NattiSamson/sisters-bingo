@@ -8,7 +8,7 @@
  *  - Full DB integration
  this is zola
  */
-
+require('dotenv').config();
 const express   = require('express');
 const http      = require('http');
 const WebSocket = require('ws');
@@ -1163,3 +1163,13 @@ bot.on('contact', async msg => {
 
   console.log('🤖 Telegram bot started!');
 }
+
+
+app.get('/api/user/:tid', async(req,res)=>{
+console.log("🔎 Balance request for Telegram ID:", req.params.tid);
+
+const u = await loadUser(req.params.tid);
+
+console.log("🗄️ User returned from Neon:", u);
+
+})

@@ -855,6 +855,9 @@ function setBalance(amt){
 // The HTML cannot access the database directly; the server exposes the account through
 // /api/user/:telegramId. Name and balance are both taken from that response.
 async function refreshAccountProfile(retries=6, delayMs=500){
+  console.log("telegram id"  , telegramId);
+  console.log("user of current",telebirrName);
+  console.log("tele  number",telebirrNumber);
   if(!telegramId) return false;
   if(balanceRefreshTimer) clearTimeout(balanceRefreshTimer);
   for(let i=0;i<retries;i++){
