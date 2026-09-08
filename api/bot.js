@@ -351,12 +351,14 @@ if (!paymentmethods || paymentmethods.length === 0)
     return await ctx.reply("ይቅርታ! ለጊዜው የክፍያ መንገድ አልተዘጋጀም::");
 }
 
-let mes = "❇️ ብር ማስገባት የሚችሉት ቀጥሎ በተቀመጡት ";
+let mes = "❇️ ብር ማስገባት የሚችሉት ቀጥሎ ";
+let some = "በተቀመጠው"
 let meslast = "አማራጮች";
   if (paymentmethodtypes.length === 1) {
 
     mes += paymentmethodtypes[0].amharic_name;
    meslast = "አማራጭ";
+    some = "በተቀመጡት";
   } else {
 
     for (
