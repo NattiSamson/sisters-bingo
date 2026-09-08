@@ -501,7 +501,7 @@ bot.callbackQuery(
       await ctx.reply(
         `${paymentMethod.emoji || "💳"} ` +
         `${paymentMethod.amharic_name}\n\n` +
-        `ይህ የክፍያ መንገድ በቅርቡ ይገኛል።`
+        `ይህ የክፍያ መንገድ በቅርቡ ይጀምራል።`
       );
 
     } catch (err) {
