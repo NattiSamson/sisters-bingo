@@ -25,7 +25,7 @@ module.exports = {
     return rows[0];
   },
 
-	async getPaymentAccount(pm_id) {
+	async getPaymentAccount(paymentMethodId) {
 	  const { rows } = await pool.query(`
     SELECT
       pa.*,
@@ -49,10 +49,11 @@ module.exports = {
     WHERE pa.is_active = TRUE
       AND pm.is_active = TRUE
       AND pt.is_active = TRUE
+	  AND pa.payment_method_id = $1
 
     ORDER BY pa.balance ASC, RANDOM()
     LIMIT 1
-  `);
+    `, [paymentMethodId]);
 	},
 	async getPaymentMethodTypes() {
   const { rows } = await pool.query(`
