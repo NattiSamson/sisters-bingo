@@ -471,6 +471,14 @@ bot.callbackQuery(
 
         pendingDeposit[ctx.from.id] = true;
         const paymentaccount = await db.getPaymentAccount(paymentMethod.id);
+        if (!paymentaccount) {
+
+        await ctx.reply(
+          "❌ የቴሌብር አካውንት አማራጭ የክፍያ መንገድ አልተገኘም።"
+        );
+
+        return;
+      }
 
         await ctx.editMessageText(
           "1. ከታች ባለው የቴሌብር አካውንት ብር ያስገቡ\n\n" +
