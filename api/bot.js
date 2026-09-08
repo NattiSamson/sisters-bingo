@@ -351,7 +351,7 @@ if (!paymentmethods || paymentmethods.length === 0)
     return await ctx.reply("ይቅርታ! ለጊዜው የክፍያ መንገድ አልተዘጋጀም::");
 }
 
-let mes = "❇️ ብር ማስገባት የሚችሉት ቀጥሎ በተቀመጡት የ";
+let mes = "❇️ ብር ማስገባት የሚችሉት ቀጥሎ በተቀመጡት ";
 
   if (paymentmethodtypes.length === 1) {
 
@@ -364,7 +364,7 @@ let mes = "❇️ ብር ማስገባት የሚችሉት ቀጥሎ በተቀመ�
       i < paymentmethodtypes.length - 1;
       i++
     ) {
-      mes +=
+      mes += "የ" + 
         paymentmethodtypes[i].amharic_name +
         ", ";
     }
