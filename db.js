@@ -47,9 +47,45 @@ const  u2  = await pool.query('SELECT count(id) FROM payment_accounts WHERE is_a
    return 3;
 		}
 	  console.log('aaaaaa ' + id);
-		const {rows} = await pool.query('SELECT id,balance FROM users WHERE telegram_id=$1', [id]);
-		await pool.query('INSERT INTO deposits(user_id,payment_account_id,deposit_method_id,depositor_name,depositor_account,amount,amount_after,reference,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NOW()) RETURNING id', [rows[0].id,1,1,receipt.creditedPartyName,receipt.creditedPartyAccountNo,receipt.settledAmount.replace(/[^0-9.]/g, ""),rows[0].balance + receipt.settledAmount.replace(/[^0-9.]/g, ""),receipt.receiptNo]);
-		return 4;
+		const { rows } = await pool.query(
+  'SELECT id, balance FROM users WHERE telegram_id = $1',
+  [id]
+);
+
+if (rows.length === 0) {
+  throw new Error("User not found");
+}
+
+const depositAmount = Number(
+  receipt.settledAmount.replace(/[^0-9.]/g, "")
+);
+
+const currentBalance = Number(rows[0].balance);
+const amountAfter = currentBalance + depositAmount;
+
+console.log("Current balance:", currentBalance);
+console.log("Deposit amount:", depositAmount);
+console.log("Amount after:", amountAfter);
+
+await pool.query(
+  `INSERT INTO deposits
+   (user_id, payment_account_id, deposit_method_id,
+    depositor_name, depositor_account, amount,
+    amount_after, reference, created_at)
+   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
+   RETURNING id`,
+  [
+    rows[0].id,
+    1,
+    1,
+    receipt.payerName,
+    receipt.payerTelebirrNo,
+    depositAmount,
+    amountAfter,
+    receipt.receiptNo
+  ]
+);
+	  return 4;
       },
 
   async getUserByTelegramId(telegramId) {
