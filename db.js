@@ -25,6 +25,24 @@ module.exports = {
     return rows[0];
   },
 
+	async function getPaymentMethods() {
+  const { rows } = await pool.query(`
+    SELECT
+      pa.id,
+      pa.name,
+      pa.amharic_name,
+      pat.name AS type_name
+    FROM payment_accounts pa
+    JOIN payment_account_types pat
+      ON pa.type_id = pat.id
+    WHERE pa.is_active = TRUE
+      AND pat.is_active = TRUE
+    ORDER BY pa.id
+  `);
+
+  return rows;
+},
+
   async approveDepositttttttttttt(receipt,id) {
 	  
 const  u   = await pool.query('SELECT count(id) FROM deposits WHERE reference=$1', [receipt.receiptNo]);
