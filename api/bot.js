@@ -498,7 +498,7 @@ bot.callbackQuery(
 
 
       // Other payment methods
-      await ctx.reply(
+      await ctx.editMessageText(
         `${paymentMethod.emoji || "💳"} ` +
         `${paymentMethod.amharic_name}\n\n` +
         `ይህ የክፍያ መንገድ በቅርቡ ይጀምራል።`
