@@ -352,15 +352,17 @@ if (!paymentmethods || paymentmethods.length === 0)
 }
 
 let mes = "❇️ ብር ማስገባት የሚችሉት ቀጥሎ ";
-let some = "በተቀመጠው"
+
+  let some = "በተቀመጡት የ"
 let meslast = "አማራጮች";
   if (paymentmethodtypes.length === 1) {
-
+    meslast = "አማራጭ";
+    some = "በተቀመጠው የ";
+    mes += some;
     mes += paymentmethodtypes[0].amharic_name;
-   meslast = "አማራጭ";
-    some = "በተቀመጡት";
+  
   } else {
-
+    mes += some;
     for (
       let i = 0;
       i < paymentmethodtypes.length - 1;
@@ -378,7 +380,7 @@ let meslast = "አማራጮች";
   }
 
   mes +=
-    " የክፍያ " + meslast + " ብቻ ነው።\n\n";
+    " ክፍያ " + meslast + " ብቻ ነው።\n\n";
 
   mes +=
     "🚫 ከዚህ ዉጭ የላከ አናስተናግድም 🚫\n\n";
