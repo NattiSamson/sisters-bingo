@@ -328,7 +328,7 @@ const LOBBY_WAIT_MS    = 30000;
 const CALL_INTERVAL_MS = 5000;
 const CLAIM_WINDOW_MS  = 4800;
 const CLAIM_COLLECT_MS = 700; // grace period to gather simultaneous BINGO claims
-const TOTAL_CARDS      = 400;
+const TOTAL_CARDS      = 600;
 
 const STAKES = [
   { id:'st5', amount:5, maxPlayers:600 },
