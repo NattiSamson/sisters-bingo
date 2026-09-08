@@ -129,17 +129,17 @@ const  u   = await pool.query('SELECT count(id) FROM deposits WHERE reference=$1
 		if(Number(u.rows[0].count) > 0)
 		{
   
-		  return 1;
+		  return -1;
 		}
 const  {rows: u2}= await pool.query('SELECT id FROM payment_accounts WHERE is_active = TRUE AND RIGHT(account_number,4) = RIGHT($1,4)', [receipt.creditedPartyAccountNo]);
 	  if (u2.length === 0) {
-  return 2;
+  return -2;
      }		
 	const u3 = await pool.query('SELECT count(id) FROM payment_accounts WHERE is_active = TRUE AND account_name=$1', [receipt.creditedPartyName]);
 		if(Number(u3.rows[0].count) <= 0)
 		{
 		 
-   return 3;
+   return -3;
 		}
 	  console.log('aaaaaa ' + id);
 		const { rows } = await pool.query(
@@ -183,7 +183,7 @@ await pool.query(
 	  await pool.query("UPDATE users SET balance=$1 WHERE telegram_id=$2", [amountAfter,id]);
      await pool.query("UPDATE payment_accounts SET balance=balance+$1 WHERE id=$2", [depositAmount,u2[0].id]);
 	  
-	  return 4;
+	  return depositAmount;
       },
 
   async getUserByTelegramId(telegramId) {
