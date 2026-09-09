@@ -1016,10 +1016,10 @@ bot.on("message:text", async (ctx, next) => {
     // Check balance
     // --------------------------------------------------------
 
-    const balance = Number(sender.balance);
+    const balance = Number(sender.balance) ;
 
 
-    if (amount > balance) {
+    if (amount > balance - 10) {
       return await ctx.reply(
         `❌ በቂ ሂሳብ የሎትም።\n\n` +
         `💰 ያለዎት ሂሳብ፦ ${balance} ETB\n` +
