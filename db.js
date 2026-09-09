@@ -245,12 +245,205 @@ await pool.query(
 	  return depositAmount;
       },
 
+ async transferBalance(senderTelegramId, recipientTelegramId, amount) {
+  const client = await pool.connect();
+
+  try {
+
+    await client.query("BEGIN");
+
+
+    // --------------------------------------------------------
+    // Lock sender and recipient rows
+    // --------------------------------------------------------
+
+    const { rows } = await client.query(`
+      SELECT telegram_id, name, balance
+      FROM users
+      WHERE telegram_id IN ($1, $2)
+      ORDER BY telegram_id
+      FOR UPDATE
+    `, [
+      senderTelegramId,
+      recipientTelegramId
+    ]);
+
+
+    const sender = rows.find(
+      u => String(u.telegram_id) === String(senderTelegramId)
+    );
+
+    const recipient = rows.find(
+      u => String(u.telegram_id) === String(recipientTelegramId)
+    );
+
+
+    if (!sender) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Sender account not found."
+      };
+    }
+
+
+    if (!recipient) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Recipient account not found."
+      };
+    }
+
+
+    const senderBalance =
+      Number(sender.balance);
+
+    const transferAmount =
+      Number(amount);
+
+
+    // --------------------------------------------------------
+    // Balance check
+    // --------------------------------------------------------
+
+    if (senderBalance < transferAmount) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Insufficient balance."
+      };
+    }
+
+
+    // --------------------------------------------------------
+    // Remove from sender
+    // --------------------------------------------------------
+
+    await client.query(`
+      UPDATE users
+      SET balance = balance - $1
+      WHERE telegram_id = $2
+    `, [
+      transferAmount,
+      senderTelegramId
+    ]);
+
+
+    // --------------------------------------------------------
+    // Add to recipient
+    // --------------------------------------------------------
+
+    await client.query(`
+      UPDATE users
+      SET balance = balance + $1
+      WHERE telegram_id = $2
+    `, [
+      transferAmount,
+      recipientTelegramId
+    ]);
+
+
+    // --------------------------------------------------------
+    // Get new balances
+    // --------------------------------------------------------
+
+    const updated = await client.query(`
+      SELECT telegram_id, balance
+      FROM users
+      WHERE telegram_id IN ($1, $2)
+    `, [
+      senderTelegramId,
+      recipientTelegramId
+    ]);
+
+
+    const newSender =
+      updated.rows.find(
+        u =>
+          String(u.telegram_id) ===
+          String(senderTelegramId)
+      );
+
+    const newRecipient =
+      updated.rows.find(
+        u =>
+          String(u.telegram_id) ===
+          String(recipientTelegramId)
+      );
+
+
+    await client.query("COMMIT");
+
+
+    return {
+      success: true,
+      senderBalance: Number(newSender.balance),
+      recipientBalance: Number(newRecipient.balance)
+    };
+
+
+  } catch (err) {
+
+    await client.query("ROLLBACK");
+
+    console.error(
+      "transferBalance transaction error:",
+      err
+    );
+
+    throw err;
+
+  } finally {
+
+    client.release();
+  }
+}	
+
   async getUserByTelegramId(telegramId) {
     const { rows } = await pool.query(
-      'SELECT * FROM users WHERE telegram_id=$1', [telegramId]
+      'SELECT * FROM users WHERE telegram_id=$1 AND is_active=TRUE LIMIT 1', [telegramId]
     );
     return rows[0] || null;
   },
+
+async getUserByPhone(phone) {
+  const digits = String(phone).replace(/\D/g, "");
+
+  if (digits.length < 9) {
+    return null;
+  }
+
+  const last9 = digits.slice(-9);
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      id,
+      telegram_id,
+      name,
+      phone,
+      balance,
+      is_banned,
+      is_active
+    FROM users
+    WHERE RIGHT(
+      REGEXP_REPLACE(phone, '[^0-9]', '', 'g'),
+      9
+    ) = $1
+      AND is_active = TRUE
+      AND is_banned = FALSE
+    LIMIT 1
+    `,
+    [last9]
+  );
+
+  return rows[0] || null;
+},
 
   async updateBalance(userId, amount) {
     const { rows } = await pool.query(
