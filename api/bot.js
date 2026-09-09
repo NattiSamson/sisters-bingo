@@ -878,6 +878,44 @@ bot.on("message:text", async (ctx, next) => {
   }
 });
 
+function normalizeEthiopianPhone(input) {
+  let phone = String(input)
+    .trim()
+    .replace(/[\s\-()]/g, "");
+
+  // 0912345678
+  if (/^09\d{8}$/.test(phone)) {
+    return "+251" + phone.substring(1);
+  }
+
+  // 0712345678
+  if (/^07\d{8}$/.test(phone)) {
+    return "+251" + phone.substring(1);
+  }
+
+  // 251912345678
+  if (/^2519\d{8}$/.test(phone)) {
+    return "+" + phone;
+  }
+
+  // 251712345678
+  if (/^2517\d{8}$/.test(phone)) {
+    return "+" + phone;
+  }
+
+  // +251912345678
+  if (/^\+2519\d{8}$/.test(phone)) {
+    return phone;
+  }
+
+  // +251712345678
+  if (/^\+2517\d{8}$/.test(phone)) {
+    return phone;
+  }
+
+  return null;
+}
+
 bot.command("transfer", showTransfer);
 
 bot.hears("transfer", showTransfer);
