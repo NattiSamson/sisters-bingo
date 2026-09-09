@@ -25,6 +25,54 @@ module.exports = {
     return rows[0];
   },
 
+	async createBroadcastDraft(adminId) {
+  await pool.query(`
+    INSERT INTO broadcast_drafts (admin_id, status)
+    VALUES ($1, 'waiting_image')
+    ON CONFLICT (admin_id)
+    DO UPDATE SET
+      image_url = NULL,
+      message = NULL,
+      status = 'waiting_image',
+      created_at = NOW()
+  `, [adminId]);
+},
+
+async getBroadcastDraft(adminId) {
+  const { rows } = await pool.query(`
+    SELECT *
+    FROM broadcast_drafts
+    WHERE admin_id = $1
+  `, [adminId]);
+
+  return rows[0] || null;
+},
+
+async updateBroadcastImage(adminId, imageUrl) {
+  await pool.query(`
+    UPDATE broadcast_drafts
+    SET image_url = $2,
+        status = 'waiting_message'
+    WHERE admin_id = $1
+  `, [adminId, imageUrl]);
+},
+
+async updateBroadcastMessage(adminId, message) {
+  await pool.query(`
+    UPDATE broadcast_drafts
+    SET message = $2,
+        status = 'preview'
+    WHERE admin_id = $1
+  `, [adminId, message]);
+},
+
+async deleteBroadcastDraft(adminId) {
+  await pool.query(`
+    DELETE FROM broadcast_drafts
+    WHERE admin_id = $1
+  `, [adminId]);
+}
+
 	async getPaymentAccount(paymentMethodId) {
 	  const { rows } = await pool.query(`
     SELECT
