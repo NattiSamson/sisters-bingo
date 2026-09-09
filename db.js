@@ -245,39 +245,49 @@ await pool.query(
 	  return depositAmount;
       },
 
- async transferBalance(senderTelegramId, recipientTelegramId, amount) {
+ async transferBalance(
+  senderTelegramId,
+  recipientTelegramId,
+  amount
+) {
   const client = await pool.connect();
 
   try {
-
     await client.query("BEGIN");
 
-
-    // --------------------------------------------------------
-    // Lock sender and recipient rows
-    // --------------------------------------------------------
-
-    const { rows } = await client.query(`
-      SELECT telegram_id, name, balance
+    // Lock both users while the transfer is being processed
+    const { rows } = await client.query(
+      `
+      SELECT
+        telegram_id,
+        phone,
+        balance,
+        is_active,
+        is_banned
       FROM users
       WHERE telegram_id IN ($1, $2)
       ORDER BY telegram_id
       FOR UPDATE
-    `, [
-      senderTelegramId,
-      recipientTelegramId
-    ]);
-
+      `,
+      [
+        senderTelegramId,
+        recipientTelegramId
+      ]
+    );
 
     const sender = rows.find(
-      u => String(u.telegram_id) === String(senderTelegramId)
+      user =>
+        String(user.telegram_id) ===
+        String(senderTelegramId)
     );
 
     const recipient = rows.find(
-      u => String(u.telegram_id) === String(recipientTelegramId)
+      user =>
+        String(user.telegram_id) ===
+        String(recipientTelegramId)
     );
 
-
+    // Sender doesn't exist
     if (!sender) {
       await client.query("ROLLBACK");
 
@@ -287,7 +297,7 @@ await pool.query(
       };
     }
 
-
+    // Recipient doesn't exist
     if (!recipient) {
       await client.query("ROLLBACK");
 
@@ -297,20 +307,61 @@ await pool.query(
       };
     }
 
+    // Sender account checks
+    if (!sender.is_active || sender.is_banned) {
+      await client.query("ROLLBACK");
 
-    const senderBalance =
-      Number(sender.balance);
+      return {
+        success: false,
+        message: "Your account is not active."
+      };
+    }
 
-    const transferAmount =
-      Number(amount);
+    // Recipient account checks
+    if (!recipient.is_active || recipient.is_banned) {
+      await client.query("ROLLBACK");
 
+      return {
+        success: false,
+        message: "Recipient account is not active."
+      };
+    }
 
-    // --------------------------------------------------------
-    // Balance check
-    // --------------------------------------------------------
+    // Cannot transfer to yourself
+    if (
+      String(sender.telegram_id) ===
+      String(recipient.telegram_id)
+    ) {
+      await client.query("ROLLBACK");
 
-    if (senderBalance < transferAmount) {
+      return {
+        success: false,
+        message: "You cannot transfer money to yourself."
+      };
+    }
 
+    // Convert amount to number
+    const transferAmount = Number(amount);
+
+    // Validate amount
+    if (
+      !Number.isFinite(transferAmount) ||
+      transferAmount <= 0
+    ) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Invalid transfer amount."
+      };
+    }
+
+    // Current balances
+    const senderBefore = Number(sender.balance);
+    const recipientBefore = Number(recipient.balance);
+
+    // Check sender balance
+    if (senderBefore < transferAmount) {
       await client.query("ROLLBACK");
 
       return {
@@ -319,80 +370,119 @@ await pool.query(
       };
     }
 
+    // Calculate new balances
+    const senderAfter =
+      senderBefore - transferAmount;
+
+    const recipientAfter =
+      recipientBefore + transferAmount;
 
     // --------------------------------------------------------
-    // Remove from sender
+    // UPDATE SENDER BALANCE
     // --------------------------------------------------------
 
-    await client.query(`
+    await client.query(
+      `
       UPDATE users
-      SET balance = balance - $1
+      SET balance = $1
       WHERE telegram_id = $2
-    `, [
-      transferAmount,
-      senderTelegramId
-    ]);
-
+      `,
+      [
+        senderAfter,
+        senderTelegramId
+      ]
+    );
 
     // --------------------------------------------------------
-    // Add to recipient
+    // UPDATE RECIPIENT BALANCE
     // --------------------------------------------------------
 
-    await client.query(`
+    await client.query(
+      `
       UPDATE users
-      SET balance = balance + $1
+      SET balance = $1
       WHERE telegram_id = $2
-    `, [
-      transferAmount,
-      recipientTelegramId
-    ]);
-
+      `,
+      [
+        recipientAfter,
+        recipientTelegramId
+      ]
+    );
 
     // --------------------------------------------------------
-    // Get new balances
+    // INSERT TRANSFER HISTORY
     // --------------------------------------------------------
 
-    const updated = await client.query(`
-      SELECT telegram_id, balance
-      FROM users
-      WHERE telegram_id IN ($1, $2)
-    `, [
-      senderTelegramId,
-      recipientTelegramId
-    ]);
+    const transferResult = await client.query(
+      `
+      INSERT INTO transfers (
+        sender_telegram_id,
+        recipient_telegram_id,
+        sender_phone_no,
+        recipient_phone_no,
+        amount,
+        sender_before_amount,
+        sender_after_amount,
+        recipient_amount_before,
+        recipient_amount_after,
+        is_active
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        $9,
+        TRUE
+      )
+      RETURNING *
+      `,
+      [
+        senderTelegramId,
+        recipientTelegramId,
 
+        sender.phone,
+        recipient.phone,
 
-    const newSender =
-      updated.rows.find(
-        u =>
-          String(u.telegram_id) ===
-          String(senderTelegramId)
-      );
+        transferAmount,
 
-    const newRecipient =
-      updated.rows.find(
-        u =>
-          String(u.telegram_id) ===
-          String(recipientTelegramId)
-      );
+        senderBefore,
+        senderAfter,
 
+        recipientBefore,
+        recipientAfter
+      ]
+    );
+
+    // --------------------------------------------------------
+    // EVERYTHING SUCCESSFUL
+    // --------------------------------------------------------
 
     await client.query("COMMIT");
 
-
     return {
       success: true,
-      senderBalance: Number(newSender.balance),
-      recipientBalance: Number(newRecipient.balance)
-    };
+      transfer: transferResult.rows[0],
 
+      senderBefore,
+      senderAfter,
+
+      recipientBefore,
+      recipientAfter
+    };
 
   } catch (err) {
 
+    // If ANYTHING fails:
+    // balances + transfer history are rolled back.
     await client.query("ROLLBACK");
 
     console.error(
-      "transferBalance transaction error:",
+      "transferBalance error:",
       err
     );
 
@@ -400,10 +490,10 @@ await pool.query(
 
   } finally {
 
+    // Return connection to the pool
     client.release();
   }
-},	
-
+},
   async getUserByTelegramId(telegramId) {
     const { rows } = await pool.query(
       'SELECT * FROM users WHERE telegram_id=$1 AND is_active=TRUE LIMIT 1', [telegramId]
