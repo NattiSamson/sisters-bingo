@@ -280,7 +280,7 @@ async registerUser(telegramId, name, phone) {
 
     client.release();
   }
-}
+},
 
 	async createBroadcastDraft(adminId) {
   await pool.query(`
