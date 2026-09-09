@@ -98,7 +98,7 @@ bot.command("broadcast", async (ctx) => {
       failed++;
       console.log(
         `Failed to send to ${user.telegram_id}:`,
-        error.response?.description || error.message
+        err.response?.description || err.message
       );
     }
   }
