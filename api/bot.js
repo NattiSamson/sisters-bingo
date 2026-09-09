@@ -225,7 +225,7 @@ bot.on("message:text", async (ctx, next) => {
             {
               text: "🎮 Play Now",
               web_app: {
-                url: GAME_URL
+                url: `${GAME_URL}?tid=${telegramId}`,
               }
             }
           ]
@@ -331,7 +331,7 @@ bot.callbackQuery("broadcast_confirm", async (ctx) => {
                   text: "🎮 Play Now",
 
                   web_app: {
-                    url:${process.env.GAME_URL}
+                    url: `${GAME_URL}?tid=${telegramId}`,
                   }
                 }
               ]
