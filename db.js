@@ -57,6 +57,17 @@ module.exports = {
     `, [paymentMethodId]);
 		return rows[0] || null;
 	},
+
+async getAllActiveUsers() {
+  const { rows } = await pool.query(`
+SELECT
+    *
+FROM users 
+WHERE is_active = TRUE;
+  `);
+
+  return rows;
+},
 	
 	async getPaymentMethodTypes() {
   const { rows } = await pool.query(`
