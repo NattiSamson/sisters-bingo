@@ -108,10 +108,9 @@ async deleteBroadcastDraft(adminId) {
 
 async getAllActiveUsers() {
   const { rows } = await pool.query(`
-SELECT
-    *
-FROM users 
-WHERE is_active = TRUE;
+    SELECT telegram_id
+    FROM users
+    WHERE is_active = TRUE;
   `);
 
   return rows;
