@@ -558,7 +558,7 @@ bot.on("message:text", async (ctx, next) => {
 
 
 // ─────────────────────────────────────────────────────────────
-// Registration contact / phone
+// Registration contact / phone a
 // ─────────────────────────────────────────────────────────────
 
 bot.on("message:contact", async (ctx) => {
