@@ -12,18 +12,275 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
+function normalizeEthiopianPhone(phone) {
+  if (!phone) {
+    return null;
+  }
+
+  // Remove spaces, +, -, (, ), etc.
+  let digits = String(phone).replace(/\D/g, "");
+
+  // 0912345678 → 251912345678
+  if (digits.startsWith("0") && digits.length === 10) {
+    digits = "251" + digits.substring(1);
+  }
+
+  // 912345678 → 251912345678
+  else if (digits.length === 9 && digits.startsWith("9")) {
+    digits = "251" + digits;
+  }
+
+  // 251912345678 → already correct
+  else if (
+    digits.startsWith("251") &&
+    digits.length === 12
+  ) {
+    // nothing
+  }
+
+  else {
+    return null;
+  }
+
+  return digits;
+};
+
 module.exports = {
   // ── User operations ──
-  async registerUser(telegramId, name, phone) {
-    const { rows } = await pool.query(
-      `INSERT INTO users(telegram_id, name, phone)
-       VALUES($1, $2, $3)
-       ON CONFLICT(telegram_id) DO UPDATE SET last_seen=NOW(), name=$2
-       RETURNING *`,
-      [telegramId, name, phone]
+async registerUser(telegramId, name, phone) {
+
+  const normalizedPhone =
+    normalizeEthiopianPhone(phone);
+
+  if (!normalizedPhone) {
+    throw new Error(
+      "Invalid Ethiopian phone number"
     );
-    return rows[0];
-  },
+  }
+
+  const client = await pool.connect();
+
+  try {
+
+    await client.query("BEGIN");
+
+    // Check Telegram account
+    const telegramResult = await client.query(
+      `
+      SELECT *
+      FROM users
+      WHERE telegram_id = $1
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [telegramId]
+    );
+
+    if (telegramResult.rows.length > 0) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        status: "existing_telegram",
+        user: telegramResult.rows[0]
+      };
+    }
+
+
+    // Check normalized phone
+    const phoneResult = await client.query(
+      `
+      SELECT *
+      FROM users
+      WHERE phone = $1
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [normalizedPhone]
+    );
+
+
+    // Existing Beteseb account
+    if (phoneResult.rows.length > 0) {
+
+      const existingUser =
+        phoneResult.rows[0];
+
+      const updated = await client.query(
+        `
+        UPDATE users
+        SET telegram_id = $1
+        WHERE id = $2
+        RETURNING *
+        `,
+        [
+          telegramId,
+          existingUser.id
+        ]
+      );
+
+      await client.query("COMMIT");
+
+      return {
+        status: "reconnected",
+        user: updated.rows[0]
+      };
+    }
+
+
+    // New account
+    const newUser = await client.query(
+      `
+      INSERT INTO users (
+        telegram_id,
+        name,
+        phone,
+        balance,
+        is_active,
+        is_banned
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        0,
+        TRUE,
+        FALSE
+      )
+      RETURNING *
+      `,
+      [
+        telegramId,
+        name,
+        normalizedPhone
+      ]
+    );
+
+
+    await client.query("COMMIT");
+
+    return {
+      status: "new",
+      user: newUser.rows[0]
+    };
+
+  } catch (err) {
+
+    await client.query("ROLLBACK");
+    throw err;
+
+  } finally {
+
+    client.release();
+  }
+},
+	
+	async reconnectUserByPhone(
+  telegramId,
+  name,
+  phone
+) {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // Find existing account by last 9 digits
+    const { rows } = await client.query(
+      `
+      SELECT *
+      FROM users
+      WHERE RIGHT(phone, 9) = RIGHT($1, 9)
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [phone]
+    );
+
+    if (rows.length === 0) {
+      await client.query("ROLLBACK");
+
+      return {
+        status: "not_found"
+      };
+    }
+
+    const user = rows[0];
+
+    // Same Telegram account
+    if (
+      String(user.telegram_id) ===
+      String(telegramId)
+    ) {
+      await client.query("ROLLBACK");
+
+      return {
+        status: "same_account",
+        user
+      };
+    }
+
+    // Make sure the new Telegram ID isn't already
+    // connected to another user.
+    const existingTelegram =
+      await client.query(
+        `
+        SELECT *
+        FROM users
+        WHERE telegram_id = $1
+        LIMIT 1
+        `,
+        [telegramId]
+      );
+
+    if (existingTelegram.rows.length > 0) {
+      await client.query("ROLLBACK");
+
+      return {
+        status: "telegram_already_used"
+      };
+    }
+
+    // Reconnect the existing account
+    const result = await client.query(
+      `
+      UPDATE users
+      SET
+        telegram_id = $1,
+        name = $2
+      WHERE id = $3
+      RETURNING *
+      `,
+      [
+        telegramId,
+        name,
+        user.id
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      status: "reconnected",
+      user: result.rows[0]
+    };
+
+  } catch (err) {
+
+    await client.query("ROLLBACK");
+
+    console.error(
+      "reconnectUserByPhone error:",
+      err
+    );
+
+    throw err;
+
+  } finally {
+
+    client.release();
+  }
+}
 
 	async createBroadcastDraft(adminId) {
   await pool.query(`
