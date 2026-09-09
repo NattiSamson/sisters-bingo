@@ -71,7 +71,7 @@ async deleteBroadcastDraft(adminId) {
     DELETE FROM broadcast_drafts
     WHERE admin_id = $1
   `, [adminId]);
-}
+},
 
 	async getPaymentAccount(paymentMethodId) {
 	  const { rows } = await pool.query(`
