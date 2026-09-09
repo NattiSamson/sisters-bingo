@@ -331,7 +331,7 @@ bot.callbackQuery("broadcast_confirm", async (ctx) => {
                   text: "🎮 Play Now",
 
                   web_app: {
-                    url:process.env.GAME_URL
+                    url:${process.env.GAME_URL}
                   }
                 }
               ]
@@ -462,7 +462,7 @@ bot.command("start", async (ctx) => {
               [
                 {
                   text: "Support 🆘",
-                  callback_data: "support",
+                  callback_data: "clear",
                 },
                 {
                   text: "Delete 🗑️",
@@ -631,6 +631,40 @@ bot.on("message:contact", async (ctx) => {
       "❌ Registration failed. Please try /start again."
     );
   }
+});
+
+// ─────────────────────────────────────────────────────────────
+// CLEAR
+// ─────────────────────────────────────────────────────────────
+
+async function clearAllUserMessage(ctx) {
+  const user = await db.getUserByTelegramId(ctx.from.id);
+
+  if (!user) {
+    return await ctx.reply(
+      "Please /start to register first."
+    );
+  }
+
+  await ctx.reply(
+    `💰 Your balance: *${user.balance} ETB*`,
+    {
+      parse_mode: "Markdown",
+    }
+  );
+}
+
+bot.command("clear", clearAllUserMessage);
+bot.hears("clear", clearAllUserMessage);
+bot.hears("💰 Clear", clearAllUserMessage);
+
+bot.callbackQuery("clear", async (ctx) => {
+  await answerCallback(ctx);
+    const telegramId = ctx.from.id;
+
+  clearPendingState(telegramId);
+
+  await clearAllUserMessage(ctx);
 });
 
 
