@@ -39,9 +39,11 @@ const pendingPhone = {};
 // For production on Vercel, this should eventually be stored
 // in PostgreSQL instead of memory.
 const pendingDeposit = {};
+const pendingTransfer = {};
 
 function clearPendingState(telegramId) {
   delete pendingDeposit[telegramId];
+  delete pendingTransfer[telegramId];
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -689,6 +691,16 @@ async function showBalance(ctx) {
   );
 }
 
+function getLast9Digits(phone) {
+  const digits = String(phone).replace(/\D/g, "");
+
+  if (digits.length < 9) {
+    return null;
+  }
+
+  return digits.slice(-9);
+}
+
 bot.command("balance", showBalance);
 
 bot.hears("balance", showBalance);
@@ -702,6 +714,365 @@ bot.callbackQuery("balance", async (ctx) => {
   clearPendingState(telegramId);
 
   await showBalance(ctx);
+});
+// ─────────────────────────────────────────────────────────────
+// TRANSFER
+// ─────────────────────────────────────────────────────────────
+
+async function showTransfer(ctx) {
+  const telegramId = ctx.from.id;
+
+  const user = await db.getUserByTelegramId(telegramId);
+
+  if (!user) {
+    return await ctx.reply(
+      "Please /start to register first."
+    );
+  }
+
+  // Must have more than 10 ETB
+  if (Number(user.balance) <= 10) {
+    return await ctx.reply(
+      "❌ ያሎት ሂሳብ ለሌላ ተጫዋች ለማስተላለፍ በቂ አይደለም።"
+    );
+  }
+
+  // Clear any previous transfer state
+  delete pendingTransfer[telegramId];
+
+  // Start transfer
+  pendingTransfer[telegramId] = {
+    step: "phone"
+  };
+
+  await ctx.reply(
+    "🔄 *ብር ማስተላለፍ*\n\n" +
+    "ማስተላለፍ የሚፈልጉትን ተጫዋች ስልክ ቁጥር ያስገቡ።\n\n" +
+    "ምሳሌ፦ `0912345678`",
+    {
+      parse_mode: "Markdown"
+    }
+  );
+}
+bot.on("message:text", async (ctx, next) => {
+  const telegramId = ctx.from.id;
+  const text = ctx.message.text.trim();
+
+  const transfer = pendingTransfer[telegramId];
+
+  // Not doing a transfer
+  if (!transfer) {
+    return next();
+  }
+
+  // We are waiting for recipient phone
+  if (transfer.step !== "phone") {
+    return next();
+  }
+
+  // Don't treat commands as phone numbers
+  if (text.startsWith("/")) {
+    return next();
+  }
+
+  try {
+
+    // --------------------------------------------------------
+    // Normalize phone number
+    // --------------------------------------------------------
+
+    const phone = normalizeEthiopianPhone(text);
+
+    if (!phone) {
+      return await ctx.reply(
+        "❌ እባክዎ ትክክለኛ የስልክ ቁጥር ያስገቡ።\n\n" +
+        "ምሳሌ፦ `0912345678`",
+        {
+          parse_mode: "Markdown"
+        }
+      );
+    }
+
+
+    // --------------------------------------------------------
+    // Get sender again
+    // --------------------------------------------------------
+
+    const sender =
+      await db.getUserByTelegramId(telegramId);
+
+    if (!sender) {
+      delete pendingTransfer[telegramId];
+
+      return await ctx.reply(
+        "❌ አካውንትዎ አልተገኘም። /start ብለው እንደገና ይጀምሩ።"
+      );
+    }
+
+
+    // --------------------------------------------------------
+    // Find recipient by phone
+    // --------------------------------------------------------
+
+    const recipient =
+      await db.getUserByPhone(phone);
+
+
+    if (!recipient) {
+      return await ctx.reply(
+        "❌ ይህ ስልክ ቁጥር በሲስተማችን ውስጥ አልተመዘገበም።\n\n" +
+        "እባክዎ ትክክለኛ የተጫዋች ስልክ ቁጥር ያስገቡ።"
+      );
+    }
+
+
+    // --------------------------------------------------------
+    // Don't allow transfer to yourself
+    // --------------------------------------------------------
+
+    if (
+      Number(recipient.telegram_id) ===
+      Number(sender.telegram_id)
+    ) {
+      return await ctx.reply(
+        "❌ ወደራስዎ ሂሳብ ብር ማስተላለፍ አይችሉም።\n\n" +
+        "የሌላ ተጫዋች ስልክ ቁጥር ያስገቡ።"
+      );
+    }
+
+
+    // --------------------------------------------------------
+    // Save recipient
+    // --------------------------------------------------------
+
+    pendingTransfer[telegramId] = {
+      step: "amount",
+      recipient: recipient
+    };
+
+
+    // --------------------------------------------------------
+    // Ask amount
+    // --------------------------------------------------------
+
+    await ctx.reply(
+      "✅ *ተጫዋቹ ተረጋግጧል።*\n\n" +
+      `👤 ተቀባይ፦ *${recipient.name}*\n` +
+      `📱 ስልክ፦ ${phone}\n\n` +
+      "💰 ከ11 ብር ጀምሮ ማስተላለፍ የሚፈልጉትን የብር መጠን ያስገቡ።\n\n",      
+      {
+        parse_mode: "Markdown"
+      }
+    );
+
+  } catch (err) {
+
+    console.error(
+      "Transfer phone verification error:",
+      err
+    );
+
+    await ctx.reply(
+      "❌ የተጫዋቹን ስልክ ማረጋገጥ አልተቻለም።"
+    );
+  }
+});
+
+bot.command("transfer", showTransfer);
+
+bot.hears("transfer", showTransfer);
+
+bot.hears("💰 Transfer", showTransfer);
+
+bot.callbackQuery("transfer", async (ctx) => {
+  await answerCallback(ctx);
+    const telegramId = ctx.from.id;
+
+  clearPendingState(telegramId);
+
+  await showTransfer(ctx);
+});
+
+bot.on("message:text", async (ctx, next) => {
+  const telegramId = ctx.from.id;
+  const text = ctx.message.text.trim();
+
+  const transfer = pendingTransfer[telegramId];
+
+  // Not doing transfer
+  if (!transfer) {
+    return next();
+  }
+
+  // Waiting for phone, not amount
+  if (transfer.step !== "amount") {
+    return next();
+  }
+
+  // Don't accept commands as amount
+  if (text.startsWith("/")) {
+    return next();
+  }
+
+  try {
+
+    // --------------------------------------------------------
+    // Validate amount
+    // --------------------------------------------------------
+
+    const amount = Number(text);
+
+
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      return await ctx.reply(
+        "❌ እባክዎ ትክክለኛ የብር መጠን ያስገቡ።\n\n" +
+        "ምሳሌ፦ `50`",
+        {
+          parse_mode: "Markdown"
+        }
+      );
+    }
+
+
+    // Don't allow decimals
+    if (!Number.isInteger(amount)) {
+      return await ctx.reply(
+        "❌ የሚያስተላልፉት የብር መጠን ሙሉ ቁጥር መሆን አለበት።\n\n" +
+        "ምሳሌ፦ `50`"
+      );
+    }
+
+
+    // --------------------------------------------------------
+    // Get sender
+    // --------------------------------------------------------
+
+    const sender =
+      await db.getUserByTelegramId(telegramId);
+
+
+    if (!sender) {
+      delete pendingTransfer[telegramId];
+
+      return await ctx.reply(
+        "❌ አካውንትዎ አልተገኘም።"
+      );
+    }
+
+
+    // --------------------------------------------------------
+    // Minimum transfer
+    // --------------------------------------------------------
+
+    if (amount < 10) {
+      return await ctx.reply(
+        "❌ ቢያንስ 10 ብር ማስተላለፍ ይችላሉ።"
+      );
+    }
+
+
+    // --------------------------------------------------------
+    // Check balance
+    // --------------------------------------------------------
+
+    const balance = Number(sender.balance);
+
+
+    if (amount > balance) {
+      return await ctx.reply(
+        `❌ በቂ ሂሳብ የሎትም።\n\n` +
+        `💰 ያለዎት ሂሳብ፦ ${balance} ETB\n` +
+        `💸 ለማስተላለፍ የፈለጉት፦ ${amount} ETB`
+      );
+    }
+
+
+    // --------------------------------------------------------
+    // Final transfer
+    // --------------------------------------------------------
+
+    const recipient =
+      transfer.recipient;
+
+
+    const result =
+      await db.transferBalance(
+        sender.telegram_id,
+        recipient.telegram_id,
+        amount
+      );
+
+
+    if (!result.success) {
+
+      return await ctx.reply(
+        `❌ ${result.message || "ማስተላለፉ አልተሳካም።"}`
+      );
+    }
+
+
+    // --------------------------------------------------------
+    // Clear state
+    // --------------------------------------------------------
+
+    delete pendingTransfer[telegramId];
+
+
+    // --------------------------------------------------------
+    // Tell sender
+    // --------------------------------------------------------
+
+    await ctx.reply(
+      "✅ *ማስተላለፉ ተሳክቷል!*\n\n" +
+      `👤 ተቀባይ፦ *${recipient.name}*\n` +
+      `💸 የተላከው፦ *${amount} ETB*\n\n` +
+      `💰 አዲሱ ቀሪ ሂሳብ፦ *${result.senderBalance} ETB*`,
+      {
+        parse_mode: "Markdown"
+      }
+    );
+
+
+    // --------------------------------------------------------
+    // Notify recipient
+    // --------------------------------------------------------
+
+    try {
+
+      await bot.api.sendMessage(
+        recipient.telegram_id,
+        "💰 *ብር ደርሶዎታል!*\n\n" +
+        `👤 ከ፦ *${sender.name}*\n` +
+        `💵 የደረሰዎት፦ *${amount} ETB*\n\n` +
+        `💰 አዲሱ ቀሪ ሂሳብ፦ *${result.recipientBalance} ETB*`,
+        {
+          parse_mode: "Markdown"
+        }
+      );
+
+    } catch (notifyError) {
+
+      console.error(
+        "Could not notify recipient:",
+        notifyError.description ||
+        notifyError.message
+      );
+    }
+
+  } catch (err) {
+
+    console.error(
+      "Transfer amount error:",
+      err
+    );
+
+    await ctx.reply(
+      "❌ ማስተላለፉን ማከናወን አልተቻለም። እባክዎ ቆይተው ይሞክሩ።"
+    );
+  }
 });
 
 
