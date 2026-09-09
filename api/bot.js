@@ -88,7 +88,7 @@ bot.command("broadcast", async (ctx) => {
 
   for (const user of result) {
     try {
-      await bot.telegram.sendMessage(
+      await bot.api.sendMessage(
         user.telegram_id,
         message
       );
