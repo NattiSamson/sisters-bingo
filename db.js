@@ -402,7 +402,7 @@ await pool.query(
 
     client.release();
   }
-}	
+},	
 
   async getUserByTelegramId(telegramId) {
     const { rows } = await pool.query(
