@@ -359,8 +359,8 @@ let mes = "❇️ ብር ማስገባት የሚችሉት ቀጥሎ ";
 
 const some =
   paymentmethods.length <= 1
-    ? "በተቀመጠው የ"
-    : "በተቀመጡት የ";
+    ? "በተቀመጠው "
+    : "በተቀመጡት ";
 
 const meslast =
   paymentmethods.length <= 1
