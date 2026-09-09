@@ -1067,7 +1067,7 @@ bot.on("message:text", async (ctx, next) => {
       "✅ *ማስተላለፉ ተሳክቷል!*\n\n" +
       `👤 ተቀባይ፦ *${recipient.name}*\n` +
       `💸 የተላከው፦ *${amount} ETB*\n\n` +
-      `💰 አዲሱ ቀሪ ሂሳብ፦ *${result.senderBalance} ETB*`,
+      `💰 አዲሱ ቀሪ ሂሳብ፦ *${result.senderAfter} ETB*`,
       {
         parse_mode: "Markdown"
       }
@@ -1085,7 +1085,7 @@ bot.on("message:text", async (ctx, next) => {
         "💰 *ብር ደርሶዎታል!*\n\n" +
         `👤 ከ፦ *${sender.name}*\n` +
         `💵 የደረሰዎት፦ *${amount} ETB*\n\n` +
-        `💰 አዲሱ ቀሪ ሂሳብ፦ *${result.recipientBalance} ETB*`,
+        `💰 አዲሱ ቀሪ ሂሳብ፦ *${result.recipientAfter} ETB*`,
         {
           parse_mode: "Markdown"
         }
