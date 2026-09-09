@@ -153,16 +153,14 @@ bot.on("message:photo", async (ctx) => {
 // RECEIVE BROADCAST MESSAGE
 // ============================================================
 
-bot.on("message:text", async (ctx) => {
+bot.on("message:text", async (ctx, next) => {
 
-  // Only admin
+  // Only handle broadcast messages from admin
   if (ctx.from.id !== ADMIN_ID) {
-    return;
+    return next();
   }
 
-
   const text = ctx.message.text.trim();
-
 
   // ----------------------------------------------------------
   // CANCEL
@@ -173,16 +171,13 @@ bot.on("message:text", async (ctx) => {
     const draft = await db.getBroadcastDraft(ADMIN_ID);
 
     if (!draft) {
-      return ctx.reply("There is no active broadcast.");
+      return next();
     }
 
     await db.deleteBroadcastDraft(ADMIN_ID);
 
-    return ctx.reply(
-      "❌ Broadcast cancelled."
-    );
+    return ctx.reply("❌ Broadcast cancelled.");
   }
-
 
   // ----------------------------------------------------------
   // CHECK BROADCAST DRAFT
@@ -190,33 +185,33 @@ bot.on("message:text", async (ctx) => {
 
   const draft = await db.getBroadcastDraft(ADMIN_ID);
 
+  // No broadcast in progress
   if (!draft) {
-    return;
+    return next();
   }
-
 
   // ----------------------------------------------------------
   // WAITING FOR MESSAGE
   // ----------------------------------------------------------
 
   if (draft.status !== "waiting_message") {
-    return;
+    return next();
   }
 
+  // ----------------------------------------------------------
+  // SAVE MESSAGE
+  // ----------------------------------------------------------
 
-  // Save message
   await db.updateBroadcastMessage(
     ADMIN_ID,
     text
   );
-
 
   // ----------------------------------------------------------
   // PREVIEW
   // ----------------------------------------------------------
 
   const users = await db.getAllActiveUsers();
-
 
   await bot.api.sendPhoto(
     ADMIN_ID,
@@ -230,7 +225,7 @@ bot.on("message:text", async (ctx) => {
             {
               text: "🎮 Play Now",
               web_app: {
-                url: process.env.GAME_URL
+                url: GAME_URL
               }
             }
           ]
@@ -238,7 +233,6 @@ bot.on("message:text", async (ctx) => {
       }
     }
   );
-
 
   await ctx.reply(
     `📢 *BROADCAST PREVIEW*\n\n` +
