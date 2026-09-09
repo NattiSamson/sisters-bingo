@@ -230,7 +230,7 @@ bot.on("message:text", async (ctx) => {
             {
               text: "🎮 Play Now",
               web_app: {
-                url: "https://YOUR-BINGO-APP.vercel.app"
+                url: process.env.GAME_URL
               }
             }
           ]
@@ -337,7 +337,7 @@ bot.callbackQuery("broadcast_confirm", async (ctx) => {
                   text: "🎮 Play Now",
 
                   web_app: {
-                    url: "https://YOUR-BINGO-APP.vercel.app"
+                    url:process.env.GAME_URL
                   }
                 }
               ]
