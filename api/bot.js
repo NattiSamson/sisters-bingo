@@ -79,7 +79,7 @@ bot.command("broadcast", async (ctx) => {
     return ctx.reply("Usage:\n/broadcast Your message here");
   }
 
-  const result = await db.query(
+  const result = await db.getAllActiveUsers(
     "SELECT telegram_id FROM users"
   );
 
