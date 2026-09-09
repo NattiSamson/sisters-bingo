@@ -68,43 +68,351 @@ async function answerCallback(ctx, text = undefined) {
 //Boradcast
 const ADMIN_ID = 8597748757;
 
+
+// ============================================================
+// /broadcast
+// ============================================================
+
 bot.command("broadcast", async (ctx) => {
+
+  // ----------------------------------------------------------
+  // ADMIN CHECK
+  // ----------------------------------------------------------
+
   if (ctx.from.id !== ADMIN_ID) {
-    return ctx.reply("Unauthorized");
+    return ctx.reply("❌ Unauthorized.");
   }
 
-  const message = ctx.message.text.replace("/broadcast", "").trim();
 
-  if (!message) {
-    return ctx.reply("Usage:\n/broadcast Your message here");
-  }
+  // ----------------------------------------------------------
+  // CREATE NEW BROADCAST
+  // ----------------------------------------------------------
 
-  const result = await db.getAllActiveUsers(
-    "SELECT telegram_id FROM users"
+  await db.createBroadcastDraft(ADMIN_ID);
+
+  await ctx.reply(
+    "📢 *Broadcast mode started!*\n\n" +
+    "Please send the image you want to broadcast.\n\n" +
+    "❌ Send /cancel to cancel.",
+    {
+      parse_mode: "Markdown"
+    }
   );
+});
+
+
+// ============================================================
+// RECEIVE BROADCAST IMAGE
+// ============================================================
+
+bot.on("message:photo", async (ctx) => {
+
+  // Only admin can use this
+  if (ctx.from.id !== ADMIN_ID) {
+    return;
+  }
+
+  const draft = await db.getBroadcastDraft(ADMIN_ID);
+
+  // No active broadcast
+  if (!draft) {
+    return;
+  }
+
+  // Only accept image during waiting_image
+  if (draft.status !== "waiting_image") {
+    return;
+  }
+
+
+  // Get highest quality photo
+  const photo = ctx.message.photo[
+    ctx.message.photo.length - 1
+  ];
+
+  const fileId = photo.file_id;
+
+
+  // Save Telegram file_id
+  await db.updateBroadcastImage(
+    ADMIN_ID,
+    fileId
+  );
+
+
+  await ctx.reply(
+    "✅ Image received!\n\n" +
+    "Now send the message/caption you want to broadcast.\n\n" +
+    "You can use Amharic, emojis, line breaks, etc.\n\n" +
+    "❌ Send /cancel to cancel."
+  );
+});
+
+
+// ============================================================
+// RECEIVE BROADCAST MESSAGE
+// ============================================================
+
+bot.on("message:text", async (ctx) => {
+
+  // Only admin
+  if (ctx.from.id !== ADMIN_ID) {
+    return;
+  }
+
+
+  const text = ctx.message.text.trim();
+
+
+  // ----------------------------------------------------------
+  // CANCEL
+  // ----------------------------------------------------------
+
+  if (text === "/cancel") {
+
+    const draft = await db.getBroadcastDraft(ADMIN_ID);
+
+    if (!draft) {
+      return ctx.reply("There is no active broadcast.");
+    }
+
+    await db.deleteBroadcastDraft(ADMIN_ID);
+
+    return ctx.reply(
+      "❌ Broadcast cancelled."
+    );
+  }
+
+
+  // ----------------------------------------------------------
+  // CHECK BROADCAST DRAFT
+  // ----------------------------------------------------------
+
+  const draft = await db.getBroadcastDraft(ADMIN_ID);
+
+  if (!draft) {
+    return;
+  }
+
+
+  // ----------------------------------------------------------
+  // WAITING FOR MESSAGE
+  // ----------------------------------------------------------
+
+  if (draft.status !== "waiting_message") {
+    return;
+  }
+
+
+  // Save message
+  await db.updateBroadcastMessage(
+    ADMIN_ID,
+    text
+  );
+
+
+  // ----------------------------------------------------------
+  // PREVIEW
+  // ----------------------------------------------------------
+
+  const users = await db.getAllActiveUsers();
+
+
+  await bot.api.sendPhoto(
+    ADMIN_ID,
+    draft.image_url,
+    {
+      caption: text,
+
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "🎮 Play Now",
+              web_app: {
+                url: "https://YOUR-BINGO-APP.vercel.app"
+              }
+            }
+          ]
+        ]
+      }
+    }
+  );
+
+
+  await ctx.reply(
+    `📢 *BROADCAST PREVIEW*\n\n` +
+    `👥 Recipients: ${users.length}\n\n` +
+    `Are you sure you want to send this to everyone?`,
+    {
+      parse_mode: "Markdown",
+
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "✅ SEND TO ALL",
+              callback_data: "broadcast_confirm"
+            },
+            {
+              text: "❌ CANCEL",
+              callback_data: "broadcast_cancel"
+            }
+          ]
+        ]
+      }
+    }
+  );
+});
+
+
+// ============================================================
+// CONFIRM BROADCAST
+// ============================================================
+
+bot.callbackQuery("broadcast_confirm", async (ctx) => {
+
+  // Admin only
+  if (ctx.from.id !== ADMIN_ID) {
+    return ctx.answerCallbackQuery({
+      text: "Unauthorized",
+      show_alert: true
+    });
+  }
+
+
+  await ctx.answerCallbackQuery();
+
+
+  const draft = await db.getBroadcastDraft(ADMIN_ID);
+
+
+  if (!draft) {
+    return ctx.editMessageText(
+      "❌ Broadcast draft not found."
+    );
+  }
+
+
+  if (!draft.image_url || !draft.message) {
+    return ctx.editMessageText(
+      "❌ Broadcast information is incomplete."
+    );
+  }
+
+
+  // Get active users
+  const users = await db.getAllActiveUsers();
+
 
   let sent = 0;
   let failed = 0;
 
-  for (const user of result) {
+
+  await ctx.editMessageText(
+    `📢 Broadcasting...\n\n` +
+    `👥 Users: ${users.length}\n` +
+    `⏳ Please wait...`
+  );
+
+
+  // ----------------------------------------------------------
+  // SEND TO USERS
+  // ----------------------------------------------------------
+
+  for (const user of users) {
+
     try {
-      await bot.api.sendMessage(
+
+      await bot.api.sendPhoto(
         user.telegram_id,
-        message
+        draft.image_url,
+        {
+          caption: draft.message,
+
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🎮 Play Now",
+
+                  web_app: {
+                    url: "https://YOUR-BINGO-APP.vercel.app"
+                  }
+                }
+              ]
+            ]
+          }
+        }
       );
 
+
       sent++;
+
+
+      // Small delay to avoid Telegram rate limits
+      await new Promise(resolve =>
+        setTimeout(resolve, 40)
+      );
+
+
     } catch (err) {
+
       failed++;
-      console.log(
-        `Failed to send to ${user.telegram_id}:`,
-        err.response?.description || err.message
+
+      console.error(
+        `❌ Failed to send to ${user.telegram_id}:`,
+        err.description || err.message
       );
     }
   }
 
+
+  // ----------------------------------------------------------
+  // DELETE DRAFT
+  // ----------------------------------------------------------
+
+  await db.deleteBroadcastDraft(ADMIN_ID);
+
+
+  // ----------------------------------------------------------
+  // RESULT
+  // ----------------------------------------------------------
+
   await ctx.reply(
-    `Broadcast completed.\n\n✅ Sent: ${sent}\n❌ Failed: ${failed}`
+    `📢 *Broadcast completed!*\n\n` +
+    `👥 Total: ${users.length}\n` +
+    `✅ Sent: ${sent}\n` +
+    `❌ Failed: ${failed}`,
+    {
+      parse_mode: "Markdown"
+    }
+  );
+});
+
+
+// ============================================================
+// CANCEL BROADCAST
+// ============================================================
+
+bot.callbackQuery("broadcast_cancel", async (ctx) => {
+
+  if (ctx.from.id !== ADMIN_ID) {
+    return ctx.answerCallbackQuery({
+      text: "Unauthorized",
+      show_alert: true
+    });
+  }
+
+
+  await ctx.answerCallbackQuery();
+
+
+  await db.deleteBroadcastDraft(ADMIN_ID);
+
+
+  await ctx.editMessageText(
+    "❌ Broadcast cancelled."
   );
 });
 
