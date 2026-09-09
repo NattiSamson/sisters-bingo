@@ -51,8 +51,15 @@ if (process.env.DATABASE_URL) {
       idleTimeoutMillis: 30000,     // close idle connections after 30s
       connectionTimeoutMillis: 5000 // fail fast instead of hanging under load
     });
-     const { registerMigrateRoute } = require('./migrate-route');
-   registerMigrateRoute(app, pool);
+    // Optional migration route. The game server does not depend on this file.
+    // If migrate-route.js is not present on shared hosting, keep the DB/game
+    // server running normally instead of making db initialization fail.
+    try {
+      const { registerMigrateRoute } = require('./migrate-route');
+      registerMigrateRoute(app, pool);
+    } catch (e) {
+      console.warn('migrate-route.js not loaded (optional):', e.message);
+    }
 
     db = {
       q: (sql, p) => pool.query(sql, p).then(r => r.rows),
@@ -328,14 +335,13 @@ const LOBBY_WAIT_MS    = 30000;
 const CALL_INTERVAL_MS = 5000;
 const CLAIM_WINDOW_MS  = 4800;
 const CLAIM_COLLECT_MS = 700; // grace period to gather simultaneous BINGO claims
-const TOTAL_CARDS      = 600;
+const TOTAL_CARDS      = 400;
 
 const STAKES = [
-  { id:'st5', amount:5, maxPlayers:600 },
-  { id:'st10', amount:10, maxPlayers:600 },
-  { id:'st20', amount:20, maxPlayers:600 },
-  { id:'st50', amount:100, maxPlayers:600 },
-  { id:'st100', amount:100, maxPlayers:600 },
+  { id:'st10', amount:10, maxPlayers:400 },
+  { id:'st20', amount:20, maxPlayers:400 },
+  { id:'st50', amount:100, maxPlayers:400 },
+  { id:'st100', amount:100, maxPlayers:400 },
 ];
 
 // ─── FIXED CARDS ─────────────────────────────────────────────
@@ -1569,9 +1575,26 @@ app.get('/api/leaderboard', async(req,res)=>{
 });
 
 app.get('/api/user/:tid', async(req,res)=>{
-  const u=await loadUser(req.params.tid);
-  if(!u) return res.status(404).json({error:'Not found'});
-  res.json(u);
+  const tid=String(req.params.tid||'').trim();
+  if(!tid) return res.status(400).json({error:'Missing Telegram ID'});
+  if(!db) return res.status(503).json({error:'Database unavailable'});
+  try{
+    const rows=await db.q('SELECT * FROM users WHERE telegram_id=$1',[tid]);
+    const u=rows[0]||null;
+    if(!u) return res.status(404).json({error:'Not found'});
+    const user={
+      telegramId:String(u.telegram_id),
+      name:u.name||'',
+      phone:u.phone||'',
+      balance:Number.parseFloat(u.balance)||0,
+      isAdmin:u.is_admin===true || isAdminPhone(u.phone)
+    };
+    userCache[tid]=user;
+    res.json(user);
+  }catch(e){
+    console.error('GET /api/user error:',e.message);
+    res.status(500).json({error:'Database query failed'});
+  }
 });
 
 // ─── START ────────────────────────────────────────────────────

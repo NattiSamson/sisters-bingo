@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none">
-<title>Mela Bingo</title>
+<title>Beteseb Bingo</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -14,9 +14,6 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bottom:80px;overflow-x:hidden}
-
-/* mama love */
-
 
 /* NAVBAR */
 .navbar{display:flex;align-items:center;justify-content:space-between;background:var(--panel);padding:14px 16px;border-bottom:2px solid #2d174d;position:sticky;top:0;z-index:100}
@@ -230,7 +227,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .auto-game-note{text-align:center;color:var(--gray);font-size:11px;margin:8px 0 10px}
 
 
-/* MELA BINGO START PAGE */
+/* BETESEB BINGO START PAGE */
 #screenLobby{max-width:500px;padding:0 18px 28px;min-height:calc(100vh - 128px);background:radial-gradient(circle at 8% 8%,rgba(124,58,237,.28),transparent 34%),linear-gradient(155deg,#3d176f 0%,#21134d 45%,#0d172d 100%)}
 #screenLobby .welcome-banner{display:block;background:transparent;border:0;border-radius:0;padding:48px 4px 26px;margin:0;text-align:center}
 .mela-welcome-title{font-size:34px;font-weight:800;line-height:1.15;color:#fff}
@@ -259,12 +256,346 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .bottom-nav .nav-center{height:54px;width:54px;flex:0 0 54px;justify-self:center;align-self:center;transform:translateY(-10px)}
 .bottom-nav .nav-center-label{font-size:10px;color:var(--gray);font-weight:600;margin-top:-8px}
 .bottom-nav .nav-game-label{color:var(--gray)}
+
+/* ============================================================
+   BETESEB BINGO — FRIENDLY MODERN REDESIGN
+   Visual-only layer: existing IDs, WebSocket messages,
+   handlers and server parameters are intentionally preserved.
+   ============================================================ */
+:root{
+  --bg:#081225;
+  --bg2:#101b35;
+  --panel:#14213d;
+  --panel2:#1b2b4b;
+  --card:#202f50;
+  --line:rgba(255,255,255,.12);
+  --text:#f8fbff;
+  --muted:#aebbd0;
+  --gold:#ffd43b;
+  --yellow:#ffbd1f;
+  --green:#13c985;
+  --blue:#3d8bfd;
+  --purple:#8b5cf6;
+  --orange:#ff7a18;
+  --red:#ff4d5f;
+  --b:#3d8bfd;
+  --i:#7357f6;
+  --n:#a83df0;
+  --g:#13c985;
+  --o:#ff7217;
+}
+
+html{background:var(--bg)}
+body{
+  background:
+    radial-gradient(circle at 10% 0%,rgba(139,92,246,.26),transparent 28%),
+    radial-gradient(circle at 100% 20%,rgba(61,139,253,.18),transparent 30%),
+    linear-gradient(155deg,#0a1730 0%,#101a35 52%,#11153a 100%);
+  color:var(--text);
+  font-family:'Inter',system-ui,sans-serif;
+  padding-bottom:78px;
+}
+
+.navbar{
+  background:rgba(11,25,47,.94);
+  backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line);
+  padding:13px 16px;
+  box-shadow:0 8px 25px rgba(0,0,0,.18);
+}
+.brand{
+  color:#fff;
+  font-family:'Inter',sans-serif;
+  font-size:18px;
+  letter-spacing:-.3px;
+}
+.brand:before{
+  content:"B";
+  width:29px;height:29px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:50%;
+  background:linear-gradient(135deg,#fff,#eef3ff);
+  color:#7c3aed;
+  font-weight:900;
+  margin-right:2px;
+}
+.dot{width:8px;height:8px;background:var(--red)}
+.dot.on{background:var(--green);box-shadow:0 0 9px rgba(19,201,133,.65)}
+.balance-pill{
+  background:linear-gradient(135deg,#ffd84d,#ffb71b);
+  color:#18233b;
+  border-radius:13px;
+  padding:8px 12px;
+  box-shadow:0 4px 12px rgba(255,189,31,.2);
+}
+
+.screen{max-width:520px;padding:16px}
+.screen-title{font-family:'Inter',sans-serif;font-weight:800;letter-spacing:-.3px}
+.screen.active{animation:fadeIn .22s ease}
+
+button,.stake-card,.pool-btn,.nav-item{touch-action:manipulation}
+
+.card-search,.search-input,.form-input{
+  background:#111d37;
+  border:1px solid rgba(255,255,255,.15);
+  color:#fff;
+  border-radius:12px;
+}
+.card-search:focus,.search-input:focus,.form-input:focus{
+  border-color:#6da8ff;
+  box-shadow:0 0 0 3px rgba(61,139,253,.12);
+}
+
+.bottom-nav{
+  height:68px;
+  background:rgba(17,31,55,.97);
+  backdrop-filter:blur(15px);
+  border-top:1px solid rgba(255,255,255,.1);
+  box-shadow:0 -8px 25px rgba(0,0,0,.16);
+}
+.nav-item{color:#91a3bd;font-size:10px}
+.nav-item.active{color:#5aa2ff}
+.nav-icon{font-size:20px}
+.nav-center{
+  background:linear-gradient(145deg,#ffd84d,#ffab0b);
+  border-color:#111d37;
+  box-shadow:0 5px 18px rgba(255,184,31,.3);
+}
+.nav-center-label{color:#91a3bd!important}
+
+#screenLobby{
+  max-width:520px;
+  min-height:calc(100vh - 146px);
+  padding:0 16px 30px;
+  background:
+    radial-gradient(circle at 15% 5%,rgba(168,61,240,.38),transparent 32%),
+    radial-gradient(circle at 90% 25%,rgba(61,139,253,.20),transparent 35%),
+    linear-gradient(155deg,#4d188d 0%,#29205d 44%,#0d1930 100%);
+}
+#screenLobby .welcome-banner{
+  padding:38px 8px 24px;
+}
+.mela-welcome-title{
+  font-size:clamp(30px,8vw,38px);
+  font-weight:900;
+  letter-spacing:-1.2px;
+}
+.mela-welcome-title span{
+  display:inline;
+  color:#ffd52e;
+  text-shadow:0 5px 22px rgba(255,213,46,.18);
+}
+.mela-welcome-player{color:#d7def0}
+#screenLobby #welcomeStatus{color:#b9c7df!important}
+
+.lobby-stake-panel{
+  background:rgba(255,255,255,.10);
+  border:1px solid rgba(255,255,255,.20);
+  border-radius:24px;
+  padding:18px 13px 14px;
+  box-shadow:0 18px 45px rgba(0,0,0,.18);
+}
+.lobby-stake-heading{
+  font-size:18px;
+  margin-bottom:15px;
+}
+.lobby-stake-heading span{color:#ffd52e}
+#screenLobby .stakes-grid{gap:11px}
+#screenLobby .stake-card{
+  min-height:64px;
+  border-radius:16px;
+  box-shadow:0 8px 18px rgba(0,0,0,.17);
+  transition:transform .15s ease,filter .15s ease;
+}
+#screenLobby .stake-card:active{transform:scale(.985)}
+#screenLobby .stake-card:nth-child(1){background:linear-gradient(100deg,#0dcc9d,#0aa9c4)}
+#screenLobby .stake-card:nth-child(2){background:linear-gradient(100deg,#1599ef,#5746ee)}
+#screenLobby .stake-card:nth-child(3){background:linear-gradient(100deg,#9c4de9,#5f46df)}
+#screenLobby .stake-card:nth-child(4){background:linear-gradient(100deg,#ffb31b,#ff6b22)}
+#screenLobby .stake-etb{font-size:22px}
+.lobby-players-card{
+  margin-top:24px;
+  padding:23px 16px;
+  background:rgba(255,255,255,.09);
+  border:1px solid rgba(255,255,255,.16);
+  box-shadow:0 14px 35px rgba(0,0,0,.15);
+}
+.lobby-players-number{font-size:30px;color:#fff}
+.lobby-players-label{color:#e0d7ef}
+.lobby-players-sub{color:#a7b3c8}
+
+/* Card selection */
+#screenCards{
+  background:linear-gradient(160deg,#0d1930,#151d3d 58%,#241b57);
+  min-height:calc(100vh - 146px);
+}
+#screenCards .cd-header{
+  background:linear-gradient(135deg,rgba(139,92,246,.22),rgba(61,139,253,.14));
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:18px;
+  padding:13px 14px;
+}
+#screenCards .screen-title{font-size:17px}
+.cd-countdown{color:#ffd43b}
+#cdPrizePot{
+  background:linear-gradient(135deg,rgba(255,205,55,.12),rgba(139,92,246,.12))!important;
+  border:1px solid rgba(255,212,59,.25)!important;
+  border-radius:14px!important;
+  color:#ffd84d!important;
+}
+.selected-cards-row{gap:9px}
+.selected-slot{
+  background:#172541;
+  border:1px dashed rgba(255,255,255,.22);
+  border-radius:14px;
+  min-height:61px;
+}
+.selected-slot.filled1{
+  border-color:#8b5cf6;
+  background:linear-gradient(135deg,rgba(139,92,246,.25),rgba(61,139,253,.08));
+}
+.selected-slot.filled2{
+  border-color:#ff9d2e;
+  background:linear-gradient(135deg,rgba(255,157,46,.22),rgba(255,106,34,.08));
+}
+.pool-grid{
+  grid-template-columns:repeat(6,1fr);
+  gap:7px;
+  height:390px;
+  padding:5px;
+  background:rgba(7,15,31,.32);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:15px;
+}
+.pool-btn{
+  background:linear-gradient(145deg,#f7f9ff,#e9eef8);
+  color:#273650;
+  border:1px solid #c9d3e4;
+  min-height:43px;
+  padding:9px 4px;
+  border-radius:10px;
+  font-size:13px;
+  box-shadow:0 2px 4px rgba(0,0,0,.10);
+}
+.pool-btn:hover{border-color:#6da8ff;transform:translateY(-1px)}
+.pool-btn.taken{
+  background:linear-gradient(145deg,#4a2432,#351d2a);
+  color:#ff9aaa;
+  border-color:#7b394d;
+}
+.pool-btn.mine1{
+  background:linear-gradient(145deg,#8057f5,#6040d9)!important;
+  color:#fff!important;
+  border-color:#bca7ff!important;
+  box-shadow:0 5px 12px rgba(126,87,245,.30);
+}
+.pool-btn.mine2{
+  background:linear-gradient(145deg,#ff9d32,#f56a18)!important;
+  color:#fff!important;
+  border-color:#ffd08e!important;
+  box-shadow:0 5px 12px rgba(245,106,24,.24);
+}
+.leave-btn{
+  background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.15);
+  color:#b9c7dc;
+  border-radius:12px;
+}
+
+/* Game */
+#screenGame{padding-top:12px}
+.game-stats-row{gap:8px}
+.stat-box{
+  background:linear-gradient(145deg,#172643,#202f50);
+  border:1px solid rgba(255,255,255,.11);
+  border-radius:13px;
+  padding:9px 10px;
+  min-width:82px;
+}
+.stat-box .lbl{color:#9fb0c8}
+.stat-box .val{color:#ffd43b}
+.ball-circle{
+  width:78px;height:78px;
+  background:radial-gradient(circle at 35% 25%,#ffffff,#dfe7f4 46%,#bfcce0 100%);
+  border:3px solid #ffd43b;
+  box-shadow:0 8px 24px rgba(0,0,0,.28),0 0 0 6px rgba(255,212,59,.08);
+}
+.ball-number{color:#243452}
+.ball-letter{color:#55657e}
+.ball-sub{color:#a7b6cb}
+.active-players-button,.tracker-wrap,.card-container{
+  background:linear-gradient(145deg,#172642,#202f50);
+  border:1px solid rgba(255,255,255,.10);
+}
+.active-players-button{border-radius:13px}
+.auto-game-note{color:#9fb0c8}
+.claim-bar-wrap{background:#202f50}
+.claim-bar{background:linear-gradient(90deg,#12c98b,#35e0b1)}
+.card-container{border-radius:18px;box-shadow:0 12px 30px rgba(0,0,0,.22)}
+.bingo-col-head{height:40px}
+.bingo-cell{
+  background:#f8faff;
+  color:#273650;
+  border:1px solid #d7dfeb;
+  border-radius:8px;
+  box-shadow:0 2px 3px rgba(0,0,0,.08);
+}
+.bingo-cell.marked{background:linear-gradient(145deg,#7654ef,#5940d5)!important;color:#fff!important}
+.bingo-cell.called-not-marked{background:#fff3bd!important;color:#725300!important}
+.bingo-cell.free{background:linear-gradient(145deg,#14c990,#0ba977)!important}
+.bingo-btn{background:#1b2946;border-color:rgba(255,255,255,.10);border-radius:14px}
+.bingo-btn.ready{box-shadow:0 0 25px rgba(19,201,133,.35)}
+
+.tracker-wrap{padding:9px;border-radius:14px}
+.t-ball{background:#243453;color:#91a2bc}
+
+/* Wallet / admin / rules cards */
+.wallet-balance-card{
+  background:linear-gradient(145deg,#25375b,#15233f);
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:20px;
+  box-shadow:0 12px 30px rgba(0,0,0,.18);
+}
+.wallet-bal-amount{color:#ffd43b}
+.wallet-tabs{background:#111e38;border:1px solid rgba(255,255,255,.08)}
+.wallet-tab.active{background:linear-gradient(135deg,#7955ee,#6040d7)}
+.telebirr-info,.request-card,.user-card,.user-detail-card,.admin-tabs,.admin-section>div,
+#screenRules>div{
+  border-color:rgba(255,255,255,.11)!important;
+}
+.telebirr-info,.request-card,.user-card,.user-detail-card{background:#172642}
+.form-input{background:#111e38}
+.btn-green{background:linear-gradient(135deg,#13c985,#0aa873)}
+.btn-red{background:linear-gradient(135deg,#ff5868,#e83d51)}
+.btn-search{background:linear-gradient(135deg,#8057f5,#6040d7)}
+.refresh-btn{border-color:rgba(255,255,255,.14);color:#aebbd0}
+
+/* Winner */
+.winner-overlay{background:rgba(5,11,25,.90);backdrop-filter:blur(10px)}
+.winner-name{color:#ffd43b;text-shadow:0 0 22px rgba(255,212,59,.35)}
+.winner-amount{color:#13c985}
+.winner-trophy{filter:drop-shadow(0 0 20px rgba(255,212,59,.55))}
+
+@media(max-width:430px){
+  .screen{padding-left:12px;padding-right:12px}
+  .pool-grid{grid-template-columns:repeat(5,1fr);height:365px}
+  .pool-btn{min-height:42px}
+  .game-stats-row .stat-box{min-width:74px;padding:8px 7px}
+}
+@media(max-width:360px){
+  .pool-grid{gap:5px}
+  .pool-btn{font-size:12px}
+  .ball-circle{width:70px;height:70px}
+}
+
 </style>
 </head>
 <body>
 
 <div class="navbar">
-  <div class="brand">MELA BINGO <span class="dot" id="connDot"></span></div>
+  <div class="brand">BETESEB BINGO <span class="dot" id="connDot"></span></div>
   <div style="display:flex;align-items:center;gap:10px">
     <button class="sound-btn" id="soundBtn" onclick="toggleSound()" title="Toggle sound">🔊</button>
     <div class="balance-pill" id="balanceEl" onclick="goToWallet()">ETB 0.00</div>
@@ -278,7 +609,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 
 <div id="screenLobby" class="screen">
   <div class="welcome-banner">
-    <div class="mela-welcome-title">Welcome to <span>Mela Bingo</span></div>
+    <div class="mela-welcome-title">Welcome to <span>Beteseb Bingo</span></div>
     <div class="mela-welcome-player">Welcome, <span id="welcomeName">Player</span>!</div>
     <div id="welcomeStatus">Ready to play</div>
   </div>
@@ -312,7 +643,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
       <div class="slot-num" style="color:#d97706" id="slot2Num">—</div>
     </div>
   </div>
-  <input class="card-search" type="number" id="cardSearch" placeholder="Search card (1–400)..." min="1" max="400">
+  <input class="card-search" type="number" id="cardSearch" placeholder="Search card number (1–600)..." min="1" max="600">
   <div id="poolGrid" class="pool-grid"></div>
   <button class="leave-btn" onclick="leaveRoom()">← Leave Room</button>
 </div>
@@ -1712,7 +2043,7 @@ function renderStakes(arr){
     d.className='stake-card';
     d.innerHTML=`<div class="stake-etb">Play ${amount}</div>`;
     if(s){
-      d.onclick=()=>wsSend({type:'joinRoom',stakeId:s.stakeId});
+      d.onclick=()=>wsSend({type:'joinRoom',stakeId:s.stakeId,telegramId:telegramId||getTelegramId()});
     }else{
       d.classList.add('stake-unavailable');
       d.title=`Play ${amount} is not currently available`;
