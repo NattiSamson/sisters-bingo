@@ -8,7 +8,7 @@
  *   BOT_TOKEN=your_telegram_bot_token
  *   GAME_URL=https://sisters-bingo.vercel.app
  */
-
+const { Telegraf } = require("telegraf");
 const { Bot, webhookCallback } = require("grammy");
 const db = require("../db");
 const { processDeposit } = require("../deposit");
@@ -88,7 +88,7 @@ bot.command("broadcast", async (ctx) => {
 
   for (const user of result) {
     try {
-      await ctx.telegram.sendMessage(
+      await bot.telegram.sendMessage(
         user.telegram_id,
         message
       );
