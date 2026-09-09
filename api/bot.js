@@ -65,6 +65,48 @@ async function answerCallback(ctx, text = undefined) {
   }
 }
 
+//Boradcast
+const ADMIN_ID = 8597748757;
+
+bot.command("broadcast", async (ctx) => {
+  if (ctx.from.id !== ADMIN_ID) {
+    return ctx.reply("Unauthorized");
+  }
+
+  const message = ctx.message.text.replace("/broadcast", "").trim();
+
+  if (!message) {
+    return ctx.reply("Usage:\n/broadcast Your message here");
+  }
+
+  const result = await db.query(
+    "SELECT telegram_id FROM users"
+  );
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const user of result.rows) {
+    try {
+      await ctx.telegram.sendMessage(
+        user.telegram_id,
+        message
+      );
+
+      sent++;
+    } catch (err) {
+      failed++;
+      console.log(
+        `Failed to send to ${user.telegram_id}:`,
+        err.message
+      );
+    }
+  }
+
+  await ctx.reply(
+    `Broadcast completed.\n\n✅ Sent: ${sent}\n❌ Failed: ${failed}`
+  );
+});
 
 // ─────────────────────────────────────────────────────────────
 // /start
