@@ -357,8 +357,7 @@ if (!paymentmethods || paymentmethods.length === 0) {
 
 let mes = "❇️ ብር ማስገባት የሚችሉት ቀጥሎ ";
 
-const some =
-  paymentmethods.length <= 1
+const some =  paymentmethods.length <= 1
     ? "በተቀመጠው "
     : "በተቀመጡት ";
 
