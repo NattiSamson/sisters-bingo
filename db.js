@@ -442,7 +442,8 @@ async approveWithdrawal(
 
 async rejectWithdrawal(
   withdrawalId,
-  adminTelegramId
+  adminTelegramId,
+	reason
 ) {
 
   const client =
@@ -509,6 +510,7 @@ async rejectWithdrawal(
         is_pending = FALSE,
         is_approved = FALSE,
         approved_by_id = $1,
+		rejection_reason = $3
         updated_at = NOW()
 
       WHERE id = $2
@@ -517,7 +519,8 @@ async rejectWithdrawal(
       `,
       [
         adminTelegramId,
-        withdrawalId
+        withdrawalId,
+		reason  
       ]
     );
 
