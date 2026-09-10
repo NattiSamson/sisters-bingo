@@ -389,6 +389,8 @@ async approveWithdrawal(
         updated_at = NOW()
 
       WHERE id = $2
+	  AND is_pending = TRUE
+      AND is_approved = FALSE
 
       RETURNING *
       `,
