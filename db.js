@@ -327,7 +327,125 @@ async registerUser(telegramId, name, phone) {
     client.release();
   }
 },
+async approveWithdrawal(
+  withdrawalId,
+  adminTelegramId
+) {
+  const client = await pool.connect();
 
+  try {
+
+    await client.query("BEGIN");
+
+    // Lock withdrawal
+    const { rows } = await client.query(
+      `
+      SELECT
+        w.*,
+        u.telegram_id,
+        u.balance
+
+      FROM withdrawals w
+
+      JOIN users u
+        ON w.user_id = u.id
+
+      WHERE w.id = $1
+        AND w.status = FALSE
+        AND w.is_active = TRUE
+
+      LIMIT 1
+
+      FOR UPDATE
+      `,
+      [withdrawalId]
+    );
+
+    if (rows.length === 0) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "This withdrawal is no longer pending."
+      };
+    }
+
+    const withdrawal = rows[0];
+
+    const amount = Number(withdrawal.amount);
+    const balance = Number(withdrawal.balance);
+
+    // Check balance again at approval time
+    if (amount > balance) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "User does not have enough balance."
+      };
+    }
+
+    // Deduct balance
+    await client.query(
+      `
+      UPDATE users
+      SET balance = balance - $1
+      WHERE id = $2
+      `,
+      [
+        amount,
+        withdrawal.user_id
+      ]
+    );
+
+    // Approve withdrawal
+    const { rows: updatedRows } =
+      await client.query(
+        `
+        UPDATE withdrawals
+
+        SET
+          status = TRUE,
+          approved_by_id = $1,
+          updated_at = NOW()
+
+        WHERE id = $2
+
+        RETURNING *
+        `,
+        [
+          adminTelegramId,
+          withdrawalId
+        ]
+      );
+
+    await client.query("COMMIT");
+
+    return {
+      success: true,
+      withdrawal: updatedRows[0]
+    };
+
+  } catch (err) {
+
+    await client.query("ROLLBACK");
+
+    console.error(
+      "approveWithdrawal error:",
+      err
+    );
+
+    throw err;
+
+  } finally {
+
+    client.release();
+  }
+},
 	async getPendingWithdrawals(limit = 5) {
 
   const { rows } = await pool.query(
