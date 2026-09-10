@@ -215,12 +215,6 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 /* ACTIVE PLAYERS */
 
 
-.active-players-heading .count{background:var(--green);color:#fff;min-width:22px;height:20px;padding:0 6px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;font-size:10px}
-
-.active-player-row{background:#fff;color:#1a0a2e;border-radius:12px;padding:4px 7px;font-size:10px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
-.active-player-status{color:#16a34a;font-weight:700;font-size:9px}
-
-
 /* MELA BINGO START PAGE */
 #screenLobby{max-width:500px;padding:0 18px 28px;min-height:calc(100vh - 128px);background:radial-gradient(circle at 8% 8%,rgba(124,58,237,.28),transparent 34%),linear-gradient(155deg,#3d176f 0%,#21134d 45%,#0d172d 100%)}
 #screenLobby .welcome-banner{display:block;background:transparent;border:0;border-radius:0;padding:48px 4px 26px;margin:0;text-align:center}
@@ -274,12 +268,12 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
     <div id="welcomeStatus">Ready to play</div>
   </div>
   <div class="lobby-stake-panel">
-    <div class="lobby-stake-heading"><span>▷</span>Choose Your Stake</div>
+    <div class="lobby-stake-heading"><span>▷</span>የጨዋታ ዋጋ ይምረጡ</div>
     <div id="stakesGrid" class="stakes-grid"></div>
   </div>
   <div class="lobby-players-card">
     <div class="lobby-players-number" id="lobbyActivePlayers">0</div>
-    <div class="lobby-players-label">Active Players</div>
+    <div class="lobby-players-label">ንቁ ተጫዋቾች</div>
     <div class="lobby-players-sub">Players currently in the game lobby</div>
   </div>
 </div>
@@ -287,10 +281,10 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 <div id="screenCards" class="screen">
  <div class="cd-header">
     <h2 class="screen-title" style="margin:0">ካርዶችዎን ይምረጡ</h2>
-    <div class="cd-countdown" id="cdCountdown">ተጫዋቾችን በመጠባበቅ ላይ...</div>
+    <div class="cd-countdown" id="cdCountdown">Waiting...</div>
   </div>
   <div id="cdPrizePot" style="background:linear-gradient(135deg,rgba(250,204,21,.15),rgba(139,92,246,.15));border:1px solid rgba(250,204,21,.4);border-radius:10px;padding:10px 14px;text-align:center;font-weight:700;color:var(--gold);font-size:14px;margin-bottom:10px">
-    🏆 ተጫዋቾች ሲቀላቀሉ የሽልማቱ ገንዘብ ይጨምራል
+    🏆 ተጫዋቾች ሲቀላቀሉ ሽልማቱ ይጨምራል
   </div>
   <!-- Selected card slots -->
   <div class="selected-cards-row">
@@ -552,7 +546,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div class="winner-amount" id="winnerAmount">0 ETB</div>
   <div class="winner-split-tag" id="splitTag" style="display:none">🤝 Split Prize</div>
   <div class="winner-msg" id="winnerMsg"></div>
-  <div id="resetCountdown" style="margin-top:14px;font-size:14px;font-weight:800;color:var(--gold)">ቀጣዩ ዙር በ 9 ሰከንድ ውስጥ ይጀምራል</div>
+  <div id="resetCountdown" style="margin-top:18px;font-size:18px;font-weight:900;color:var(--gold)">የሚቀጥለው ዙር በ 9 ሰከንድ ውስጥ</div>
 </div>
 
 <div class="disq-overlay" id="disqOverlay">
@@ -579,7 +573,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
         <div style="display:flex;align-items:center;gap:10px">
           <div style="width:28px;height:28px;background:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">1</div>
           <div>
-            <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">Choose Your Card</div>
+            <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">ካርድዎን ይምረጡ</div>
             <div style="font-size:12px;color:var(--gold);line-height:1.5">ጨዋታውን ለመጀመር ከሚመጣልን ከ1-400 የመጫወቻ ካርድ ውስጥ አንዱን እንመርጣለን</div>
           </div>
         </div>
@@ -766,7 +760,6 @@ let calledNumbersSet=new Set();
 let autoClaimSent=false;
 let activePlayers=[];
 let postGameResetTimer=null;
-let postGameResetRejoinTimer=null;
 // The Telegram-authenticated Bingo server is the primary source of truth for the player's
 // name and wallet. /api/user/:telegramId is only a fallback when the WebSocket auth
 // message does not contain a usable account balance.
@@ -880,7 +873,6 @@ function goToGame(){
   // The crown button is the quick return to the active game.
   // Keep the room id while navigating between screens so the player can always return.
   const roomId = myRoomId || localStorage.getItem('roomId');
-  if(!myStakeId) myStakeId=localStorage.getItem('stakeId');
   if(!roomId){
     showToast('No active game right now','warn');
     return;
@@ -907,74 +899,6 @@ function connect(){
   ws.onmessage=e=>{try{handle(JSON.parse(e.data));}catch(err){console.error(err);}};
 }
 function wsSend(obj){if(ws&&ws.readyState===1)ws.send(JSON.stringify(obj));}
-
-// ─── POST-GAME RESET / SAME-STAKE RETURN ───────────────────────
-function updatePostGameCountdown(seconds){
-  const n=Math.max(0,Number(seconds)||0);
-  const el=document.getElementById('resetCountdown');
-  if(el) el.innerText=`ቀጣዩ ዙር በ ${n} ሰከንድ ውስጥ ይጀምራል`;
-}
-
-function startPostGameResetCountdown(seconds){
-  if(postGameResetTimer) clearInterval(postGameResetTimer);
-  if(postGameResetRejoinTimer) clearTimeout(postGameResetRejoinTimer);
-  let remaining=Math.max(1,Number(seconds)||9);
-  updatePostGameCountdown(remaining);
-  postGameResetTimer=setInterval(()=>{
-    remaining--;
-    if(remaining>0){
-      updatePostGameCountdown(remaining);
-      return;
-    }
-    clearInterval(postGameResetTimer);
-    postGameResetTimer=null;
-    // Navigate immediately at 0. The rejoin is deliberately delayed slightly so
-    // the server has time to finish clearing the old round.
-    finishPostGameReset({
-      roomId:myRoomId,
-      stakeId:myStakeId || localStorage.getItem('stakeId'),
-      balance:currentBalance,
-      _fromFallback:true
-    });
-  },1000);
-}
-
-function finishPostGameReset(msg={}){
-  if(postGameResetTimer){ clearInterval(postGameResetTimer); postGameResetTimer=null; }
-  if(postGameResetRejoinTimer){ clearTimeout(postGameResetRejoinTimer); postGameResetRejoinTimer=null; }
-
-  const roomId=msg.roomId || myRoomId || localStorage.getItem('roomId');
-  const stakeId=msg.stakeId || myStakeId || localStorage.getItem('stakeId');
-  if(roomId){ myRoomId=roomId; localStorage.setItem('roomId',roomId); }
-  if(stakeId){ myStakeId=stakeId; localStorage.setItem('stakeId',stakeId); }
-
-  myCardId=null; myCardId2=null;
-  myCardNumbers=[]; myCardNumbers2=[];
-  resetAutomaticGameState();
-  claimWindowOpen=false;
-  autoClaimSent=false;
-  activePlayers=[]; updateActivePlayers([]);
-  hideWinnerOverlay();
-  if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
-    setBalance(msg.balance);
-  }
-  setTimeout(()=>refreshAccountProfile(8,500),300);
-  resetTrackerBoard(); setBingoBtn('idle'); resetSlotUI();
-  document.getElementById('cdCountdown').innerText='ተጫዋቾችን በመጠባበቅ ላይ...';
-
-  // This is the critical navigation: the finished-game screen is never the final
-  // state. Always show the card-selection screen for the SAME stake.
-  navGo('screenCards','navCards');
-
-  // If this was the fallback path, rejoin the same stake after the server reset.
-  // The normal server backToCardSelection message cancels this because it has
-  // already re-associated the current socket with the room.
-  if(msg._fromFallback && stakeId && ws && ws.readyState===1){
-    postGameResetRejoinTimer=setTimeout(()=>{
-      wsSend({type:'joinRoom',stakeId,telegramId});
-    },1200);
-  }
-}
 
 // ─── MESSAGE HANDLER ─────────────────────────────────────────
 function handle(msg){
@@ -1042,7 +966,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
 
    case 'joinedRoom':
       localStorage.setItem('roomId', msg.roomId);
-      myRoomId=msg.roomId; myStakeId=msg.stakeId; localStorage.setItem('roomId',msg.roomId); localStorage.setItem('stakeId',msg.stakeId); myCardId=null; myCardId2=null;
+      myRoomId=msg.roomId; myStakeId=msg.stakeId; myCardId=null; myCardId2=null;
       resetAutomaticGameState();
       activePlayers=[]; updateActivePlayers(msg.players||msg.activePlayers||[]);
       if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
@@ -1086,7 +1010,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       break;
 
     case 'countdown':
-      document.getElementById('cdCountdown').innerText=`ጨዋታው በ ${msg.seconds} ሰከንድ ውስጥ ይጀምራል`; break;
+      document.getElementById('cdCountdown').innerText=`Starts in: ${msg.seconds}s`; break;
 
     case 'waitingForPlayers':
       document.getElementById('cdCountdown').innerText='ተጫዋቾችን በመጠባበቅ ላይ...'; break;
@@ -1164,16 +1088,8 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
     case 'disqualified': showDisqualified(); break;
 
     case 'gameOver':
-      // IMPORTANT: keep the room/stake information. The next round must return the
-      // player to the SAME stake room (for example ST5), not to the lobby.
-      if(msg.roomId){
-        myRoomId=msg.roomId;
-        localStorage.setItem('roomId',msg.roomId);
-      }
-      if(msg.stakeId){
-        myStakeId=msg.stakeId;
-        localStorage.setItem('stakeId',msg.stakeId);
-      }
+      // Keep the current room ID so navigation back to the reset room continues to work.
+      if(msg.roomId) { myRoomId=msg.roomId; localStorage.setItem('roomId',msg.roomId); }
       claimWindowOpen=false;
       autoClaimSent=true;
       showWinnerOverlay(msg);
@@ -1182,22 +1098,33 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
                  winnerList.includes(String(myPlayerId)) ||
                  (msg.winnerTelegramId && String(msg.winnerTelegramId)===String(telegramId));
       showToast(iWon?'🏆 You won! Your prize has been added to your account.':'Round finished — your balance was settled by the game server.','');
+      // Re-read the user's actual Telegram/database account balance after the prize is processed.
       setTimeout(()=>refreshAccountBalance(),300);
-      // Do NOT depend on the server's final navigation message. Start a client-side
-      // 9-second safety timer immediately so the user is guaranteed to leave the
-      // finished-game screen even if a WebSocket reset message is delayed/lost.
-      startPostGameResetCountdown(Number(msg.resetCountdown)||9);
+      startPostGameResetCountdown(9);
       break;
 
     case 'resetCountdown':
-      // Server countdown is authoritative while it is arriving. The local timer is
-      // still running as a safety net.
-      updatePostGameCountdown(Number(msg.seconds));
+      document.getElementById('resetCountdown').innerText=`የሚቀጥለው ዙር በ ${msg.seconds} ሰከንድ ውስጥ`;
       break;
 
     case 'backToCardSelection':
-      finishPostGameReset(msg);
-      break;
+      if(postGameResetTimer){ clearInterval(postGameResetTimer); postGameResetTimer=null; }
+      myRoomId=msg.roomId; myCardId=null; myCardId2=null;
+      myCardNumbers=[]; myCardNumbers2=[];
+      resetAutomaticGameState();
+      claimWindowOpen=false;
+      activePlayers=[];
+      hideWinnerOverlay();
+      if(msg.roomId){ myRoomId=msg.roomId; localStorage.setItem('roomId',msg.roomId); }
+      // Refresh the actual Telegram/database account after the round settles.
+      // A legitimate 0.00 balance is preserved because the API is authoritative.
+      if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
+        setBalance(msg.balance);
+      }
+      setTimeout(()=>refreshAccountProfile(8,500),700);
+      resetTrackerBoard(); setBingoBtn('idle'); resetSlotUI();
+      document.getElementById('cdCountdown').innerText='ተጫዋቾችን በመጠባበቅ ላይ...';
+      navGo('screenCards','navCards'); break;
 
     case 'balanceUpdate':
       if(Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
@@ -1209,7 +1136,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       if(telegramId) setTimeout(()=>refreshAccountProfile(3,300),100);
       break;
 
-    case 'leftRoom': localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; navGo('screenLobby','navHome'); break;
+    case 'leftRoom': localStorage.removeItem('roomId'); myRoomId=null; myCardId=null; myCardId2=null; navGo('screenLobby','navHome'); break;
 
     case 'depositSubmitted':
       showWalletMsg('depositMsg', msg.message, 'success');
@@ -1224,6 +1151,41 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
 
     case 'error': showToast(msg.message,'error'); break;
   }
+}
+
+// Reliable client-side fallback for the post-game transition.
+// The server remains authoritative, but this guarantees the player is returned
+// to the same room/card-selection screen even if a countdown packet is missed.
+function startPostGameResetCountdown(seconds){
+  if(postGameResetTimer) clearInterval(postGameResetTimer);
+  let remaining=Math.max(0,Number(seconds)||9);
+  const el=document.getElementById('resetCountdown');
+  if(el) el.innerText=`የሚቀጥለው ዙር በ ${remaining} ሰከንድ ውስጥ`;
+  postGameResetTimer=setInterval(()=>{
+    remaining--;
+    if(remaining>0){
+      if(el) el.innerText=`የሚቀጥለው ዙር በ ${remaining} ሰከንድ ውስጥ`;
+      return;
+    }
+    clearInterval(postGameResetTimer);
+    postGameResetTimer=null;
+    // Return to the exact room/stake the player was using. The server reset
+    // keeps this room alive, so card selection can begin again immediately.
+    hideWinnerOverlay();
+    resetAutomaticGameState();
+    resetTrackerBoard();
+    resetSlotUI();
+    setBingoBtn('idle');
+    document.getElementById('cdCountdown').innerText='ተጫዋቾችን በመጠባበቅ ላይ...';
+    if(myRoomId) localStorage.setItem('roomId',myRoomId);
+    navGo('screenCards','navCards');
+    // If the server has already reset the room, ask for the current card pool
+    // through the normal room join path only when needed. Avoid leaving/rejoining
+    // a live game unnecessarily.
+    if(ws && ws.readyState===1 && myStakeId){
+      wsSend({type:'joinRoom',stakeId:myStakeId,telegramId:telegramId});
+    }
+  },1000);
 }
 
 // ─── WALLET ───────────────────────────────────────────────────
@@ -1680,7 +1642,7 @@ function resetAutomaticGameState(){
   const el=document.getElementById('cdPrizePot');
   if(!el) return;
   const pot=Math.floor(cardCount * stakeAmount * 0.8);
-  el.innerText = pot > 0 ? `🏆 Prize Pool: ${pot} ETB` : '🏆 ተጫዋቾች ሲቀላቀሉ የሽልማቱ ገንዘብ ይጨምራል';
+  el.innerText = pot > 0 ? `🏆 የሽልማት ገንዘብ: ${pot} ETB` : '🏆 ተጫዋቾች ሲቀላቀሉ የሽልማቱ ገንዘብ ይጨምራል';
 }
 function updateSlotUI(){
   const s1=document.getElementById('slot1'), s2=document.getElementById('slot2');
@@ -1777,7 +1739,18 @@ function renderStakes(arr){
   });
 }
 
-// ─── PLAYER COUNT ───────────────────────────────────────────────
+// ─── ACTIVE PLAYERS ────────────────────────────────────────────
+function normalizeActivePlayers(list){
+  if(!Array.isArray(list)) return [];
+  return list.map((p,i)=>{
+    if(typeof p==='string') return {name:p};
+    if(p && typeof p==='object'){
+      return {name:String(p.name||p.playerName||p.username||p.fullName||`Player ${i+1}`), id:p.id||p.playerId||p.telegramId||''};
+    }
+    return {name:`Player ${i+1}`};
+  });
+}
+
 function updateActivePlayers(list){
   const count=document.getElementById('playerCountVal');
   let n=0;
@@ -1785,6 +1758,7 @@ function updateActivePlayers(list){
   else if(Number.isFinite(Number(list))) n=Number(list);
   if(count) count.innerText=n;
 }
+
 
 // ─── TRACKER ─────────────────────────────────────────────────
 function buildTracker(){

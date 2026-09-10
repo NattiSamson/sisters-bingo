@@ -709,11 +709,23 @@ async function endGame(room, winners, customMsg, noWinner){
     room.players.forEach(p=>{
       p.cardId=null; p.cardId2=null; p.hasPaid=false; p.disqualified=false;
     });
+    const currentCardCount=room.players.reduce((sum,p)=>(p.cardId?sum+1:0)+(p.cardId2?1:0),0);
     room.players.forEach(p=>{
       const cl=clients[p.playerId];
-      send(p.ws,{type:'backToCardSelection',roomId:room.roomId,stakeId:room.stakeId,balance:cl?cl.balance:0});
+      send(p.ws,{
+        type:'backToCardSelection',
+        roomId:room.roomId,
+        stakeId:room.stakeId,
+        balance:cl?cl.balance:0,
+        playerCount:currentCardCount,
+        stakeAmount:room.stake,
+        status:'waiting'
+      });
     });
-    broadcastCardPool(room); broadcastLobby();
+    // Send a fresh 400-card pool after the reset so every player immediately
+    // sees the same current room with all cards available again.
+    broadcastCardPool(room);
+    broadcastLobby();
     if(room.players.length>=2) startCountdown(room);
   },9000);
 }

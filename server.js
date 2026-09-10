@@ -483,7 +483,7 @@ function getOrCreateRoom(sid){
   const s=STAKES.find(s=>s.id===sid), roomId=uuidv4();
   r={roomId,stakeId:sid,stake:s.amount,status:'waiting',players:[],calledNumbers:[],
      availableNumbers:Array.from({length:75},(_,i)=>i+1),callTimer:null,countdownTimer:null,claimEvalTimer:null,
-     countdownLeft:Math.ceil(LOBBY_WAIT_MS/1000),claimWindowOpen:false,claimedThisRound:[],
+     countdownLeft:Math.ceil(LOBBY_WAIT_MS/1000),claimWindowOpen:false,claimedThisRound:[],resetCountdownTimer:null,resetTimer:null,
      takenCardIds:new Set(),pot:0,dbGameId:null};
   rooms[roomId]=r; return r;
 }
@@ -686,30 +686,58 @@ async function endGame(room, winners, customMsg, noWinner){
     isSplit?`🤝 Split! ${winnerNames.join(' & ')} each win ${winAmount} ETB!`
            :`🏆 ${winnerNames[0]} wins ${winAmount} ETB!`);
 
-  // Broadcast the result to EVERY connected player in the room. Each client
-  // displays the same winner message/overlay before the room is reset.
-  // Keep everyone on the same room after the result. The room is reset in 9 seconds.
-  // Clients receive the countdown so winners and losers can see when the next round starts.
-  broadcast(room,{type:'gameOver',winners:winnerNames,winAmount,isSplit,message:msg,noWinner:!!noWinner,winnerTelegramIds:winnerTids,resetCountdown:9});
+  // Broadcast the result to EVERY connected player in the room. Keep the room/stake
+  // identifiers in this message so clients can return to the same stake.
+  const RESET_SECONDS=9;
+  broadcast(room,{
+    type:'gameOver',
+    roomId:room.roomId,
+    stakeId:room.stakeId,
+    winners:winnerNames,
+    winAmount,
+    isSplit,
+    message:msg,
+    noWinner:!!noWinner,
+    winnerTelegramIds:winnerTids,
+    resetCountdown:RESET_SECONDS
+  });
 
-  let resetSeconds=9;
+  // Send a real 9 -> 8 -> ... -> 1 countdown. The room remains finished during
+  // this period, then is reset to WAITING and the SAME room is reused.
+  if(room.resetCountdownTimer) clearInterval(room.resetCountdownTimer);
+  let resetSeconds=RESET_SECONDS;
   room.resetCountdownTimer=setInterval(()=>{
     resetSeconds--;
     if(resetSeconds>0){
-      broadcast(room,{type:'resetCountdown',seconds:resetSeconds});
+      broadcast(room,{type:'resetCountdown',roomId:room.roomId,stakeId:room.stakeId,seconds:resetSeconds});
     }
   },1000);
 
-  setTimeout(()=>{
+  room.resetTimer=setTimeout(()=>{
     if(room.resetCountdownTimer) clearInterval(room.resetCountdownTimer);
+    room.resetCountdownTimer=null;
     if(!rooms[room.roomId]) return;
-    room.status='waiting'; room.calledNumbers=[]; room.availableNumbers=Array.from({length:75},(_,i)=>i+1);
-    room.pot=0; room.takenCardIds=new Set(); room.claimedThisRound=[]; room.claimWindowOpen=false; room.dbGameId=null;
-    room.callTimer=null; room.claimEvalTimer=null;
+
+    room.status='waiting';
+    room.calledNumbers=[];
+    room.availableNumbers=Array.from({length:75},(_,i)=>i+1);
+    room.pot=0;
+    room.takenCardIds=new Set();
+    room.claimedThisRound=[];
+    room.claimWindowOpen=false;
+    room.dbGameId=null;
+    room.callTimer=null;
+    room.claimEvalTimer=null;
+
+    // IMPORTANT: players stay in this room, but their old cards/payment flags are
+    // cleared so they can choose fresh cards for the next round.
     room.players.forEach(p=>{
-      p.cardId=null; p.cardId2=null; p.hasPaid=false; p.disqualified=false;
+      p.cardId=null;
+      p.cardId2=null;
+      p.hasPaid=false;
+      p.disqualified=false;
     });
-    const currentCardCount=room.players.reduce((sum,p)=>(p.cardId?sum+1:0)+(p.cardId2?1:0),0);
+
     room.players.forEach(p=>{
       const cl=clients[p.playerId];
       send(p.ws,{
@@ -717,17 +745,16 @@ async function endGame(room, winners, customMsg, noWinner){
         roomId:room.roomId,
         stakeId:room.stakeId,
         balance:cl?cl.balance:0,
-        playerCount:currentCardCount,
+        playerCount:0,
         stakeAmount:room.stake,
         status:'waiting'
       });
     });
-    // Send a fresh 400-card pool after the reset so every player immediately
-    // sees the same current room with all cards available again.
+
     broadcastCardPool(room);
     broadcastLobby();
-    if(room.players.length>=2) startCountdown(room);
-  },9000);
+    // Do NOT start countdown here. Players must select fresh cards first.
+  },RESET_SECONDS*1000);
 }
 
 async function leaveRoom(client){
@@ -851,10 +878,15 @@ wss.on('connection',(ws)=>{
 
       const room=rooms[msg.roomId];
 
-      if(!room||room.status!=='playing'){
-
+      if(!room){
         send(ws,{type:'reconnectFailed'}); break;
+      }
 
+      // After a round finishes the same room is deliberately kept in WAITING state.
+      // Allow a page reload/reconnect to return to that room instead of forcing the
+      // player back to the lobby.
+      if(room.status!=='playing' && room.status!=='waiting' && room.status!=='countdown'){
+        send(ws,{type:'reconnectFailed'}); break;
       }
 
       // Try by playerId first, fall back to telegramId for page-reload reconnects
@@ -893,13 +925,23 @@ wss.on('connection',(ws)=>{
 
         const card2=ep.cardId2?getCard(ep.cardId2):null;
 
-        send(ws,{type:'reconnected',roomId:msg.roomId,stakeId:room.stakeId,
+        if(room.status==='playing'){
+          send(ws,{type:'reconnected',roomId:msg.roomId,stakeId:room.stakeId,
 
-          cardId:ep.cardId,cardNumbers:card?card.numbers:[],
+            cardId:ep.cardId,cardNumbers:card?card.numbers:[],
 
-          cardId2:ep.cardId2||null,cardNumbers2:card2?card2.numbers:[],
+            cardId2:ep.cardId2||null,cardNumbers2:card2?card2.numbers:[],
 
-          calledNumbers:room.calledNumbers,pot:room.pot,playerCount:room.players.length});
+            calledNumbers:room.calledNumbers,pot:room.pot,playerCount:room.players.length});
+        }else{
+          // WAITING/COUNTDOWN room: show fresh card selection state.
+          send(ws,{type:'joinedRoom',roomId:room.roomId,stakeId:room.stakeId,
+            balance:client.balance,status:room.status,
+            playerCount:room.players.reduce((sum,p)=>(p.cardId?1:0)+(p.cardId2?1:0)+sum,0),
+            stakeAmount:room.stake});
+          broadcastCardPool(room);
+          broadcastLobby();
+        }
 
       } else {
 
