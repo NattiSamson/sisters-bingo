@@ -52,7 +52,7 @@ module.exports = {
 // Deducts balance immediately and creates pending withdrawal
 // ============================================================
 
-async function createWithdrawal(
+async createWithdrawal(
   telegramId,
   paymentMethodId,
   accountNumber,
@@ -563,7 +563,7 @@ async registerUser(telegramId, name, phone) {
 // APPROVE WITHDRAWAL
 // ============================================================
 
-async function approveWithdrawal(
+async approveWithdrawal(
   withdrawalId,
   adminTelegramId
 ) {
@@ -728,7 +728,7 @@ async function approveWithdrawal(
 // REJECT WITHDRAWAL
 // ============================================================
 
-async function rejectWithdrawal(
+async rejectWithdrawal(
   withdrawalId,
   adminTelegramId,
   reason
