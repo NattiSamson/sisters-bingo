@@ -26,20 +26,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/audio', express.static(path.join(__dirname, 'audio')));
 app.use(express.json());
 
-// ─── CORS ───────────────────────────────────────────────────────
-// The Mela Bingo frontend is hosted separately from this API.
-// Allow browser requests from the frontend (and Telegram WebView) to
-// reach the API without requiring the frontend and API to share a host.
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  res.setHeader('Access-Control-Allow-Origin', origin || '*');
-  res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-  if (req.method === 'OPTIONS') return res.sendStatus(204);
-  next();
-});
-
 const ADMIN_PHONE = '251965666656';
 function isAdminPhone(phone) {
   if (!phone) return false;
@@ -65,8 +51,15 @@ if (process.env.DATABASE_URL) {
       idleTimeoutMillis: 30000,     // close idle connections after 30s
       connectionTimeoutMillis: 5000 // fail fast instead of hanging under load
     });
-     const { registerMigrateRoute } = require('./migrate-route');
-   registerMigrateRoute(app, pool);
+    // Optional migration route. The game server does not depend on this file.
+    // If migrate-route.js is not present on shared hosting, keep the DB/game
+    // server running normally instead of making db initialization fail.
+    try {
+      const { registerMigrateRoute } = require('./migrate-route');
+      registerMigrateRoute(app, pool);
+    } catch (e) {
+      console.warn('migrate-route.js not loaded (optional):', e.message);
+    }
 
     db = {
       q: (sql, p) => pool.query(sql, p).then(r => r.rows),
@@ -1582,9 +1575,26 @@ app.get('/api/leaderboard', async(req,res)=>{
 });
 
 app.get('/api/user/:tid', async(req,res)=>{
-  const u=await loadUser(req.params.tid);
-  if(!u) return res.status(404).json({error:'Not found'});
-  res.json(u);
+  const tid=String(req.params.tid||'').trim();
+  if(!tid) return res.status(400).json({error:'Missing Telegram ID'});
+  if(!db) return res.status(503).json({error:'Database unavailable'});
+  try{
+    const rows=await db.q('SELECT * FROM users WHERE telegram_id=$1',[tid]);
+    const u=rows[0]||null;
+    if(!u) return res.status(404).json({error:'Not found'});
+    const user={
+      telegramId:String(u.telegram_id),
+      name:u.name||'',
+      phone:u.phone||'',
+      balance:Number.parseFloat(u.balance)||0,
+      isAdmin:u.is_admin===true || isAdminPhone(u.phone)
+    };
+    userCache[tid]=user;
+    res.json(user);
+  }catch(e){
+    console.error('GET /api/user error:',e.message);
+    res.status(500).json({error:'Database query failed'});
+  }
 });
 
 // ─── START ────────────────────────────────────────────────────
