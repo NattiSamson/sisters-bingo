@@ -77,6 +77,7 @@ function clearPendingState(
 
   delete pendingWithdrawal[
     telegramId
+  ];
 }
 
 
