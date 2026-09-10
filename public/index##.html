@@ -212,13 +212,6 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .sound-btn{background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.25);color:#fff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:background .2s,border-color .2s;flex-shrink:0}
 .sound-btn:hover{background:rgba(255,255,255,.2)}
 .sound-btn.muted{background:rgba(239,68,68,.2);border-color:var(--red);color:var(--red)}
-/* ACTIVE PLAYERS */
-.active-players-panel{margin:-4px 0 12px;background:var(--panel);border:1px solid #4a2d7a;border-radius:10px;padding:8px 10px}
-.active-players-heading{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:7px}
-.active-players-heading .count{background:var(--green);color:#fff;min-width:22px;height:20px;padding:0 6px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;font-size:10px}
-.active-player-status{color:#16a34a;font-weight:700;font-size:9px}
-
-
 /* MELA BINGO START PAGE */
 #screenLobby{max-width:500px;padding:0 18px 28px;min-height:calc(100vh - 128px);background:radial-gradient(circle at 8% 8%,rgba(124,58,237,.28),transparent 34%),linear-gradient(155deg,#3d176f 0%,#21134d 45%,#0d172d 100%)}
 #screenLobby .welcome-banner{display:block;background:transparent;border:0;border-radius:0;padding:48px 4px 26px;margin:0;text-align:center}
@@ -272,7 +265,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
     <div id="welcomeStatus">Ready to play</div>
   </div>
   <div class="lobby-stake-panel">
-    <div class="lobby-stake-heading"><span>▷</span>የጨዋታ ዋጋ ይምረጡ</div>
+    <div class="lobby-stake-heading"><span>▷</span>Choose Your Stake</div>
     <div id="stakesGrid" class="stakes-grid"></div>
   </div>
   <div class="lobby-players-card">
@@ -307,7 +300,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 
 <div id="screenGame" class="screen">
   <div class="game-stats-row">
-    <div class="stat-box"><div class="lbl">የሽልማት ገንዘብ</div><div id="potVal" class="val">0</div></div>
+    <div class="stat-box"><div class="lbl">Prize Pot</div><div id="potVal" class="val">0</div></div>
     <div>
       <div id="ballCircle" class="ball-circle">
         <span id="ballLetter" class="ball-letter">-</span>
@@ -316,9 +309,6 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
       <div id="ballSub" class="ball-sub">0/75</div>
     </div>
     <div class="stat-box"><div class="lbl">Players</div><div id="playerCountVal" class="val">0</div></div>
-  </div>
-  <div class="active-players-panel">
-    <div class="active-players-heading"><span>👥 Players</span><span id="activePlayersCount" class="count">0</span></div>
   </div>
   <div class="claim-bar-wrap"><div class="claim-bar" id="claimBar"></div></div>
   <!-- Dual cards wrapper — becomes side-by-side when two cards selected -->
@@ -553,7 +543,6 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div class="winner-amount" id="winnerAmount">0 ETB</div>
   <div class="winner-split-tag" id="splitTag" style="display:none">🤝 Split Prize</div>
   <div class="winner-msg" id="winnerMsg"></div>
-  <div id="resetCountdown" style="margin-top:18px;font-size:18px;font-weight:900;color:var(--gold)">የሚቀጥለው ዙር በ 9 ሰከንድ ውስጥ</div>
 </div>
 
 <div class="disq-overlay" id="disqOverlay">
@@ -580,7 +569,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
         <div style="display:flex;align-items:center;gap:10px">
           <div style="width:28px;height:28px;background:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">1</div>
           <div>
-            <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">ካርድዎን ይምረጡ</div>
+            <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">Choose Your Card</div>
             <div style="font-size:12px;color:var(--gold);line-height:1.5">ጨዋታውን ለመጀመር ከሚመጣልን ከ1-400 የመጫወቻ ካርድ ውስጥ አንዱን እንመርጣለን</div>
           </div>
         </div>
@@ -1019,7 +1008,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       document.getElementById('cdCountdown').innerText=`Starts in: ${msg.seconds}s`; break;
 
     case 'waitingForPlayers':
-      document.getElementById('cdCountdown').innerText='ተጫዋቾችን በመጠባበቅ ላይ...'; break;
+      document.getElementById('cdCountdown').innerText='Waiting for players...'; break;
 
     case 'yourCard':
       myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
@@ -1094,8 +1083,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
     case 'disqualified': showDisqualified(); break;
 
     case 'gameOver':
-      // Keep the current room ID so navigation back to the reset room continues to work.
-      if(msg.roomId) { myRoomId=msg.roomId; localStorage.setItem('roomId',msg.roomId); }
+      localStorage.removeItem('roomId');
       claimWindowOpen=false;
       autoClaimSent=true;
       showWinnerOverlay(msg);
@@ -1106,11 +1094,6 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       showToast(iWon?'🏆 You won! Your prize has been added to your account.':'Round finished — your balance was settled by the game server.','');
       // Re-read the user's actual Telegram/database account balance after the prize is processed.
       setTimeout(()=>refreshAccountBalance(),300);
-      document.getElementById('resetCountdown').innerText='የሚቀጥለው ዙር በ 9 ሰከንድ ውስጥ';
-      break;
-
-    case 'resetCountdown':
-      document.getElementById('resetCountdown').innerText=`የሚቀጥለው ዙር በ ${msg.seconds} ሰከንድ ውስጥ`;
       break;
 
     case 'backToCardSelection':
@@ -1120,7 +1103,6 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       claimWindowOpen=false;
       activePlayers=[]; updateActivePlayers([]);
       hideWinnerOverlay();
-      if(msg.roomId){ myRoomId=msg.roomId; localStorage.setItem('roomId',msg.roomId); }
       // Refresh the actual Telegram/database account after the round settles.
       // A legitimate 0.00 balance is preserved because the API is authoritative.
       if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
@@ -1612,7 +1594,7 @@ function resetAutomaticGameState(){
   const el=document.getElementById('cdPrizePot');
   if(!el) return;
   const pot=Math.floor(cardCount * stakeAmount * 0.8);
-  el.innerText = pot > 0 ? `🏆 Prize Pool: ${pot} ETB` : '🏆 ተጫዋቾች ሲቀላቀሉ የሽልማቱ ገንዘብ ይጨምራል';
+  el.innerText = pot > 0 ? `🏆 Prize Pool: ${pot} ETB` : '🏆 ተጫዋቾች ሲቀላቀሉ ሽልማቱ ይጨምራል';
 }
 function updateSlotUI(){
   const s1=document.getElementById('slot1'), s2=document.getElementById('slot2');
@@ -1709,25 +1691,11 @@ function renderStakes(arr){
   });
 }
 
-// ─── ACTIVE PLAYERS ────────────────────────────────────────────
-function normalizeActivePlayers(list){
-  if(!Array.isArray(list)) return [];
-  return list.map((p,i)=>{
-    if(typeof p==='string') return {name:p};
-    if(p && typeof p==='object'){
-      return {name:String(p.name||p.playerName||p.username||p.fullName||`Player ${i+1}`), id:p.id||p.playerId||p.telegramId||''};
-    }
-    return {name:`Player ${i+1}`};
-  });
-}
-
+// ─── ACTIVE PLAYERS COUNT ───────────────────────────────────────
 function updateActivePlayers(list){
-  if(Array.isArray(list)) activePlayers=normalizeActivePlayers(list);
+  if(Array.isArray(list)) activePlayers=list;
   const count=document.getElementById('playerCountVal');
-  const badge=document.getElementById('activePlayersCount');
-  const n=activePlayers.length || (list && Number.isFinite(Number(list)) ? Number(list) : 0);
-  if(count) count.innerText=n;
-  if(badge) badge.innerText=n;
+  if(count) count.innerText=Array.isArray(list) ? list.length : (activePlayers.length || count.innerText || '0');
 }
 
 

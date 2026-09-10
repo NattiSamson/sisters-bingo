@@ -688,20 +688,9 @@ async function endGame(room, winners, customMsg, noWinner){
 
   // Broadcast the result to EVERY connected player in the room. Each client
   // displays the same winner message/overlay before the room is reset.
-  // Keep everyone on the same room after the result. The room is reset in 9 seconds.
-  // Clients receive the countdown so winners and losers can see when the next round starts.
-  broadcast(room,{type:'gameOver',winners:winnerNames,winAmount,isSplit,message:msg,noWinner:!!noWinner,winnerTelegramIds:winnerTids,resetCountdown:9});
-
-  let resetSeconds=9;
-  room.resetCountdownTimer=setInterval(()=>{
-    resetSeconds--;
-    if(resetSeconds>0){
-      broadcast(room,{type:'resetCountdown',seconds:resetSeconds});
-    }
-  },1000);
+  broadcast(room,{type:'gameOver',winners:winnerNames,winAmount,isSplit,message:msg,noWinner:!!noWinner,winnerTelegramIds:winnerTids});
 
   setTimeout(()=>{
-    if(room.resetCountdownTimer) clearInterval(room.resetCountdownTimer);
     if(!rooms[room.roomId]) return;
     room.status='waiting'; room.calledNumbers=[]; room.availableNumbers=Array.from({length:75},(_,i)=>i+1);
     room.pot=0; room.takenCardIds=new Set(); room.claimedThisRound=[]; room.claimWindowOpen=false; room.dbGameId=null;
@@ -715,7 +704,7 @@ async function endGame(room, winners, customMsg, noWinner){
     });
     broadcastCardPool(room); broadcastLobby();
     if(room.players.length>=2) startCountdown(room);
-  },9000);
+  },6000);
 }
 
 async function leaveRoom(client){
