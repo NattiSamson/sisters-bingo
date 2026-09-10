@@ -368,7 +368,7 @@ module.exports = {
 
     return rows[0] || null;
   },
-  async function isAdmin(telegramId) {
+  async isAdmin(telegramId) {
   const result = await pool.query(
     `
     SELECT id
