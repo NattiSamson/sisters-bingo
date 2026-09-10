@@ -58,20 +58,16 @@ async createWithdrawal(
   accountNumber,
   amount
 ) {
-
   const client = await pool.connect();
 
   try {
-
     await client.query("BEGIN");
-
 
     // --------------------------------------------------------
     // 1. Find user and lock the row
     // --------------------------------------------------------
 
     const userResult = await client.query(
-
       `
       SELECT
         id,
@@ -82,39 +78,22 @@ async createWithdrawal(
       WHERE telegram_id = $1
       FOR UPDATE
       `,
-
-      [
-        telegramId
-      ]
-
+      [telegramId]
     );
 
-
-    if (
-      userResult.rows.length === 0
-    ) {
-
+    if (userResult.rows.length === 0) {
       await client.query("ROLLBACK");
 
       return {
         success: false,
         message: "አካውንትዎ አልተገኘም።"
       };
-
     }
 
+    const user = userResult.rows[0];
 
-    const user =
-      userResult.rows[0];
-
-
-    const currentBalance =
-      Number(user.balance);
-
-
-    const withdrawalAmount =
-      Number(amount);
-
+    const currentBalance = Number(user.balance);
+    const withdrawalAmount = Number(amount);
 
     // --------------------------------------------------------
     // 2. Validate amount
@@ -124,53 +103,37 @@ async createWithdrawal(
       !Number.isFinite(withdrawalAmount) ||
       withdrawalAmount <= 0
     ) {
-
       await client.query("ROLLBACK");
 
       return {
         success: false,
         message: "የተሳሳተ የመውጫ መጠን ነው።"
       };
-
     }
 
-
-    if (
-      !Number.isInteger(withdrawalAmount)
-    ) {
-
+    if (!Number.isInteger(withdrawalAmount)) {
       await client.query("ROLLBACK");
 
       return {
         success: false,
         message: "የመውጫ መጠኑ ሙሉ ቁጥር መሆን አለበት።"
       };
-
     }
 
-
-    if (
-      withdrawalAmount < 10
-    ) {
-
+    if (withdrawalAmount < 10) {
       await client.query("ROLLBACK");
 
       return {
         success: false,
         message: "ቢያንስ 10 ETB ማውጣት ይችላሉ።"
       };
-
     }
-
 
     // --------------------------------------------------------
     // 3. Check balance
     // --------------------------------------------------------
 
-    if (
-      withdrawalAmount > currentBalance
-    ) {
-
+    if (withdrawalAmount > currentBalance) {
       await client.query("ROLLBACK");
 
       return {
@@ -179,181 +142,152 @@ async createWithdrawal(
           `በቂ ሂሳብ የሎትም። ` +
           `ያለዎት ሂሳብ፦ ${currentBalance} ETB`
       };
-
     }
-
 
     // --------------------------------------------------------
     // 4. Check payment method
     // --------------------------------------------------------
 
-    const methodResult =
-      await client.query(
+    const methodResult = await client.query(
+      `
+      SELECT
+        id,
+        name,
+        amharic_name,
+        emoji
+      FROM payment_methods
+      WHERE id = $1
+        AND is_active = TRUE
+      `,
+      [paymentMethodId]
+    );
 
-        `
-        SELECT
-          id,
-          name,
-          amharic_name,
-          emoji
-        FROM payment_methods
-        WHERE id = $1
-          AND is_active = TRUE
-        `,
-
-        [
-          paymentMethodId
-        ]
-
-      );
-
-
-    if (
-      methodResult.rows.length === 0
-    ) {
-
+    if (methodResult.rows.length === 0) {
       await client.query("ROLLBACK");
 
       return {
         success: false,
         message: "የክፍያ መንገዱ አልተገኘም።"
       };
-
     }
-
 
     // --------------------------------------------------------
     // 5. Validate account number
     // --------------------------------------------------------
 
-    const cleanAccount =
-      String(accountNumber)
-        .trim()
-        .replace(
-          /[\s\-()]/g,
-          ""
-        );
+    const cleanAccount = String(accountNumber)
+      .trim()
+      .replace(/[\s\-()]/g, "");
 
-
-    if (
-      !cleanAccount ||
-      cleanAccount.length > 20
-    ) {
-
+    if (!cleanAccount || cleanAccount.length > 20) {
       await client.query("ROLLBACK");
 
       return {
         success: false,
         message: "የአካውንት ቁጥሩ ትክክል አይደለም።"
       };
-
     }
 
+    // Optional: only allow numbers
+    if (!/^\d+$/.test(cleanAccount)) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "የአካውንት ቁጥሩ ትክክል አይደለም።"
+      };
+    }
 
     // --------------------------------------------------------
     // 6. Deduct balance
     // --------------------------------------------------------
 
     const newBalance =
-      currentBalance -
-      withdrawalAmount;
+      currentBalance - withdrawalAmount;
 
-
-    const balanceResult =
-      await client.query(
-
-        `
-        UPDATE users
-        SET balance = $1
-        WHERE id = $2
-        RETURNING balance
-        `,
-
-        [
-          newBalance,
-          user.id
-        ]
-
-      );
-
+    const balanceResult = await client.query(
+      `
+      UPDATE users
+      SET balance = $1
+      WHERE id = $2
+      RETURNING balance
+      `,
+      [
+        newBalance,
+        user.id
+      ]
+    );
 
     // --------------------------------------------------------
-    // 7. Create withdrawal
+    // 7. Create withdrawal request
     // --------------------------------------------------------
 
-    const withdrawalResult =
-      await client.query(
-
-        `
-        INSERT INTO withdrawals
-        (
-          user_id,
-          payment_account_id,
-          approved_by_id,
-          amount,
-          status,
-          is_active,
-          is_approved,
-          created_at,
-          updated_at
-        )
-        VALUES
-        (
-          $1,
-          NULL,
-          NULL,
-          $2,
-          FALSE,
-          TRUE,
-          FALSE,
-          NOW(),
-          NOW()
-        )
-        RETURNING *
-        `,
-
-        [
-          user.id,
-          withdrawalAmount
-        ]
-
-      );
-
+    const withdrawalResult = await client.query(
+      `
+      INSERT INTO withdrawals (
+        user_id,
+        payment_method_id,
+        payment_account_id,
+        approved_by_id,
+        account_number,
+        amount,
+        is_pending,
+        is_approved,
+        reject_reason,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        $1,
+        $2,
+        NULL,
+        NULL,
+        $3,
+        $4,
+        TRUE,
+        FALSE,
+        NULL,
+        NOW(),
+        NOW()
+      )
+      RETURNING *
+      `,
+      [
+        user.id,
+        paymentMethodId,
+        cleanAccount,
+        withdrawalAmount
+      ]
+    );
 
     // --------------------------------------------------------
-    // 8. Commit
+    // 8. Commit transaction
     // --------------------------------------------------------
 
     await client.query("COMMIT");
 
+    // --------------------------------------------------------
+    // 9. Return result
+    // --------------------------------------------------------
 
     return {
-
       success: true,
 
-      withdrawal:
-        withdrawalResult.rows[0],
+      withdrawal: withdrawalResult.rows[0],
 
-      user_id:
-        user.id,
+      user_id: user.id,
 
-      telegram_id:
-        user.telegram_id,
+      telegram_id: user.telegram_id,
 
-      user_name:
-        user.name,
+      user_name: user.name,
 
-      amount:
-        withdrawalAmount,
+      amount: withdrawalAmount,
 
-      balance_before:
-        currentBalance,
+      balance_before: currentBalance,
 
-      balance_after:
-        Number(
-          balanceResult.rows[0].balance
-        )
-
+      balance_after: Number(
+        balanceResult.rows[0].balance
+      )
     };
 
   } catch (err) {
@@ -366,12 +300,9 @@ async createWithdrawal(
     );
 
     return {
-
       success: false,
-
       message:
         "የመውጫ ጥያቄውን ማስኬድ አልተቻለም።"
-
     };
 
   } finally {
@@ -379,8 +310,7 @@ async createWithdrawal(
     client.release();
 
   }
-
-},
+}
 // ============================================================
 // GET PENDING WITHDRAWALS
 // ============================================================
