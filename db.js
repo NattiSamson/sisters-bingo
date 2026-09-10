@@ -848,6 +848,117 @@ module.exports = {
 
       await client.query("BEGIN");
 
+      const paymentAccountResult =
+  await client.query(
+    `
+    SELECT
+      pa.id,
+      pa.payment_method_id,
+      pa.account_number,
+      pa.account_name,
+      pa.balance,
+      pa.is_active
+
+    FROM payment_accounts pa
+
+    WHERE pa.id = $1
+
+    FOR UPDATE
+    `,
+    [
+      paymentAccountId
+    ]
+  );
+
+if (
+  paymentAccountResult.rows.length === 0
+) {
+
+  await client.query("ROLLBACK");
+
+  return {
+    success: false,
+    message:
+      "Payment account not found."
+  };
+
+}
+
+const paymentAccount =
+  paymentAccountResult.rows[0];
+
+      if (!paymentAccount.is_active) {
+
+  await client.query("ROLLBACK");
+
+  return {
+    success: false,
+    message:
+      "The selected payment account is inactive."
+  };
+
+}
+      if (
+  Number(paymentAccount.payment_method_id) !==
+  Number(withdrawal.payment_method_id)
+) {
+
+  await client.query("ROLLBACK");
+
+  return {
+    success: false,
+    message:
+      "The selected payment account does not belong to this payment method."
+  };
+
+}
+
+      const paymentAccountBalance =
+  Number(paymentAccount.balance);
+
+const withdrawalAmount =
+  Number(withdrawal.amount);
+
+if (
+  paymentAccountBalance <
+  withdrawalAmount
+) {
+
+  await client.query("ROLLBACK");
+
+  return {
+
+    success: false,
+
+    message:
+      `Insufficient balance in payment account ${paymentAccount.account_number}. ` +
+      `Available: ${paymentAccountBalance} ETB, ` +
+      `Required: ${withdrawalAmount} ETB.`
+
+  };
+
+}
+      const paymentAccountBalanceAfter =
+  paymentAccountBalance -
+  withdrawalAmount;
+
+const paymentAccountUpdate =
+  await client.query(
+    `
+    UPDATE payment_accounts
+
+    SET balance = $1
+
+    WHERE id = $2
+
+    RETURNING balance
+    `,
+    [
+      paymentAccountBalanceAfter,
+      paymentAccount.id
+    ]
+  );
+
       const withdrawalResult =
         await client.query(
           `
@@ -954,28 +1065,42 @@ module.exports = {
       // createWithdrawal() already deducted it.
 
       const updateResult =
-        await client.query(
-          `
-          UPDATE withdrawals
-          SET
-            approved_by_id = $1,
-            is_pending = FALSE,
-            is_approved = TRUE,
-            reject_reason = NULL,
-            updated_at = NOW()
+  await client.query(
+    `
+    UPDATE withdrawals
 
-          WHERE id = $2
-            AND is_pending = TRUE
-            AND is_approved = FALSE
+    SET
 
-          RETURNING *
-          `,
-          [
-            adminId,
-            withdrawalId
-          ]
-        );
+      payment_account_id = $1,
 
+      approved_by_id = $2,
+
+      is_pending = FALSE,
+
+      is_approved = TRUE,
+
+      reject_reason = NULL,
+
+      updated_at = NOW()
+
+    WHERE id = $3
+
+      AND is_pending = TRUE
+
+      AND is_approved = FALSE
+
+    RETURNING *
+    `,
+    [
+
+      paymentAccount.id,
+
+      adminId,
+
+      withdrawalId
+
+    ]
+  );
       if (
         updateResult.rows.length === 0
       ) {
@@ -1441,6 +1566,139 @@ module.exports = {
 
     return rows[0] || null;
   },
+
+  // ============================================================
+// GET ALL PAYMENT ACCOUNTS FOR ADMIN SELECTION
+// ============================================================
+
+async getPaymentAccountsByMethod(
+  paymentMethodId
+) {
+
+  const { rows } =
+    await pool.query(
+
+      `
+      SELECT
+
+        pa.id,
+
+        pa.payment_method_id,
+
+        pa.account_number,
+
+        pa.account_name,
+
+        pa.balance,
+
+        pa.is_active,
+
+        pm.name AS pm_name,
+
+        pm.amharic_name AS pm_amharic_name,
+
+        pm.emoji AS pm_emoji,
+
+        pt.name AS pt_name,
+
+        pt.amharic_name AS pt_amharic_name,
+
+        pt.emoji AS pt_emoji
+
+      FROM payment_accounts pa
+
+      INNER JOIN payment_methods pm
+        ON pa.payment_method_id = pm.id
+
+      INNER JOIN payment_types pt
+        ON pm.type_id = pt.id
+
+      WHERE
+        pa.payment_method_id = $1
+
+        AND pa.is_active = TRUE
+
+        AND pm.is_active = TRUE
+
+        AND pt.is_active = TRUE
+
+      ORDER BY
+        pa.account_number ASC
+      `,
+
+      [paymentMethodId]
+
+    );
+
+  return rows;
+
+},
+
+  // ============================================================
+// GET PAYMENT ACCOUNT BY ID
+// ============================================================
+
+async getPaymentAccountById(
+  paymentAccountId
+) {
+
+  const { rows } =
+    await pool.query(
+
+      `
+      SELECT
+
+        pa.id,
+
+        pa.payment_method_id,
+
+        pa.account_number,
+
+        pa.account_name,
+
+        pa.balance,
+
+        pa.is_active,
+
+        pm.name AS pm_name,
+
+        pm.amharic_name AS pm_amharic_name,
+
+        pm.emoji AS pm_emoji,
+
+        pt.name AS pt_name,
+
+        pt.amharic_name AS pt_amharic_name,
+
+        pt.emoji AS pt_emoji
+
+      FROM payment_accounts pa
+
+      INNER JOIN payment_methods pm
+        ON pa.payment_method_id = pm.id
+
+      INNER JOIN payment_types pt
+        ON pm.type_id = pt.id
+
+      WHERE
+        pa.id = $1
+
+        AND pa.is_active = TRUE
+
+        AND pm.is_active = TRUE
+
+        AND pt.is_active = TRUE
+
+      LIMIT 1
+      `,
+
+      [paymentAccountId]
+
+    );
+
+  return rows[0] || null;
+
+},
 
   async getPaymentMethodTypes() {
 
