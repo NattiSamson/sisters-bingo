@@ -10,11 +10,13 @@
  */
 
 const { Bot, webhookCallback } = require("grammy");
+
 const db = require("../db");
 
 const {
   processDeposit
 } = require("../deposit");
+
 
 // ============================================================
 // CONFIG
@@ -27,11 +29,16 @@ const GAME_URL =
   process.env.GAME_URL ||
   "https://sisters-bingo.vercel.app";
 
+const ADMIN_ID =
+  8597748757;
+
 
 if (!BOT_TOKEN) {
+
   throw new Error(
     "BOT_TOKEN environment variable is missing"
   );
+
 }
 
 
@@ -62,6 +69,7 @@ const pendingAdminReject = {};
 function clearPendingState(
   telegramId
 ) {
+
   delete pendingDeposit[
     telegramId
   ];
@@ -203,7 +211,6 @@ function normalizeEthiopianPhone(
 
 
   return null;
-
 }
 
 
@@ -223,9 +230,7 @@ async function showHome(
   const keyboard = [
 
     [
-
       {
-
         text:
           "🎮 Play",
 
@@ -237,83 +242,59 @@ async function showHome(
         }
 
       }
-
     ],
 
-
     [
-
       {
-
         text:
           "💰 Balance",
 
         callback_data:
           "balance"
-
       },
 
-
       {
-
         text:
           "🔄 Transfer",
 
         callback_data:
           "transfer"
-
       }
-
     ],
 
-
     [
-
       {
-
         text:
           "💎 Deposit",
 
         callback_data:
           "deposit"
-
       },
 
-
       {
-
         text:
           "🏧 Withdraw",
 
         callback_data:
           "withdraw"
-
       }
-
     ],
 
-
     [
-
       {
-
         text:
           "🆘 Support",
 
         callback_data:
           "support"
-
       },
 
-
       {
-
         text:
           "🗑️ Delete",
 
         callback_data:
           "delete"
-
       }
 
     ]
@@ -325,35 +306,26 @@ async function showHome(
   // ADMIN BUTTONS
   // ----------------------------------------------------------
 
-  // IMPORTANT:
-  // Admin status comes from users.is_admin.
-  // There is NO hard-coded ADMIN_ID.
-
   if (
-    await db.isAdmin(telegramId)
+    telegramId === ADMIN_ID
   ) {
 
     keyboard.push([
 
       {
-
         text:
           "⏳ Pending",
 
         callback_data:
           "admin_withdrawals"
-
       },
 
-
       {
-
         text:
           "📢 Broadcast",
 
         callback_data:
           "admin_broadcast"
-
       }
 
     ]);
@@ -416,7 +388,7 @@ bot.command(
     // --------------------------------------------------------
 
     if (
-      await db.isAdmin(telegramId)
+      telegramId === ADMIN_ID
     ) {
 
       try {
@@ -505,7 +477,6 @@ bot.command(
         }
 
       );
-
 
     } catch (err) {
 
@@ -781,12 +752,10 @@ bot.command(
   showBalance
 );
 
-
 bot.hears(
   "balance",
   showBalance
 );
-
 
 bot.hears(
   "💰 Balance",
@@ -802,11 +771,9 @@ bot.callbackQuery(
       ctx
     );
 
-
     clearPendingState(
       ctx.from.id
     );
-
 
     await showBalance(
       ctx
@@ -892,12 +859,10 @@ bot.command(
   showTransfer
 );
 
-
 bot.hears(
   "transfer",
   showTransfer
 );
-
 
 bot.hears(
   "🔄 Transfer",
@@ -913,11 +878,9 @@ bot.callbackQuery(
       ctx
     );
 
-
     clearPendingState(
       ctx.from.id
     );
-
 
     await showTransfer(
       ctx
@@ -937,7 +900,6 @@ bot.on(
 
     const telegramId =
       ctx.from.id;
-
 
     const text =
       ctx.message.text.trim();
@@ -990,10 +952,8 @@ bot.on(
           "ምሳሌ፦ `0912345678`",
 
           {
-
             parse_mode:
               "Markdown"
-
           }
 
         );
@@ -1029,7 +989,9 @@ bot.on(
       if (!recipient) {
 
         return ctx.reply(
+
           "❌ ይህ ስልክ ቁጥር በሲስተማችን ውስጥ አልተመዘገበም።"
+
         );
 
       }
@@ -1064,20 +1026,16 @@ bot.on(
         "✅ *ተጫዋቹ ተረጋግጧል።*\n\n" +
 
         `👤 ተቀባይ፦ *${recipient.name}*\n` +
-
         `📱 ስልክ፦ ${phone}\n\n` +
 
         "💰 ማስተላለፍ የሚፈልጉትን የብር መጠን ያስገቡ።",
 
         {
-
           parse_mode:
             "Markdown"
-
         }
 
       );
-
 
     } catch (err) {
 
@@ -1106,7 +1064,6 @@ bot.on(
 
     const telegramId =
       ctx.from.id;
-
 
     const text =
       ctx.message.text.trim();
@@ -1260,10 +1217,8 @@ bot.on(
         `💰 አዲሱ ቀሪ ሂሳብ፦ *${result.senderAfter} ETB*`,
 
         {
-
           parse_mode:
             "Markdown"
-
         }
 
       );
@@ -1284,10 +1239,8 @@ bot.on(
           `💰 አዲሱ ቀሪ ሂሳብ፦ *${result.recipientAfter} ETB*`,
 
           {
-
             parse_mode:
               "Markdown"
-
           }
 
         );
@@ -1300,7 +1253,6 @@ bot.on(
         );
 
       }
-
 
     } catch (err) {
 
@@ -1413,7 +1365,7 @@ async function showDeposit(
 
 
   mes +=
-    ` ክፍያ ${meslast} ብቻ ነው。\n\n`;
+    ` ክፍያ ${meslast} ብቻ ነው።\n\n`;
 
 
   mes +=
@@ -1454,9 +1406,7 @@ async function showDeposit(
 
 
   await ctx.reply(
-
     mes,
-
     {
 
       parse_mode:
@@ -1470,7 +1420,6 @@ async function showDeposit(
       }
 
     }
-
   );
 
 }
@@ -1480,7 +1429,6 @@ bot.command(
   "deposit",
   showDeposit
 );
-
 
 bot.hears(
   "deposit",
@@ -1496,11 +1444,9 @@ bot.callbackQuery(
       ctx
     );
 
-
     clearPendingState(
       ctx.from.id
     );
-
 
     await showDeposit(
       ctx
@@ -1607,10 +1553,9 @@ bot.callbackQuery(
 
         `${paymentMethod.emoji || "💳"} ` +
         `${paymentMethod.amharic_name}\n\n` +
-        `ይህ የክፍያ መንገድ በቅርቡ ይጀምራል。`
+        `ይህ የክፍያ መንገድ በቅርቡ ይጀምራል።`
 
       );
-
 
     } catch (err) {
 
@@ -1706,13 +1651,11 @@ bot.on(
 
             "✅ *የገቢ ጥያቄዎ ተሳክቷል!*\n\n" +
 
-            `💰 ${result2} ብር ወደ ሂሳብዎ ተጨምሯል。`,
+            `💰 ${result2} ብር ወደ ሂሳብዎ ተጨምሯል።`,
 
             {
-
               parse_mode:
                 "Markdown"
-
             }
 
           );
@@ -1733,7 +1676,6 @@ bot.on(
         "እባክዎ ትክክለኛውን SMS ይላኩ።"
 
       );
-
 
     } catch (err) {
 
@@ -1829,7 +1771,7 @@ async function showWithdrawal(
 
       `💰 ያለዎት ሂሳብ፦ ${balance} ETB\n\n` +
 
-      "ዝቅተኛው የመውጫ መጠን 10 ETB ነው。"
+      "ዝቅተኛው የመውጫ መጠን 10 ETB ነው።"
 
     );
 
@@ -1925,12 +1867,10 @@ bot.command(
   showWithdrawal
 );
 
-
 bot.hears(
   "withdraw",
   showWithdrawal
 );
-
 
 bot.hears(
   "🏧 Withdraw",
@@ -1946,11 +1886,9 @@ bot.callbackQuery(
       ctx
     );
 
-
     clearPendingState(
       ctx.from.id
     );
-
 
     await showWithdrawal(
       ctx
@@ -2048,7 +1986,6 @@ bot.callbackQuery(
         }
 
       );
-
 
     } catch (err) {
 
@@ -2360,7 +2297,6 @@ bot.on(
 
       );
 
-
     } catch (err) {
 
       console.error(
@@ -2423,7 +2359,7 @@ async function showPendingWithdrawals(
 ) {
 
   if (
-    !(await db.isAdmin(ctx.from.id))
+    ctx.from.id !== ADMIN_ID
   ) {
 
     return ctx.answerCallbackQuery({
@@ -2593,7 +2529,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     if (
-      !(await db.isAdmin(ctx.from.id))
+      ctx.from.id !== ADMIN_ID
     ) {
 
       return ctx.answerCallbackQuery({
@@ -2750,7 +2686,6 @@ bot.callbackQuery(
 
       );
 
-
     } catch (err) {
 
       console.error(
@@ -2777,7 +2712,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     if (
-      !(await db.isAdmin(ctx.from.id))
+      ctx.from.id !== ADMIN_ID
     ) {
 
       return ctx.answerCallbackQuery({
@@ -2802,7 +2737,7 @@ bot.callbackQuery(
 
       const user =
         await db.getUserByTelegramId(
-          ctx.from.id
+          ADMIN_ID
         );
 
 
@@ -2819,7 +2754,6 @@ bot.callbackQuery(
         ctx,
         user
       );
-
 
     } catch (err) {
 
@@ -2843,7 +2777,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     if (
-      !(await db.isAdmin(ctx.from.id))
+      ctx.from.id !== ADMIN_ID
     ) {
 
       return ctx.answerCallbackQuery({
@@ -2873,10 +2807,23 @@ bot.callbackQuery(
 
     try {
 
+      /*
+       * IMPORTANT:
+       *
+       * db.approveWithdrawal() should perform the
+       * following database update inside a transaction:
+       *
+       * approved_by_id = ADMIN_ID
+       * is_approved    = TRUE
+       * is_pending     = FALSE
+       *
+       * It should also deduct the user's balance only once.
+       */
+
       const result =
         await db.approveWithdrawal(
           withdrawalId,
-          ctx.from.id
+          ADMIN_ID
         );
 
 
@@ -2906,7 +2853,7 @@ bot.callbackQuery(
 
         `💰 New balance: *${result.balance_after} ETB*\n\n` +
 
-        `👑 Approved by: ${ctx.from.id}`,
+        `👑 Approved by: ${ADMIN_ID}`,
 
         {
 
@@ -2963,7 +2910,6 @@ bot.callbackQuery(
         ctx
       );
 
-
     } catch (err) {
 
       console.error(
@@ -2990,7 +2936,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     if (
-      !(await db.isAdmin(ctx.from.id))
+      ctx.from.id !== ADMIN_ID
     ) {
 
       return ctx.answerCallbackQuery({
@@ -3019,6 +2965,11 @@ bot.callbackQuery(
 
     try {
 
+      /*
+       * Make sure the withdrawal actually exists
+       * and is still pending before asking for a reason.
+       */
+
       const withdrawals =
         await db.getPendingWithdrawals(
           100
@@ -3043,7 +2994,7 @@ bot.callbackQuery(
 
 
       pendingAdminReject[
-        ctx.from.id
+        ADMIN_ID
       ] = {
 
         withdrawalId,
@@ -3082,7 +3033,6 @@ bot.callbackQuery(
 
       );
 
-
     } catch (err) {
 
       console.error(
@@ -3098,3 +3048,1069 @@ bot.callbackQuery(
 
   }
 );
+
+
+// ============================================================
+// ADMIN REJECTION REASON
+// ============================================================
+
+bot.on(
+  "message:text",
+  async (ctx, next) => {
+
+    const telegramId =
+      ctx.from.id;
+
+
+    // Only admin can use this state
+
+    if (
+      telegramId !== ADMIN_ID
+    ) {
+
+      return next();
+
+    }
+
+
+    const pending =
+      pendingAdminReject[
+        ADMIN_ID
+      ];
+
+
+    if (!pending) {
+
+      return next();
+
+    }
+
+
+    const text =
+      ctx.message.text.trim();
+
+
+    // --------------------------------------------------------
+    // Cancel rejection
+    // --------------------------------------------------------
+
+    if (
+      text === "/cancel"
+    ) {
+
+      delete pendingAdminReject[
+        ADMIN_ID
+      ];
+
+
+      return ctx.reply(
+        "❌ Withdrawal rejection cancelled."
+      );
+
+    }
+
+
+    // --------------------------------------------------------
+    // Validate reason
+    // --------------------------------------------------------
+
+    if (!text) {
+
+      return ctx.reply(
+        "❌ Please enter a rejection reason."
+      );
+
+    }
+
+
+    if (
+      text.length < 2
+    ) {
+
+      return ctx.reply(
+        "❌ Please provide a valid rejection reason."
+      );
+
+    }
+
+
+    const withdrawalId =
+      pending.withdrawalId;
+
+
+    const reason =
+      text.substring(
+        0,
+        500
+      );
+
+
+    // Clear state BEFORE database operation
+    // so another message cannot accidentally
+    // trigger the same rejection.
+
+    delete pendingAdminReject[
+      ADMIN_ID
+    ];
+
+
+    try {
+
+      /*
+       * IMPORTANT:
+       *
+       * Your db.rejectWithdrawal() should update:
+       *
+       * approved_by_id = ADMIN_ID
+       * is_approved    = FALSE
+       * is_pending     = FALSE
+       *
+       * and, if your withdrawals table contains a
+       * rejection_reason column, store `reason` there.
+       *
+       * The third argument is the rejection reason.
+       */
+
+      const result =
+        await db.rejectWithdrawal(
+          withdrawalId,
+          ADMIN_ID,
+          reason
+        );
+
+
+      if (
+        !result ||
+        !result.success
+      ) {
+
+        return ctx.reply(
+          `❌ ${result?.message || "Withdrawal rejection failed."}`
+        );
+
+      }
+
+
+      // ------------------------------------------------------
+      // Tell admin
+      // ------------------------------------------------------
+
+      await ctx.reply(
+
+        "❌ *WITHDRAWAL REJECTED*\n\n" +
+
+        `🆔 #${withdrawalId}\n` +
+
+        `👤 User: *${result.user_name || pending.withdrawal.name || "Unknown"}*\n` +
+
+        `💰 Amount: *${result.amount || pending.withdrawal.amount} ETB*\n\n` +
+
+        `📝 Reason:\n${reason}\n\n` +
+
+        `👑 Rejected by: ${ADMIN_ID}`,
+
+        {
+
+          parse_mode:
+            "Markdown"
+
+        }
+
+      );
+
+
+      // ------------------------------------------------------
+      // Notify user
+      // ------------------------------------------------------
+
+      if (
+        result.telegram_id
+      ) {
+
+        try {
+
+          await bot.api.sendMessage(
+
+            result.telegram_id,
+
+            "❌ *የመውጫ ጥያቄዎ ውድቅ ተደርጓል።*\n\n" +
+
+            `💰 መጠን፦ *${result.amount || pending.withdrawal.amount} ETB*\n\n` +
+
+            "📝 *የውድቅ ምክንያት፦*\n" +
+
+            `${reason}\n\n` +
+
+            "💰 ምንም ብር ከሂሳብዎ አልተቀነሰም።",
+
+            {
+
+              parse_mode:
+                "Markdown"
+
+            }
+
+          );
+
+        } catch (notifyError) {
+
+          console.error(
+            "Rejection notification error:",
+            notifyError
+          );
+
+        }
+
+      }
+
+
+      // ------------------------------------------------------
+      // Show refreshed pending withdrawals
+      // ------------------------------------------------------
+
+      await showPendingWithdrawals(
+        ctx
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Reject withdrawal error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Withdrawal rejection failed."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// SUPPORT
+// ============================================================
+
+async function showSupport(
+  ctx
+) {
+
+  const user =
+    await db.getUserByTelegramId(
+      ctx.from.id
+    );
+
+
+  if (!user) {
+
+    return ctx.reply(
+      "Please /start to register first."
+    );
+
+  }
+
+
+  await ctx.reply(
+
+    "🆘 ድጋፍ ይፈልጋሉ?\n\n" +
+
+    "👇 ለማንኛውም ጥያቄ ወይም አስተያየት 👇\n\n" +
+
+    "👤 @sistersbingosupport"
+
+  );
+
+}
+
+
+bot.command(
+  "support",
+  showSupport
+);
+
+bot.hears(
+  "support",
+  showSupport
+);
+
+
+bot.callbackQuery(
+  "support",
+  async (ctx) => {
+
+    await answerCallback(
+      ctx
+    );
+
+    clearPendingState(
+      ctx.from.id
+    );
+
+    await showSupport(
+      ctx
+    );
+
+  }
+);
+
+
+// ============================================================
+// DELETE
+// ============================================================
+
+bot.callbackQuery(
+  "delete",
+  async (ctx) => {
+
+    await answerCallback(
+      ctx
+    );
+
+
+    clearPendingState(
+      ctx.from.id
+    );
+
+
+    await ctx.reply(
+
+      "🗑️ *Delete Account*\n\n" +
+
+      "Account deletion is currently unavailable.\n" +
+
+      "Please contact Support if you want to delete your account.",
+
+      {
+
+        parse_mode:
+          "Markdown"
+
+      }
+
+    );
+
+  }
+);
+
+
+// ============================================================
+// LEADERBOARD
+// ============================================================
+
+async function showLeaderboard(
+  ctx
+) {
+
+  const rows =
+    await db.getLeaderboard(
+      10
+    );
+
+
+  const medals = [
+    "🥇",
+    "🥈",
+    "🥉"
+  ];
+
+
+  const text =
+    rows
+      .map(
+        (r, i) => {
+
+          const position =
+            medals[i] ||
+            `${i + 1}.`;
+
+
+          return (
+
+            `${position} ` +
+            `*${r.name}* — ` +
+            `${r.total_winnings} ETB ` +
+            `(${r.total_wins} wins)`
+
+          );
+
+        }
+      )
+      .join("\n");
+
+
+  await ctx.reply(
+
+    `🏆 *Leaderboard*\n\n` +
+    `${text || "No games yet!"}`,
+
+    {
+
+      parse_mode:
+        "Markdown"
+
+    }
+
+  );
+
+}
+
+
+bot.command(
+  "leaderboard",
+  showLeaderboard
+);
+
+bot.hears(
+  "📊 Leaderboard",
+  showLeaderboard
+);
+
+
+// ============================================================
+// PLAY
+// ============================================================
+
+async function showPlay(
+  ctx
+) {
+
+  const user =
+    await db.getUserByTelegramId(
+      ctx.from.id
+    );
+
+
+  if (!user) {
+
+    return ctx.reply(
+      "Please /start to register first."
+    );
+
+  }
+
+
+  await ctx.reply(
+
+    `Ready to play, *${user.name}*? 🎱\n` +
+    `Balance: *${user.balance} ETB*`,
+
+    {
+
+      parse_mode:
+        "Markdown",
+
+      reply_markup: {
+
+        inline_keyboard: [
+
+          [
+
+            {
+
+              text:
+                "🎮 Open Sisters Bingo",
+
+              web_app: {
+
+                url:
+                  `${GAME_URL}?tid=${ctx.from.id}`
+
+              }
+
+            }
+
+          ]
+
+        ]
+
+      }
+
+    }
+
+  );
+
+}
+
+
+bot.command(
+  "play",
+  showPlay
+);
+
+bot.hears(
+  "🎮 Play",
+  showPlay
+);
+
+
+// ============================================================
+// ADMIN BROADCAST
+// ============================================================
+
+bot.callbackQuery(
+  "admin_broadcast",
+  async (ctx) => {
+
+    if (
+      ctx.from.id !== ADMIN_ID
+    ) {
+
+      return ctx.answerCallbackQuery({
+
+        text:
+          "Unauthorized",
+
+        show_alert:
+          true
+
+      });
+
+    }
+
+
+    await answerCallback(
+      ctx
+    );
+
+
+    await db.createBroadcastDraft(
+      ADMIN_ID
+    );
+
+
+    await ctx.reply(
+
+      "📢 *Broadcast mode started!*\n\n" +
+
+      "Please send the image you want to broadcast.\n\n" +
+
+      "❌ Send /cancel to cancel.",
+
+      {
+
+        parse_mode:
+          "Markdown"
+
+      }
+
+    );
+
+  }
+);
+
+
+// ============================================================
+// BROADCAST IMAGE
+// ============================================================
+
+bot.on(
+  "message:photo",
+  async (ctx) => {
+
+    if (
+      ctx.from.id !== ADMIN_ID
+    ) {
+
+      return;
+
+    }
+
+
+    const draft =
+      await db.getBroadcastDraft(
+        ADMIN_ID
+      );
+
+
+    if (!draft) {
+
+      return;
+
+    }
+
+
+    if (
+      draft.status !==
+      "waiting_image"
+    ) {
+
+      return;
+
+    }
+
+
+    const photo =
+      ctx.message.photo[
+        ctx.message.photo.length - 1
+      ];
+
+
+    const fileId =
+      photo.file_id;
+
+
+    await db.updateBroadcastImage(
+      ADMIN_ID,
+      fileId
+    );
+
+
+    await ctx.reply(
+
+      "✅ Image received!\n\n" +
+
+      "Now send the message/caption you want to broadcast.\n\n" +
+
+      "❌ Send /cancel to cancel."
+
+    );
+
+  }
+);
+
+
+// ============================================================
+// BROADCAST TEXT
+// ============================================================
+
+bot.on(
+  "message:text",
+  async (ctx, next) => {
+
+    if (
+      ctx.from.id !== ADMIN_ID
+    ) {
+
+      return next();
+
+    }
+
+
+    // Do not intercept rejection reason here.
+    // The rejection handler above handles it first.
+
+    if (
+      pendingAdminReject[
+        ADMIN_ID
+      ]
+    ) {
+
+      return next();
+
+    }
+
+
+    const text =
+      ctx.message.text.trim();
+
+
+    if (
+      text === "/cancel"
+    ) {
+
+      const draft =
+        await db.getBroadcastDraft(
+          ADMIN_ID
+        );
+
+
+      if (!draft) {
+
+        return next();
+
+      }
+
+
+      await db.deleteBroadcastDraft(
+        ADMIN_ID
+      );
+
+
+      return ctx.reply(
+        "❌ Broadcast cancelled."
+      );
+
+    }
+
+
+    const draft =
+      await db.getBroadcastDraft(
+        ADMIN_ID
+      );
+
+
+    if (!draft) {
+
+      return next();
+
+    }
+
+
+    if (
+      draft.status !==
+      "waiting_message"
+    ) {
+
+      return next();
+
+    }
+
+
+    await db.updateBroadcastMessage(
+      ADMIN_ID,
+      text
+    );
+
+
+    const users =
+      await db.getAllActiveUsers();
+
+
+    await bot.api.sendPhoto(
+
+      ADMIN_ID,
+
+      draft.image_url,
+
+      {
+
+        caption:
+          text,
+
+        reply_markup: {
+
+          inline_keyboard: [
+
+            [
+
+              {
+
+                text:
+                  "🎮 Play Now",
+
+                web_app: {
+
+                  url:
+                    `${GAME_URL}?tid=${ADMIN_ID}`
+
+                }
+
+              }
+
+            ]
+
+          ]
+
+        }
+
+      }
+
+    );
+
+
+    await ctx.reply(
+
+      `📢 *BROADCAST PREVIEW*\n\n` +
+
+      `👥 Recipients: ${users.length}\n\n` +
+
+      `Are you sure you want to send this to everyone?`,
+
+      {
+
+        parse_mode:
+          "Markdown",
+
+        reply_markup: {
+
+          inline_keyboard: [
+
+            [
+
+              {
+
+                text:
+                  "✅ SEND TO ALL",
+
+                callback_data:
+                  "broadcast_confirm"
+
+              },
+
+              {
+
+                text:
+                  "❌ CANCEL",
+
+                callback_data:
+                  "broadcast_cancel"
+
+              }
+
+            ]
+
+          ]
+
+        }
+
+      }
+
+    );
+
+  }
+);
+
+
+// ============================================================
+// BROADCAST CONFIRM
+// ============================================================
+
+bot.callbackQuery(
+  "broadcast_confirm",
+  async (ctx) => {
+
+    if (
+      ctx.from.id !== ADMIN_ID
+    ) {
+
+      return ctx.answerCallbackQuery({
+
+        text:
+          "Unauthorized",
+
+        show_alert:
+          true
+
+      });
+
+    }
+
+
+    await answerCallback(
+      ctx
+    );
+
+
+    const draft =
+      await db.getBroadcastDraft(
+        ADMIN_ID
+      );
+
+
+    if (!draft) {
+
+      return ctx.editMessageText(
+        "❌ Broadcast draft not found."
+      );
+
+    }
+
+
+    if (
+      !draft.image_url ||
+      !draft.message
+    ) {
+
+      return ctx.editMessageText(
+        "❌ Broadcast information is incomplete."
+      );
+
+    }
+
+
+    const users =
+      await db.getAllActiveUsers();
+
+
+    let sent = 0;
+
+    let failed = 0;
+
+
+    await ctx.editMessageText(
+
+      `📢 Broadcasting...\n\n` +
+
+      `👥 Users: ${users.length}\n\n` +
+
+      `⏳ Please wait...`
+
+    );
+
+
+    for (
+      const user of users
+    ) {
+
+      try {
+
+        await bot.api.sendPhoto(
+
+          user.telegram_id,
+
+          draft.image_url,
+
+          {
+
+            caption:
+              draft.message,
+
+            reply_markup: {
+
+              inline_keyboard: [
+
+                [
+
+                  {
+
+                    text:
+                      "🎮 Play Now",
+
+                    web_app: {
+
+                      url:
+                        `${GAME_URL}?tid=${user.telegram_id}`
+
+                    }
+
+                  }
+
+                ]
+
+              ]
+
+            }
+
+          }
+
+        );
+
+
+        sent++;
+
+
+        await new Promise(
+          resolve =>
+            setTimeout(
+              resolve,
+              40
+            )
+        );
+
+      } catch (err) {
+
+        failed++;
+
+
+        console.error(
+
+          `❌ Failed to send to ${user.telegram_id}:`,
+
+          err.description ||
+          err.message
+
+        );
+
+      }
+
+    }
+
+
+    await db.deleteBroadcastDraft(
+      ADMIN_ID
+    );
+
+
+    await ctx.reply(
+
+      `📢 *Broadcast completed!*\n\n` +
+
+      `👥 Total: ${users.length}\n` +
+
+      `✅ Sent: ${sent}\n` +
+
+      `❌ Failed: ${failed}`,
+
+      {
+
+        parse_mode:
+          "Markdown"
+
+      }
+
+    );
+
+  }
+);
+
+
+// ============================================================
+// BROADCAST CANCEL
+// ============================================================
+
+bot.callbackQuery(
+  "broadcast_cancel",
+  async (ctx) => {
+
+    if (
+      ctx.from.id !== ADMIN_ID
+    ) {
+
+      return ctx.answerCallbackQuery({
+
+        text:
+          "Unauthorized",
+
+        show_alert:
+          true
+
+      });
+
+    }
+
+
+    await answerCallback(
+      ctx
+    );
+
+
+    await db.deleteBroadcastDraft(
+      ADMIN_ID
+    );
+
+
+    await ctx.editMessageText(
+      "❌ Broadcast cancelled."
+    );
+
+  }
+);
+
+
+// ============================================================
+// ERROR HANDLER
+// ============================================================
+
+bot.catch(
+  (err) => {
+
+    console.error(
+      "Telegram bot error:",
+      err.error
+    );
+
+  }
+);
+
+
+// ============================================================
+// VERCEL WEBHOOK
+// ============================================================
+
+module.exports =
+  webhookCallback(
+    bot,
+    "http"
+  );
