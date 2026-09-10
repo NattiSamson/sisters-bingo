@@ -1356,8 +1356,6 @@ const paymentAccountUpdate =
             approved_by_id = $1,
             is_pending = FALSE,
             is_approved = FALSE,
-            status = TRUE,
-            rejection_reason = $2,
             reject_reason = $2,
             updated_at = NOW()
 
