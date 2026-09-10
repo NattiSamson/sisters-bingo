@@ -560,12 +560,15 @@ async rejectWithdrawal(
     SELECT
       w.id,
       w.user_id,
+      w.payment_method_id,
       w.payment_account_id,
-      w.withdrawal_account_number,
+      w.approved_by_id,
+      w.account_number,
       w.amount,
-      w.status,
-      w.is_active,
+      w.is_pending,
+      w.is_approved,
       w.created_at,
+      w.updated_at,
 
       u.telegram_id,
       u.name,
@@ -584,8 +587,8 @@ async rejectWithdrawal(
     LEFT JOIN payment_methods pm
       ON w.payment_account_id = pm.id
 
-    WHERE w.status = FALSE
-      AND w.is_active = TRUE
+    WHERE w.is_pending = TRUE
+      AND w.is_approved = FALSE
 
     ORDER BY w.created_at ASC
 
