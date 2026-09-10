@@ -200,6 +200,40 @@ module.exports = {
     client.release();
   }
 },
+	async rejectWithdrawal(
+  withdrawalId,
+  adminTelegramId
+) {
+  const { rows } = await pool.query(
+    `
+    UPDATE withdrawals
+
+    SET
+      is_active = FALSE,
+      updated_at = NOW()
+
+    WHERE id = $1
+      AND status = FALSE
+      AND is_active = TRUE
+
+    RETURNING *
+    `,
+    [withdrawalId]
+  );
+
+  if (rows.length === 0) {
+    return {
+      success: false,
+      message:
+        "This withdrawal is no longer pending."
+    };
+  }
+
+  return {
+    success: true,
+    withdrawal: rows[0]
+  };
+},
 async registerUser(telegramId, name, phone) {
 
   const normalizedPhone =
