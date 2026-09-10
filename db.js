@@ -308,18 +308,23 @@ module.exports = {
 
   async getUserByTelegramId(telegramId) {
 
-    const { rows } = await pool.query(
-      `
-      SELECT *
-      FROM users
-      WHERE telegram_id = $1
-        AND is_active = TRUE
-      LIMIT 1
-      `,
-      [telegramId]
-    );
+    const result = await pool.query(
+    `
+    SELECT
+      id,
+      telegram_id,
+      name,
+      phone,
+      balance,
+      is_admin
+    FROM users
+    WHERE telegram_id = $1
+    LIMIT 1
+    `,
+    [telegramId]
+  );
 
-    return rows[0] || null;
+  return result.rows[0] || null;
   },
 
   async getUserByPhone(phone) {
@@ -363,6 +368,20 @@ module.exports = {
 
     return rows[0] || null;
   },
+  async function isAdmin(telegramId) {
+  const result = await pool.query(
+    `
+    SELECT id
+    FROM users
+    WHERE telegram_id = $1
+      AND is_admin = TRUE
+    LIMIT 1
+    `,
+    [telegramId]
+  );
+
+  return result.rows.length > 0;
+}
 
   // ============================================================
   // ADMIN OPERATIONS
