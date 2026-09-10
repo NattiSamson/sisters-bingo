@@ -1519,7 +1519,7 @@ bot.callbackQuery(
         err
       );
 
-      await ctx.reply( ""
+      await ctx.reply( 
         "የገቢ ጥያቄዎ ተሰርዟል። ❌"
       );
     }
