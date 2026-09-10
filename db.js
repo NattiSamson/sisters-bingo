@@ -327,6 +327,50 @@ async registerUser(telegramId, name, phone) {
     client.release();
   }
 },
+
+	async getPendingWithdrawals(limit = 5) {
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      w.id,
+      w.user_id,
+      w.payment_account_id,
+      w.withdrawal_account_number,
+      w.amount,
+      w.status,
+      w.is_active,
+      w.created_at,
+
+      u.telegram_id,
+      u.name,
+      u.phone,
+      u.balance,
+
+      pm.name AS payment_method,
+      pm.amharic_name AS payment_method_amharic,
+      pm.emoji AS payment_method_emoji
+
+    FROM withdrawals w
+
+    JOIN users u
+      ON w.user_id = u.id
+
+    LEFT JOIN payment_methods pm
+      ON w.payment_account_id = pm.id
+
+    WHERE w.status = FALSE
+      AND w.is_active = TRUE
+
+    ORDER BY w.created_at ASC
+
+    LIMIT $1
+    `,
+    [limit]
+  );
+
+  return rows;
+},
 	
 	async reconnectUserByPhone(
   telegramId,
