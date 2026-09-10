@@ -603,7 +603,7 @@ function callNumber(room){
   const idx=Math.floor(Math.random()*room.availableNumbers.length);
   const drawn=room.availableNumbers.splice(idx,1)[0];
   room.calledNumbers.push(drawn);
-  broadcast(room,{type:'numberCalled',number:drawn,calledNumbers:room.calledNumbers,callCount:room.calledNumbers.length,claimWindowMs:CLAIM_WINDOW_MS,players:room.players.map(p=>({playerId:p.playerId,playerName:p.playerName}))});
+  broadcast(room,{type:'numberCalled',number:drawn,calledNumbers:room.calledNumbers,callCount:room.calledNumbers.length,claimWindowMs:CLAIM_WINDOW_MS});
   room.claimWindowOpen=true; scheduleNextCall(room);
 }
 
@@ -735,7 +735,7 @@ async function leaveRoom(client){
     if(room.countdownTimer)clearInterval(room.countdownTimer);
     delete rooms[room.roomId];
   }else{
-    broadcastCardPool(room);broadcast(room,{type:'playerLeft',playerCount:room.players.length,players:room.players.map(p=>({playerId:p.playerId,playerName:p.playerName}))});
+    broadcastCardPool(room);broadcast(room,{type:'playerLeft',playerCount:room.players.length});
   }
   broadcastLobby();
 }
