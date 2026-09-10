@@ -29,9 +29,6 @@ const GAME_URL =
   process.env.GAME_URL ||
   "https://sisters-bingo.vercel.app";
 
-const ADMIN_ID =
-  8597748757;
-
 
 if (!BOT_TOKEN) {
 
@@ -59,6 +56,7 @@ const pendingTransfer = {};
 const pendingWithdrawal = {};
 
 // Admin rejection state
+// telegramId -> { withdrawalId, withdrawal }
 const pendingAdminReject = {};
 
 
@@ -86,6 +84,112 @@ function clearPendingState(
 
 
 // ============================================================
+// ADMIN AUTHORIZATION
+// ============================================================
+
+/**
+ * Returns the currently logged-in admin from the database.
+ *
+ * Admin is determined by:
+ *
+ * users.is_admin = TRUE
+ * users.is_active = TRUE
+ * users.is_banned = FALSE
+ *
+ * There is NO hard-coded ADMIN_ID.
+ */
+async function getCurrentAdmin(
+  ctx
+) {
+
+  if (
+    !ctx ||
+    !ctx.from ||
+    !ctx.from.id
+  ) {
+
+    return null;
+
+  }
+
+
+  try {
+
+    const admin =
+      await db.getAdminByTelegramId(
+        ctx.from.id
+      );
+
+
+    return admin || null;
+
+  } catch (err) {
+
+    console.error(
+      "Admin lookup error:",
+      err
+    );
+
+    return null;
+
+  }
+
+}
+
+
+/**
+ * Requires the current Telegram user
+ * to be an active, non-banned admin.
+ *
+ * Returns the admin database row when authorized.
+ * Returns null when unauthorized.
+ */
+async function requireAdmin(
+  ctx
+) {
+
+  const admin =
+    await getCurrentAdmin(
+      ctx
+    );
+
+
+  if (!admin) {
+
+    try {
+
+      await ctx.answerCallbackQuery({
+
+        text:
+          "Unauthorized",
+
+        show_alert:
+          true
+
+      });
+
+    } catch (err) {
+
+      console.log(
+        "Unauthorized callback response failed:",
+        err.description ||
+        err.message
+      );
+
+    }
+
+
+    return null;
+
+  }
+
+
+  return admin;
+
+}
+
+
+// ============================================================
 // CALLBACK HELPER
 // ============================================================
 
@@ -99,7 +203,9 @@ async function answerCallback(
     if (text) {
 
       await ctx.answerCallbackQuery({
+
         text
+
       });
 
     } else {
@@ -211,6 +317,7 @@ function normalizeEthiopianPhone(
 
 
   return null;
+
 }
 
 
@@ -230,7 +337,9 @@ async function showHome(
   const keyboard = [
 
     [
+
       {
+
         text:
           "🎮 Play",
 
@@ -242,59 +351,77 @@ async function showHome(
         }
 
       }
+
     ],
 
     [
+
       {
+
         text:
           "💰 Balance",
 
         callback_data:
           "balance"
+
       },
 
       {
+
         text:
           "🔄 Transfer",
 
         callback_data:
           "transfer"
+
       }
+
     ],
 
     [
+
       {
+
         text:
           "💎 Deposit",
 
         callback_data:
           "deposit"
+
       },
 
       {
+
         text:
           "🏧 Withdraw",
 
         callback_data:
           "withdraw"
+
       }
+
     ],
 
     [
+
       {
+
         text:
           "🆘 Support",
 
         callback_data:
           "support"
+
       },
 
       {
+
         text:
           "🗑️ Delete",
 
         callback_data:
           "delete"
+
       }
 
     ]
@@ -305,27 +432,76 @@ async function showHome(
   // ----------------------------------------------------------
   // ADMIN BUTTONS
   // ----------------------------------------------------------
+  //
+  // IMPORTANT:
+  // Admin status comes from users.is_admin.
+  // There is NO hard-coded ADMIN_ID.
+  //
+  // The `user` object comes from the database.
+  // We also verify active/non-banned admin status here.
+  // ----------------------------------------------------------
+
+  let isAdmin =
+    false;
+
+
+  try {
+
+    if (
+      user &&
+      user.is_admin === true &&
+      user.is_active !== false &&
+      user.is_banned !== true
+    ) {
+
+      isAdmin = true;
+
+    } else {
+
+      const admin =
+        await getCurrentAdmin(
+          ctx
+        );
+
+      isAdmin =
+        !!admin;
+
+    }
+
+  } catch (err) {
+
+    console.error(
+      "Home admin check error:",
+      err
+    );
+
+  }
+
 
   if (
-    telegramId === ADMIN_ID
+    isAdmin
   ) {
 
     keyboard.push([
 
       {
+
         text:
           "⏳ Pending",
 
         callback_data:
           "admin_withdrawals"
+
       },
 
       {
+
         text:
           "📢 Broadcast",
 
         callback_data:
           "admin_broadcast"
+
       }
 
     ]);
@@ -336,7 +512,9 @@ async function showHome(
   await ctx.reply(
 
     `Welcome back, *${user.name}!* 🎱\n\n` +
+
     `💰 Balance: *${user.balance} ETB*\n\n` +
+
     `Choose an option:`,
 
     {
@@ -378,50 +556,13 @@ bot.command(
       telegramId
     );
 
-    delete pendingAdminReject[
+    delete pendingPhone[
       telegramId
     ];
 
-
-    // --------------------------------------------------------
-    // ADMIN
-    // --------------------------------------------------------
-
-    if (
-      telegramId === ADMIN_ID
-    ) {
-
-      try {
-
-        const existing =
-          await db.getUserByTelegramId(
-            telegramId
-          );
-
-
-        if (existing) {
-
-          return await showHome(
-            ctx,
-            existing
-          );
-
-        }
-
-
-        // If admin isn't registered,
-        // continue with normal registration.
-
-      } catch (err) {
-
-        console.error(
-          "Admin start error:",
-          err
-        );
-
-      }
-
-    }
+    delete pendingAdminReject[
+      telegramId
+    ];
 
 
     try {
@@ -466,7 +607,9 @@ bot.command(
       await ctx.reply(
 
         `👋 Welcome to *Sisters Bingo!*\n\n` +
+
         `Let's get you registered.\n` +
+
         `What should we call you?`,
 
         {
@@ -545,6 +688,7 @@ bot.on(
       await ctx.reply(
 
         `Nice to meet you, *${pending.name}!*\n\n` +
+
         `Please share your phone number so we can verify your account:`,
 
         {
@@ -670,9 +814,13 @@ bot.on(
       await ctx.reply(
 
         `✅ *Registered successfully!*\n\n` +
+
         `Name: *${user.name}*\n` +
+
         `Phone: ${phone}\n` +
+
         `Starting balance: *${user.balance} ETB*\n\n` +
+
         `You're all set! 🎱`,
 
         {
@@ -839,7 +987,9 @@ async function showTransfer(
   await ctx.reply(
 
     "🔄 *ብር ማስተላለፍ*\n\n" +
+
     "ማስተላለፍ የሚፈልጉትን ተጫዋች ስልክ ቁጥር ያስገቡ።\n\n" +
+
     "ምሳሌ፦ `0912345678`",
 
     {
@@ -949,11 +1099,14 @@ bot.on(
         return ctx.reply(
 
           "❌ እባክዎ ትክክለኛ የስልክ ቁጥር ያስገቡ።\n\n" +
+
           "ምሳሌ፦ `0912345678`",
 
           {
+
             parse_mode:
               "Markdown"
+
           }
 
         );
@@ -989,9 +1142,7 @@ bot.on(
       if (!recipient) {
 
         return ctx.reply(
-
           "❌ ይህ ስልክ ቁጥር በሲስተማችን ውስጥ አልተመዘገበም።"
-
         );
 
       }
@@ -1026,13 +1177,16 @@ bot.on(
         "✅ *ተጫዋቹ ተረጋግጧል።*\n\n" +
 
         `👤 ተቀባይ፦ *${recipient.name}*\n` +
+
         `📱 ስልክ፦ ${phone}\n\n` +
 
         "💰 ማስተላለፍ የሚፈልጉትን የብር መጠን ያስገቡ።",
 
         {
+
           parse_mode:
             "Markdown"
+
         }
 
       );
@@ -1170,7 +1324,9 @@ bot.on(
         return ctx.reply(
 
           `❌ በቂ ሂሳብ የሎትም።\n\n` +
+
           `💰 ያለዎት ሂሳብ፦ ${balance} ETB\n` +
+
           `💸 የፈለጉት፦ ${amount} ETB`
 
         );
@@ -1217,8 +1373,10 @@ bot.on(
         `💰 አዲሱ ቀሪ ሂሳብ፦ *${result.senderAfter} ETB*`,
 
         {
+
           parse_mode:
             "Markdown"
+
         }
 
       );
@@ -1239,8 +1397,10 @@ bot.on(
           `💰 አዲሱ ቀሪ ሂሳብ፦ *${result.recipientAfter} ETB*`,
 
           {
+
             parse_mode:
               "Markdown"
+
           }
 
         );
@@ -1521,17 +1681,25 @@ bot.callbackQuery(
         await ctx.editMessageText(
 
           "1. ከታች ባለው የ" +
+
           paymentMethod.amharic_name +
+
           " አካውንት ብር ያስገቡ\n\n" +
 
           "📞 *" +
+
           paymentMethod.name +
+
           ":* `" +
+
           paymentaccount.account_number +
+
           "`\n\n" +
 
           "2. የከፈሉበትን አጭር የጹሁፍ መልዕክት (SMS) " +
+
           "copy በማድረግ እዚህ ላይ Paste አድርገው " +
+
           "ያስገቡና ይላኩት👇👇👇",
 
           {
@@ -1552,8 +1720,10 @@ bot.callbackQuery(
       await ctx.editMessageText(
 
         `${paymentMethod.emoji || "💳"} ` +
+
         `${paymentMethod.amharic_name}\n\n` +
-        `ይህ የክፍያ መንገድ በቅርቡ ይጀምራል።`
+
+        `ይህ የክፍያ መንገድ በቅርቡ ይጀምራል။`
 
       );
 
@@ -1654,8 +1824,10 @@ bot.on(
             `💰 ${result2} ብር ወደ ሂሳብዎ ተጨምሯል።`,
 
             {
+
               parse_mode:
                 "Markdown"
+
             }
 
           );
@@ -1673,6 +1845,7 @@ bot.on(
       return ctx.reply(
 
         "🚫 ጥያቄው አልተሳካም። " +
+
         "እባክዎ ትክክለኛውን SMS ይላኩ።"
 
       );
@@ -2358,19 +2531,15 @@ async function showPendingWithdrawals(
   ctx
 ) {
 
-  if (
-    ctx.from.id !== ADMIN_ID
-  ) {
+  const admin =
+    await requireAdmin(
+      ctx
+    );
 
-    return ctx.answerCallbackQuery({
 
-      text:
-        "Unauthorized",
+  if (!admin) {
 
-      show_alert:
-        true
-
-    });
+    return;
 
   }
 
@@ -2528,19 +2697,15 @@ bot.callbackQuery(
   "admin_withdrawals",
   async (ctx) => {
 
-    if (
-      ctx.from.id !== ADMIN_ID
-    ) {
+    const admin =
+      await requireAdmin(
+        ctx
+      );
 
-      return ctx.answerCallbackQuery({
 
-        text:
-          "Unauthorized",
+    if (!admin) {
 
-        show_alert:
-          true
-
-      });
+      return;
 
     }
 
@@ -2711,19 +2876,15 @@ bot.callbackQuery(
   "admin_home",
   async (ctx) => {
 
-    if (
-      ctx.from.id !== ADMIN_ID
-    ) {
+    const admin =
+      await requireAdmin(
+        ctx
+      );
 
-      return ctx.answerCallbackQuery({
 
-        text:
-          "Unauthorized",
+    if (!admin) {
 
-        show_alert:
-          true
-
-      });
+      return;
 
     }
 
@@ -2735,9 +2896,15 @@ bot.callbackQuery(
 
     try {
 
+      /*
+       * Use the currently logged-in admin's
+       * Telegram ID.
+       *
+       * There is no hard-coded ADMIN_ID.
+       */
       const user =
         await db.getUserByTelegramId(
-          ADMIN_ID
+          admin.telegram_id
         );
 
 
@@ -2776,19 +2943,15 @@ bot.callbackQuery(
   /^approve_withdrawal_(\d+)$/,
   async (ctx) => {
 
-    if (
-      ctx.from.id !== ADMIN_ID
-    ) {
+    const admin =
+      await requireAdmin(
+        ctx
+      );
 
-      return ctx.answerCallbackQuery({
 
-        text:
-          "Unauthorized",
+    if (!admin) {
 
-        show_alert:
-          true
-
-      });
+      return;
 
     }
 
@@ -2810,20 +2973,25 @@ bot.callbackQuery(
       /*
        * IMPORTANT:
        *
-       * db.approveWithdrawal() should perform the
-       * following database update inside a transaction:
+       * Pass the CURRENT ADMIN'S Telegram ID.
        *
-       * approved_by_id = ADMIN_ID
-       * is_approved    = TRUE
-       * is_pending     = FALSE
+       * db.approveWithdrawal() should then:
        *
-       * It should also deduct the user's balance only once.
+       * 1. Verify the Telegram ID belongs to an
+       *    active, non-banned admin.
+       *
+       * 2. Store the actual users.id in
+       *    withdrawals.approved_by_id.
+       *
+       * 3. Approve the withdrawal.
+       *
+       * 4. Deduct the user's balance only once.
        */
 
       const result =
         await db.approveWithdrawal(
           withdrawalId,
-          ADMIN_ID
+          admin.telegram_id
         );
 
 
@@ -2853,7 +3021,7 @@ bot.callbackQuery(
 
         `💰 New balance: *${result.balance_after} ETB*\n\n` +
 
-        `👑 Approved by: ${ADMIN_ID}`,
+        `👑 Approved by: ${admin.name || admin.telegram_id}`,
 
         {
 
@@ -2935,19 +3103,15 @@ bot.callbackQuery(
   /^reject_withdrawal_(\d+)$/,
   async (ctx) => {
 
-    if (
-      ctx.from.id !== ADMIN_ID
-    ) {
+    const admin =
+      await requireAdmin(
+        ctx
+      );
 
-      return ctx.answerCallbackQuery({
 
-        text:
-          "Unauthorized",
+    if (!admin) {
 
-        show_alert:
-          true
-
-      });
+      return;
 
     }
 
@@ -2955,6 +3119,10 @@ bot.callbackQuery(
     await answerCallback(
       ctx
     );
+
+
+    const telegramId =
+      admin.telegram_id;
 
 
     const withdrawalId =
@@ -2993,8 +3161,16 @@ bot.callbackQuery(
       }
 
 
+      /*
+       * Store rejection state under the
+       * CURRENT ADMIN'S Telegram ID.
+       *
+       * This allows multiple admins to use the
+       * bot independently.
+       */
+
       pendingAdminReject[
-        ADMIN_ID
+        telegramId
       ] = {
 
         withdrawalId,
@@ -3062,11 +3238,20 @@ bot.on(
       ctx.from.id;
 
 
-    // Only admin can use this state
+    /*
+     * Check whether this Telegram user is
+     * currently an authorized admin.
+     *
+     * No hard-coded ADMIN_ID.
+     */
 
-    if (
-      telegramId !== ADMIN_ID
-    ) {
+    const admin =
+      await getCurrentAdmin(
+        ctx
+      );
+
+
+    if (!admin) {
 
       return next();
 
@@ -3075,7 +3260,7 @@ bot.on(
 
     const pending =
       pendingAdminReject[
-        ADMIN_ID
+        telegramId
       ];
 
 
@@ -3099,7 +3284,7 @@ bot.on(
     ) {
 
       delete pendingAdminReject[
-        ADMIN_ID
+        telegramId
       ];
 
 
@@ -3145,36 +3330,30 @@ bot.on(
       );
 
 
-    // Clear state BEFORE database operation
-    // so another message cannot accidentally
-    // trigger the same rejection.
+    /*
+     * Clear state BEFORE database operation
+     * so another message cannot accidentally
+     * trigger the same rejection.
+     */
 
     delete pendingAdminReject[
-      ADMIN_ID
+      telegramId
     ];
 
 
     try {
 
       /*
-       * IMPORTANT:
+       * Pass the CURRENT ADMIN'S Telegram ID.
        *
-       * Your db.rejectWithdrawal() should update:
-       *
-       * approved_by_id = ADMIN_ID
-       * is_approved    = FALSE
-       * is_pending     = FALSE
-       *
-       * and, if your withdrawals table contains a
-       * rejection_reason column, store `reason` there.
-       *
-       * The third argument is the rejection reason.
+       * db.rejectWithdrawal() should verify
+       * that this Telegram ID is an active admin.
        */
 
       const result =
         await db.rejectWithdrawal(
           withdrawalId,
-          ADMIN_ID,
+          admin.telegram_id,
           reason
         );
 
@@ -3207,7 +3386,7 @@ bot.on(
 
         `📝 Reason:\n${reason}\n\n` +
 
-        `👑 Rejected by: ${ADMIN_ID}`,
+        `👑 Rejected by: ${admin.name || admin.telegram_id}`,
 
         {
 
@@ -3429,8 +3608,11 @@ async function showLeaderboard(
           return (
 
             `${position} ` +
+
             `*${r.name}* — ` +
+
             `${r.total_winnings} ETB ` +
+
             `(${r.total_wins} wins)`
 
           );
@@ -3443,6 +3625,7 @@ async function showLeaderboard(
   await ctx.reply(
 
     `🏆 *Leaderboard*\n\n` +
+
     `${text || "No games yet!"}`,
 
     {
@@ -3494,6 +3677,7 @@ async function showPlay(
   await ctx.reply(
 
     `Ready to play, *${user.name}*? 🎱\n` +
+
     `Balance: *${user.balance} ETB*`,
 
     {
@@ -3553,19 +3737,15 @@ bot.callbackQuery(
   "admin_broadcast",
   async (ctx) => {
 
-    if (
-      ctx.from.id !== ADMIN_ID
-    ) {
+    const admin =
+      await requireAdmin(
+        ctx
+      );
 
-      return ctx.answerCallbackQuery({
 
-        text:
-          "Unauthorized",
+    if (!admin) {
 
-        show_alert:
-          true
-
-      });
+      return;
 
     }
 
@@ -3575,8 +3755,16 @@ bot.callbackQuery(
     );
 
 
+    /*
+     * Store the broadcast draft against
+     * the CURRENT ADMIN'S Telegram ID.
+     *
+     * This means multiple admins can have
+     * independent broadcast drafts.
+     */
+
     await db.createBroadcastDraft(
-      ADMIN_ID
+      admin.telegram_id
     );
 
 
@@ -3609,18 +3797,26 @@ bot.on(
   "message:photo",
   async (ctx) => {
 
-    if (
-      ctx.from.id !== ADMIN_ID
-    ) {
+    const admin =
+      await getCurrentAdmin(
+        ctx
+      );
+
+
+    if (!admin) {
 
       return;
 
     }
 
 
+    const adminTelegramId =
+      admin.telegram_id;
+
+
     const draft =
       await db.getBroadcastDraft(
-        ADMIN_ID
+        adminTelegramId
       );
 
 
@@ -3652,7 +3848,7 @@ bot.on(
 
 
     await db.updateBroadcastImage(
-      ADMIN_ID,
+      adminTelegramId,
       fileId
     );
 
@@ -3679,21 +3875,31 @@ bot.on(
   "message:text",
   async (ctx, next) => {
 
-    if (
-      ctx.from.id !== ADMIN_ID
-    ) {
+    const admin =
+      await getCurrentAdmin(
+        ctx
+      );
+
+
+    if (!admin) {
 
       return next();
 
     }
 
 
-    // Do not intercept rejection reason here.
-    // The rejection handler above handles it first.
+    const adminTelegramId =
+      admin.telegram_id;
+
+
+    /*
+     * Do not intercept rejection reason here.
+     * The rejection handler above handles it first.
+     */
 
     if (
       pendingAdminReject[
-        ADMIN_ID
+        adminTelegramId
       ]
     ) {
 
@@ -3712,7 +3918,7 @@ bot.on(
 
       const draft =
         await db.getBroadcastDraft(
-          ADMIN_ID
+          adminTelegramId
         );
 
 
@@ -3724,7 +3930,7 @@ bot.on(
 
 
       await db.deleteBroadcastDraft(
-        ADMIN_ID
+        adminTelegramId
       );
 
 
@@ -3737,7 +3943,7 @@ bot.on(
 
     const draft =
       await db.getBroadcastDraft(
-        ADMIN_ID
+        adminTelegramId
       );
 
 
@@ -3759,7 +3965,7 @@ bot.on(
 
 
     await db.updateBroadcastMessage(
-      ADMIN_ID,
+      adminTelegramId,
       text
     );
 
@@ -3768,9 +3974,13 @@ bot.on(
       await db.getAllActiveUsers();
 
 
+    /*
+     * Preview is sent only to the CURRENT admin.
+     */
+
     await bot.api.sendPhoto(
 
-      ADMIN_ID,
+      adminTelegramId,
 
       draft.image_url,
 
@@ -3793,7 +4003,7 @@ bot.on(
                 web_app: {
 
                   url:
-                    `${GAME_URL}?tid=${ADMIN_ID}`
+                    `${GAME_URL}?tid=${adminTelegramId}`
 
                 }
 
@@ -3871,19 +4081,15 @@ bot.callbackQuery(
   "broadcast_confirm",
   async (ctx) => {
 
-    if (
-      ctx.from.id !== ADMIN_ID
-    ) {
+    const admin =
+      await requireAdmin(
+        ctx
+      );
 
-      return ctx.answerCallbackQuery({
 
-        text:
-          "Unauthorized",
+    if (!admin) {
 
-        show_alert:
-          true
-
-      });
+      return;
 
     }
 
@@ -3893,9 +4099,13 @@ bot.callbackQuery(
     );
 
 
+    const adminTelegramId =
+      admin.telegram_id;
+
+
     const draft =
       await db.getBroadcastDraft(
-        ADMIN_ID
+        adminTelegramId
       );
 
 
@@ -4019,7 +4229,7 @@ bot.callbackQuery(
 
 
     await db.deleteBroadcastDraft(
-      ADMIN_ID
+      adminTelegramId
     );
 
 
@@ -4054,19 +4264,15 @@ bot.callbackQuery(
   "broadcast_cancel",
   async (ctx) => {
 
-    if (
-      ctx.from.id !== ADMIN_ID
-    ) {
+    const admin =
+      await requireAdmin(
+        ctx
+      );
 
-      return ctx.answerCallbackQuery({
 
-        text:
-          "Unauthorized",
+    if (!admin) {
 
-        show_alert:
-          true
-
-      });
+      return;
 
     }
 
@@ -4077,7 +4283,7 @@ bot.callbackQuery(
 
 
     await db.deleteBroadcastDraft(
-      ADMIN_ID
+      admin.telegram_id
     );
 
 
