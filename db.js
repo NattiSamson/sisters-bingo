@@ -510,17 +510,27 @@ async approveWithdrawal(
       SELECT
         w.id,
         w.user_id,
-        w.amount,
-        w.status,
-        w.is_approved,
+        w.payment_method_id,
         w.payment_account_id,
+        w.account_number,
+        w.amount,
+        w.is_pending,
+        w.is_approved,
+        w.reject_reason,
+        w.created_at,
+        w.updated_at,
+
         u.telegram_id,
         u.name,
         u.balance
+
       FROM withdrawals w
+
       INNER JOIN users u
         ON u.id = w.user_id
+
       WHERE w.id = $1
+
       FOR UPDATE
       `,
       [withdrawalId]
@@ -538,10 +548,11 @@ async approveWithdrawal(
     const withdrawal =
       withdrawalResult.rows[0];
 
+
     // --------------------------------------------------------
-    // 2. Prevent double approval/rejection
+    // 2. Make sure withdrawal is still pending
     // --------------------------------------------------------
-    if (withdrawal.status === true) {
+    if (withdrawal.is_pending !== true) {
       await client.query("ROLLBACK");
 
       return {
@@ -550,12 +561,27 @@ async approveWithdrawal(
       };
     }
 
+
     // --------------------------------------------------------
-    // 3. Get admin database ID
+    // 3. Make sure it has not already been approved
+    // --------------------------------------------------------
+    if (withdrawal.is_approved === true) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "This withdrawal has already been approved."
+      };
+    }
+
+
+    // --------------------------------------------------------
+    // 4. Get admin database ID
     // --------------------------------------------------------
     const adminResult = await client.query(
       `
-      SELECT id
+      SELECT
+        id
       FROM users
       WHERE telegram_id = $1
       LIMIT 1
@@ -575,22 +601,29 @@ async approveWithdrawal(
     const adminId =
       adminResult.rows[0].id;
 
+
     // --------------------------------------------------------
-    // 4. APPROVE WITHDRAWAL
+    // 5. APPROVE WITHDRAWAL
     //
     // IMPORTANT:
     // DO NOT UPDATE users.balance
-    // The balance was already deducted by createWithdrawal().
+    //
+    // createWithdrawal() already deducted the money.
     // --------------------------------------------------------
     const updateResult = await client.query(
       `
       UPDATE withdrawals
       SET
         approved_by_id = $1,
-        is_approved = true,
-        status = true,
+        is_pending = FALSE,
+        is_approved = TRUE,
+        reject_reason = NULL,
         updated_at = NOW()
+
       WHERE id = $2
+        AND is_pending = TRUE
+        AND is_approved = FALSE
+
       RETURNING *
       `,
       [
@@ -599,16 +632,32 @@ async approveWithdrawal(
       ]
     );
 
-    if (updateResult.rows.length === 0) {
-      throw new Error(
-        "Could not approve withdrawal."
-      );
-    }
-
-    await client.query("COMMIT");
 
     // --------------------------------------------------------
-    // 5. Return existing balance WITHOUT changing it
+    // 6. Make sure update succeeded
+    // --------------------------------------------------------
+    if (updateResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "This withdrawal has already been processed."
+      };
+    }
+
+
+    // --------------------------------------------------------
+    // 7. Commit
+    // --------------------------------------------------------
+    await client.query("COMMIT");
+
+
+    // --------------------------------------------------------
+    // 8. Return result
+    //
+    // Balance is returned as-is.
+    // Nothing was added or deducted here.
     // --------------------------------------------------------
     return {
       success: true,
@@ -619,22 +668,42 @@ async approveWithdrawal(
       telegram_id:
         withdrawal.telegram_id,
 
+      user_id:
+        withdrawal.user_id,
+
       user_name:
         withdrawal.name,
 
       amount:
-        withdrawal.amount,
+        Number(withdrawal.amount),
+
+      account_number:
+        withdrawal.account_number,
+
+      payment_method_id:
+        withdrawal.payment_method_id,
+
+      payment_account_id:
+        withdrawal.payment_account_id,
 
       balance_after:
-        withdrawal.balance,
+        Number(withdrawal.balance),
 
       withdrawal:
         updateResult.rows[0]
     };
 
+
   } catch (err) {
 
-    await client.query("ROLLBACK");
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error(
+        "Rollback error:",
+        rollbackError
+      );
+    }
 
     console.error(
       "approveWithdrawal error:",
