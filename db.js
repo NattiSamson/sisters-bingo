@@ -462,6 +462,7 @@ async approveWithdrawal(
     return {
       success: true,
       withdrawal: updatedRows[0]
+		 telegram_id: withdrawal.telegram_id
     };
 
   } catch (err) {
