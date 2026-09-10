@@ -1265,7 +1265,7 @@ const paymentAccountUpdate =
         };
       }
 
-      if (withdrawal.status === true) {
+      if (withdrawal.is_approved === true) {
 
         await client.query("ROLLBACK");
 
