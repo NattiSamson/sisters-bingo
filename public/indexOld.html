@@ -767,6 +767,8 @@ let autoClaimSent=false;
 let activePlayers=[];
 let postGameResetTimer=null;
 let postGameResetRejoinTimer=null;
+let postGameWalletBounceTimer=null;
+let postGameWalletReturnTimer=null;
 // The Telegram-authenticated Bingo server is the primary source of truth for the player's
 // name and wallet. /api/user/:telegramId is only a fallback when the WebSocket auth
 // message does not contain a usable account balance.
@@ -909,6 +911,41 @@ function connect(){
 function wsSend(obj){if(ws&&ws.readyState===1)ws.send(JSON.stringify(obj));}
 
 // ─── POST-GAME RESET / SAME-STAKE RETURN ───────────────────────
+// Mimic the successful manual Wallet -> Game navigation during the post-game
+// countdown. This gives the browser a clean screen transition while the server
+// finishes resetting the same room in the background. Return shortly before the
+// 9-second server reset so the reset message is received while the game area is visible.
+function startPostGameWalletBounce(seconds){
+  if(postGameWalletBounceTimer) clearTimeout(postGameWalletBounceTimer);
+  if(postGameWalletReturnTimer) clearTimeout(postGameWalletReturnTimer);
+
+  const total=Math.max(2,Number(seconds)||9);
+
+  // Move to Wallet almost immediately, just like the user's manual workaround.
+  postGameWalletBounceTimer=setTimeout(()=>{
+    postGameWalletBounceTimer=null;
+    navGo('screenWallet','navWallet');
+
+    // Come back to the current game's screen shortly before the server's reset.
+    // Do not call joinRoom here: while the old round is still playing that would
+    // create a spectator entry instead of returning to the same room.
+    const returnDelay=Math.max(500,(total*1000)-1000);
+    postGameWalletReturnTimer=setTimeout(()=>{
+      postGameWalletReturnTimer=null;
+      const roomId=myRoomId || localStorage.getItem('roomId');
+      if(roomId){
+        myRoomId=roomId;
+        navGo('screenGame','navGame');
+      }
+    },returnDelay);
+  },100);
+}
+
+function cancelPostGameWalletBounce(){
+  if(postGameWalletBounceTimer){ clearTimeout(postGameWalletBounceTimer); postGameWalletBounceTimer=null; }
+  if(postGameWalletReturnTimer){ clearTimeout(postGameWalletReturnTimer); postGameWalletReturnTimer=null; }
+}
+
 function updatePostGameCountdown(seconds){
   const n=Math.max(0,Number(seconds)||0);
   const el=document.getElementById('resetCountdown');
@@ -940,6 +977,7 @@ function startPostGameResetCountdown(seconds){
 }
 
 function finishPostGameReset(msg={}){
+  cancelPostGameWalletBounce();
   if(postGameResetTimer){ clearInterval(postGameResetTimer); postGameResetTimer=null; }
   if(postGameResetRejoinTimer){ clearTimeout(postGameResetRejoinTimer); postGameResetRejoinTimer=null; }
 
@@ -1186,7 +1224,9 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       // Do NOT depend on the server's final navigation message. Start a client-side
       // 9-second safety timer immediately so the user is guaranteed to leave the
       // finished-game screen even if a WebSocket reset message is delayed/lost.
-      startPostGameResetCountdown(Number(msg.resetCountdown)||9);
+      const postGameSeconds=Number(msg.resetCountdown)||9;
+      startPostGameResetCountdown(postGameSeconds);
+      startPostGameWalletBounce(postGameSeconds);
       break;
 
     case 'resetCountdown':

@@ -973,6 +973,8 @@ function startPostGameResetCountdown(seconds){
       balance:currentBalance,
       _fromFallback:true
     });
+    // Give the server reset a moment to complete, then use the normal reconnect path.
+    setTimeout(()=>window.location.reload(),700);
   },1000);
 }
 
@@ -1004,13 +1006,23 @@ function finishPostGameReset(msg={}){
   // state. Always show the card-selection screen for the SAME stake.
   navGo('screenCards','navCards');
 
+  // Hard-refresh after the server has reset the room. This intentionally uses the same
+  // reconnect path as manually leaving Wallet and returning to Game, which reliably
+  // re-associates the Telegram player with the SAME room and opens fresh card selection.
+  if(!msg._fromFallback){
+    setTimeout(()=>window.location.reload(),350);
+  }
+
   // If this was the fallback path, rejoin the same stake after the server reset.
   // The normal server backToCardSelection message cancels this because it has
   // already re-associated the current socket with the room.
   if(msg._fromFallback && stakeId && ws && ws.readyState===1){
     postGameResetRejoinTimer=setTimeout(()=>{
-      wsSend({type:'joinRoom',stakeId,telegramId});
-    },1200);
+      // The server has already reset the same room. Reload instead of creating a
+      // second room/spectator entry through joinRoom. The reconnect handler restores
+      // the existing Telegram player slot and opens fresh card selection.
+      window.location.reload();
+    },500);
   }
 }
 
