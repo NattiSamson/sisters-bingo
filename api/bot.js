@@ -55,6 +55,8 @@ const pendingTransfer = {};
 
 const pendingWithdrawal = {};
 
+const pendingAdminWithdrawal  = {};
+
 // Admin rejection state
 // telegramId -> { withdrawalId, withdrawal }
 const pendingAdminReject = {};
@@ -77,6 +79,10 @@ function clearPendingState(
   ];
 
   delete pendingWithdrawal[
+    telegramId
+  ];
+  
+  delete pendingAdminWithdrawal[
     telegramId
   ];
 
@@ -2525,150 +2531,61 @@ bot.callbackQuery(
 
 // ============================================================
 // ADMIN — PENDING WITHDRAWALS
+// PAYMENT METHOD → PAYMENT ACCOUNT → PENDING LIST
 // ============================================================
 
-async function showPendingWithdrawals(
-  ctx
-) {
+async function showAdminPaymentMethods(ctx) {
 
-  const admin =
-    await requireAdmin(
-      ctx
-    );
-
+  const admin = await requireAdmin(ctx);
 
   if (!admin) {
-
     return;
-
   }
 
-
-  const withdrawals =
-    await db.getPendingWithdrawals(
-      20
-    );
-
-
-  let message =
-    "👑 *PENDING WITHDRAWALS*\n\n";
-
+  const paymentMethods =
+    await db.getPaymentMethods();
 
   if (
-    !withdrawals ||
-    withdrawals.length === 0
+    !paymentMethods ||
+    paymentMethods.length === 0
   ) {
 
-    message +=
-      "There are no pending withdrawals.";
-
-  } else {
-
-    withdrawals.forEach(
-      (w, index) => {
-
-        const created =
-          w.created_at
-            ? new Date(
-                w.created_at
-              ).toLocaleString(
-                "en-GB"
-              )
-            : "";
-
-
-        message +=
-
-          `${index + 1}. 🆔 *#${w.id}*\n` +
-
-          `👤 ${w.name || "Unknown"}\n` +
-
-          `💳 ${w.payment_method_amharic || w.payment_method || "Unknown"}\n` +
-
-          `📱 \`${w.account_number}\`\n` +
-
-          `💰 *${w.amount} ETB*\n` +
-
-          `${created ? `📅 ${created}\n` : ""}` +
-
-          "\n";
-
-      }
+    return ctx.reply(
+      "❌ No active payment methods are available."
     );
 
   }
 
-
-  const keyboard = [];
-
-
-  // ----------------------------------------------------------
-  // Approve / Reject buttons
-  // ----------------------------------------------------------
-
-  for (
-    const w of withdrawals
-  ) {
-
-    keyboard.push([
+  const keyboard =
+    paymentMethods.map(pm => [
 
       {
-
         text:
-          `✅ Approve #${w.id}`,
+          `${pm.emoji || "💳"} ${pm.amharic_name || pm.name}`,
 
         callback_data:
-          `approve_withdrawal_${w.id}`
-
-      },
-
-      {
-
-        text:
-          `❌ Reject #${w.id}`,
-
-        callback_data:
-          `reject_withdrawal_${w.id}`
-
+          `admin_pending_method_${pm.id}`
       }
 
     ]);
 
-  }
-
-
-  // ----------------------------------------------------------
-  // Admin navigation
-  // ----------------------------------------------------------
-
   keyboard.push([
 
     {
-
-      text:
-        "🔄 Refresh",
-
-      callback_data:
-        "admin_withdrawals"
-
-    },
-
-    {
-
       text:
         "🏠 Home",
 
       callback_data:
         "admin_home"
-
     }
 
   ]);
 
-
   await ctx.reply(
 
-    message,
+    "👑 *PENDING WITHDRAWALS*\n\n" +
+
+    "First select the payment method you will use to process the withdrawals:",
 
     {
 
@@ -2688,6 +2605,487 @@ async function showPendingWithdrawals(
 
 }
 
+
+// ============================================================
+// ADMIN PENDING BUTTON
+// ============================================================
+
+bot.callbackQuery(
+  "admin_withdrawals",
+  async (ctx) => {
+
+    const admin =
+      await requireAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    // Clear previous payment account selection
+    delete pendingAdminWithdrawal[
+      admin.telegram_id
+    ];
+
+    try {
+
+      await showAdminPaymentMethods(ctx);
+
+    } catch (err) {
+
+      console.error(
+        "Admin payment method selection error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not load payment methods."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// ADMIN — SELECT PAYMENT METHOD
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_pending_method_(\d+)$/,
+  async (ctx) => {
+
+    const admin =
+      await requireAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const paymentMethodId =
+      Number(ctx.match[1]);
+
+    try {
+
+      const paymentMethod =
+        await db.getPaymentMethodById(
+          paymentMethodId
+        );
+
+      if (!paymentMethod) {
+
+        return ctx.reply(
+          "❌ Payment method not found."
+        );
+
+      }
+
+      const accounts =
+        await db.getPaymentAccountsByMethod(
+          paymentMethodId
+        );
+
+      if (
+        !accounts ||
+        accounts.length === 0
+      ) {
+
+        return ctx.reply(
+
+          "❌ No active payment accounts are available for " +
+          `${paymentMethod.amharic_name || paymentMethod.name}.`
+
+        );
+
+      }
+
+      const keyboard =
+        accounts.map(account => [
+
+          {
+            text:
+              `${account.account_number} — ` +
+              `${account.account_name || ""}`,
+
+            callback_data:
+              `admin_pending_account_${account.id}`
+          }
+
+        ]);
+
+      keyboard.push([
+
+        {
+          text:
+            "⬅️ Back",
+
+          callback_data:
+            "admin_withdrawals"
+        }
+
+      ]);
+
+      await ctx.editMessageText(
+
+        "👑 *SELECT PAYMENT ACCOUNT*\n\n" +
+
+        `💳 Payment method: *${
+          paymentMethod.amharic_name ||
+          paymentMethod.name
+        }*\n\n` +
+
+        "Select the account that will be used to pay the approved withdrawals:",
+
+        {
+
+          parse_mode:
+            "Markdown",
+
+          reply_markup: {
+
+            inline_keyboard:
+              keyboard
+
+          }
+
+        }
+
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Admin payment account selection error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not load payment accounts."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// ADMIN — SELECT PAYMENT ACCOUNT
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_pending_account_(\d+)$/,
+  async (ctx) => {
+
+    const admin =
+      await requireAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const paymentAccountId =
+      Number(ctx.match[1]);
+
+    try {
+
+      const account =
+        await db.getPaymentAccountById(
+          paymentAccountId
+        );
+
+      if (!account) {
+
+        return ctx.reply(
+          "❌ Payment account not found."
+        );
+
+      }
+
+      /*
+       * Store the selected account for this admin.
+       *
+       * This remains selected while the admin
+       * approves multiple withdrawal requests.
+       */
+
+      pendingAdminWithdrawal[
+        admin.telegram_id
+      ] = {
+
+        paymentMethodId:
+          account.payment_method_id,
+
+        paymentAccountId:
+          account.id,
+
+        paymentAccount:
+          account
+
+      };
+
+      await showPendingWithdrawals(
+        ctx,
+        true
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Admin payment account selection error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not select the payment account."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// SHOW MAXIMUM 5 PENDING WITHDRAWALS
+// ============================================================
+
+async function showPendingWithdrawals(
+  ctx,
+  editMessage = false
+) {
+
+  const admin =
+    await requireAdmin(ctx);
+
+  if (!admin) {
+    return;
+  }
+
+  const adminState =
+    pendingAdminWithdrawal[
+      admin.telegram_id
+    ];
+
+  if (!adminState) {
+
+    return showAdminPaymentMethods(ctx);
+
+  }
+
+  const withdrawals =
+    await db.getPendingWithdrawals(
+      5
+    );
+
+  const account =
+    adminState.paymentAccount;
+
+  let message =
+
+    "👑 *PENDING WITHDRAWALS*\n\n" +
+
+    "━━━━━━━━━━━━━━━━━━━━\n" +
+
+    `💳 Method: *${
+      account.pm_amharic_name ||
+      account.pm_name ||
+      "Unknown"
+    }*\n` +
+
+    `📱 Payment Account: \`${account.account_number}\`\n` +
+
+    `💰 Available: *${account.balance} ETB*\n` +
+
+    "━━━━━━━━━━━━━━━━━━━━\n\n";
+
+  if (
+    !withdrawals ||
+    withdrawals.length === 0
+  ) {
+
+    message +=
+      "✅ There are no pending withdrawals.";
+
+  } else {
+
+    withdrawals.forEach(
+      (w, index) => {
+
+        const created =
+          w.created_at
+            ? new Date(
+                w.created_at
+              ).toLocaleString(
+                "en-GB"
+              )
+            : "";
+
+        message +=
+
+          `${index + 1}. 🆔 *#${w.id}*\n` +
+
+          `👤 ${w.name || "Unknown"}\n` +
+
+          `💳 ${
+            w.payment_method_amharic ||
+            w.payment_method ||
+            "Unknown"
+          }\n` +
+
+          `📱 Recipient: \`${w.account_number}\`\n` +
+
+          `💰 *${w.amount} ETB*\n` +
+
+          `${created
+            ? `📅 ${created}\n`
+            : ""}` +
+
+          "\n";
+
+      }
+    );
+
+  }
+
+  const keyboard = [];
+
+  for (
+    const w of withdrawals
+  ) {
+
+    keyboard.push([
+
+      {
+        text:
+          `✅ Approve #${w.id}`,
+
+        callback_data:
+          `approve_withdrawal_${w.id}`
+      },
+
+      {
+        text:
+          `❌ Reject #${w.id}`,
+
+        callback_data:
+          `reject_withdrawal_${w.id}`
+      }
+
+    ]);
+
+  }
+
+  keyboard.push([
+
+    {
+      text:
+        "💳 Change Account",
+
+      callback_data:
+        "admin_withdrawals"
+    },
+
+    {
+      text:
+        "🔄 Refresh",
+
+      callback_data:
+        "admin_pending_refresh"
+    }
+
+  ]);
+
+  keyboard.push([
+
+    {
+      text:
+        "🏠 Home",
+
+      callback_data:
+        "admin_home"
+    }
+
+  ]);
+
+  const options = {
+
+    parse_mode:
+      "Markdown",
+
+    reply_markup: {
+
+      inline_keyboard:
+        keyboard
+
+    }
+
+  };
+
+  if (editMessage) {
+
+    try {
+
+      await ctx.editMessageText(
+        message,
+        options
+      );
+
+      return;
+
+    } catch (err) {
+
+      // If the message cannot be edited,
+      // send a new message instead.
+
+      console.log(
+        "Pending message edit failed:",
+        err.description ||
+        err.message
+      );
+
+    }
+
+  }
+
+  await ctx.reply(
+    message,
+    options
+  );
+
+}
+
+
+// ============================================================
+// ADMIN — REFRESH PENDING LIST
+// ============================================================
+
+bot.callbackQuery(
+  "admin_pending_refresh",
+  async (ctx) => {
+
+    const admin =
+      await requireAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    await showPendingWithdrawals(
+      ctx,
+      true
+    );
+
+  }
+);
 
 // ============================================================
 // ADMIN PENDING BUTTON
@@ -2988,11 +3386,32 @@ bot.callbackQuery(
        * 4. Deduct the user's balance only once.
        */
 
-      const result =
-        await db.approveWithdrawal(
-          withdrawalId,
-          admin.telegram_id
-        );
+      const adminState =
+  pendingAdminWithdrawal[
+    admin.telegram_id
+  ];
+
+if (!adminState) {
+
+  return ctx.reply(
+
+    "❌ Please select a payment account first.\n\n" +
+    "Press ⏳ Pending and select the payment account."
+
+  );
+
+}
+
+const result =
+  await db.approveWithdrawal(
+
+    withdrawalId,
+
+    admin.telegram_id,
+
+    adminState.paymentAccountId
+
+  );
 
 
       if (
@@ -3006,31 +3425,32 @@ bot.callbackQuery(
 
       }
 
+pendingAdminWithdrawal[admin.telegram_id]
+await ctx.reply(
 
-      await ctx.reply(
+  "✅ *WITHDRAWAL APPROVED*\n\n" +
 
-        "✅ *WITHDRAWAL APPROVED*\n\n" +
+  `🆔 #${withdrawalId}\n` +
 
-        `🆔 #${withdrawalId}\n` +
+  `👤 User: *${result.user_name}*\n` +
 
-        `👤 User: *${result.user_name}*\n` +
+  `💰 Amount: *${result.amount} ETB*\n` +
 
-        `💰 Amount: *${result.amount} ETB*\n` +
+  `📱 Recipient: \`${result.withdrawal.account_number}\`\n\n` +
 
-        `📱 Account: \`${result.withdrawal.account_number}\`\n\n` +
+  `💳 Paid from: \`${result.payment_account_number}\`\n` +
 
-        `💰 New balance: *${result.balance_after} ETB*\n\n` +
+  `💰 Account balance after: *${result.payment_account_balance_after} ETB*\n\n` +
 
-        `👑 Approved by: ${admin.name || admin.telegram_id}`,
+  `👑 Approved by: *${admin.name || admin.telegram_id}*`,
 
-        {
+  {
+    parse_mode:
+      "Markdown"
+  }
 
-          parse_mode:
-            "Markdown"
-
-        }
-
-      );
+);
+      
 
 
       // ------------------------------------------------------
