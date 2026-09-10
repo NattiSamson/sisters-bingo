@@ -40,10 +40,12 @@ const pendingPhone = {};
 // in PostgreSQL instead of memory.
 const pendingDeposit = {};
 const pendingTransfer = {};
+const pendingWithdrawal = {};
 
 function clearPendingState(telegramId) {
   delete pendingDeposit[telegramId];
   delete pendingTransfer[telegramId];
+  delete pendingWithdrawal[telegramId];
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -669,7 +671,494 @@ bot.callbackQuery("clear", async (ctx) => {
   await clearAllUserMessage(ctx);
 });
 
+// ─────────────────────────────────────────────────────────────
+// WITHDRAWALS
+// ─────────────────────────────────────────────────────────────
 
+async function showWithdraw(ctx) {
+
+  const telegramId = ctx.from.id;
+
+  const user =
+    await db.getUserByTelegramId(telegramId);
+
+  if (!user) {
+    return await ctx.reply(
+      "Please /start to register first."
+    );
+  }
+
+  const balance = Number(user.balance);
+
+  if (balance <= 0) {
+    return await ctx.reply(
+      "❌ ለማስወጣት በቂ ብር የሎትም።"
+    );
+  }
+
+  const paymentMethods =
+    await db.getPaymentMethods();
+
+  if (
+    !paymentMethods ||
+    paymentMethods.length === 0
+  ) {
+    return await ctx.reply(
+      "❌ ለጊዜው የክፍያ መንገድ የለም።"
+    );
+  }
+
+  pendingWithdrawal[telegramId] = {
+    step: "payment_method"
+  };
+
+  const buttons =
+    paymentMethods.map(pm => [
+      {
+        text:
+          `${pm.emoji || "💳"} ${pm.amharic_name}`,
+        callback_data:
+          `withdraw_method_${pm.id}`
+      }
+    ]);
+
+  buttons.push([
+    {
+      text: "❌ ሰርዝ",
+      callback_data: "cancelwithdraw"
+    }
+  ]);
+
+  await ctx.reply(
+    "🏧 *ብር ማስወጣት*\n\n" +
+    "እባክዎ የሚጠቀሙበትን " +
+    "የክፍያ መንገድ ይምረጡ።",
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: buttons
+      }
+    }
+  );
+}
+bot.command(
+  "withdraw",
+  showWithdraw
+);
+
+bot.hears(
+  "withdraw",
+  showWithdraw
+);
+
+bot.callbackQuery(
+  "withdraw",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    clearPendingState(ctx.from.id);
+
+    await showWithdraw(ctx);
+  }
+);
+bot.callbackQuery(
+  /^withdraw_method_(\d+)$/,
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const telegramId = ctx.from.id;
+    const paymentMethodId =
+      Number(ctx.match[1]);
+
+    const paymentMethod =
+      await db.getPaymentMethodById(
+        paymentMethodId
+      );
+
+    if (!paymentMethod) {
+      return await ctx.reply(
+        "❌ የክፍያ መንገዱ አልተገኘም።"
+      );
+    }
+
+    pendingWithdrawal[telegramId] = {
+      step: "account",
+      paymentMethodId,
+      paymentMethod
+    };
+
+    await ctx.editMessageText(
+      "🏧 *ብር ማስወጣት*\n\n" +
+
+      `የክፍያ መንገድ፦ ` +
+      `*${paymentMethod.amharic_name}*\n\n` +
+
+      "📱 ብር እንዲላክልዎ የሚፈልጉትን " +
+      "የአካውንት ስልክ ቁጥር ያስገቡ።\n\n" +
+
+      "ምሳሌ፦ `0912345678`",
+
+      {
+        parse_mode: "Markdown"
+      }
+    );
+  }
+);
+bot.on("message:text", async (ctx, next) => {
+
+  const telegramId = ctx.from.id;
+  const text = ctx.message.text.trim();
+
+  const withdrawal =
+    pendingWithdrawal[telegramId];
+
+  if (!withdrawal) {
+    return next();
+  }
+
+  if (text.startsWith("/")) {
+    return next();
+  }
+
+  // ========================================================
+  // ACCOUNT NUMBER
+  // ========================================================
+
+  if (withdrawal.step === "account") {
+
+    const accountNumber =
+      normalizeEthiopianPhone(text);
+
+    if (!accountNumber) {
+
+      return await ctx.reply(
+        "❌ እባክዎ ትክክለኛ የኢትዮጵያ " +
+        "ስልክ ቁጥር ያስገቡ።\n\n" +
+        "ምሳሌ፦ `0912345678`",
+        {
+          parse_mode: "Markdown"
+        }
+      );
+    }
+
+    withdrawal.accountNumber =
+      accountNumber;
+
+    withdrawal.step = "amount";
+
+    return await ctx.reply(
+      "💰 ማስወጣት የሚፈልጉትን " +
+      "የብር መጠን ያስገቡ።\n\n" +
+
+      `💵 ያለዎት ቀሪ ሂሳብ፦ ` +
+      `*${(await db.getUserByTelegramId(
+        telegramId
+      )).balance} ETB*`,
+      {
+        parse_mode: "Markdown"
+      }
+    );
+  }
+
+  // ========================================================
+  // AMOUNT
+  // ========================================================
+
+  if (withdrawal.step === "amount") {
+
+    const amount = Number(text);
+
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0 ||
+      !Number.isInteger(amount)
+    ) {
+      return await ctx.reply(
+        "❌ እባክዎ ትክክለኛ ሙሉ የብር " +
+        "መጠን ያስገቡ።\n\n" +
+        "ምሳሌ፦ `100`",
+        {
+          parse_mode: "Markdown"
+        }
+      );
+    }
+
+    try {
+
+      const result =
+        await db.createWithdrawal(
+          telegramId,
+          withdrawal.paymentMethodId,
+          withdrawal.accountNumber,
+          amount
+        );
+
+      if (!result.success) {
+
+        return await ctx.reply(
+          `❌ ${result.message}`
+        );
+      }
+
+      delete pendingWithdrawal[telegramId];
+
+      await ctx.reply(
+        "✅ *የማስወጣት ጥያቄዎ ተመዝግቧል።*\n\n" +
+
+        `💳 የክፍያ መንገድ፦ ` +
+        `*${withdrawal.paymentMethod.amharic_name}*\n` +
+
+        `📱 አካውንት፦ ` +
+        `\`${withdrawal.accountNumber}\`\n` +
+
+        `💰 መጠን፦ *${amount} ETB*\n\n` +
+
+        "⏳ ጥያቄዎ በማረጋገጫ ላይ ነው።",
+
+        {
+          parse_mode: "Markdown"
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Withdrawal creation error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ የማስወጣት ጥያቄዎን " +
+        "መመዝገብ አልተቻለም።"
+      );
+    }
+
+    return;
+  }
+
+  return next();
+});
+bot.callbackQuery(
+  "cancelwithdraw",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    delete pendingWithdrawal[
+      ctx.from.id
+    ];
+
+    await ctx.editMessageText(
+      "❌ የማስወጣት ጥያቄዎ ተሰርዟል።"
+    );
+  }
+);
+bot.command(
+  "withdrawals",
+  async (ctx) => {
+
+    if (ctx.from.id !== ADMIN_ID) {
+      return ctx.reply(
+        "❌ Unauthorized."
+      );
+    }
+
+    const withdrawals =
+      await db.getPendingWithdrawals(5);
+
+    if (
+      !withdrawals ||
+      withdrawals.length === 0
+    ) {
+      return ctx.reply(
+        "🏧 *Pending Withdrawals*\n\n" +
+        "✅ No pending withdrawals.",
+        {
+          parse_mode: "Markdown"
+        }
+      );
+    }
+
+    for (const withdrawal of withdrawals) {
+
+      await ctx.reply(
+        "🏧 *PENDING WITHDRAWAL*\n\n" +
+
+        `🆔 ID: *${withdrawal.id}*\n` +
+        `👤 User: *${withdrawal.name}*\n` +
+        `📱 User phone: \`${withdrawal.phone}\`\n` +
+
+        `💳 Method: ` +
+        `*${withdrawal.payment_method_amharic || withdrawal.payment_method}*\n` +
+
+        `📲 Account: ` +
+        `\`${withdrawal.withdrawal_account_number}\`\n` +
+
+        `💰 Amount: *${withdrawal.amount} ETB*\n` +
+
+        `💵 Balance: *${withdrawal.balance} ETB*`,
+
+        {
+          parse_mode: "Markdown",
+
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "✅ APPROVE",
+                  callback_data:
+                    `withdraw_approve_${withdrawal.id}`
+                },
+                {
+                  text: "❌ REJECT",
+                  callback_data:
+                    `withdraw_reject_${withdrawal.id}`
+                }
+              ]
+            ]
+          }
+        }
+      );
+    }
+  }
+);
+bot.callbackQuery(
+  /^withdraw_approve_(\d+)$/,
+  async (ctx) => {
+
+    if (ctx.from.id !== ADMIN_ID) {
+
+      return await ctx.answerCallbackQuery({
+        text: "Unauthorized",
+        show_alert: true
+      });
+    }
+
+    await answerCallback(ctx);
+
+    const withdrawalId =
+      Number(ctx.match[1]);
+
+    try {
+
+      const result =
+        await db.approveWithdrawal(
+          withdrawalId,
+          ADMIN_ID
+        );
+
+      if (!result.success) {
+
+        return await ctx.reply(
+          `❌ ${result.message}`
+        );
+      }
+
+      await ctx.editMessageText(
+        "✅ *WITHDRAWAL APPROVED*\n\n" +
+
+        `🆔 Withdrawal ID: *${withdrawalId}*\n` +
+        `💰 Amount: *${result.withdrawal.amount} ETB*\n` +
+        `👤 Approved by: *${ADMIN_ID}*`,
+        {
+          parse_mode: "Markdown"
+        }
+      );
+
+      // Notify user
+      try {
+
+        await bot.api.sendMessage(
+          result.withdrawal.user_id,
+          "test"
+        );
+
+      } catch (notifyError) {
+
+        console.error(
+          "Withdrawal notification error:",
+          notifyError
+        );
+      }
+
+    } catch (err) {
+
+      console.error(
+        "Withdrawal approval error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ ማስወጣቱን ማጽደቅ አልተቻለም።"
+      );
+    }
+  }
+);
+await bot.api.sendMessage(
+  result.withdrawal.telegram_id,
+  "✅ *የማስወጣት ጥያቄዎ ጸድቋል!*\n\n" +
+  `💰 መጠን፦ *${result.withdrawal.amount} ETB*\n\n` +
+  "ብሩ ወደ ያስገቡት አካውንት ይላካል።",
+  {
+    parse_mode: "Markdown"
+  }
+);
+bot.callbackQuery(
+  /^withdraw_reject_(\d+)$/,
+  async (ctx) => {
+
+    if (ctx.from.id !== ADMIN_ID) {
+
+      return await ctx.answerCallbackQuery({
+        text: "Unauthorized",
+        show_alert: true
+      });
+    }
+
+    await answerCallback(ctx);
+
+    const withdrawalId =
+      Number(ctx.match[1]);
+
+    try {
+
+      const result =
+        await db.rejectWithdrawal(
+          withdrawalId,
+          ADMIN_ID
+        );
+
+      if (!result.success) {
+
+        return await ctx.reply(
+          `❌ ${result.message}`
+        );
+      }
+
+      await ctx.editMessageText(
+        "❌ *WITHDRAWAL REJECTED*\n\n" +
+        `🆔 Withdrawal ID: *${withdrawalId}*\n` +
+        `👤 Rejected by: *${ADMIN_ID}*`,
+        {
+          parse_mode: "Markdown"
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Withdrawal rejection error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ የማስወጣት ጥያቄውን መሰረዝ አልተቻለም።"
+      );
+    }
+  }
+);
 // ─────────────────────────────────────────────────────────────
 // BALANCE
 // ─────────────────────────────────────────────────────────────
