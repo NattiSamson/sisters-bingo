@@ -1117,34 +1117,43 @@ const paymentAccountUpdate =
       await client.query("COMMIT");
 
       return {
-        success: true,
+  success: true,
 
-        withdrawal_id:
-          withdrawal.id,
+  withdrawal_id:
+    withdrawal.id,
 
-        telegram_id:
-          withdrawal.telegram_id,
+  telegram_id:
+    withdrawal.telegram_id,
 
-        user_id:
-          withdrawal.user_id,
+  user_id:
+    withdrawal.user_id,
 
-        user_name:
-          withdrawal.name,
+  user_name:
+    withdrawal.name,
 
-        amount:
-          Number(withdrawal.amount),
+  amount:
+    Number(withdrawal.amount),
 
-        account_number:
-          withdrawal.account_number,
+  account_number:
+    withdrawal.account_number,
 
-        payment_method_id:
-          withdrawal.payment_method_id,
+  payment_method_id:
+    withdrawal.payment_method_id,
 
-        payment_account_id:
-          withdrawal.payment_account_id,
+  payment_account_id:
+    paymentAccount.id,
 
-        balance_after:
-          Number(withdrawal.balance),
+  payment_account_number:
+    paymentAccount.account_number,
+
+  payment_account_balance_before:
+    paymentAccountBalance,
+
+  payment_account_balance_after:
+    paymentAccountBalanceAfter,
+
+  balance_after:
+    Number(withdrawal.balance),
 
         withdrawal:
           updateResult.rows[0]
