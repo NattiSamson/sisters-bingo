@@ -1508,8 +1508,8 @@ bot.callbackQuery(
 
     try {
 
-      await ctx.editMessageText( ""
-  //      "የገቢ ጥያቄዎ ተሰርዟል። ❌"
+      await ctx.editMessageText(
+        "የገቢ ጥያቄዎ ተሰርዟል። ❌"
       );
 
     } catch (err) {
@@ -1520,7 +1520,7 @@ bot.callbackQuery(
       );
 
       await ctx.reply( ""
-     //   "የገቢ ጥያቄዎ ተሰርዟል። ❌"
+        "የገቢ ጥያቄዎ ተሰርዟል። ❌"
       );
     }
   }
