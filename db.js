@@ -47,6 +47,159 @@ function normalizeEthiopianPhone(phone) {
 
 module.exports = {
   // ── User operations ──
+	async createWithdrawal(
+  telegramId,
+  paymentMethodId,
+  withdrawalAccountNumber,
+  amount
+) {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // Get user and lock the row
+    const { rows: userRows } = await client.query(
+      `
+      SELECT id, telegram_id, balance, is_active, is_banned
+      FROM users
+      WHERE telegram_id = $1
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [telegramId]
+    );
+
+    if (userRows.length === 0) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "User account not found."
+      };
+    }
+
+    const user = userRows[0];
+
+    if (!user.is_active || user.is_banned) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Your account is not active."
+      };
+    }
+
+    const withdrawalAmount = Number(amount);
+    const balance = Number(user.balance);
+
+    if (
+      !Number.isFinite(withdrawalAmount) ||
+      withdrawalAmount <= 0
+    ) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Invalid withdrawal amount."
+      };
+    }
+
+    if (!Number.isInteger(withdrawalAmount)) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Withdrawal amount must be a whole number."
+      };
+    }
+
+    if (withdrawalAmount > balance) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Insufficient balance."
+      };
+    }
+
+    // Check payment method
+    const { rows: paymentRows } = await client.query(
+      `
+      SELECT id, name, amharic_name, emoji
+      FROM payment_methods
+      WHERE id = $1
+        AND is_active = TRUE
+      LIMIT 1
+      `,
+      [paymentMethodId]
+    );
+
+    if (paymentRows.length === 0) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Payment method not found."
+      };
+    }
+
+    // Create pending withdrawal
+    const { rows } = await client.query(
+      `
+      INSERT INTO withdrawals (
+        user_id,
+        payment_account_id,
+        withdrawal_account_number,
+        amount,
+        status,
+        is_active,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        FALSE,
+        TRUE,
+        NOW(),
+        NOW()
+      )
+      RETURNING *
+      `,
+      [
+        user.id,
+        paymentMethodId,
+        withdrawalAccountNumber,
+        withdrawalAmount
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      success: true,
+      withdrawal: rows[0]
+    };
+
+  } catch (err) {
+
+    await client.query("ROLLBACK");
+
+    console.error(
+      "createWithdrawal error:",
+      err
+    );
+
+    throw err;
+
+  } finally {
+
+    client.release();
+  }
+},
 async registerUser(telegramId, name, phone) {
 
   const normalizedPhone =
