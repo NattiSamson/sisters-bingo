@@ -1716,6 +1716,13 @@ bot.callbackQuery(
           }
 
         );
+        setTimeout(async () => {
+        try {
+          await ctx.deleteMessage();
+        } catch (err) {
+          console.error("Could not delete message:", err);
+        }
+      }, 5000);
 
 
         return;
