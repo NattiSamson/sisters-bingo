@@ -603,7 +603,7 @@ function callNumber(room){
   const idx=Math.floor(Math.random()*room.availableNumbers.length);
   const drawn=room.availableNumbers.splice(idx,1)[0];
   room.calledNumbers.push(drawn);
-  broadcast(room,{type:'numberCalled',number:drawn,calledNumbers:room.calledNumbers,callCount:room.calledNumbers.length,claimWindowMs:CLAIM_WINDOW_MS});
+  broadcast(room,{type:'numberCalled',number:drawn,calledNumbers:room.calledNumbers,callCount:room.calledNumbers.length,claimWindowMs:CLAIM_WINDOW_MS,players:room.players.map(p=>({playerId:p.playerId,playerName:p.playerName}))});
   room.claimWindowOpen=true; scheduleNextCall(room);
 }
 
@@ -688,9 +688,20 @@ async function endGame(room, winners, customMsg, noWinner){
 
   // Broadcast the result to EVERY connected player in the room. Each client
   // displays the same winner message/overlay before the room is reset.
-  broadcast(room,{type:'gameOver',winners:winnerNames,winAmount,isSplit,message:msg,noWinner:!!noWinner,winnerTelegramIds:winnerTids});
+  // Keep everyone on the same room after the result. The room is reset in 9 seconds.
+  // Clients receive the countdown so winners and losers can see when the next round starts.
+  broadcast(room,{type:'gameOver',winners:winnerNames,winAmount,isSplit,message:msg,noWinner:!!noWinner,winnerTelegramIds:winnerTids,resetCountdown:9});
+
+  let resetSeconds=9;
+  room.resetCountdownTimer=setInterval(()=>{
+    resetSeconds--;
+    if(resetSeconds>0){
+      broadcast(room,{type:'resetCountdown',seconds:resetSeconds});
+    }
+  },1000);
 
   setTimeout(()=>{
+    if(room.resetCountdownTimer) clearInterval(room.resetCountdownTimer);
     if(!rooms[room.roomId]) return;
     room.status='waiting'; room.calledNumbers=[]; room.availableNumbers=Array.from({length:75},(_,i)=>i+1);
     room.pot=0; room.takenCardIds=new Set(); room.claimedThisRound=[]; room.claimWindowOpen=false; room.dbGameId=null;
@@ -704,7 +715,7 @@ async function endGame(room, winners, customMsg, noWinner){
     });
     broadcastCardPool(room); broadcastLobby();
     if(room.players.length>=2) startCountdown(room);
-  },6000);
+  },9000);
 }
 
 async function leaveRoom(client){
@@ -735,7 +746,7 @@ async function leaveRoom(client){
     if(room.countdownTimer)clearInterval(room.countdownTimer);
     delete rooms[room.roomId];
   }else{
-    broadcastCardPool(room);broadcast(room,{type:'playerLeft',playerCount:room.players.length});
+    broadcastCardPool(room);broadcast(room,{type:'playerLeft',playerCount:room.players.length,players:room.players.map(p=>({playerId:p.playerId,playerName:p.playerName}))});
   }
   broadcastLobby();
 }

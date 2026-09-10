@@ -213,6 +213,10 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .sound-btn:hover{background:rgba(255,255,255,.2)}
 .sound-btn.muted{background:rgba(239,68,68,.2);border-color:var(--red);color:var(--red)}
 /* ACTIVE PLAYERS */
+.active-players-panel{margin:-4px 0 12px;background:var(--panel);border:1px solid #4a2d7a;border-radius:10px;padding:8px 10px}
+.active-players-heading{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:7px}
+.active-players-heading .count{background:var(--green);color:#fff;min-width:22px;height:20px;padding:0 6px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;font-size:10px}
+.active-player-status{color:#16a34a;font-weight:700;font-size:9px}
 
 
 /* MELA BINGO START PAGE */
@@ -273,14 +277,14 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   </div>
   <div class="lobby-players-card">
     <div class="lobby-players-number" id="lobbyActivePlayers">0</div>
-    <div class="lobby-players-label">ንቁ ተጫዋቾች</div>
+    <div class="lobby-players-label">Active Players</div>
     <div class="lobby-players-sub">Players currently in the game lobby</div>
   </div>
 </div>
 
 <div id="screenCards" class="screen">
  <div class="cd-header">
-    <h2 class="screen-title" style="margin:0">ካርዶችዎን ይምረጡ</h2>
+    <h2 class="screen-title" style="margin:0">CHOOSE YOUR CARDS</h2>
     <div class="cd-countdown" id="cdCountdown">Waiting...</div>
   </div>
   <div id="cdPrizePot" style="background:linear-gradient(135deg,rgba(250,204,21,.15),rgba(139,92,246,.15));border:1px solid rgba(250,204,21,.4);border-radius:10px;padding:10px 14px;text-align:center;font-weight:700;color:var(--gold);font-size:14px;margin-bottom:10px">
@@ -311,7 +315,10 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
       </div>
       <div id="ballSub" class="ball-sub">0/75</div>
     </div>
-    <div class="stat-box"><div class="lbl">ተጫዋቾች</div><div id="playerCountVal" class="val">0</div></div>
+    <div class="stat-box"><div class="lbl">Players</div><div id="playerCountVal" class="val">0</div></div>
+  </div>
+  <div class="active-players-panel">
+    <div class="active-players-heading"><span>👥 Players</span><span id="activePlayersCount" class="count">0</span></div>
   </div>
   <div class="claim-bar-wrap"><div class="claim-bar" id="claimBar"></div></div>
   <!-- Dual cards wrapper — becomes side-by-side when two cards selected -->
@@ -759,7 +766,6 @@ let telegramId=null, isAdmin=false, adminToken='';
 let calledNumbersSet=new Set();
 let autoClaimSent=false;
 let activePlayers=[];
-let postGameResetTimer=null;
 // The Telegram-authenticated Bingo server is the primary source of truth for the player's
 // name and wallet. /api/user/:telegramId is only a fallback when the WebSocket auth
 // message does not contain a usable account balance.
@@ -1100,7 +1106,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       showToast(iWon?'🏆 You won! Your prize has been added to your account.':'Round finished — your balance was settled by the game server.','');
       // Re-read the user's actual Telegram/database account balance after the prize is processed.
       setTimeout(()=>refreshAccountBalance(),300);
-      startPostGameResetCountdown(9);
+      document.getElementById('resetCountdown').innerText='የሚቀጥለው ዙር በ 9 ሰከንድ ውስጥ';
       break;
 
     case 'resetCountdown':
@@ -1108,12 +1114,11 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       break;
 
     case 'backToCardSelection':
-      if(postGameResetTimer){ clearInterval(postGameResetTimer); postGameResetTimer=null; }
       myRoomId=msg.roomId; myCardId=null; myCardId2=null;
       myCardNumbers=[]; myCardNumbers2=[];
       resetAutomaticGameState();
       claimWindowOpen=false;
-      activePlayers=[];
+      activePlayers=[]; updateActivePlayers([]);
       hideWinnerOverlay();
       if(msg.roomId){ myRoomId=msg.roomId; localStorage.setItem('roomId',msg.roomId); }
       // Refresh the actual Telegram/database account after the round settles.
@@ -1123,7 +1128,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       }
       setTimeout(()=>refreshAccountProfile(8,500),700);
       resetTrackerBoard(); setBingoBtn('idle'); resetSlotUI();
-      document.getElementById('cdCountdown').innerText='ተጫዋቾችን በመጠባበቅ ላይ...';
+      document.getElementById('cdCountdown').innerText='Waiting...';
       navGo('screenCards','navCards'); break;
 
     case 'balanceUpdate':
@@ -1151,41 +1156,6 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
 
     case 'error': showToast(msg.message,'error'); break;
   }
-}
-
-// Reliable client-side fallback for the post-game transition.
-// The server remains authoritative, but this guarantees the player is returned
-// to the same room/card-selection screen even if a countdown packet is missed.
-function startPostGameResetCountdown(seconds){
-  if(postGameResetTimer) clearInterval(postGameResetTimer);
-  let remaining=Math.max(0,Number(seconds)||9);
-  const el=document.getElementById('resetCountdown');
-  if(el) el.innerText=`የሚቀጥለው ዙር በ ${remaining} ሰከንድ ውስጥ`;
-  postGameResetTimer=setInterval(()=>{
-    remaining--;
-    if(remaining>0){
-      if(el) el.innerText=`የሚቀጥለው ዙር በ ${remaining} ሰከንድ ውስጥ`;
-      return;
-    }
-    clearInterval(postGameResetTimer);
-    postGameResetTimer=null;
-    // Return to the exact room/stake the player was using. The server reset
-    // keeps this room alive, so card selection can begin again immediately.
-    hideWinnerOverlay();
-    resetAutomaticGameState();
-    resetTrackerBoard();
-    resetSlotUI();
-    setBingoBtn('idle');
-    document.getElementById('cdCountdown').innerText='ተጫዋቾችን በመጠባበቅ ላይ...';
-    if(myRoomId) localStorage.setItem('roomId',myRoomId);
-    navGo('screenCards','navCards');
-    // If the server has already reset the room, ask for the current card pool
-    // through the normal room join path only when needed. Avoid leaving/rejoining
-    // a live game unnecessarily.
-    if(ws && ws.readyState===1 && myStakeId){
-      wsSend({type:'joinRoom',stakeId:myStakeId,telegramId:telegramId});
-    }
-  },1000);
 }
 
 // ─── WALLET ───────────────────────────────────────────────────
@@ -1642,7 +1612,7 @@ function resetAutomaticGameState(){
   const el=document.getElementById('cdPrizePot');
   if(!el) return;
   const pot=Math.floor(cardCount * stakeAmount * 0.8);
-  el.innerText = pot > 0 ? `🏆 የሽልማት ገንዘብ: ${pot} ETB` : '🏆 ተጫዋቾች ሲቀላቀሉ የሽልማቱ ገንዘብ ይጨምራል';
+  el.innerText = pot > 0 ? `🏆 Prize Pool: ${pot} ETB` : '🏆 ተጫዋቾች ሲቀላቀሉ የሽልማቱ ገንዘብ ይጨምራል';
 }
 function updateSlotUI(){
   const s1=document.getElementById('slot1'), s2=document.getElementById('slot2');
@@ -1752,11 +1722,12 @@ function normalizeActivePlayers(list){
 }
 
 function updateActivePlayers(list){
+  if(Array.isArray(list)) activePlayers=normalizeActivePlayers(list);
   const count=document.getElementById('playerCountVal');
-  let n=0;
-  if(Array.isArray(list)) n=list.length;
-  else if(Number.isFinite(Number(list))) n=Number(list);
+  const badge=document.getElementById('activePlayersCount');
+  const n=activePlayers.length || (list && Number.isFinite(Number(list)) ? Number(list) : 0);
   if(count) count.innerText=n;
+  if(badge) badge.innerText=n;
 }
 
 
