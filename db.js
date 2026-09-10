@@ -381,7 +381,7 @@ module.exports = {
   );
 
   return result.rows.length > 0;
-}
+},
 
   // ============================================================
   // ADMIN OPERATIONS
