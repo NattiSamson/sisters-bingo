@@ -1212,10 +1212,14 @@ const paymentAccountUpdate =
           SELECT
             w.id,
             w.user_id,
+            w.payment_method_id,
+            w.payment_account_id,
+            w.approved_by_id,
             w.amount,
-            w.status,
+            w.account_number,
             w.is_pending,
             w.is_approved,
+            w.reject_reason,
             u.telegram_id,
             u.name,
             u.balance
