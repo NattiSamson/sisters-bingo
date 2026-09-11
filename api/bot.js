@@ -426,16 +426,18 @@ async function showHome(
     ]
 
   ];
+
+
   // ============================================================
 // USER STATISTICS
 // ============================================================
 
 async function showUserStatistics(ctx) {
 
+  const telegramId = ctx.from.id;
+
   const user =
-    await db.getUserByTelegramId(
-      ctx.from.id
-    );
+    await db.getUserByTelegramId(telegramId);
 
   if (!user) {
     return ctx.reply(
@@ -443,59 +445,69 @@ async function showUserStatistics(ctx) {
     );
   }
 
-  const stats =
-    await db.getUserStatistics(
-      ctx.from.id
+  try {
+
+    const stats =
+      await db.getUserStatistics(telegramId);
+
+    if (!stats) {
+      return ctx.reply(
+        "❌ Could not load your statistics."
+      );
+    }
+
+    const message =
+      `📊 *YOUR STATISTICS*\n\n` +
+
+      `💎 Total Deposits: *${stats.totalDeposits}*\n\n` +
+
+      `🏧 *Withdrawals*\n` +
+      `⏳ Pending Approval: *${stats.pendingWithdrawals}*\n` +
+      `✅ Approved: *${stats.approvedWithdrawals}*\n` +
+      `❌ Rejected: *${stats.rejectedWithdrawals}*\n\n` +
+
+      `🔄 Total Transfers: *${stats.totalTransfers}*`;
+
+    await ctx.reply(
+      message,
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🔄 Refresh",
+                callback_data: "statistics"
+              }
+            ],
+            [
+              {
+                text: "🏠 Home",
+                callback_data: "home"
+              }
+            ]
+          ]
+        }
+      }
     );
 
-  if (!stats) {
-    return ctx.reply(
-      "❌ Could not load your statistics."
+  } catch (err) {
+
+    console.error(
+      "User statistics error:",
+      err
+    );
+
+    await ctx.reply(
+      "❌ Unable to load statistics right now."
     );
   }
-
-  const message =
-    `📊 *YOUR STATISTICS*\n\n` +
-
-    `💎 *Deposits*\n` +
-    `Total Deposits: *${stats.totalDeposits}*\n\n` +
-
-    `🏧 *Withdrawals*\n` +
-    `⏳ Pending Approval: *${stats.pendingWithdrawals}*\n` +
-    `✅ Approved: *${stats.approvedWithdrawals}*\n` +
-    `❌ Rejected: *${stats.rejectedWithdrawals}*\n\n` +
-
-    `🔄 *Transfers*\n` +
-    `Total Transfers: *${stats.totalTransfers}*`;
-
-  await ctx.reply(
-    message,
-    {
-      parse_mode: "Markdown",
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: "🔄 Refresh",
-              callback_data: "statistics"
-            }
-          ],
-          [
-            {
-              text: "🏠 Home",
-              callback_data: "home"
-            }
-          ]
-        ]
-      }
-    }
-  );
 }
 
 
-// ------------------------------------------------------------
-// STATISTICS BUTTON
-// ------------------------------------------------------------
+// ============================================================
+// STATISTICS CALLBACK
+// ============================================================
 
 bot.callbackQuery(
   "statistics",
@@ -507,9 +519,7 @@ bot.callbackQuery(
       ctx.from.id
     );
 
-    await showUserStatistics(
-      ctx
-    );
+    await showUserStatistics(ctx);
 
   }
 );
