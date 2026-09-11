@@ -533,7 +533,15 @@ bot.callbackQuery("user_home", async (ctx) => {
 
     clearPendingState(ctx.from.id);
 
-    await showHome(ctx);
+    const user = await db.getUserByTelegramId(ctx.from.id);
+
+    if (!user) {
+      return await ctx.reply(
+        "Please /start to register first."
+      );
+    }
+
+    await showHome(ctx, user);
 
   } catch (err) {
     console.error("User home button error:", err);
