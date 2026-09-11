@@ -483,7 +483,7 @@ async function showUserStatistics(ctx) {
             [
               {
                 text: "🏠 Home",
-                callback_data: "home"
+                callback_data: "user_home"
               }
             ]
           ]
@@ -523,6 +523,26 @@ bot.callbackQuery(
 
   }
 );
+// ============================================================
+// USER HOME BUTTON
+// ============================================================
+
+bot.callbackQuery("user_home", async (ctx) => {
+  try {
+    await answerCallback(ctx);
+
+    clearPendingState(ctx.from.id);
+
+    await showHome(ctx);
+
+  } catch (err) {
+    console.error("User home button error:", err);
+
+    await ctx.reply(
+      "❌ Unable to return to home."
+    );
+  }
+});
 
 
   // ----------------------------------------------------------
