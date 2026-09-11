@@ -305,6 +305,100 @@ module.exports = {
 
     }
   },
+  // ============================================================
+// ADMIN STATISTICS
+// ============================================================
+
+// ============================================================
+// ADMIN STATISTICS
+// ============================================================
+
+async getAdminStatistics() {
+
+  const result = await pool.query(`
+    SELECT
+
+      -- WITHDRAWALS
+      (
+        SELECT COUNT(*)
+        FROM withdrawals
+        WHERE is_pending = TRUE
+          AND is_approved = FALSE
+      ) AS pending_withdrawals,
+
+      (
+        SELECT COUNT(*)
+        FROM withdrawals
+        WHERE is_pending = FALSE
+          AND is_approved = TRUE
+      ) AS approved_withdrawals,
+
+      (
+        SELECT COUNT(*)
+        FROM withdrawals
+        WHERE is_pending = FALSE
+          AND is_approved = FALSE
+          AND reject_reason IS NOT NULL
+      ) AS rejected_withdrawals,
+
+
+      -- TRANSFERS
+      (
+        SELECT COUNT(*)
+        FROM transfers
+      ) AS total_transfers,
+
+
+      -- USERS
+      (
+        SELECT COUNT(*)
+        FROM users
+        WHERE is_active = TRUE
+          AND is_banned = FALSE
+      ) AS active_users,
+
+      (
+        SELECT COUNT(*)
+        FROM users
+        WHERE is_active = FALSE
+      ) AS inactive_users,
+
+
+      -- ADMINISTRATORS
+      (
+        SELECT COUNT(*)
+        FROM users
+        WHERE is_admin = TRUE
+          AND is_active = TRUE
+          AND is_banned = FALSE
+      ) AS administrators
+  `);
+
+  const row = result.rows[0];
+
+  return {
+    pendingWithdrawals:
+      Number(row.pending_withdrawals || 0),
+
+    approvedWithdrawals:
+      Number(row.approved_withdrawals || 0),
+
+    rejectedWithdrawals:
+      Number(row.rejected_withdrawals || 0),
+
+    totalTransfers:
+      Number(row.total_transfers || 0),
+
+    activeUsers:
+      Number(row.active_users || 0),
+
+    inactiveUsers:
+      Number(row.inactive_users || 0),
+
+    administrators:
+      Number(row.administrators || 0)
+  };
+},
 
   async getUserByTelegramId(telegramId) {
 
