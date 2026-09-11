@@ -4363,46 +4363,6 @@ bot.callbackQuery(
   }
 );
 
-
-// ============================================================
-// DELETE
-// ============================================================
-
-bot.callbackQuery(
-  "delete",
-  async (ctx) => {
-
-    await answerCallback(
-      ctx
-    );
-
-
-    clearPendingState(
-      ctx.from.id
-    );
-
-
-    await ctx.reply(
-
-      "🗑️ *Delete Account*\n\n" +
-
-      "Account deletion is currently unavailable.\n" +
-
-      "Please contact Support if you want to delete your account.",
-
-      {
-
-        parse_mode:
-          "Markdown"
-
-      }
-
-    );
-
-  }
-);
-
-
 // ============================================================
 // LEADERBOARD
 // ============================================================
