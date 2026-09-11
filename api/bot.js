@@ -409,30 +409,110 @@ async function showHome(
     ],
 
     [
-
       {
-
-        text:
-          "🆘 Support",
-
-        callback_data:
-          "support"
-
+        text: "📊 Statistics",
+        callback_data: "statistics"
       },
-
       {
-
-        text:
-          "🗑️ Delete",
-
-        callback_data:
-          "delete"
-
+        text: "🆘 Support",
+        callback_data: "support"
       }
-
+    ],
+    [
+      {
+        text: "🗑️ Delete",
+        callback_data: "delete"
+      }
     ]
 
   ];
+  // ============================================================
+// USER STATISTICS
+// ============================================================
+
+async function showUserStatistics(ctx) {
+
+  const user =
+    await db.getUserByTelegramId(
+      ctx.from.id
+    );
+
+  if (!user) {
+    return ctx.reply(
+      "Please /start to register first."
+    );
+  }
+
+  const stats =
+    await db.getUserStatistics(
+      ctx.from.id
+    );
+
+  if (!stats) {
+    return ctx.reply(
+      "❌ Could not load your statistics."
+    );
+  }
+
+  const message =
+    `📊 *YOUR STATISTICS*\n\n` +
+
+    `💎 *Deposits*\n` +
+    `Total Deposits: *${stats.totalDeposits}*\n\n` +
+
+    `🏧 *Withdrawals*\n` +
+    `⏳ Pending Approval: *${stats.pendingWithdrawals}*\n` +
+    `✅ Approved: *${stats.approvedWithdrawals}*\n` +
+    `❌ Rejected: *${stats.rejectedWithdrawals}*\n\n` +
+
+    `🔄 *Transfers*\n` +
+    `Total Transfers: *${stats.totalTransfers}*`;
+
+  await ctx.reply(
+    message,
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "🔄 Refresh",
+              callback_data: "statistics"
+            }
+          ],
+          [
+            {
+              text: "🏠 Home",
+              callback_data: "home"
+            }
+          ]
+        ]
+      }
+    }
+  );
+}
+
+
+// ------------------------------------------------------------
+// STATISTICS BUTTON
+// ------------------------------------------------------------
+
+bot.callbackQuery(
+  "statistics",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    clearPendingState(
+      ctx.from.id
+    );
+
+    await showUserStatistics(
+      ctx
+    );
+
+  }
+);
 
 
   // ----------------------------------------------------------
