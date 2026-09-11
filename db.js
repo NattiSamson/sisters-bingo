@@ -56,6 +56,56 @@ function normalizeEthiopianPhone(phone) {
 }
 
 module.exports = {
+  async reactivateUserByTelegramId(telegramId) {
+
+  const result = await pool.query(
+    `
+    UPDATE users
+    SET is_active = TRUE
+    WHERE telegram_id = $1
+    RETURNING *
+    `,
+    [telegramId]
+  );
+
+  return result.rows[0] || null;
+},
+  async getUserByTelegramIdIncludingInactive(telegramId) {
+
+  const result = await pool.query(
+    `
+    SELECT
+      id,
+      telegram_id,
+      name,
+      phone,
+      balance,
+      is_admin,
+      is_active,
+      is_banned
+    FROM users
+    WHERE telegram_id = $1
+    LIMIT 1
+    `,
+    [telegramId]
+  );
+
+  return result.rows[0] || null;
+},
+  async deactivateUser(telegramId) {
+
+  const result = await pool.query(
+    `
+    UPDATE users
+    SET is_active = FALSE
+    WHERE telegram_id = $1
+    RETURNING *
+    `,
+    [telegramId]
+  );
+
+  return result.rows[0] || null;
+},
   // ============================================================
 // USER STATISTICS
 // ============================================================
@@ -178,33 +228,37 @@ async getUserStatistics(telegramId) {
         [normalizedPhone]
       );
 
-      // Existing Beteseb account
-      if (phoneResult.rows.length > 0) {
+     // Existing account
+if (phoneResult.rows.length > 0) {
 
-        const existingUser =
-          phoneResult.rows[0];
+  const existingUser =
+    phoneResult.rows[0];
 
-        const updated = await client.query(
-          `
-          UPDATE users
-          SET telegram_id = $1
-          WHERE id = $2
-          RETURNING *
-          `,
-          [
-            telegramId,
-            existingUser.id
-          ]
-        );
+  const updated =
+    await client.query(
+      `
+      UPDATE users
+      SET
+        telegram_id = $1,
+        name = $2,
+        is_active = TRUE
+      WHERE id = $3
+      RETURNING *
+      `,
+      [
+        telegramId,
+        name,
+        existingUser.id
+      ]
+    );
 
-        await client.query("COMMIT");
+  await client.query("COMMIT");
 
-        return {
-          status: "reconnected",
-          user: updated.rows[0]
-        };
-      }
-
+  return {
+    status: "reconnected",
+    user: updated.rows[0]
+  };
+}
       // New account
       const newUser = await client.query(
         `
