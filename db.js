@@ -56,6 +56,72 @@ function normalizeEthiopianPhone(phone) {
 }
 
 module.exports = {
+  // ============================================================
+// USER STATISTICS
+// ============================================================
+
+async getUserStatistics(telegramId) {
+  const result = await pool.query(
+    `
+    SELECT
+      (
+        SELECT COUNT(*)
+        FROM deposits d
+        WHERE d.user_id = u.id
+      ) AS total_deposits,
+
+      (
+        SELECT COUNT(*)
+        FROM withdrawals w
+        WHERE w.user_id = u.id
+          AND w.is_pending = TRUE
+          AND w.is_approved = FALSE
+      ) AS pending_withdrawals,
+
+      (
+        SELECT COUNT(*)
+        FROM withdrawals w
+        WHERE w.user_id = u.id
+          AND w.is_pending = FALSE
+          AND w.is_approved = TRUE
+      ) AS approved_withdrawals,
+
+      (
+        SELECT COUNT(*)
+        FROM withdrawals w
+        WHERE w.user_id = u.id
+          AND w.is_pending = FALSE
+          AND w.is_approved = FALSE
+      ) AS rejected_withdrawals,
+
+      (
+        SELECT COUNT(*)
+        FROM transfers t
+        WHERE t.sender_telegram_id = u.telegram_id
+           OR t.recipient_telegram_id = u.telegram_id
+      ) AS total_transfers
+
+    FROM users u
+    WHERE u.telegram_id = $1
+    LIMIT 1
+    `,
+    [telegramId]
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  const row = result.rows[0];
+
+  return {
+    totalDeposits: Number(row.total_deposits || 0),
+    pendingWithdrawals: Number(row.pending_withdrawals || 0),
+    approvedWithdrawals: Number(row.approved_withdrawals || 0),
+    rejectedWithdrawals: Number(row.rejected_withdrawals || 0),
+    totalTransfers: Number(row.total_transfers || 0)
+  };
+},
 
   // ============================================================
   // USER OPERATIONS
