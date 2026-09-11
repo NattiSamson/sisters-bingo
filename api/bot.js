@@ -57,6 +57,8 @@ const pendingWithdrawal = {};
 
 const pendingAdminWithdrawal  = {};
 
+const pendingDelete = {};
+
 // Admin rejection state
 // telegramId -> { withdrawalId, withdrawal }
 const pendingAdminReject = {};
@@ -86,6 +88,9 @@ function clearPendingState(
     telegramId
   ];
 
+  delete pendingDelete[
+    telegramId
+  ];
 }
 
 
@@ -551,6 +556,146 @@ bot.callbackQuery("user_home", async (ctx) => {
     );
   }
 });
+  // ============================================================
+// DELETE ACCOUNT
+// ============================================================
+
+bot.callbackQuery(
+  "delete",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const telegramId =
+      ctx.from.id;
+
+    clearPendingState(
+      telegramId
+    );
+
+    pendingDelete[
+      telegramId
+    ] = true;
+
+    await ctx.editMessageText(
+      "⚠️ *አካውንትዎን ማጥፋት ይፈልጋሉ?*\n\n" +
+      "ይህ አካውንትዎን ያቦዝነዋል።\n" +
+      "የቀረው ቀሪ ሂሳብ፣ የገቢ እና የወጪ ታሪክ አይሰረዝም።\n\n" +
+      "በኋላ /start በመጠቀም አካውንትዎን እንደገና ማንቃት ይችላሉ።\n\n" +
+      "እርግጠኛ ነዎት?",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "አዎ",
+                callback_data: "delete_confirm"
+              },
+              {
+                text: "አይ",
+                callback_data: "delete_cancel"
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+  }
+);
+  bot.callbackQuery(
+  "delete_cancel",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const telegramId =
+      ctx.from.id;
+
+    delete pendingDelete[
+      telegramId
+    ];
+
+    const user =
+      await db.getUserByTelegramId(
+        telegramId
+      );
+
+    if (!user) {
+      return ctx.editMessageText(
+        "❌ Account not found."
+      );
+    }
+
+    await ctx.editMessageText(
+      "✅ አካውንትዎን ማጥፋት ተሰርዟል።"
+    );
+
+    await showHome(
+      ctx,
+      user
+    );
+
+  }
+);
+  bot.callbackQuery(
+  "delete_confirm",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const telegramId =
+      ctx.from.id;
+
+    delete pendingDelete[
+      telegramId
+    ];
+
+    try {
+
+      const result =
+        await db.deactivateUser(
+          telegramId
+        );
+
+      if (!result) {
+
+        return await ctx.editMessageText(
+          "❌ አካውንትዎ አልተገኘም።"
+        );
+
+      }
+
+      clearPendingState(
+        telegramId
+      );
+
+      await ctx.editMessageText(
+        "✅ *አካውንትዎ ተቦዝኗል።*\n\n" +
+        "የግል መረጃዎ፣ ቀሪ ሂሳብዎ እና የግብይት ታሪክዎ አልተሰረዙም።\n\n" +
+        "እንደገና ለመጠቀም /start ይጫኑ።",
+        {
+          parse_mode: "Markdown"
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Delete account error:",
+        err
+      );
+
+      await ctx.editMessageText(
+        "❌ አካውንትዎን ማቦዘን አልተቻለም።\n\n" +
+        "እባክዎ እንደገና ይሞክሩ።"
+      );
+
+    }
+
+  }
+);
 
 
   // ----------------------------------------------------------
@@ -798,23 +943,56 @@ bot.command(
     try {
 
       const existing =
-        await db.getUserByTelegramId(
-          telegramId
-        );
+  await db.getUserByTelegramIdIncludingInactive(
+    telegramId
+  );
 
+if (existing) {
 
-      // ------------------------------------------------------
-      // Existing user
-      // ------------------------------------------------------
+  // Banned users should remain blocked
+  if (existing.is_banned === true) {
 
-      if (existing) {
+    return await ctx.reply(
+      "❌ Your account is banned."
+    );
 
-        return await showHome(
-          ctx,
-          existing
-        );
+  }
 
+  // Reactivate previously deleted account
+  if (existing.is_active === false) {
+
+    const reactivated =
+      await db.reactivateUserByTelegramId(
+        telegramId
+      );
+
+    if (!reactivated) {
+
+      return await ctx.reply(
+        "❌ Could not reactivate your account."
+      );
+
+    }
+
+    await ctx.reply(
+      "✅ *Welcome back!*\n\n" +
+      "Your Sisters Bingo account has been reactivated. 🎱",
+      {
+        parse_mode: "Markdown"
       }
+    );
+
+    return await showHome(
+      ctx,
+      reactivated
+    );
+  }
+
+  return await showHome(
+    ctx,
+    existing
+  );
+}
 
 
       // ------------------------------------------------------
