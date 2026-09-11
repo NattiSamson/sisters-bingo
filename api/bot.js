@@ -511,6 +511,12 @@ async function showHome(
       }
 
     ]);
+    keyboard.push([
+  {
+    text: "📊 Statistics",
+    callback_data: "admin_statistics"
+  }
+]);
 
   }
 
@@ -540,6 +546,106 @@ async function showHome(
   );
 
 }
+
+// ============================================================
+// ADMIN STATISTICS
+// ============================================================
+
+bot.callbackQuery(
+  "admin_statistics",
+  async (ctx) => {
+
+    try {
+
+      await answerCallback(ctx);
+
+      // ------------------------------------------
+      // Verify admin
+      // ------------------------------------------
+
+      const admin =
+        await db.getAdminByTelegramId(
+          ctx.from.id
+        );
+
+      if (!admin) {
+
+        return await ctx.reply(
+          "❌ You are not authorized to view statistics."
+        );
+
+      }
+
+
+      // ------------------------------------------
+      // Get statistics
+      // ------------------------------------------
+
+      const stats =
+        await db.getAdminStatistics();
+
+
+      // ------------------------------------------
+      // Display statistics
+      // ------------------------------------------
+
+      const message =
+        `📊 *SISTERS BINGO STATISTICS*\n\n` +
+
+        `💸 *Withdrawals*\n` +
+        `⏳ Pending: *${stats.pendingWithdrawals}*\n` +
+        `✅ Approved: *${stats.approvedWithdrawals}*\n` +
+        `❌ Rejected: *${stats.rejectedWithdrawals}*\n\n` +
+
+        `🔄 *Transfers*\n` +
+        `Total Transfers: *${stats.totalTransfers}*\n\n` +
+
+        `👥 *Users*\n` +
+        `🟢 Active Users: *${stats.activeUsers}*\n` +
+        `⚪ Inactive Users: *${stats.inactiveUsers}*\n\n` +
+
+        `👑 Administrators: *${stats.administrators}*`;
+
+
+      await ctx.reply(
+        message,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🔄 Refresh",
+                  callback_data: "admin_statistics"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Home",
+                  callback_data: "admin_home"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+
+    } catch (err) {
+
+      console.error(
+        "Admin statistics error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not load statistics."
+      );
+
+    }
+
+  }
+);
 
 
 // ============================================================
