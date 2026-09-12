@@ -1948,6 +1948,8 @@ async getPaymentAccountsByMethod(
         pa.balance,
 
         pa.is_active,
+        
+        pa.permanently_removed,
 
         pm.name AS pm_name,
 
@@ -2017,6 +2019,8 @@ async getPaymentAccountById(
         pa.balance,
 
         pa.is_active,
+
+        pa.permanently_removed,
 
         pm.name AS pm_name,
 
@@ -2194,6 +2198,8 @@ async getAllPaymentAccountsForAdmin() {
         pa.balance,
 
         pa.is_active,
+
+        pa.permanently_removed,
 
         pm.name AS pm_name,
 
