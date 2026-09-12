@@ -495,6 +495,35 @@ async function getDepositBonusSchedules() {
   return rows;
 }
 
+// ============================================================
+// DEACTIVATE BONUS CAMPAIGN
+// ============================================================
+
+async function deactivateBonusCampaign(
+  campaignId
+) {
+
+  const result =
+    await pool.query(
+      `
+      UPDATE bonus_campaigns
+      SET
+        is_active = FALSE
+      WHERE
+        id = $1
+        AND is_active = TRUE
+      RETURNING
+        id,
+        name,
+        is_active
+      `,
+      [
+        campaignId
+      ]
+    );
+
+  return result.rows[0] || null;
+}
 
 module.exports = {
 
@@ -4920,6 +4949,7 @@ async applyDepositBonus(
     return rows;
   },
   getDepositBonusSchedules,  
-  giveBonusToUserByPhone
+  giveBonusToUserByPhone,
+  deactivateBonusCampaign
 
 };
