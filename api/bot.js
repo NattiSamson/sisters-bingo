@@ -843,10 +843,21 @@ if (admin && admin.admin_role === "main") {
     ]);
 
     keyboard.push([
-        {
-            text: "📊 Statistics",
-            callback_data: "admin_statistics"
-        }
+      {
+        text:
+          "💳 Accounts",
+    
+        callback_data:
+          "admin_accounts"
+      },
+    
+      {
+        text:
+          "📊 Statistics",
+    
+        callback_data:
+          "admin_statistics"
+      }
     ]);
 }
 
