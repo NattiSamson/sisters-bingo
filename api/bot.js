@@ -1380,6 +1380,230 @@ if (
     }
   );
 }
+        // ============================================================
+    // MANAGE ADMINS — WAITING FOR PHONE NUMBER
+    // ============================================================
+
+    const roleSearchState =
+      pendingAdminRoleSearch.get(telegramId);
+
+    if (
+      roleSearchState &&
+      roleSearchState.step === "waiting_phone"
+    ) {
+
+      const admin =
+        await db.getAdminByTelegramId(
+          telegramId
+        );
+
+      // Only main admin can manage admins
+      if (
+        !admin ||
+        admin.admin_role !== "main"
+      ) {
+
+        pendingAdminRoleSearch.delete(
+          telegramId
+        );
+
+        return await ctx.reply(
+          "⛔ You are not authorized to manage admins."
+        );
+
+      }
+
+      const phone =
+        ctx.message.text.trim();
+
+      console.log(
+        "Manage Admins phone search:",
+        phone
+      );
+
+      // Search user
+      const user =
+        await db.getUserByPhoneForAdmin(
+          phone
+        );
+
+      if (!user) {
+
+        return await ctx.reply(
+          `❌ *User not found*\n\n` +
+          `📱 Phone: \`${phone}\`\n\n` +
+          `Please send another phone number or press Cancel.`,
+          {
+            parse_mode: "Markdown",
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: "🏠 Home",
+                    callback_data:
+                      "admin_home"
+                  }
+                ],
+                [
+                  {
+                    text: "❌ Cancel",
+                    callback_data:
+                      "admin_manage_admins_cancel"
+                  }
+                ]
+              ]
+            }
+          }
+        );
+
+      }
+
+      // Do not allow changing your own admin role
+      if (
+        String(user.telegram_id) ===
+        String(telegramId)
+      ) {
+
+        pendingAdminRoleSearch.delete(
+          telegramId
+        );
+
+        return await ctx.reply(
+          "⚠️ You cannot change your own admin role.",
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: "👑 Manage Another Admin",
+                    callback_data:
+                      "admin_manage_admins"
+                  }
+                ],
+                [
+                  {
+                    text: "🏠 Home",
+                    callback_data:
+                      "admin_home"
+                  }
+                ]
+              ]
+            }
+          }
+        );
+
+      }
+
+      // Search completed
+      pendingAdminRoleSearch.delete(
+        telegramId
+      );
+
+      const keyboard = [];
+
+      // Main Admin
+      keyboard.push([
+        {
+          text: "👑 Main Admin",
+          callback_data:
+            `set_admin_main_${user.id}`
+        }
+      ]);
+
+      // Statistics Admin
+      keyboard.push([
+        {
+          text: "📊 Statistics Admin",
+          callback_data:
+            `set_admin_statistics_${user.id}`
+        }
+      ]);
+
+      // Withdrawal Admin
+      keyboard.push([
+        {
+          text: "💸 Withdrawal Admin",
+          callback_data:
+            `set_admin_withdrawal_${user.id}`
+        }
+      ]);
+
+      // Broadcast Admin
+      keyboard.push([
+        {
+          text: "📢 Broadcast Admin",
+          callback_data:
+            `set_admin_broadcast_${user.id}`
+        }
+      ]);
+
+      // Remove Admin
+      if (user.is_admin === true) {
+
+        keyboard.push([
+          {
+            text: "🚫 Remove Admin Rights",
+            callback_data:
+              `remove_admin_${user.id}`
+          }
+        ]);
+
+      }
+
+      keyboard.push([
+        {
+          text: "👑 Manage Another Admin",
+          callback_data:
+            "admin_manage_admins"
+        }
+      ]);
+
+      keyboard.push([
+        {
+          text: "🏠 Home",
+          callback_data:
+            "admin_home"
+        }
+      ]);
+
+      const currentRole =
+        user.is_admin
+          ? (
+              user.admin_role === "main"
+                ? "👑 Main Admin"
+                : user.admin_role === "statistics"
+                ? "📊 Statistics Admin"
+                : user.admin_role === "withdrawal"
+                ? "💸 Withdrawal Admin"
+                : user.admin_role === "broadcast"
+                ? "📢 Broadcast Admin"
+                : "Admin"
+            )
+          : "👤 Normal User";
+
+      await ctx.reply(
+        `👑 *MANAGE ADMIN*\n\n` +
+        `👤 Name: *${user.name || "Unknown"}*\n` +
+        `📱 Phone: \`${user.phone || phone}\`\n` +
+        `🔐 Current Role: *${currentRole}*\n\n` +
+        `Select the new admin role:`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard:
+              keyboard
+          }
+        }
+      );
+
+      return;
+    }
+
+    // ============================================================
+    // NOT A MANAGE USER / MANAGE ADMINS MESSAGE
+    // ============================================================
+
+    return next();
 
     // ============================================================
     // NOT A MANAGE USER MESSAGE
