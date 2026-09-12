@@ -4713,7 +4713,7 @@ bot.on(
 
 
         const result2 =
-          await db.approveDepositttttttttttt(
+          await db.approveDeposit(
             receipt,
             telegramId
           );
