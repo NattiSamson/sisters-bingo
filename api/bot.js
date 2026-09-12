@@ -1220,6 +1220,14 @@ bot.on("message:text", async (ctx, next) => {
         }
       ]);
 
+            keyboard.push([
+        {
+        text: "🏠 Home",
+    callback_data:
+      "admin_home"
+        }
+      ]);
+
       keyboard.push([
         {
           text: "❌ Close",
@@ -1634,6 +1642,13 @@ bot.callbackQuery(
                   text: "👤 Manage Another User",
                   callback_data:
                     "admin_manage_user"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Home",
+                  callback_data:
+                    "admin_home"
                 }
               ],
 
