@@ -239,6 +239,13 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .active-player-status{color:#16a34a;font-weight:700;font-size:9px}
 
 
+/* CARD SELECTION TOP CONTROLS */
+.card-selection-top{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 2px 10px;padding:4px 0;}
+.card-selection-players{flex:1;min-width:0;display:flex;align-items:center;gap:7px;color:#fff;font-size:10px;font-weight:800;white-space:nowrap;}
+.card-selection-players .player-count{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:24px;padding:0 8px;border-radius:12px;background:var(--green);color:#fff;font-size:11px;font-weight:900;}
+.card-selection-players .player-text{font-size:9px;color:#d8c9f4;overflow:hidden;text-overflow:ellipsis;}
+.card-selection-leave{flex-shrink:0;margin:0!important;padding:8px 11px!important;font-size:10px!important;white-space:nowrap;}
+
 /* MELA BINGO START PAGE */
 #screenLobby{max-width:500px;padding:0 18px 28px;min-height:calc(100vh - 128px);background:radial-gradient(circle at 8% 8%,rgba(124,58,237,.28),transparent 34%),linear-gradient(155deg,#3d176f 0%,#21134d 45%,#0d172d 100%)}
 #screenLobby .welcome-banner{display:block;background:transparent;border:0;border-radius:0;padding:48px 4px 26px;margin:0;text-align:center}
@@ -307,11 +314,17 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
     <h2 class="screen-title" style="margin:0">ካርዶችዎን ይምረጡ</h2>
     <div class="cd-countdown" id="cdCountdown">ተጫዋቾችን በመጠባበቅ ላይ...</div>
   </div>
+  <div class="card-selection-top">
+    <div class="card-selection-players">
+      <span class="player-count" id="cardSelectionPlayerCount">0</span>
+      <span class="player-text" id="cardSelectionPlayerText">ተጫዋቾች ይጨምራሉ</span>
+    </div>
+    <button class="leave-btn card-selection-leave" onclick="leaveRoom()">← ጨዋታውን ይውጡ</button>
+  </div>
   <div id="cdPrizePot" style="background:linear-gradient(135deg,rgba(250,204,21,.15),rgba(139,92,246,.15));border:1px solid rgba(250,204,21,.4);border-radius:10px;padding:10px 14px;text-align:center;font-weight:700;color:var(--gold);font-size:14px;margin-bottom:10px">
     🏆 ተጫዋቾች ሲቀላቀሉ የሽልማቱ ገንዘብ ይጨምራል
   </div>
   <div id="poolGrid" class="pool-grid"></div>
-  <button class="leave-btn" onclick="leaveRoom()">← ጨዋታውን ይውጡ</button>
 </div>
 
 <div id="screenGame" class="screen">
@@ -1843,8 +1856,13 @@ function resetAutomaticGameState(){
 // ─── SLOT UI (card selection indicators) ──────────────────────
  function updatePrizePot(cardCount, stakeAmount){
   const el=document.getElementById('cdPrizePot');
+  const countEl=document.getElementById('cardSelectionPlayerCount');
+  const textEl=document.getElementById('cardSelectionPlayerText');
+  const count=Math.max(0,Number(cardCount)||0);
+  if(countEl) countEl.innerText=count;
+  if(textEl) textEl.innerText=count===1?'ተጫዋች ተገኝቷል':'ተጫዋቾች ይጨምራሉ';
   if(!el) return;
-  const pot=Math.floor(cardCount * stakeAmount * 0.8);
+  const pot=Math.floor(count * (Number(stakeAmount)||0) * 0.8);
   el.innerText = pot > 0 ? `🏆 የሽልማት ገንዘብ: ${pot} ETB` : '🏆 ተጫዋቾች ሲቀላቀሉ የሽልማቱ ገንዘብ ይጨምራል';
 }
 function updateSlotUI(){}

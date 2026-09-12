@@ -107,6 +107,17 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .wallet-tab.active{background:var(--purple);color:#fff}
 .wallet-section{display:none}
 .wallet-section.active{display:block}
+.history-list{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.history-card{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:13px}
+.history-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:7px}
+.history-date{font-size:11px;color:var(--gray)}
+.history-result{font-size:12px;font-weight:900}
+.history-result.win{color:var(--green)}
+.history-result.loss{color:var(--red)}
+.history-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0}
+.history-key{color:var(--gray)}
+.history-value{font-weight:700}
+.history-empty{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:30px 16px;text-align:center;color:var(--gray);font-size:13px}
 .telebirr-info{background:var(--card);border:1px solid #4a2d7a;border-radius:12px;padding:14px;margin-bottom:16px;text-align:center}
 .telebirr-logo{display:flex;justify-content:center;align-items:center;margin-bottom:8px}
 .telebirr-label{font-size:11px;color:var(--gray);margin-bottom:3px}
@@ -439,6 +450,14 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   </div>
 </div>
 
+<div id="screenHistory" class="screen">
+  <h2 class="screen-title">📜 የጨዋታ ታሪክ</h2>
+  <div style="font-size:12px;color:var(--gray);line-height:1.6">የተጫወቷቸው የቅርብ ጨዋታዎች</div>
+  <div id="historyList" class="history-list">
+    <div class="history-empty">ታሪክ በመጫን ላይ...</div>
+  </div>
+</div>
+
 <div id="screenAdmin" class="screen">
   <div class="admin-header">
     <h2 class="screen-title" style="margin:0">⚙️ ADMIN PANEL</h2>
@@ -740,8 +759,8 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
     <span class="nav-center-label nav-game-label">GAME</span>
   </div>
 
-  <div class="nav-item" id="navWallet" onclick="goToWallet()">
-    <span class="nav-icon">💰</span><span>WALLET</span>
+  <div class="nav-item" id="navHistory" onclick="goToHistory()">
+    <span class="nav-icon">📜</span><span>HISTORY</span>
   </div>
 
   <div class="nav-item" id="navCards" onclick="navGo('screenRules','navCards')">
@@ -770,8 +789,6 @@ let autoClaimSent=false;
 let activePlayers=[];
 let postGameResetTimer=null;
 let postGameResetRejoinTimer=null;
-let postGameWalletBounceTimer=null;
-let postGameWalletReturnTimer=null;
 // The Telegram-authenticated Bingo server is the primary source of truth for the player's
 // name and wallet. /api/user/:telegramId is only a fallback when the WebSocket auth
 // message does not contain a usable account balance.
@@ -909,6 +926,62 @@ function goToGame(){
   }
 }
 function goToWallet(){navGo('screenWallet','navWallet');}
+async function goToHistory(){
+  navGo('screenHistory','navHistory');
+  await loadGameHistory();
+}
+
+function formatHistoryDate(value){
+  if(!value) return '—';
+  const d=new Date(value);
+  if(Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString();
+}
+
+function loadGameHistory(){
+  const list=document.getElementById('historyList');
+  if(!list) return Promise.resolve();
+  if(!telegramId) telegramId=getTelegramId();
+  if(!telegramId){
+    list.innerHTML='<div class="history-empty">የTelegram ሂሳብ አልተገናኘም።</div>';
+    return Promise.resolve();
+  }
+  list.innerHTML='<div class="history-empty">ታሪክ በመጫን ላይ...</div>';
+  return fetch(`${API_BASE}/api/history/${encodeURIComponent(telegramId)}?limit=50`,{cache:'no-store'})
+    .then(async r=>{
+      const data=await r.json().catch(()=>[]);
+      if(!r.ok) throw new Error(data.error||'History request failed');
+      return data;
+    })
+    .then(rows=>{
+      if(!Array.isArray(rows)||!rows.length){
+        list.innerHTML='<div class="history-empty">📜 እስካሁን የጨዋታ ታሪክ የለዎትም።</div>';
+        return;
+      }
+      list.innerHTML=rows.map(g=>{
+        const won=g.won===true || g.won==='true';
+        const played=Number(g.amount_played)||0;
+        const wonAmount=Number(g.amount_won)||0;
+        const net=wonAmount-played;
+        const stake=Number(g.stake_amount)||0;
+        return `<div class="history-card">
+          <div class="history-top">
+            <div style="font-weight:900">🎱 ${esc(g.stake_id||('ST'+stake))}</div>
+            <div class="history-result ${won?'win':'loss'}">${won?'🏆 አሸንፈዋል':'— አላሸነፉም'}</div>
+          </div>
+          <div class="history-row"><span class="history-key">ቀን</span><span class="history-value history-date">${esc(formatHistoryDate(g.started_at))}</span></div>
+          <div class="history-row"><span class="history-key">የጨዋታ ዋጋ</span><span class="history-value">${stake.toFixed(2)} ብር</span></div>
+          <div class="history-row"><span class="history-key">የተጫወቱት</span><span class="history-value">-${played.toFixed(2)} ብር</span></div>
+          <div class="history-row"><span class="history-key">ያሸነፉት</span><span class="history-value">${wonAmount>0?'+':''}${wonAmount.toFixed(2)} ብር</span></div>
+          <div class="history-row" style="margin-top:5px;padding-top:7px;border-top:1px solid #2d1b4e"><span class="history-key">የዚህ ጨዋታ ልዩነት</span><span class="history-value" style="color:${net>=0?'var(--green)':'var(--red)'}">${net>=0?'+':''}${net.toFixed(2)} ብር</span></div>
+        </div>`;
+      }).join('');
+    })
+    .catch(e=>{
+      console.error('History:',e);
+      list.innerHTML='<div class="history-empty">የጨዋታ ታሪክን መጫን አልተቻለም።</div>';
+    });
+}
 
 // ─── WEBSOCKET ────────────────────────────────────────────────
 function connect(){
@@ -924,41 +997,6 @@ function connect(){
 function wsSend(obj){if(ws&&ws.readyState===1)ws.send(JSON.stringify(obj));}
 
 // ─── POST-GAME RESET / SAME-STAKE RETURN ───────────────────────
-// Mimic the successful manual Wallet -> Game navigation during the post-game
-// countdown. This gives the browser a clean screen transition while the server
-// finishes resetting the same room in the background. Return shortly before the
-// 9-second server reset so the reset message is received while the game area is visible.
-function startPostGameWalletBounce(seconds){
-  if(postGameWalletBounceTimer) clearTimeout(postGameWalletBounceTimer);
-  if(postGameWalletReturnTimer) clearTimeout(postGameWalletReturnTimer);
-
-  const total=Math.max(2,Number(seconds)||9);
-
-  // Move to Wallet almost immediately, just like the user's manual workaround.
-  postGameWalletBounceTimer=setTimeout(()=>{
-    postGameWalletBounceTimer=null;
-    navGo('screenWallet','navWallet');
-
-    // Come back to the current game's screen shortly before the server's reset.
-    // Do not call joinRoom here: while the old round is still playing that would
-    // create a spectator entry instead of returning to the same room.
-    const returnDelay=Math.max(500,(total*1000)-1000);
-    postGameWalletReturnTimer=setTimeout(()=>{
-      postGameWalletReturnTimer=null;
-      const roomId=myRoomId || localStorage.getItem('roomId');
-      if(roomId){
-        myRoomId=roomId;
-        navGo('screenGame','navGame');
-      }
-    },returnDelay);
-  },100);
-}
-
-function cancelPostGameWalletBounce(){
-  if(postGameWalletBounceTimer){ clearTimeout(postGameWalletBounceTimer); postGameWalletBounceTimer=null; }
-  if(postGameWalletReturnTimer){ clearTimeout(postGameWalletReturnTimer); postGameWalletReturnTimer=null; }
-}
-
 let postGameAutoRefreshTimer=null;
 
 function refreshCardsForNewRound(){
@@ -1004,7 +1042,6 @@ function updatePostGameCountdown(seconds){
 }
 
 function finishPostGameReset(msg={}){
-  cancelPostGameWalletBounce();
   if(postGameAutoRefreshTimer){ clearTimeout(postGameAutoRefreshTimer); postGameAutoRefreshTimer=null; }
   if(postGameResetTimer){ clearInterval(postGameResetTimer); postGameResetTimer=null; }
   if(postGameResetRejoinTimer){ clearTimeout(postGameResetRejoinTimer); postGameResetRejoinTimer=null; }
@@ -1650,8 +1687,8 @@ function showWinnerOverlay(msg){
   document.getElementById('winnerName').innerText=winnerList.length?winnerList.join(' & '):'አሸናፊ የለም';
   document.getElementById('winnerAmount').innerText=noWinner?'—':(iWon?`+${msg.winAmount} ETB`:`የሽልማት ገንዘብ: ${msg.winAmount} ETB`);
   document.getElementById('splitTag').style.display=msg.isSplit?'inline-block':'none';
-  document.getElementById('winnerMsg').innerText=iWon?'🎉 እንኳን ደስ አላችሁ! ይህን ዙር አሸንፈዋል።':(noWinner?'በዚህ ዙር ትክክለኛ BINGO አልተገኘም።':'ዙሩ ተጠናቋል። አሸናፊው ካርቴላ ከታች ተመልክቷል።');
-  document.getElementById('resultStatus').innerText=iWon?'የሽልማት ገንዘብዎ ወደ ሂሳብዎ ተጨምሯል።':(noWinner?'ሽልማት አልተሰጠም።':'ይህን ዙር አላሸነፉም።');
+  document.getElementById('winnerMsg').innerText=iWon?'🎉 እንኳን ደስ አላችሁ! ይህን ዙር አሸንፈዋል።':(noWinner?'በዚህ ዙር ትክክለኛ BINGO አልተገኘም።':'');
+  document.getElementById('resultStatus').innerText=iWon?'የሽልማት ገንዘብዎ ወደ ሂሳብዎ ተጨምሯል።':(noWinner?'ሽልማት አልተሰጠም።':'');
 
   const cards=Array.isArray(msg.winningCards)?msg.winningCards:[];
   let winningCard=cards[0]||null;
