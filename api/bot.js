@@ -513,97 +513,68 @@ async function showHome(
   ctx,
   user
 ) {
+  const telegramId =    ctx.from.id;
+const user = await db.getUserByTelegramId(telegramId);
+  
+const canPlay =
+  user &&
+  user.is_active === true &&
+  user.is_blocked !== true;
+  
 
-  const telegramId =
-    ctx.from.id;
+const user = await db.getUserByTelegramId(telegramId);
 
+const keyboard = [];
 
-  const keyboard = [
-
-    [
-
-      {
-
-        text:
-          "🎮 Play",
-
-        web_app: {
-
-          url:
-            `${GAME_URL}?tid=${telegramId}`
-
-        }
-
+if (user && user.is_active === true && user.is_blocked !== true) {
+  keyboard.push([
+    {
+      text: "🎮 Play",
+      web_app: {
+        url: `${GAME_URL}?tid=${telegramId}`
       }
+    }
+  ]);
+}
 
-    ],
-
-    [
-
-      {
-
-        text:
-          "💰 Balance",
-
-        callback_data:
-          "balance"
-
-      },
-
-      {
-
-        text:
-          "🔄 Transfer",
-
-        callback_data:
-          "transfer"
-
-      }
-
-    ],
-
-    [
-
-      {
-
-        text:
-          "💎 Deposit",
-
-        callback_data:
-          "deposit"
-
-      },
-
-      {
-
-        text:
-          "🏧 Withdraw",
-
-        callback_data:
-          "withdraw"
-
-      }
-
-    ],
-
-    [
-      {
-        text: "📊 Statistics",
-        callback_data: "statistics"
-      },
-      {
-        text: "🆘 Support",
-        callback_data: "support"
-      }
-    ],
-    [
-      {
-        text: "🗑️ Delete",
-        callback_data: "delete"
-      }
-    ]
-
-  ];
+keyboard.push(
+  [
+    {
+      text: "💰 Balance",
+      callback_data: "balance"
+    },
+    {
+      text: "🔄 Transfer",
+      callback_data: "transfer"
+    }
+  ],
+  [
+    {
+      text: "💎 Deposit",
+      callback_data: "deposit"
+    },
+    {
+      text: "🏧 Withdraw",
+      callback_data: "withdraw"
+    }
+  ],
+  [
+    {
+      text: "📊 Statistics",
+      callback_data: "statistics"
+    },
+    {
+      text: "🆘 Support",
+      callback_data: "support"
+    }
+  ],
+  [
+    {
+      text: "🗑️ Delete",
+      callback_data: "delete"
+    }
+  ]
+);
 
 
   // ============================================================
