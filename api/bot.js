@@ -5642,7 +5642,9 @@ bot.callbackQuery(
 
       }
 
+ clearPendingState(user.id
 
+    );
       await showHome(
         ctx,
         user
