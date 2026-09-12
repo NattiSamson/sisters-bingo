@@ -276,7 +276,137 @@ async function addBonusToUser(
     telegramId: user.telegram_id
   };
 }
+// ============================================================
+// CREATE TIME-BASED DEPOSIT BONUS
+// ============================================================
 
+async function createBonusCampaign(
+  name,
+  startsAt,
+  endsAt,
+  bonusMode,
+  bonusAmount,
+  depositFrequency,
+  adminTelegramId
+) {
+  const cleanName = String(
+    name || "Deposit Bonus"
+  )
+    .trim()
+    .substring(0, 100);
+
+  if (!cleanName) {
+    throw new Error(
+      "Bonus campaign name is required"
+    );
+  }
+
+  const mode = String(
+    bonusMode || ""
+  )
+    .trim()
+    .toLowerCase();
+
+  if (
+    mode !== "match_deposit" &&
+    mode !== "fixed"
+  ) {
+    throw new Error(
+      "Invalid bonus mode"
+    );
+  }
+
+  const frequency = String(
+    depositFrequency || ""
+  )
+    .trim()
+    .toLowerCase();
+
+  if (
+    frequency !== "one_time" &&
+    frequency !== "every_deposit"
+  ) {
+    throw new Error(
+      "Invalid deposit bonus frequency"
+    );
+  }
+
+  const start = new Date(startsAt);
+  const end = new Date(endsAt);
+
+  if (
+    Number.isNaN(start.getTime()) ||
+    Number.isNaN(end.getTime())
+  ) {
+    throw new Error(
+      "Invalid start or end date"
+    );
+  }
+
+  if (end <= start) {
+    throw new Error(
+      "End time must be after start time"
+    );
+  }
+
+  if (end.getTime() <= Date.now()) {
+    throw new Error(
+      "Bonus end time must be in the future"
+    );
+  }
+
+  let amount = null;
+
+  if (mode === "fixed") {
+    amount = Number(bonusAmount);
+
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      throw new Error(
+        "Invalid fixed bonus amount"
+      );
+    }
+  }
+
+  const { rows } = await pool.query(
+    `
+    INSERT INTO bonus_campaigns (
+      name,
+      starts_at,
+      ends_at,
+      bonus_mode,
+      bonus_amount,
+      deposit_frequency,
+      is_active,
+      created_by
+    )
+    VALUES (
+      $1,
+      $2,
+      $3,
+      $4,
+      $5,
+      $6,
+      TRUE,
+      $7
+    )
+    RETURNING *
+    `,
+    [
+      cleanName,
+      start,
+      end,
+      mode,
+      amount,
+      frequency,
+      adminTelegramId
+    ]
+  );
+
+  return rows[0];
+}
 
 // ============================================================
 // SPECIFIC USER BONUS
@@ -4493,142 +4623,6 @@ async giveBonusToAllActiveUsers(
 
   }
 },
-
-
-// ============================================================
-// CREATE TIME-BASED DEPOSIT BONUS
-// ============================================================
-
-async createBonusCampaign(
-  name,
-  startsAt,
-  endsAt,
-  bonusMode,
-  bonusAmount,
-  depositFrequency,
-  adminTelegramId
-) {
-  const cleanName = String(
-    name || "Deposit Bonus"
-  )
-    .trim()
-    .substring(0, 100);
-
-  if (!cleanName) {
-    throw new Error(
-      "Bonus campaign name is required"
-    );
-  }
-
-  const mode = String(
-    bonusMode || ""
-  )
-    .trim()
-    .toLowerCase();
-
-  if (
-    mode !== "match_deposit" &&
-    mode !== "fixed"
-  ) {
-    throw new Error(
-      "Invalid bonus mode"
-    );
-  }
-
-  const frequency = String(
-    depositFrequency || ""
-  )
-    .trim()
-    .toLowerCase();
-
-  if (
-    frequency !== "one_time" &&
-    frequency !== "every_deposit"
-  ) {
-    throw new Error(
-      "Invalid deposit bonus frequency"
-    );
-  }
-
-  const start = new Date(startsAt);
-  const end = new Date(endsAt);
-
-  if (
-    Number.isNaN(start.getTime()) ||
-    Number.isNaN(end.getTime())
-  ) {
-    throw new Error(
-      "Invalid start or end date"
-    );
-  }
-
-  if (end <= start) {
-    throw new Error(
-      "End time must be after start time"
-    );
-  }
-
-  if (end.getTime() <= Date.now()) {
-    throw new Error(
-      "Bonus end time must be in the future"
-    );
-  }
-
-  let amount = null;
-
-  if (mode === "fixed") {
-    amount = Number(bonusAmount);
-
-    if (
-      !Number.isFinite(amount) ||
-      amount <= 0
-    ) {
-      throw new Error(
-        "Invalid fixed bonus amount"
-      );
-    }
-  }
-
-  const { rows } = await pool.query(
-    `
-    INSERT INTO bonus_campaigns (
-      name,
-      starts_at,
-      ends_at,
-      bonus_mode,
-      bonus_amount,
-      deposit_frequency,
-      is_active,
-      created_by
-    )
-    VALUES (
-      $1,
-      $2,
-      $3,
-      $4,
-      $5,
-      $6,
-      TRUE,
-      $7
-    )
-    RETURNING *
-    `,
-    [
-      cleanName,
-      start,
-      end,
-      mode,
-      amount,
-      frequency,
-      adminTelegramId
-    ]
-  );
-
-  return rows[0];
-},
-
-
-
 
 // ============================================================
 // APPLY TIME-BASED BONUS TO A DEPOSIT
