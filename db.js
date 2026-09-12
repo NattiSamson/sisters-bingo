@@ -2949,10 +2949,10 @@ module.exports = {
   /*
    * IMPORTANT:
    * Keep this function name because the current bot.js
-   * calls approveDepositttttttttttt().
+   * calls approveDeposit().
    */
 
-  async approveDepositttttttttttt(
+  async approveDeposit(
     receipt,
     telegramId
   ) {
