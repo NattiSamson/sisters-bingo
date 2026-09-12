@@ -1949,7 +1949,7 @@ async getPaymentAccountsByMethod(
 
         pa.is_active,
         
-        pa.permanently_removed,
+        pa.is_removed,
 
         pm.name AS pm_name,
 
@@ -1980,7 +1980,7 @@ async getPaymentAccountsByMethod(
 
         AND pt.is_active = TRUE
 
-        AND pa.permanently_removed = FALSE
+        AND pa.is_removed = FALSE
 
       ORDER BY
         pa.account_number ASC
@@ -2020,7 +2020,7 @@ async getPaymentAccountById(
 
         pa.is_active,
 
-        pa.permanently_removed,
+        pa.is_removed,
 
         pm.name AS pm_name,
 
@@ -2051,7 +2051,7 @@ async getPaymentAccountById(
 
         AND pt.is_active = TRUE
 
-        AND pa.permanently_removed = FALSE
+        AND pa.is_removed = FALSE
 
       LIMIT 1
       `,
@@ -2176,7 +2176,7 @@ async getPaymentAccountById(
 // 1. payment_accounts.is_active = TRUE
 // 2. payment_methods.is_active = TRUE
 // 3. payment_types.is_active = TRUE
-// 4. payment_types.permanently_removed = FALSE
+// 4. payment_types.is_removed = FALSE
 //
 // ============================================================
 
@@ -2199,7 +2199,7 @@ async getAllPaymentAccountsForAdmin() {
 
         pa.is_active,
 
-        pa.permanently_removed,
+        pa.is_removed,
 
         pm.name AS pm_name,
 
@@ -2228,7 +2228,7 @@ async getAllPaymentAccountsForAdmin() {
 
         AND pt.is_active = TRUE
 
-        AND pa.permanently_removed = FALSE
+        AND pa.is_removed = FALSE
 
       ORDER BY
         pm.order ASC,
