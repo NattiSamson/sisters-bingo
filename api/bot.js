@@ -904,7 +904,7 @@ if (admin && admin.admin_role === "main") {
           "📊 Statistics",
     
         callback_data:
-          "admin_statistics"
+          "admin_statistics_menu"
       }
     ]);
 }
@@ -1123,6 +1123,7 @@ bot.on("message:text", async (ctx, next) => {
     // ============================================================
     const userSearchState =
       pendingAdminUserSearch.get(telegramId);
+    
 
     if (
       userSearchState &&
@@ -1269,6 +1270,116 @@ bot.on("message:text", async (ctx, next) => {
 
       return;
     }
+
+    // ============================================================
+// USER FINANCIAL STATISTICS PHONE SEARCH
+// ============================================================
+
+const financialStatsState =
+  pendingAdminRoleSearch.get(telegramId);
+
+if (
+  financialStatsState &&
+  financialStatsState.step ===
+    "financial_statistics_phone"
+) {
+
+  const admin =
+    await db.getAdminByTelegramId(
+      telegramId
+    );
+
+  if (
+    !admin ||
+    (
+      admin.admin_role !== "main" &&
+      admin.admin_role !== "statistics"
+    )
+  ) {
+
+    pendingAdminRoleSearch.delete(
+      telegramId
+    );
+
+    return await ctx.reply(
+      "⛔ You are not authorized to view statistics."
+    );
+
+  }
+
+  const phone =
+    ctx.message.text.trim();
+
+  const user =
+    await db.getUserByPhoneForAdmin(
+      phone
+    );
+
+  if (!user) {
+
+    return await ctx.reply(
+      "❌ User not found.\n\n" +
+      "Please send a valid registered phone number."
+    );
+
+  }
+
+  const stats =
+    await db.getUserFinancialStatistics(
+      user.id
+    );
+
+  pendingAdminRoleSearch.delete(
+    telegramId
+  );
+
+  const message =
+    `👤 *USER FINANCIAL STATISTICS*\n\n` +
+
+    `👤 Name: *${user.name || "Unknown"}*\n` +
+    `📱 Phone: \`${user.phone || phone}\`\n\n` +
+
+    `💎 *Total Deposits*\n` +
+    `*${stats.totalDepositAmount.toFixed(2)} ETB*\n\n` +
+
+    `🏧 *Withdrawals*\n` +
+    `⏳ Pending: *${stats.pendingWithdrawalAmount.toFixed(2)} ETB*\n` +
+    `✅ Approved: *${stats.approvedWithdrawalAmount.toFixed(2)} ETB*\n` +
+    `❌ Rejected: *${stats.rejectedWithdrawalAmount.toFixed(2)} ETB*`;
+
+  return await ctx.reply(
+    message,
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+
+          [
+            {
+              text: "👤 Search Another User",
+              callback_data:
+                "admin_user_financial_statistics"
+            }
+          ],
+
+          [
+            {
+              text: "⬅️ Statistics",
+              callback_data:
+                "admin_statistics_menu"
+            },
+            {
+              text: "🏠 Home",
+              callback_data:
+                "admin_home"
+            }
+          ]
+
+        ]
+      }
+    }
+  );
+}
 
     // ============================================================
     // NOT A MANAGE USER MESSAGE
@@ -1721,6 +1832,245 @@ bot.callbackQuery(
       console.error(
         "Admin manage user cancel error:",
         error
+      );
+
+    }
+
+  }
+);
+
+// ============================================================
+// ADMIN STATISTICS MENU
+// ============================================================
+
+bot.callbackQuery(
+  "admin_statistics_menu",
+  async (ctx) => {
+
+    try {
+
+      await answerCallback(ctx);
+
+      const admin =
+        await requireAdminPermission(
+          ctx,
+          "statistics"
+        );
+
+      if (!admin) {
+        return;
+      }
+
+      await ctx.editMessageText(
+        "📊 *STATISTICS*\n\n" +
+        "Choose the type of statistics you want to view:",
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+
+              [
+                {
+                  text: "📊 General Statistics",
+                  callback_data: "admin_statistics"
+                }
+              ],
+
+              [
+                {
+                  text: "💰 Financial Statistics",
+                  callback_data: "admin_financial_statistics"
+                }
+              ],
+
+              [
+                {
+                  text: "👤 User Financial Statistics",
+                  callback_data: "admin_user_financial_statistics"
+                }
+              ],
+
+              [
+                {
+                  text: "🏠 Home",
+                  callback_data: "admin_home"
+                }
+              ]
+
+            ]
+          }
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Admin statistics menu error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not open statistics."
+      );
+
+    }
+
+  }
+);
+// ============================================================
+// ADMIN FINANCIAL STATISTICS
+// ============================================================
+
+bot.callbackQuery(
+  "admin_financial_statistics",
+  async (ctx) => {
+
+    try {
+
+      await answerCallback(ctx);
+
+      const admin =
+        await requireAdminPermission(
+          ctx,
+          "statistics"
+        );
+
+      if (!admin) {
+        return;
+      }
+
+      const stats =
+        await db.getAdminFinancialStatistics();
+
+      const message =
+        `💰 *FINANCIAL STATISTICS*\n\n` +
+
+        `💎 *Total Deposits*\n` +
+        `*${stats.totalDepositAmount.toFixed(2)} ETB*\n\n` +
+
+        `🏧 *Withdrawals*\n` +
+        `⏳ Pending: *${stats.pendingWithdrawalAmount.toFixed(2)} ETB*\n` +
+        `✅ Approved: *${stats.approvedWithdrawalAmount.toFixed(2)} ETB*\n` +
+        `❌ Rejected: *${stats.rejectedWithdrawalAmount.toFixed(2)} ETB*`;
+
+      await ctx.editMessageText(
+        message,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+
+              [
+                {
+                  text: "🔄 Refresh",
+                  callback_data:
+                    "admin_financial_statistics"
+                }
+              ],
+
+              [
+                {
+                  text: "⬅️ Statistics",
+                  callback_data:
+                    "admin_statistics_menu"
+                },
+                {
+                  text: "🏠 Home",
+                  callback_data:
+                    "admin_home"
+                }
+              ]
+
+            ]
+          }
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Admin financial statistics error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not load financial statistics."
+      );
+
+    }
+
+  }
+);
+// ============================================================
+// ADMIN USER FINANCIAL STATISTICS
+// ============================================================
+
+bot.callbackQuery(
+  "admin_user_financial_statistics",
+  async (ctx) => {
+
+    try {
+
+      await answerCallback(ctx);
+
+      const admin =
+        await requireAdminPermission(
+          ctx,
+          "statistics"
+        );
+
+      if (!admin) {
+        return;
+      }
+
+      clearPendingState(ctx.from.id);
+
+      pendingAdminRoleSearch.set(
+        ctx.from.id,
+        {
+          step: "financial_statistics_phone"
+        }
+      );
+
+      await ctx.editMessageText(
+        "👤 *USER FINANCIAL STATISTICS*\n\n" +
+        "Please send the user's phone number.\n\n" +
+        "Example:\n" +
+        "`0912345678`\n" +
+        "or\n" +
+        "`+251912345678`",
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "⬅️ Statistics",
+                  callback_data:
+                    "admin_statistics_menu"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Home",
+                  callback_data:
+                    "admin_home"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Admin user financial statistics search error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Something went wrong."
       );
 
     }
