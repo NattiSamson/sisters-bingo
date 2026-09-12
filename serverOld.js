@@ -768,10 +768,7 @@ async function endGame(room, winners, customMsg, noWinner){
         balance:cl?cl.balance:0,
         playerCount:0,
         stakeAmount:room.stake,
-        status:'waiting',
-        // Include the freshly reset pool in the same message so the client can
-        // render the new card grid immediately without a page reload/reconnect.
-        pool:CARD_POOL.map(c=>({id:c.id,taken:false,takenByMe:false}))
+        status:'waiting'
       });
     });
 

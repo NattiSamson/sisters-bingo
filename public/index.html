@@ -954,32 +954,6 @@ function updatePostGameCountdown(seconds){
   if(el) el.innerText=`ቀጣዩ ዙር በ ${n} ሰከንድ ውስጥ ይጀምራል`;
 }
 
-function startPostGameResetCountdown(seconds){
-  if(postGameResetTimer) clearInterval(postGameResetTimer);
-  if(postGameResetRejoinTimer) clearTimeout(postGameResetRejoinTimer);
-  let remaining=Math.max(1,Number(seconds)||10);
-  updatePostGameCountdown(remaining);
-  postGameResetTimer=setInterval(()=>{
-    remaining--;
-    if(remaining>0){
-      updatePostGameCountdown(remaining);
-      return;
-    }
-    clearInterval(postGameResetTimer);
-    postGameResetTimer=null;
-    // Navigate immediately at 0. The rejoin is deliberately delayed slightly so
-    // the server has time to finish clearing the old round.
-    finishPostGameReset({
-      roomId:myRoomId,
-      stakeId:myStakeId || localStorage.getItem('stakeId'),
-      balance:currentBalance,
-      _fromFallback:true
-    });
-    // Give the server reset a moment to complete, then use the normal reconnect path.
-    setTimeout(()=>window.location.reload(),700);
-  },1000);
-}
-
 function finishPostGameReset(msg={}){
   cancelPostGameWalletBounce();
   if(postGameResetTimer){ clearInterval(postGameResetTimer); postGameResetTimer=null; }
@@ -1008,24 +982,10 @@ function finishPostGameReset(msg={}){
   // state. Always show the card-selection screen for the SAME stake.
   navGo('screenCards','navCards');
 
-  // Hard-refresh after the server has reset the room. This intentionally uses the same
-  // reconnect path as manually leaving Wallet and returning to Game, which reliably
-  // re-associates the Telegram player with the SAME room and opens fresh card selection.
-  if(!msg._fromFallback){
-    setTimeout(()=>window.location.reload(),350);
-  }
-
-  // If this was the fallback path, rejoin the same stake after the server reset.
-  // The normal server backToCardSelection message cancels this because it has
-  // already re-associated the current socket with the room.
-  if(msg._fromFallback && stakeId && ws && ws.readyState===1){
-    postGameResetRejoinTimer=setTimeout(()=>{
-      // The server has already reset the same room. Reload instead of creating a
-      // second room/spectator entry through joinRoom. The reconnect handler restores
-      // the existing Telegram player slot and opens fresh card selection.
-      window.location.reload();
-    },500);
-  }
+  // IMPORTANT: do not reload the page here. The server is authoritative for the
+  // round reset. When it sends backToCardSelection, this function switches the
+  // existing page to card selection, and the following cardPoolUpdate message
+  // renders the fresh card pool on the same WebSocket connection.
 }
 
 // ─── MESSAGE HANDLER ─────────────────────────────────────────
@@ -1235,16 +1195,12 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
                  (Array.isArray(msg.winnerTelegramIds)&&msg.winnerTelegramIds.map(String).includes(String(telegramId)));
       showToast(iWon?'🏆 አሸንፈዋል! የሽልማት ገንዘብዎ ወደ ሂሳብዎ ተጨምሯል።':'ዙሩ ተጠናቋል — ሂሳብዎ በጨዋታው ሰርቨር ተስተካክሏል።','');
       setTimeout(()=>refreshAccountBalance(),300);
-      // Do NOT depend on the server's final navigation message. Start a client-side
-      // 9-second safety timer immediately so the user is guaranteed to leave the
-      // finished-game screen even if a WebSocket reset message is delayed/lost.
-      const postGameSeconds=Number(msg.resetCountdown)||10;
-      startPostGameResetCountdown(postGameSeconds);
+      // The SERVER controls the countdown and final reset. Do not start another
+      // browser timer here; wait for backToCardSelection from the server.
       break;
 
     case 'resetCountdown':
-      // Server countdown is authoritative while it is arriving. The local timer is
-      // still running as a safety net.
+      // Server-authoritative countdown. The browser only displays what the server sends.
       updatePostGameCountdown(Number(msg.seconds));
       break;
 
