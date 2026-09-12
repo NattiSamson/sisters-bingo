@@ -630,7 +630,7 @@ function evaluateClaims(room){
 
   cheaters.forEach(p=>{
     p.disqualified=true;
-    send(p.ws,{type:'disqualified',message:'🚫 False BINGO claim — you are disqualified!'});
+    send(p.ws,{type:'disqualified',message:'🚫 የተሳሳተ BINGO ጥያቄ — ከጨዋታው ተሰርዘዋል!'});
   });
 
   room.claimedThisRound=[]; room.claimWindowOpen=false;
@@ -687,9 +687,9 @@ async function endGame(room, winners, customMsg, noWinner){
   }
 
   const isSplit=winners&&winners.length>1;
-  const msg=customMsg||(noWinner?'No winner this round':
-    isSplit?`🤝 Split! ${winnerNames.join(' & ')} each win ${winAmount} ETB!`
-           :`🏆 ${winnerNames[0]} wins ${winAmount} ETB!`);
+  const msg=customMsg||(noWinner?'በዚህ ዙር አሸናፊ የለም':
+    isSplit?`🤝 የተከፋፈለ ሽልማት! ${winnerNames.join(' & ')} እያንዳንዳቸው ${winAmount} ETB አሸንፈዋል!`
+           :`🏆 ${winnerNames[0]} ${winAmount} ETB አሸንፈዋል!`);
 
   // Include the winning cartela(s) so both winners and losers see a clear
   // result page with the winning card, just like the reference design.
@@ -707,7 +707,7 @@ async function endGame(room, winners, customMsg, noWinner){
 
   // Broadcast the result to EVERY connected player in the room. Keep the room/stake
   // identifiers in this message so clients can return to the same stake.
-  const RESET_SECONDS=9;
+  const RESET_SECONDS=10;
   broadcast(room,{
     type:'gameOver',
     roomId:room.roomId,
@@ -978,7 +978,7 @@ wss.on('connection',(ws)=>{
 
                   const sc=STAKES.find(s=>s.id===msg.stakeId);
 
-                 if(!sc) return send(ws,{type:'error',message:'Invalid stake.'});
+                 if(!sc) return send(ws,{type:'error',message:'የተሳሳተ የውርርድ መጠን።'});
 
 
                  // Joining/navigating to page 2 must never be blocked by a database
@@ -1045,7 +1045,7 @@ wss.on('connection',(ws)=>{
 
               const room=getOrCreateRoom(msg.stakeId);
 
-              if(room.status!=='waiting'&&room.status!=='countdown') return send(ws,{type:'error',message:'Game already running.'});
+              if(room.status!=='waiting'&&room.status!=='countdown') return send(ws,{type:'error',message:'ጨዋታው ቀድሞውኑ ተጀምሯል።'});
 
               room.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,ws,cardId:null,cardId2:null,hasPaid:false,disqualified:false});
 
@@ -1081,7 +1081,7 @@ wss.on('connection',(ws)=>{
 
               if(!p) break;
 
-              if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'Card already taken!'});
+              if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'ይህ ካርቴላ ቀድሞውኑ ተመርጧል!'});
 
 
               const changedIds=new Set([cardId]);
@@ -1119,19 +1119,19 @@ wss.on('connection',(ws)=>{
 
                     if(e.code==='ACCOUNT_NOT_FOUND'){
 
-                      return send(ws,{type:'error',message:'Neon account not found for this Telegram ID. Please reconnect Telegram.'});
+                      return send(ws,{type:'error',message:'ለዚህ Telegram ID የNeon ሂሳብ አልተገኘም። እባክዎ Telegramን እንደገና ያገናኙ።'});
 
                     }
 
                     if(e.code==='NO_TELEGRAM_ID'){
 
-                      return send(ws,{type:'error',message:'Telegram account is not authenticated. Please reconnect Telegram.'});
+                      return send(ws,{type:'error',message:'የTelegram ሂሳብ አልተረጋገጠም። እባክዎ Telegramን እንደገና ያገናኙ።'});
 
                     }
 
                     console.error('Card 1 balance charge:',e.message);
 
-                    return send(ws,{type:'error',message:'Neon balance check failed. Please try again.'});
+                    return send(ws,{type:'error',message:'የNeon ሂሳብ ማረጋገጥ አልተሳካም። እባክዎ እንደገና ይሞክሩ።'});
 
                   }
 
@@ -1157,7 +1157,7 @@ wss.on('connection',(ws)=>{
 
                 if(!p.cardId){
 
-                  return send(ws,{type:'error',message:'Select your first card before choosing a second card.'});
+                  return send(ws,{type:'error',message:'ሁለተኛውን ካርቴላ ከመምረጥዎ በፊት የመጀመሪያውን ካርቴላ ይምረጡ።'});
 
                 }
 
@@ -1184,19 +1184,19 @@ wss.on('connection',(ws)=>{
 
                     if(e.code==='ACCOUNT_NOT_FOUND'){
 
-                      return send(ws,{type:'error',message:'Neon account not found for this Telegram ID. Please reconnect Telegram.'});
+                      return send(ws,{type:'error',message:'ለዚህ Telegram ID የNeon ሂሳብ አልተገኘም። እባክዎ Telegramን እንደገና ያገናኙ።'});
 
                     }
 
                     if(e.code==='NO_TELEGRAM_ID'){
 
-                      return send(ws,{type:'error',message:'Telegram account is not authenticated. Please reconnect Telegram.'});
+                      return send(ws,{type:'error',message:'የTelegram ሂሳብ አልተረጋገጠም። እባክዎ Telegramን እንደገና ያገናኙ።'});
 
                     }
 
                     console.error('Card 2 balance charge:',e.message);
 
-                    return send(ws,{type:'error',message:'Neon balance check failed. Please try again.'});
+                    return send(ws,{type:'error',message:'የNeon ሂሳብ ማረጋገጥ አልተሳካም። እባክዎ እንደገና ይሞክሩ።'});
 
                   }
 
@@ -1258,7 +1258,7 @@ wss.on('connection',(ws)=>{
 
                   room.takenCardIds.add(releasedId);
 
-                  return send(ws,{type:'error',message:'Unable to refund the second-card stake. Please try again.'});
+                  return send(ws,{type:'error',message:'የሁለተኛው ካርቴላ ክፍያ መመለስ አልተቻለም። እባክዎ እንደገና ይሞክሩ።'});
 
                 }
 
@@ -1302,7 +1302,7 @@ wss.on('connection',(ws)=>{
 
                     releasedIds.forEach(id=>room.takenCardIds.add(id));
 
-                    return send(ws,{type:'error',message:'Unable to refund your stake. Please try again.'});
+                    return send(ws,{type:'error',message:'የካርቴላ ክፍያዎን መመለስ አልተቻለም። እባክዎ እንደገና ይሞክሩ።'});
 
                   }
 
@@ -1334,7 +1334,7 @@ wss.on('connection',(ws)=>{
 
               if(!p||p.disqualified||(!p.cardId&&!p.cardId2)) return;
 
-              if(!room.claimWindowOpen) return send(ws,{type:'claimTooLate',message:'Too late!'});
+              if(!room.claimWindowOpen) return send(ws,{type:'claimTooLate',message:'ጊዜው አልፏል!'});
 
               if(!room.claimedThisRound.find(c=>c.playerId===client.playerId))
 

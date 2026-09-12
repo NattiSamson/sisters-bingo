@@ -48,19 +48,12 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 /* CARD SELECTION */
 .cd-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 .cd-countdown{color:var(--gold);font-weight:700;font-size:14px}
-.pool-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;height:320px;overflow-y:auto;padding:3px}
+.pool-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;height:380px;overflow-y:auto;padding:3px}
 .pool-btn{background:#fff;border:1px solid #d8d8d8;color:#1a0a2e;padding:6px 2px;border-radius:6px;font-weight:700;cursor:pointer;text-align:center;font-size:10px;line-height:1.1;transition:all .15s}
 .pool-btn:hover{border-color:var(--gold)}
 .pool-btn.taken{background:#8b1e1e;color:#ffd0d0;cursor:not-allowed;opacity:.78}
 /* A card selected by the current player is GREEN; cards taken by other players are RED. */
 .pool-btn.mine1,.pool-btn.mine2{background:#16a34a!important;color:#fff!important;border-color:#4ade80!important;box-shadow:0 0 0 1px rgba(74,222,128,.18)}
-/* Selected card slots */
-.selected-cards-row{display:flex;gap:8px;margin-bottom:10px}
-.selected-slot{flex:1;background:var(--card);border:2px dashed #4a2d7a;border-radius:10px;padding:8px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:52px}
-.selected-slot.filled1{border:2px solid var(--purple);background:rgba(139,92,246,.12)}
-.selected-slot.filled2{border:2px solid #d97706;background:rgba(217,119,6,.12)}
-.selected-slot .slot-label{font-size:10px;color:var(--gray);text-transform:uppercase;margin-bottom:2px}
-.selected-slot .slot-num{font-family:'Orbitron',sans-serif;font-size:15px;font-weight:900}
 .leave-btn{width:100%;margin-top:12px;background:transparent;border:1px solid #4a2d7a;color:var(--gray);padding:11px;border-radius:8px;font-size:14px;cursor:pointer}
 /* Dual cards side by side in game */
 .dual-cards-wrap{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
@@ -306,19 +299,8 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div id="cdPrizePot" style="background:linear-gradient(135deg,rgba(250,204,21,.15),rgba(139,92,246,.15));border:1px solid rgba(250,204,21,.4);border-radius:10px;padding:10px 14px;text-align:center;font-weight:700;color:var(--gold);font-size:14px;margin-bottom:10px">
     🏆 ተጫዋቾች ሲቀላቀሉ የሽልማቱ ገንዘብ ይጨምራል
   </div>
-  <!-- Selected card slots -->
-  <div class="selected-cards-row">
-    <div class="selected-slot" id="slot1">
-      <div class="slot-label" style="color:var(--purple)">Card 1</div>
-      <div class="slot-num" style="color:var(--purple)" id="slot1Num">—</div>
-    </div>
-    <div class="selected-slot" id="slot2">
-      <div class="slot-label" style="color:#d97706">Card 2 (optional)</div>
-      <div class="slot-num" style="color:#d97706" id="slot2Num">—</div>
-    </div>
-  </div>
   <div id="poolGrid" class="pool-grid"></div>
-  <button class="leave-btn" onclick="leaveRoom()">← Leave Room</button>
+  <button class="leave-btn" onclick="leaveRoom()">← ጨዋታውን ይውጡ</button>
 </div>
 
 <div id="screenGame" class="screen">
@@ -337,7 +319,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <!-- Dual cards wrapper — becomes side-by-side when two cards selected -->
   <div id="cardsWrap">
     <div class="card-container" id="cardContainer1">
-      <div id="cardLabel" class="card-id-tag">Card ---</div>
+      <div id="cardLabel" class="card-id-tag">ካርቴላ ---</div>
       <div class="bingo-header">
         <div class="bingo-col-head bh-b">B</div><div class="bingo-col-head bh-i">I</div>
         <div class="bingo-col-head bh-n">N</div><div class="bingo-col-head bh-g">G</div>
@@ -346,7 +328,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
       <div id="cardBody" class="bingo-body"></div>
     </div>
     <div class="card-container" id="cardContainer2" style="display:none">
-      <div id="cardLabel2" class="card-id-tag" style="color:#d97706">Card ---</div>
+      <div id="cardLabel2" class="card-id-tag" style="color:#d97706">ካርቴላ ---</div>
       <div class="bingo-header">
         <div class="bingo-col-head bh-b">B</div><div class="bingo-col-head bh-i">I</div>
         <div class="bingo-col-head bh-n">N</div><div class="bingo-col-head bh-g">G</div>
@@ -564,15 +546,15 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div class="winner-label" id="winnerLabel">BINGO!</div>
   <div class="winner-name" id="winnerName">—</div>
   <div class="winner-amount" id="winnerAmount">0 ETB</div>
-  <div class="winner-split-tag" id="splitTag" style="display:none">🤝 Split Prize</div>
+  <div class="winner-split-tag" id="splitTag" style="display:none">🤝 የተከፋፈለ ሽልማት</div>
   <div class="winner-msg" id="winnerMsg"></div>
   <div class="result-card-wrap" id="resultCardWrap">
-    <div class="result-card-title" id="resultCardTitle">🏆 Winning Cartela : —</div>
+    <div class="result-card-title" id="resultCardTitle">🏆 አሸናፊ ካርቴላ : —</div>
     <div class="result-card-head"><div class="rh-b">B</div><div class="rh-i">I</div><div class="rh-n">N</div><div class="rh-g">G</div><div class="rh-o">O</div></div>
     <div class="result-card-body" id="resultCardBody"></div>
   </div>
   <div class="result-status" id="resultStatus"></div>
-  <div id="resetCountdown" style="margin-top:9px;font-size:13px;font-weight:800;color:var(--gold)">ቀጣዩ ዙር በ 9 ሰከንድ ውስጥ ይጀምራል</div>
+  <div id="resetCountdown" style="margin-top:9px;font-size:13px;font-weight:800;color:var(--gold)">ቀጣዩ ዙር በ 10 ሰከንድ ውስጥ ይጀምራል</div>
 </div>
 
 <div class="disq-overlay" id="disqOverlay">
@@ -599,7 +581,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
         <div style="display:flex;align-items:center;gap:10px">
           <div style="width:28px;height:28px;background:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">1</div>
           <div>
-            <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">Choose Your Card</div>
+            <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">ካርድዎን ይምረጡ</div>
             <div style="font-size:12px;color:var(--gold);line-height:1.5">ጨዋታውን ለመጀመር ከሚመጣልን ከ1-400 የመጫወቻ ካርድ ውስጥ አንዱን እንመርጣለን</div>
           </div>
         </div>
@@ -626,7 +608,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
     <!-- Tips box -->
     <div style="background:rgba(250,204,21,.08);border:1px solid rgba(250,204,21,.3);border-radius:10px;padding:12px;margin-top:12px">
       <div style="color:var(--gold);font-weight:700;font-size:13px;margin-bottom:8px">🎯 Card Selection Tips</div>
-      <div style="font-size:12px;color:#fff;line-height:1.8">✅ Choose cards that are not marked in red<br>✅ Preview your card before confirming<br>✅ Select quickly before registration time ends</div>
+      <div style="font-size:12px;color:#fff;line-height:1.8">✅ በቀይ ያልተመለከቱ ካርዶችን ይምረጡ<br>✅ ከማረጋገጥዎ በፊት ካርድዎን ይመልከቱ<br>✅ የምዝገባ ጊዜ ከማለቁ በፊት በፍጥነት ይምረጡ</div>
     </div>
   </div>
 
@@ -904,7 +886,7 @@ function goToGame(){
   const roomId = myRoomId || localStorage.getItem('roomId');
   if(!myStakeId) myStakeId=localStorage.getItem('stakeId');
   if(!roomId){
-    showToast('No active game right now','warn');
+    showToast('አሁን ንቁ ጨዋታ የለም።','warn');
     return;
   }
   myRoomId = roomId;
@@ -975,7 +957,7 @@ function updatePostGameCountdown(seconds){
 function startPostGameResetCountdown(seconds){
   if(postGameResetTimer) clearInterval(postGameResetTimer);
   if(postGameResetRejoinTimer) clearTimeout(postGameResetRejoinTimer);
-  let remaining=Math.max(1,Number(seconds)||9);
+  let remaining=Math.max(1,Number(seconds)||10);
   updatePostGameCountdown(remaining);
   postGameResetTimer=setInterval(()=>{
     remaining--;
@@ -1177,7 +1159,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       updateActivePlayers(msg.players||msg.activePlayers||[]);
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
       document.getElementById('playerCountVal').innerText=msg.playerCount;
-      document.getElementById('cardLabel').innerText='👀 Watching';
+      document.getElementById('cardLabel').innerText='👀 በመመልከት ላይ';
       document.getElementById('cardContainer2').style.display='none';
       document.getElementById('cardsWrap').classList.remove('dual-cards-wrap');
       document.getElementById('cardBody').innerHTML=`
@@ -1230,7 +1212,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       document.getElementById('playerCountVal').innerText=msg.playerCount||0;
       updateActivePlayers(msg.players||[]);
       break;
-    case 'claimTooLate': showToast('⏰ Too late! Claim before next number.','warn'); break;
+    case 'claimTooLate': showToast('⏰ ጊዜው አልፏል! ከሚቀጥለው ቁጥር በፊት ይጠይቁ።','warn'); break;
     case 'disqualified': showDisqualified(); break;
 
     case 'gameOver':
@@ -1251,14 +1233,13 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       const iWon=winnerList.includes(String(myName)) ||
                  winnerList.includes(String(myPlayerId)) ||
                  (Array.isArray(msg.winnerTelegramIds)&&msg.winnerTelegramIds.map(String).includes(String(telegramId)));
-      showToast(iWon?'🏆 You won! Your prize has been added to your account.':'Round finished — your balance was settled by the game server.','');
+      showToast(iWon?'🏆 አሸንፈዋል! የሽልማት ገንዘብዎ ወደ ሂሳብዎ ተጨምሯል።':'ዙሩ ተጠናቋል — ሂሳብዎ በጨዋታው ሰርቨር ተስተካክሏል።','');
       setTimeout(()=>refreshAccountBalance(),300);
       // Do NOT depend on the server's final navigation message. Start a client-side
       // 9-second safety timer immediately so the user is guaranteed to leave the
       // finished-game screen even if a WebSocket reset message is delayed/lost.
-      const postGameSeconds=Number(msg.resetCountdown)||9;
+      const postGameSeconds=Number(msg.resetCountdown)||10;
       startPostGameResetCountdown(postGameSeconds);
-      startPostGameWalletBounce(postGameSeconds);
       break;
 
     case 'resetCountdown':
@@ -1637,7 +1618,7 @@ function renderResultCard(card,calledNumbers){
     }
     body.appendChild(cell);
   });
-  document.getElementById('resultCardTitle').innerText=`🏆 Winning Cartela : ${card.cardId}`;
+  document.getElementById('resultCardTitle').innerText=`🏆 አሸናፊ ካርቴላ : ${card.cardId}`;
 }
 function showWinnerOverlay(msg){
   const ov=document.getElementById('winnerOverlay');
@@ -1647,14 +1628,14 @@ function showWinnerOverlay(msg){
              (Array.isArray(msg.winnerTelegramIds)&&msg.winnerTelegramIds.map(String).includes(String(telegramId)));
   const noWinner=!!msg.noWinner;
   ov.classList.toggle('result-loser',!iWon&&!noWinner);
-  document.getElementById('winnerLabel').innerText=noWinner?'ROUND OVER':(iWon?'BINGO!':'ROUND OVER');
+  document.getElementById('winnerLabel').innerText=noWinner?'ዙሩ ተጠናቋል':(iWon?'BINGO!':'ዙሩ ተጠናቋል');
   document.getElementById('resultTrophy').innerText=noWinner?'🎯':(iWon?'🏆':'😔');
   document.getElementById('resultConfetti').style.display=iWon?'block':'none';
-  document.getElementById('winnerName').innerText=winnerList.length?winnerList.join(' & '):'No Winner';
-  document.getElementById('winnerAmount').innerText=noWinner?'—':(iWon?`+${msg.winAmount} ETB`:`Prize: ${msg.winAmount} ETB`);
+  document.getElementById('winnerName').innerText=winnerList.length?winnerList.join(' & '):'አሸናፊ የለም';
+  document.getElementById('winnerAmount').innerText=noWinner?'—':(iWon?`+${msg.winAmount} ETB`:`የሽልማት ገንዘብ: ${msg.winAmount} ETB`);
   document.getElementById('splitTag').style.display=msg.isSplit?'inline-block':'none';
-  document.getElementById('winnerMsg').innerText=iWon?'🎉 Congratulations! You won this round.':(noWinner?'No valid BINGO was claimed this round.':'The round has ended. The winning cartela is shown below.');
-  document.getElementById('resultStatus').innerText=iWon?'Your prize has been added to your account.':(noWinner?'No prize was awarded.':'You did not win this round.');
+  document.getElementById('winnerMsg').innerText=iWon?'🎉 እንኳን ደስ አላችሁ! ይህን ዙር አሸንፈዋል።':(noWinner?'በዚህ ዙር ትክክለኛ BINGO አልተገኘም።':'ዙሩ ተጠናቋል። አሸናፊው ካርቴላ ከታች ተመልክቷል።');
+  document.getElementById('resultStatus').innerText=iWon?'የሽልማት ገንዘብዎ ወደ ሂሳብዎ ተጨምሯል።':(noWinner?'ሽልማት አልተሰጠም።':'ይህን ዙር አላሸነፉም።');
 
   const cards=Array.isArray(msg.winningCards)?msg.winningCards:[];
   let winningCard=cards[0]||null;
@@ -1807,23 +1788,10 @@ function resetAutomaticGameState(){
   const el=document.getElementById('cdPrizePot');
   if(!el) return;
   const pot=Math.floor(cardCount * stakeAmount * 0.8);
-  el.innerText = pot > 0 ? `🏆 Prize Pool: ${pot} ETB` : '🏆 ተጫዋቾች ሲቀላቀሉ የሽልማቱ ገንዘብ ይጨምራል';
+  el.innerText = pot > 0 ? `🏆 የሽልማት ገንዘብ: ${pot} ETB` : '🏆 ተጫዋቾች ሲቀላቀሉ የሽልማቱ ገንዘብ ይጨምራል';
 }
-function updateSlotUI(){
-  const s1=document.getElementById('slot1'), s2=document.getElementById('slot2');
-  const n1=document.getElementById('slot1Num'), n2=document.getElementById('slot2Num');
-  if(myCardId){s1.classList.add('filled1');n1.innerText=`${myCardId}`;}
-  else{s1.classList.remove('filled1');n1.innerText='—';}
-  if(myCardId2){s2.classList.add('filled2');n2.innerText=`${myCardId2}`;}
-  else{s2.classList.remove('filled2');n2.innerText='—';}
-}
-function resetSlotUI(){
-  myCardId=null; myCardId2=null;
-  document.getElementById('slot1').classList.remove('filled1');
-  document.getElementById('slot2').classList.remove('filled2');
-  document.getElementById('slot1Num').innerText='—';
-  document.getElementById('slot2Num').innerText='—';
-}
+function updateSlotUI(){}
+function resetSlotUI(){}
 
 // ─── CARD POOL ────────────────────────────────────────────────
 function renderCardPool(pool){
@@ -1863,7 +1831,7 @@ function pickCard(cardId){
     // Second card — wait for server to confirm before updating UI
     wsSend({type:'selectCard',cardId,slot:2});
   } else if(myCardId2){
-    showToast('Tap a selected card (purple/orange) to deselect it first','warn');
+    showToast('ከፍተኛው 2 ካርዶችን ብቻ መምረጥ ይችላሉ። ሌላ ካርድ ለመምረጥ ከተመረጡት ካርዶች አንዱን ይንኩ።','warn');
   }
 }
 function deselectCard(slot){

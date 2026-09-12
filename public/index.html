@@ -975,8 +975,9 @@ function startPostGameResetCountdown(seconds){
       balance:currentBalance,
       _fromFallback:true
     });
-    // Give the server reset a moment to complete, then use the normal reconnect path.
-    setTimeout(()=>window.location.reload(),700);
+    // Stay on the card-pool screen. The server will send the fresh pool immediately
+    // after it changes the room back to WAITING.
+
   },1000);
 }
 
@@ -1008,23 +1009,12 @@ function finishPostGameReset(msg={}){
   // state. Always show the card-selection screen for the SAME stake.
   navGo('screenCards','navCards');
 
-  // Hard-refresh after the server has reset the room. This intentionally uses the same
-  // reconnect path as manually leaving Wallet and returning to Game, which reliably
-  // re-associates the Telegram player with the SAME room and opens fresh card selection.
-  if(!msg._fromFallback){
-    setTimeout(()=>window.location.reload(),350);
-  }
-
-  // If this was the fallback path, rejoin the same stake after the server reset.
-  // The normal server backToCardSelection message cancels this because it has
-  // already re-associated the current socket with the room.
-  if(msg._fromFallback && stakeId && ws && ws.readyState===1){
-    postGameResetRejoinTimer=setTimeout(()=>{
-      // The server has already reset the same room. Reload instead of creating a
-      // second room/spectator entry through joinRoom. The reconnect handler restores
-      // the existing Telegram player slot and opens fresh card selection.
-      window.location.reload();
-    },500);
+  // Do not reload here. Keep the same WebSocket/player association so the freshly
+  // reset pool can arrive and be rendered immediately.
+  if(Array.isArray(msg.pool)){
+    cardPool=msg.pool;
+    renderCardPool(cardPool);
+    updatePrizePot(msg.playerCount||0,msg.stakeAmount||0);
   }
 }
 
@@ -1159,27 +1149,31 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       updateActivePlayers(msg.players||msg.activePlayers||[]);
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
       document.getElementById('playerCountVal').innerText=msg.playerCount;
-      document.getElementById('cardLabel').innerText='👀 በመመልከት ላይ';
+      document.getElementById('cardLabel').innerText='👀 የተመልካች ሁኔታ';
       document.getElementById('cardContainer2').style.display='none';
       document.getElementById('cardsWrap').classList.remove('dual-cards-wrap');
+      const spectatorHeader=document.querySelector('#cardContainer1 .bingo-header');
+      if(spectatorHeader) spectatorHeader.style.display='none';
       document.getElementById('cardBody').innerHTML=`
-        <div style="grid-column:span 5;text-align:center;padding:30px 10px;color:var(--gray);font-size:13px;line-height:2">
-          <div style="font-size:36px;margin-bottom:8px">👀</div>
-          <div style="font-weight:700;color:#fff;margin-bottom:4px">Spectator Mode</div>
-          You didn't select a card.<br>Watch the game live below.
+        <div class="spectator-layout">
+          <div class="spectator-number-board" id="spectatorNumberBoard"></div>
+          <div class="spectator-side">
+            <div class="spectator-called-strip" id="spectatorCalledStrip"></div>
+            <div class="spectator-ball-wrap"><div class="spectator-ball" id="spectatorBall">
+              <span class="letter" id="spectatorBallLetter">-</span><span class="number" id="spectatorBallNumber">--</span>
+            </div></div>
+            <div class="spectator-message">ካርድ አልመረጡም።<br>ጨዋታውን በቀጥታ ከታች ይመልከቱ።</div>
+          </div>
         </div>`;
+      renderSpectatorBoard(msg.calledNumbers||[]);
       document.getElementById('bingoBtn').style.display='none';
+      const trackerWrap=document.querySelector('#screenGame .tracker-wrap');
+      if(trackerWrap) trackerWrap.style.display='none';
       resetTrackerBoard(); claimWindowOpen=false;
       if(msg.calledNumbers&&msg.calledNumbers.length){
-        msg.calledNumbers.forEach(n=>{const el=document.getElementById('tb'+n);if(el)el.className='t-ball '+colClass(n);});
-        prevLastCalled=msg.calledNumbers[msg.calledNumbers.length-1];
-        const tb=document.getElementById('tb'+prevLastCalled);
-        if(tb) tb.classList.add('latest');
-        const cfg=numConfig(prevLastCalled);
-        document.getElementById('ballCircle').style.background=cfg.color;
-        document.getElementById('ballLetter').innerText=cfg.letter;
-        document.getElementById('ballNumber').innerText=prevLastCalled;
-        document.getElementById('ballSub').innerText=`${msg.calledNumbers.length}/75`;
+        const last=Number(msg.calledNumbers[msg.calledNumbers.length-1]);
+        updateSpectatorBall(last,msg.calledNumbers.length);
+        prevLastCalled=last;
       }
       navGo('screenGame','navGame');
       break;
@@ -1546,6 +1540,47 @@ async function loadPaymentInfo(){
 }
 
 // ─── GAME: NUMBER CALLED ──────────────────────────────────────
+function renderSpectatorBoard(calledNumbers=[]){
+  const board=document.getElementById('spectatorNumberBoard');
+  if(!board) return;
+  const calledSet=new Set((calledNumbers||[]).map(Number));
+  board.innerHTML='';
+  for(let col=0;col<5;col++){
+    const wrap=document.createElement('div'); wrap.className='spectator-num-col';
+    for(let row=1;row<=15;row++){
+      const n=col*15+row;
+      const el=document.createElement('div'); el.className='spectator-num'; el.id='sn'+n; el.innerText=n;
+      if(calledSet.has(n)) el.classList.add(numConfig(n).cls);
+      wrap.appendChild(el);
+    }
+    board.appendChild(wrap);
+  }
+  const strip=document.getElementById('spectatorCalledStrip');
+  if(strip){
+    strip.innerHTML='';
+    (calledNumbers||[]).slice(-5).forEach(n=>{
+      const cfg=numConfig(Number(n)); const el=document.createElement('div');
+      el.className='spectator-called '+cfg.cls; el.innerText=`${cfg.letter}-${Number(n)}`; strip.appendChild(el);
+    });
+  }
+}
+function updateSpectatorBall(n,callCount){
+  const cfg=numConfig(Number(n));
+  const ball=document.getElementById('spectatorBall');
+  if(ball) ball.style.background=cfg.color;
+  const letter=document.getElementById('spectatorBallLetter');
+  const number=document.getElementById('spectatorBallNumber');
+  if(letter) letter.innerText=cfg.letter;
+  if(number) number.innerText=Number(n);
+  const cell=document.getElementById('sn'+Number(n));
+  if(cell){cell.className='spectator-num '+cfg.cls+' latest';}
+  const strip=document.getElementById('spectatorCalledStrip');
+  if(strip){
+    const el=document.createElement('div'); el.className='spectator-called '+cfg.cls; el.innerText=`${cfg.letter}-${Number(n)}`;
+    strip.appendChild(el); while(strip.children.length>5) strip.removeChild(strip.firstChild);
+  }
+}
+
 function onNumberCalled(msg){
   const n=Number(msg.number), cfg=numConfig(n);
   calledNumbersSet.add(n);
@@ -1556,6 +1591,7 @@ function onNumberCalled(msg){
   document.getElementById('ballLetter').innerText=cfg.letter;
   document.getElementById('ballNumber').innerText=n;
   document.getElementById('ballSub').innerText=`${msg.callCount}/75`;
+  if(document.getElementById('spectatorNumberBoard')) updateSpectatorBall(n,msg.callCount);
 
   if(prevLastCalled){
     const p=document.getElementById('tb'+prevLastCalled);
@@ -1692,6 +1728,10 @@ function renderCard(nums, bodyId, prefix){
 
 function renderBothCards(){
   const wrap=document.getElementById('cardsWrap');
+  const bh=document.querySelector('#cardContainer1 .bingo-header');
+  if(bh) bh.style.display='grid';
+  const tw=document.querySelector('#screenGame .tracker-wrap');
+  if(tw) tw.style.display='block';
   const c2=document.getElementById('cardContainer2');
   if(myCardId2&&myCardNumbers2.length){
     wrap.classList.add('dual-cards-wrap');
