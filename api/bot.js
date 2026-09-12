@@ -58,6 +58,19 @@ const pendingWithdrawal = {};
 const pendingAdminWithdrawal  = {};
 
 const pendingDelete = {};
+// Admin payment-account creation state
+// telegramId -> {
+//   step,
+//   paymentMethodId,
+//   paymentMethod,
+//   paymentTypeName,
+//   paymentTypeAmharicName,
+//   accountName,
+//   accountNumber
+// }
+const pendingAdminAccount = {};
+
+const pendingDelete = {};
 
 // Admin rejection state
 // telegramId -> { withdrawalId, withdrawal }
@@ -90,6 +103,10 @@ function clearPendingState(
 
   delete pendingDelete[
     telegramId
+  ];
+
+  delete pendingAdminAccount[
+  telegramId
   ];
 }
 
@@ -331,6 +348,64 @@ function normalizeEthiopianPhone(
 
 }
 
+// ============================================================
+// PAYMENT ACCOUNT NUMBER NORMALIZATION
+// ============================================================
+//
+// IMPORTANT:
+// Only Mobile / ሞባይል payment types are normalized.
+//
+// Bank and other payment types keep the account number
+// exactly as entered, except for trimming surrounding spaces.
+// ============================================================
+
+function normalizePaymentAccountNumber(
+  accountNumber,
+  paymentTypeName,
+  paymentTypeAmharicName
+) {
+
+  const raw =
+    String(accountNumber || "").trim();
+
+  if (!raw) {
+    return null;
+  }
+
+  const typeName =
+    String(paymentTypeName || "")
+      .trim()
+      .toLowerCase();
+
+  const amharicTypeName =
+    String(paymentTypeAmharicName || "")
+      .trim();
+
+  const isMobile =
+    typeName === "mobile" ||
+    amharicTypeName === "ሞባይል";
+
+  // ----------------------------------------------------------
+  // MOBILE ONLY
+  // ----------------------------------------------------------
+
+  if (isMobile) {
+
+    return normalizeEthiopianPhone(
+      raw
+    );
+
+  }
+
+  // ----------------------------------------------------------
+  // NON-MOBILE
+  // ----------------------------------------------------------
+  //
+  // Do NOT modify bank/account numbers.
+  //
+
+  return raw;
+}
 
 // ============================================================
 // HOME MENU
@@ -776,8 +851,19 @@ bot.callbackQuery(
     ]);
     keyboard.push([
   {
-    text: "📊 Statistics",
-    callback_data: "admin_statistics"
+    text:
+      "💳 Accounts",
+
+    callback_data:
+      "admin_accounts"
+  },
+
+  {
+    text:
+      "📊 Statistics",
+
+    callback_data:
+      "admin_statistics"
   }
 ]);
 
@@ -909,7 +995,1011 @@ bot.callbackQuery(
 
   }
 );
+// ============================================================
+// ADMIN — PAYMENT ACCOUNT MANAGEMENT
+// ============================================================
+//
+// Flow:
+//
+// Accounts
+//    ├── Add Account
+//    │      └── Payment Method
+//    │             └── Account Name
+//    │                    └── Account Number
+//    │                           └── Initial Balance
+//    │                                  └── Save
+//    │
+//    └── Manage Accounts
+//           └── Activate / Deactivate
+//
+// Account-number normalization:
+// ONLY Mobile / ሞባይል is normalized.
+// ============================================================
 
+
+// ============================================================
+// SHOW PAYMENT ACCOUNTS MENU
+// ============================================================
+
+async function showAdminAccounts(ctx) {
+
+  const admin =
+    await requireAdmin(ctx);
+
+  if (!admin) {
+    return;
+  }
+
+  try {
+
+    const accounts =
+      await db.getAllPaymentAccountsForAdmin();
+
+    let message =
+      "💳 *PAYMENT ACCOUNTS*\n\n";
+
+    if (
+      !accounts ||
+      accounts.length === 0
+    ) {
+
+      message +=
+        "No payment accounts have been created yet.\n\n";
+
+    } else {
+
+      accounts.forEach(
+        (account, index) => {
+
+          const methodName =
+            account.pm_amharic_name ||
+            account.pm_name ||
+            "Payment Method";
+
+          const typeName =
+            account.pt_amharic_name ||
+            account.pt_name ||
+            "";
+
+          const status =
+            account.is_active
+              ? "🟢 Active"
+              : "🔴 Inactive";
+
+          message +=
+            `${index + 1}. ${account.pm_emoji || "💳"} *${account.account_name}*\n` +
+            `💳 Method: *${methodName}*\n`;
+
+          if (typeName) {
+
+            message +=
+              `📂 Type: *${typeName}*\n`;
+
+          }
+
+          message +=
+            `📱 Account: \`${account.account_number}\`\n` +
+            `💰 Balance: *${account.balance} ETB*\n` +
+            `📌 Status: ${status}\n\n`;
+
+        }
+      );
+
+    }
+
+
+    const keyboard = [];
+
+
+    // ----------------------------------------------------------
+    // EXISTING ACCOUNT TOGGLE BUTTONS
+    // ----------------------------------------------------------
+
+    if (
+      accounts &&
+      accounts.length > 0
+    ) {
+
+      for (
+        const account of accounts
+      ) {
+
+        keyboard.push([
+          {
+            text:
+              account.is_active
+                ? `🔴 Deactivate ${account.account_name}`
+                : `🟢 Activate ${account.account_name}`,
+
+            callback_data:
+              `admin_account_toggle_${account.id}_${account.is_active ? "0" : "1"}`
+          }
+        ]);
+
+      }
+
+    }
+
+
+    // ----------------------------------------------------------
+    // MAIN BUTTONS
+    // ----------------------------------------------------------
+
+    keyboard.push([
+      {
+        text:
+          "➕ Add Account",
+
+        callback_data:
+          "admin_account_add"
+      }
+    ]);
+
+    keyboard.push([
+      {
+        text:
+          "🔄 Refresh",
+
+        callback_data:
+          "admin_accounts"
+      },
+
+      {
+        text:
+          "🏠 Home",
+
+        callback_data:
+          "admin_home"
+      }
+    ]);
+
+
+    const options = {
+
+      parse_mode:
+        "Markdown",
+
+      reply_markup: {
+        inline_keyboard:
+          keyboard
+      }
+
+    };
+
+
+    // ----------------------------------------------------------
+    // EDIT EXISTING MESSAGE WHEN CALLED FROM BUTTON
+    // ----------------------------------------------------------
+
+    if (
+      ctx.callbackQuery
+    ) {
+
+      try {
+
+        await ctx.editMessageText(
+          message,
+          options
+        );
+
+      } catch (err) {
+
+        // Message may already contain the same text
+        // or may not be editable.
+
+        await ctx.reply(
+          message,
+          options
+        );
+
+      }
+
+    } else {
+
+      await ctx.reply(
+        message,
+        options
+      );
+
+    }
+
+  } catch (err) {
+
+    console.error(
+      "Admin accounts screen error:",
+      err
+    );
+
+    await ctx.reply(
+      "❌ Could not load payment accounts."
+    );
+
+  }
+
+}
+
+
+// ============================================================
+// ADMIN ACCOUNTS BUTTON
+// ============================================================
+
+bot.callbackQuery(
+  "admin_accounts",
+  async (ctx) => {
+
+    const admin =
+      await requireAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    // Do not leave an unfinished account creation flow.
+    delete pendingAdminAccount[
+      admin.telegram_id
+    ];
+
+    await showAdminAccounts(
+      ctx
+    );
+
+  }
+);
+
+
+// ============================================================
+// ADD ACCOUNT — SELECT PAYMENT METHOD
+// ============================================================
+
+bot.callbackQuery(
+  "admin_account_add",
+  async (ctx) => {
+
+    const admin =
+      await requireAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    try {
+
+      const paymentMethods =
+        await db.getPaymentMethods();
+
+      if (
+        !paymentMethods ||
+        paymentMethods.length === 0
+      ) {
+
+        return ctx.reply(
+          "❌ No active payment methods are available."
+        );
+
+      }
+
+
+      const keyboard =
+        paymentMethods.map(
+          (pm) => [
+
+            {
+              text:
+                `${pm.emoji || "💳"} ${pm.amharic_name || pm.name}`,
+
+              callback_data:
+                `admin_account_method_${pm.id}`
+            }
+
+          ]
+        );
+
+
+      keyboard.push([
+        {
+          text:
+            "↩️ Back",
+
+          callback_data:
+            "admin_accounts"
+        }
+      ]);
+
+
+      await ctx.editMessageText(
+        "➕ *ADD PAYMENT ACCOUNT*\n\n" +
+        "First select the *payment method*:",
+        {
+          parse_mode:
+            "Markdown",
+
+          reply_markup: {
+            inline_keyboard:
+              keyboard
+          }
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Admin add account method error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not load payment methods."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// ADD ACCOUNT — PAYMENT METHOD SELECTED
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_account_method_(\d+)$/,
+  async (ctx) => {
+
+    const admin =
+      await requireAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const paymentMethodId =
+      Number(
+        ctx.match[1]
+      );
+
+    try {
+
+      const method =
+        await db.getPaymentMethodById(
+          paymentMethodId
+        );
+
+      if (!method) {
+
+        return ctx.reply(
+          "❌ Payment method not found."
+        );
+
+      }
+
+
+      pendingAdminAccount[
+        admin.telegram_id
+      ] = {
+
+        step:
+          "account_name",
+
+        paymentMethodId:
+          paymentMethodId,
+
+        paymentMethod:
+          method,
+
+        paymentTypeName:
+          method.type_name,
+
+        paymentTypeAmharicName:
+          method.am_type_name
+
+      };
+
+
+      await ctx.editMessageText(
+
+        "➕ *ADD PAYMENT ACCOUNT*\n\n" +
+
+        `💳 Payment Method: *${method.amharic_name || method.name}*\n` +
+
+        `📂 Payment Type: *${method.am_type_name || method.type_name || "-"}*\n\n` +
+
+        "Please enter the *account name*.\n\n" +
+
+        "Example:\n" +
+        "`Sisters Bingo Telebirr`",
+
+        {
+
+          parse_mode:
+            "Markdown",
+
+          reply_markup: {
+
+            inline_keyboard: [
+
+              [
+
+                {
+
+                  text:
+                    "❌ Cancel",
+
+                  callback_data:
+                    "admin_account_cancel"
+
+                }
+
+              ]
+
+            ]
+
+          }
+
+        }
+
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Admin account method selection error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not select the payment method."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// ADD ACCOUNT — CANCEL
+// ============================================================
+
+bot.callbackQuery(
+  "admin_account_cancel",
+  async (ctx) => {
+
+    const admin =
+      await requireAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    delete pendingAdminAccount[
+      admin.telegram_id
+    ];
+
+    await showAdminAccounts(
+      ctx
+    );
+
+  }
+);
+
+
+// ============================================================
+// TOGGLE ACCOUNT ACTIVE / INACTIVE
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_account_toggle_(\d+)_(0|1)$/,
+  async (ctx) => {
+
+    const admin =
+      await requireAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(
+      ctx,
+      "Updating account..."
+    );
+
+    const accountId =
+      Number(
+        ctx.match[1]
+      );
+
+    const isActive =
+      ctx.match[2] === "1";
+
+
+    try {
+
+      const account =
+        await db.setPaymentAccountActive(
+          accountId,
+          isActive
+        );
+
+      if (!account) {
+
+        return ctx.reply(
+          "❌ Payment account not found."
+        );
+
+      }
+
+
+      await showAdminAccounts(
+        ctx
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Payment account toggle error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not change the account status."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// ADD ACCOUNT — TEXT INPUT
+// ============================================================
+//
+// IMPORTANT:
+// This handler MUST appear BEFORE the existing
+// BROADCAST TEXT handler.
+//
+// Your current broadcast text handler starts around line 4589.
+// ============================================================
+
+bot.on(
+  "message:text",
+  async (ctx, next) => {
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+
+      return next();
+
+    }
+
+
+    const telegramId =
+      admin.telegram_id;
+
+    const pending =
+      pendingAdminAccount[
+        telegramId
+      ];
+
+
+    // No account creation in progress.
+    if (!pending) {
+
+      return next();
+
+    }
+
+
+    const text =
+      String(
+        ctx.message.text || ""
+      ).trim();
+
+
+    // ----------------------------------------------------------
+    // CANCEL
+    // ----------------------------------------------------------
+
+    if (
+      text === "/cancel"
+    ) {
+
+      delete pendingAdminAccount[
+        telegramId
+      ];
+
+      return ctx.reply(
+        "❌ Payment account creation cancelled."
+      );
+
+    }
+
+
+    // ==========================================================
+    // STEP 1 — ACCOUNT NAME
+    // ==========================================================
+
+    if (
+      pending.step ===
+      "account_name"
+    ) {
+
+      if (!text) {
+
+        return ctx.reply(
+          "❌ Account name cannot be empty.\n\n" +
+          "Please enter the account name:"
+        );
+
+      }
+
+
+      if (
+        text.length > 100
+      ) {
+
+        return ctx.reply(
+          "❌ Account name is too long.\n\n" +
+          "Please enter a name with 100 characters or fewer:"
+        );
+
+      }
+
+
+      pending.accountName =
+        text.substring(
+          0,
+          100
+        );
+
+
+      pending.step =
+        "account_number";
+
+
+      const isMobile =
+        String(
+          pending.paymentTypeName || ""
+        )
+          .trim()
+          .toLowerCase() ===
+          "mobile" ||
+
+        String(
+          pending.paymentTypeAmharicName || ""
+        ).trim() ===
+          "ሞባይል";
+
+
+      if (isMobile) {
+
+        return ctx.reply(
+
+          "📱 Please enter the *mobile account number*.\n\n" +
+
+          "Examples:\n" +
+          "`0912345678`\n" +
+          "`+251912345678`\n" +
+          "`251912345678`\n\n" +
+
+          "The number will be normalized to `+251...`.",
+
+          {
+            parse_mode:
+              "Markdown"
+          }
+
+        );
+
+      }
+
+
+      return ctx.reply(
+
+        "💳 Please enter the *account number*.\n\n" +
+
+        "The account number will be saved as entered.",
+
+        {
+          parse_mode:
+            "Markdown"
+        }
+
+      );
+
+    }
+
+
+    // ==========================================================
+    // STEP 2 — ACCOUNT NUMBER
+    // ==========================================================
+
+    if (
+      pending.step ===
+      "account_number"
+    ) {
+
+      if (!text) {
+
+        return ctx.reply(
+          "❌ Account number cannot be empty.\n\n" +
+          "Please enter the account number:"
+        );
+
+      }
+
+
+      const normalizedAccountNumber =
+        normalizePaymentAccountNumber(
+
+          text,
+
+          pending.paymentTypeName,
+
+          pending.paymentTypeAmharicName
+
+        );
+
+
+      const isMobile =
+        String(
+          pending.paymentTypeName || ""
+        )
+          .trim()
+          .toLowerCase() ===
+          "mobile" ||
+
+        String(
+          pending.paymentTypeAmharicName || ""
+        ).trim() ===
+          "ሞባይል";
+
+
+      // Mobile numbers MUST be valid Ethiopian numbers.
+      if (
+        isMobile &&
+        !normalizedAccountNumber
+      ) {
+
+        return ctx.reply(
+
+          "❌ Invalid Ethiopian mobile number.\n\n" +
+
+          "Please enter a valid number such as:\n" +
+          "`0912345678`\n" +
+          "`+251912345678`\n" +
+          "`251912345678`",
+
+          {
+            parse_mode:
+              "Markdown"
+          }
+
+        );
+
+      }
+
+
+      if (
+        !normalizedAccountNumber
+      ) {
+
+        return ctx.reply(
+          "❌ Invalid account number.\n\n" +
+          "Please enter the account number again."
+        );
+
+      }
+
+
+      pending.accountNumber =
+        normalizedAccountNumber;
+
+
+      pending.step =
+        "initial_balance";
+
+
+      return ctx.reply(
+
+        "💰 Please enter the *initial balance* in ETB.\n\n" +
+
+        "Example:\n" +
+        "`0`\n" +
+        "`5000`\n" +
+        "`12500.50`",
+
+        {
+          parse_mode:
+            "Markdown"
+        }
+
+      );
+
+    }
+
+
+    // ==========================================================
+    // STEP 3 — INITIAL BALANCE
+    // ==========================================================
+
+    if (
+      pending.step ===
+      "initial_balance"
+    ) {
+
+      const initialBalance =
+        Number(
+          text.replace(
+            /,/g,
+            ""
+          )
+        );
+
+
+      if (
+        !Number.isFinite(
+          initialBalance
+        ) ||
+        initialBalance < 0
+      ) {
+
+        return ctx.reply(
+
+          "❌ Invalid balance.\n\n" +
+
+          "Please enter a number greater than or equal to 0.\n\n" +
+
+          "Example:\n" +
+          "`0`\n" +
+          "`5000`\n" +
+          "`12500.50`",
+
+          {
+            parse_mode:
+              "Markdown"
+          }
+
+        );
+
+      }
+
+
+      try {
+
+        const result =
+          await db.createPaymentAccount(
+
+            pending.paymentMethodId,
+
+            pending.accountName,
+
+            pending.accountNumber,
+
+            initialBalance
+
+          );
+
+
+        if (
+          !result ||
+          result.success !== true
+        ) {
+
+          return ctx.reply(
+
+            `❌ ${result?.message || "Could not create payment account."}`
+
+          );
+
+        }
+
+
+        delete pendingAdminAccount[
+          telegramId
+        ];
+
+
+        const account =
+          result.account;
+
+
+        await ctx.reply(
+
+          "✅ *PAYMENT ACCOUNT CREATED*\n\n" +
+
+          `💳 Method: *${account.pm_amharic_name || account.pm_name}*\n` +
+
+          `📂 Type: *${account.pt_amharic_name || account.pt_name || "-"}*\n` +
+
+          `👤 Name: *${account.account_name}*\n` +
+
+          `📱 Account: \`${account.account_number}\`\n` +
+
+          `💰 Initial Balance: *${account.balance} ETB*\n` +
+
+          "📌 Status: 🟢 *Active*",
+
+          {
+
+            parse_mode:
+              "Markdown",
+
+            reply_markup: {
+
+              inline_keyboard: [
+
+                [
+
+                  {
+
+                    text:
+                      "💳 Accounts",
+
+                    callback_data:
+                      "admin_accounts"
+
+                  }
+
+                ],
+
+                [
+
+                  {
+
+                    text:
+                      "🏠 Home",
+
+                    callback_data:
+                      "admin_home"
+
+                  }
+
+                ]
+
+              ]
+
+            }
+
+          }
+
+        );
+
+      } catch (err) {
+
+        console.error(
+          "Create payment account error:",
+          err
+        );
+
+        await ctx.reply(
+
+          "❌ Could not create the payment account.\n\n" +
+          "Please try again."
+
+        );
+
+      }
+
+      return;
+
+    }
+
+
+    return next();
+
+  }
+);
 
 // ============================================================
 // /START
