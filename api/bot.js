@@ -1232,7 +1232,7 @@ if (
       `📱 Phone: \`${user.phone || "Not available"}\`\n` +
       `💰 Balance: *${user.balance || 0} ETB*\n\n` +
       `🔐 Current Role: *${currentRole}*\n`,
-      `🔐 Current Role: *${user.admin_role}*`)
+      `🔐 Current Role: *${user.admin_role}*`);
       {
         parse_mode: "Markdown",
         reply_markup: {
