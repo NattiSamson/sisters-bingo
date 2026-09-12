@@ -1244,7 +1244,7 @@ bot.callbackQuery(
 
       await ctx.editMessageText(
 
-        "🎁 *BONUS TYPE*\\n\\n" +
+        "🎁 *BONUS TYPE*\n\n" +
 
         "Choose how much bonus the user receives:",
 
@@ -1350,7 +1350,7 @@ bot.callbackQuery(
 
       await ctx.editMessageText(
 
-        "🎁 *BONUS TYPE*\\n\\n" +
+        "🎁 *BONUS TYPE*\n\n" +
 
         "Choose how much bonus the user receives:",
 
@@ -1487,19 +1487,19 @@ bot.callbackQuery(
 
         await ctx.editMessageText(
 
-          "✅ *DEPOSIT BONUS CREATED*\\n\\n" +
+          "✅ *DEPOSIT BONUS CREATED*\n\n" +
 
-          `🎁 Name: *${campaign.name}*\\n` +
+          `🎁 Name: *${campaign.name}*\n` +
 
           `⏰ Start: *${formatBonusDate(
             campaign.starts_at
-          )}*\\n` +
+          )}*\n` +
 
           `⏰ End: *${formatBonusDate(
             campaign.ends_at
-          )}*\\n` +
+          )}*\n` +
 
-          `💯 Bonus: *Match deposit*\\n` +
+          `💯 Bonus: *Match deposit*\n` +
 
           `📌 Frequency: *${frequencyText}*`,
 
@@ -1621,12 +1621,12 @@ bot.callbackQuery(
 
       await ctx.editMessageText(
 
-        "💰 *FIXED BONUS AMOUNT*\\n\\n" +
+        "💰 *FIXED BONUS AMOUNT*\n\n" +
 
-        "Enter the bonus amount in ETB.\\n\\n" +
+        "Enter the bonus amount in ETB.\n\n" +
 
-        "Example:\\n" +
-        "`100`\\n\\n" +
+        "Example:\n" +
+        "`100`\n\n" +
 
         `📌 Frequency: *${
           pending.depositFrequency ===
@@ -8708,8 +8708,8 @@ if (
   if (!end) {
 
     return ctx.reply(
-      "❌ Invalid date/time.\\n\\n" +
-      "Use:\\n" +
+      "❌ Invalid date/time.\n\n" +
+      "Use:\n" +
       "`2026-09-13 18:00`",
       {
         parse_mode:
@@ -8834,7 +8834,7 @@ if (
   ) {
 
     return ctx.reply(
-      "❌ Invalid fixed bonus amount.\\n\\n" +
+      "❌ Invalid fixed bonus amount.\n\n" +
       "Please enter a positive amount."
     );
   }
@@ -8875,21 +8875,21 @@ if (
 
     await ctx.reply(
 
-      "✅ *DEPOSIT BONUS CREATED*\\n\\n" +
+      "✅ *DEPOSIT BONUS CREATED*\n\n" +
 
-      `🎁 Name: *${campaign.name}*\\n` +
+      `🎁 Name: *${campaign.name}*\n` +
 
       `⏰ Start: *${formatBonusDate(
         campaign.starts_at
-      )}*\\n` +
+      )}*\n` +
 
       `⏰ End: *${formatBonusDate(
         campaign.ends_at
-      )}*\\n` +
+      )}*\n` +
 
       `💰 Bonus: *${amount.toFixed(
         2
-      )} ETB*\\n` +
+      )} ETB*\n` +
 
       `📌 Frequency: *${frequencyText}*`,
 
