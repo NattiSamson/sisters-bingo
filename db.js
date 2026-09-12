@@ -928,13 +928,6 @@ module.exports = {
 
     return result.rows;
   },
-      await client.query("ROLLBACK");
-      throw err;
-
-    } finally {
-      client.release();
-    }
-  },
 
   // ============================================================
   // ADMIN STATISTICS
