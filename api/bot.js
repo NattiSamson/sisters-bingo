@@ -74,6 +74,7 @@ const pendingDelete = {};
 // Admin rejection state
 // telegramId -> { withdrawalId, withdrawal }
 const pendingAdminReject = {};
+
 // Admin user search state
 const pendingAdminUserSearch = new Map();
 
@@ -99,7 +100,7 @@ function clearPendingState(
   delete pendingWithdrawal[
     telegramId
   ];
-  
+
   delete pendingAdminWithdrawal[
     telegramId
   ];
@@ -109,114 +110,385 @@ function clearPendingState(
   ];
 
   delete pendingAdminAccount[
-  telegramId
+    telegramId
   ];
-  
-  pendingAdminUserSearch.delete(telegramId);
-  pendingAdminRoleSearch.delete(telegramId);
+
+  pendingAdminUserSearch.delete(
+    telegramId
+  );
+
+  pendingAdminRoleSearch.delete(
+    telegramId
+  );
 }
+
 
 // ============================================================
 // BLOCKED USER GUARD
 // ============================================================
-// Blocked users cannot use bot features.
-// /start is allowed through so the user receives the
-// blocked-account message from the /start handler.
-bot.use(async (ctx, next) => {
-  try {
-    const telegramId = ctx.from?.id;
 
-    if (!telegramId) {
-      return next();
-    }
+bot.use(
+  async (ctx, next) => {
 
-    const text = ctx.message?.text?.trim() || "";
+    try {
 
-    // Allow /start so blocked users see the blocked message
-    if (text.startsWith("/start")) {
-      return next();
-    }
-
-    const user = await db.getUserByTelegramId(telegramId);
-
-    if (user?.is_blocked === true) {
-
-      // Callback buttons
-      if (ctx.callbackQuery) {
-        try {
-          await ctx.answerCallbackQuery({
-            text: "🚫 Your account is blocked.",
-            show_alert: true
-          });
-        } catch (err) {}
-
-        return;
+      if (!ctx.from) {
+        return next();
       }
 
-      // Normal messages / commands
-      return ctx.reply(
-        "🚫 Your account has been blocked. Please contact support."
+      const telegramId =
+        ctx.from.id;
+
+      const user =
+        await db.getUserByTelegramId(
+          telegramId
+        );
+
+      if (
+        user &&
+        user.is_blocked === true
+      ) {
+
+        await ctx.reply(
+          "🚫 Your account has been blocked.\n\nPlease contact Support."
+        );
+
+        return;
+
+      }
+
+    } catch (error) {
+
+      console.error(
+        "Blocked user guard error:",
+        error
       );
+
+      return next();
+
     }
 
     return next();
 
-  } catch (err) {
+  }
+);
+
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+function normalizeEthiopianPhone(
+  phone
+) {
+
+  if (!phone) {
+    return null;
+  }
+
+  let value =
+    String(phone)
+      .trim()
+      .replace(/[\s\-()]/g, "");
+
+  if (
+    value.startsWith("+251")
+  ) {
+
+    value =
+      value.substring(1);
+
+  }
+
+  if (
+    value.startsWith("251")
+  ) {
+
+    const local =
+      value.substring(3);
+
+    if (
+      local.startsWith("9") ||
+      local.startsWith("7")
+    ) {
+
+      return "0" + local;
+
+    }
+
+  }
+
+  if (
+    /^09\d{8}$/.test(value) ||
+    /^07\d{8}$/.test(value)
+  ) {
+
+    return value;
+
+  }
+
+  return null;
+
+}
+
+
+function normalizePaymentAccountNumber(
+  accountNumber,
+  paymentTypeName
+) {
+
+  if (!accountNumber) {
+    return null;
+  }
+
+  let value =
+    String(accountNumber)
+      .trim()
+      .replace(/[\s\-()]/g, "");
+
+  const type =
+    String(
+      paymentTypeName || ""
+    ).toLowerCase();
+
+  if (
+    type.includes("telebirr") ||
+    type.includes("tele birr") ||
+    type.includes("mobile")
+  ) {
+
+    const normalized =
+      normalizeEthiopianPhone(
+        value
+      );
+
+    return normalized || value;
+
+  }
+
+  return value;
+
+}
+
+
+function parseAmount(
+  value
+) {
+
+  if (
+    value === null ||
+    value === undefined
+  ) {
+
+    return 0;
+
+  }
+
+  const cleaned =
+    String(value)
+      .replace(/,/g, "")
+      .replace(/[^0-9.]/g, "");
+
+  const amount =
+    Number(cleaned);
+
+  return Number.isFinite(amount)
+    ? amount
+    : 0;
+
+}
+
+
+function formatAmount(
+  value
+) {
+
+  const amount =
+    Number(value || 0);
+
+  return amount.toLocaleString(
+    "en-US",
+    {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    }
+  );
+
+}
+
+
+function escapeMarkdown(
+  value
+) {
+
+  return String(
+    value || ""
+  ).replace(
+    /([_*[\]()~`>#+\-=|{}.!])/g,
+    "\\$1"
+  );
+
+}
+
+
+function getTelegramId(
+  ctx
+) {
+
+  return ctx.from
+    ? ctx.from.id
+    : null;
+
+}
+
+
+async function answerCallback(
+  ctx
+) {
+
+  try {
+
+    if (
+      ctx.callbackQuery
+    ) {
+
+      await ctx.answerCallbackQuery();
+
+    }
+
+  } catch (error) {
 
     console.error(
-      "Blocked user guard error:",
-      err
+      "Callback answer error:",
+      error
     );
 
-    // Do not break the bot if the database check fails
-    return next();
   }
-});
+
+}
+
+
+async function safeEditMessage(
+  ctx,
+  text,
+  extra = {}
+) {
+
+  try {
+
+    if (
+      ctx.callbackQuery &&
+      ctx.callbackQuery.message
+    ) {
+
+      await ctx.editMessageText(
+        text,
+        extra
+      );
+
+    } else {
+
+      await ctx.reply(
+        text,
+        extra
+      );
+
+    }
+
+  } catch (error) {
+
+    console.error(
+      "Message edit error:",
+      error
+    );
+
+    try {
+
+      await ctx.reply(
+        text,
+        extra
+      );
+
+    } catch (replyError) {
+
+      console.error(
+        "Fallback reply error:",
+        replyError
+      );
+
+    }
+
+  }
+
+}
+
+
+async function getCurrentUser(
+  ctx,
+  includeInactive = false
+) {
+
+  const telegramId =
+    getTelegramId(ctx);
+
+  if (!telegramId) {
+    return null;
+  }
+
+  if (
+    includeInactive &&
+    typeof db.getUserByTelegramIdIncludingInactive ===
+      "function"
+  ) {
+
+    return db.getUserByTelegramIdIncludingInactive(
+      telegramId
+    );
+
+  }
+
+  return db.getUserByTelegramId(
+    telegramId
+  );
+
+}
+
+
 // ============================================================
-// ADMIN AUTHORIZATION
+// ADMIN HELPERS
 // ============================================================
 
-/**
- * Returns the currently logged-in admin from the database.
- *
- * Admin is determined by:
- *
- * users.is_admin = TRUE
- * users.is_active = TRUE
- * users.is_banned = FALSE
- *
- * There is NO hard-coded ADMIN_ID.
- */
 async function getCurrentAdmin(
   ctx
 ) {
 
-  if (
-    !ctx ||
-    !ctx.from ||
-    !ctx.from.id
-  ) {
+  const telegramId =
+    getTelegramId(ctx);
 
+  if (!telegramId) {
     return null;
-
   }
-
 
   try {
 
-    const admin =
-      await db.getAdminByTelegramId(
-        ctx.from.id
-      );
+    if (
+      typeof db.getAdminByTelegramId !==
+      "function"
+    ) {
 
+      return null;
 
-    return admin || null;
+    }
 
-  } catch (err) {
+    return await db.getAdminByTelegramId(
+      telegramId
+    );
+
+  } catch (error) {
 
     console.error(
-      "Admin lookup error:",
-      err
+      "Get current admin error:",
+      error
     );
 
     return null;
@@ -225,3543 +497,98 @@ async function getCurrentAdmin(
 
 }
 
-async function requireAdminPermission(ctx, permission) {
-    const admin = await getCurrentAdmin(ctx);
 
-    if (!admin) {
-        try {
-            await ctx.answerCallbackQuery({
-                text: "❌ Unauthorized",
-                show_alert: true
-            });
-        } catch (err) {}
-
-        return null;
-    }
-
-    const role = admin.admin_role;
-
-    const allowed =
-  role === "main" ||
-  (role === "broadcast" &&
-    permission === "broadcast") ||
-  (role === "statistics" &&
-    permission === "statistics") ||
-  (role === "withdrawal" &&
-    permission === "withdrawals");
-
-    if (!allowed) {
-        try {
-            await ctx.answerCallbackQuery({
-                text: "❌ You do not have permission for this.",
-                show_alert: true
-            });
-        } catch (err) {}
-
-        return null;
-    }
-
-    return admin;
-}
-
-/**
- * Requires the current Telegram user
- * to be an active, non-banned admin.
- *
- * Returns the admin database row when authorized.
- * Returns null when unauthorized.
- */
 async function requireAdmin(
   ctx
 ) {
 
   const admin =
-    await getCurrentAdmin(
-      ctx
-    );
-
+    await getCurrentAdmin(ctx);
 
   if (!admin) {
 
-    try {
-
-      await ctx.answerCallbackQuery({
-
-        text:
-          "Unauthorized",
-
-        show_alert:
-          true
-
-      });
-
-    } catch (err) {
-
-      console.log(
-        "Unauthorized callback response failed:",
-        err.description ||
-        err.message
-      );
-
-    }
-
+    await ctx.reply(
+      "🚫 You do not have administrator permission."
+    );
 
     return null;
 
   }
-
 
   return admin;
 
 }
 
 
-// ============================================================
-// CALLBACK HELPER
-// ============================================================
-
-async function answerCallback(
+async function requireAdminPermission(
   ctx,
-  text = undefined
+  permission
 ) {
 
-  try {
+  const admin =
+    await getCurrentAdmin(ctx);
 
-    if (text) {
+  if (!admin) {
 
-      await ctx.answerCallbackQuery({
-
-        text
-
-      });
-
-    } else {
-
-      await ctx.answerCallbackQuery();
-
-    }
-
-  } catch (err) {
-
-    console.log(
-      "Callback answer failed:",
-      err.description ||
-      err.message
+    await ctx.reply(
+      "🚫 You do not have administrator permission."
     );
 
+    return null;
+
   }
 
-}
-
-
-// ============================================================
-// PHONE NORMALIZATION
-// ============================================================
-
-function normalizeEthiopianPhone(
-  input
-) {
-
-  let phone =
-    String(input)
-      .trim()
-      .replace(
-        /[\s\-()]/g,
-        ""
-      );
-
-
-  // 0912345678
+  const role =
+    String(
+      admin.admin_role || ""
+    ).toLowerCase();
 
   if (
-    /^09\d{8}$/.test(phone)
+    role === "main"
   ) {
 
-    return (
-      "+251" +
-      phone.substring(1)
-    );
+    return admin;
 
   }
-
-
-  // 0712345678
 
   if (
-    /^07\d{8}$/.test(phone)
+    role === "broadcast" &&
+    permission === "broadcast"
   ) {
 
-    return (
-      "+251" +
-      phone.substring(1)
-    );
+    return admin;
 
   }
-
-
-  // 251912345678
 
   if (
-    /^2519\d{8}$/.test(phone)
+    role === "statistics" &&
+    permission === "statistics"
   ) {
 
-    return "+" + phone;
+    return admin;
 
   }
-
-
-  // 251712345678
 
   if (
-    /^2517\d{8}$/.test(phone)
+    role === "withdrawal" &&
+    permission === "withdrawals"
   ) {
 
-    return "+" + phone;
+    return admin;
 
   }
 
-
-  // +251912345678
-
-  if (
-    /^\+2519\d{8}$/.test(phone)
-  ) {
-
-    return phone;
-
-  }
-
-
-  // +251712345678
-
-  if (
-    /^\+2517\d{8}$/.test(phone)
-  ) {
-
-    return phone;
-
-  }
-
+  await ctx.reply(
+    "🚫 You do not have permission to perform this action."
+  );
 
   return null;
 
 }
 
-// ============================================================
-// PAYMENT ACCOUNT NUMBER NORMALIZATION
-// ============================================================
-//
-// IMPORTANT:
-// Only Mobile / ሞባይል payment types are normalized.
-//
-// Bank and other payment types keep the account number
-// exactly as entered, except for trimming surrounding spaces.
-// ============================================================
-
-function normalizePaymentAccountNumber(
-  accountNumber,
-  paymentTypeName,
-  paymentTypeAmharicName
-) {
-
-  const raw =
-    String(accountNumber || "").trim();
-
-  if (!raw) {
-    return null;
-  }
-
-  const typeName =
-    String(paymentTypeName || "")
-      .trim()
-      .toLowerCase();
-
-  const amharicTypeName =
-    String(paymentTypeAmharicName || "")
-      .trim();
-
-  const isMobile =
-    typeName === "mobile" ||
-    amharicTypeName === "ሞባይል";
-
-  // ----------------------------------------------------------
-  // MOBILE ONLY
-  // ----------------------------------------------------------
-
-  if (isMobile) {
-
-    return normalizeEthiopianPhone(
-      raw
-    );
-
-  }
-
-  // ----------------------------------------------------------
-  // NON-MOBILE
-  // ----------------------------------------------------------
-  //
-  // Do NOT modify bank/account numbers.
-  //
-
-  return raw;
-}
 
 // ============================================================
-// HOME MENU
-// ============================================================
-
-async function showHome(
-  ctx,
-  user
-) {
-  const telegramId =    ctx.from.id;
-
-  
-const canPlay =
-  user &&
-  user.is_active === true &&
-  user.is_blocked !== true;
-  
-
-
-
-const keyboard = [];
-
-if (user && user.is_active === true && user.is_blocked !== true) {
-  keyboard.push([
-    {
-      text: "🎮 Play",
-      web_app: {
-        url: `${GAME_URL}?tid=${telegramId}`
-      }
-    }
-  ]);
-}
-
-keyboard.push(
-  [
-    {
-      text: "💰 Balance",
-      callback_data: "balance"
-    },
-    {
-      text: "🔄 Transfer",
-      callback_data: "transfer"
-    }
-  ],
-  [
-    {
-      text: "💎 Deposit",
-      callback_data: "deposit"
-    },
-    {
-      text: "🏧 Withdraw",
-      callback_data: "withdraw"
-    }
-  ],
-  [
-    {
-      text: "📊 Statistics",
-      callback_data: "statistics"
-    },
-    {
-      text: "🆘 Support",
-      callback_data: "support"
-    }
-  ],
-  [
-    {
-      text: "🗑️ Delete",
-      callback_data: "delete"
-    }
-  ]
-);
-
-
-  // ============================================================
-// USER STATISTICS
-// ============================================================
-
-async function showUserStatistics(ctx) {
-
-  const telegramId = ctx.from.id;
-
-  const user =
-    await db.getUserByTelegramId(telegramId);
-
-  if (!user) {
-    return ctx.reply(
-      "Please /start to register first."
-    );
-  }
-
-  try {
-
-    const stats =
-      await db.getUserStatistics(telegramId);
-
-    if (!stats) {
-      return ctx.reply(
-        "❌ Could not load your statistics."
-      );
-    }
-
-    const message =
-      `📊 *YOUR STATISTICS*\n\n` +
-
-      `💎 Total Deposits: *${stats.totalDeposits}*\n\n` +
-
-      `🏧 *Withdrawals*\n` +
-      `⏳ Pending Approval: *${stats.pendingWithdrawals}*\n` +
-      `✅ Approved: *${stats.approvedWithdrawals}*\n` +
-      `❌ Rejected: *${stats.rejectedWithdrawals}*\n\n` +
-
-      `🔄 Total Transfers: *${stats.totalTransfers}*`;
-
-    await ctx.reply(
-      message,
-      {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "🔄 Refresh",
-                callback_data: "statistics"
-              }
-            ],
-            [
-              {
-                text: "🏠 Home",
-                callback_data: "user_home"
-              }
-            ]
-          ]
-        }
-      }
-    );
-
-  } catch (err) {
-
-    console.error(
-      "User statistics error:",
-      err
-    );
-
-    await ctx.reply(
-      "❌ Unable to load statistics right now."
-    );
-  }
-}
-
-
-// ============================================================
-// STATISTICS CALLBACK
-// ============================================================
-
-bot.callbackQuery(
-  "statistics",
-  async (ctx) => {
-
-    await answerCallback(ctx);
-
-    clearPendingState(
-      ctx.from.id
-    );
-
-    await showUserStatistics(ctx);
-
-  }
-);
-// ============================================================
-// USER HOME BUTTON
-// ============================================================
-
-bot.callbackQuery("user_home", async (ctx) => {
-  try {
-    await answerCallback(ctx);
-
-    clearPendingState(ctx.from.id);
-
-    const user = await db.getUserByTelegramId(ctx.from.id);
-
-    if (!user) {
-      return await ctx.reply(
-        "Please /start to register first."
-      );
-    }
-
-    await showHome(ctx, user);
-
-  } catch (err) {
-    console.error("User home button error:", err);
-
-    await ctx.reply(
-      "❌ Unable to return to home."
-    );
-  }
-});
-  // ============================================================
-// DELETE ACCOUNT
-// ============================================================
-
-bot.callbackQuery(
-  "delete",
-  async (ctx) => {
-
-    await answerCallback(ctx);
-
-    const telegramId =
-      ctx.from.id;
-
-    clearPendingState(
-      telegramId
-    );
-
-    pendingDelete[
-      telegramId
-    ] = true;
-
-    await ctx.editMessageText(
-      "⚠️ *አካውንትዎን ማጥፋት ይፈልጋሉ?*\n\n" +
-      "ይህ አካውንትዎን ያቦዝነዋል።\n" +
-      "የቀረው ቀሪ ሂሳብ፣ የገቢ እና የወጪ ታሪክ አይሰረዝም።\n\n" +
-      "ከአሁን በሁዋላ ከእኛ ምንም አይነት ማስታወቂያም ሆነ መረጃ አይደርሶትም!\n\n" +
-      "በኋላ /start በመጠቀም አካውንትዎን እንደገና ማንቃት ይችላሉ።\n\n" +
-      "እርግጠኛ ነዎት?",
-      {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "አዎ",
-                callback_data: "delete_confirm"
-              },
-              {
-                text: "አይ",
-                callback_data: "delete_cancel"
-              }
-            ]
-          ]
-        }
-      }
-    );
-
-  }
-);
-  bot.callbackQuery(
-  "delete_cancel",
-  async (ctx) => {
-
-    await answerCallback(ctx);
-
-    const telegramId =
-      ctx.from.id;
-
-    delete pendingDelete[
-      telegramId
-    ];
-
-    const user =
-      await db.getUserByTelegramId(
-        telegramId
-      );
-
-    if (!user) {
-      return ctx.editMessageText(
-        "❌ Account not found."
-      );
-    }
-
-    await ctx.editMessageText(
-      "✅ አካውንትዎን ማጥፋት ተሰርዟል።"
-    );
-
-    await showHome(
-      ctx,
-      user
-    );
-
-  }
-);
-  bot.callbackQuery(
-  "delete_confirm",
-  async (ctx) => {
-
-    await answerCallback(ctx);
-
-    const telegramId =
-      ctx.from.id;
-
-    delete pendingDelete[
-      telegramId
-    ];
-
-    try {
-
-      const result =
-        await db.deactivateUser(
-          telegramId
-        );
-
-      if (!result) {
-
-        return await ctx.editMessageText(
-          "❌ አካውንትዎ አልተገኘም።"
-        );
-
-      }
-
-      clearPendingState(
-        telegramId
-      );
-
-      await ctx.editMessageText(
-        "✅ *አካውንትዎ ተቦዝኗል።*\n\n" +
-        "የግል መረጃዎ፣ ቀሪ ሂሳብዎ እና የግብይት ታሪክዎ አልተሰረዙም።\n\n" +
-        "እንደገና ለመጠቀም /start ይጫኑ።",
-        {
-          parse_mode: "Markdown"
-        }
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Delete account error:",
-        err
-      );
-
-      await ctx.editMessageText(
-        "❌ አካውንትዎን ማቦዘን አልተቻለም።\n\n" +
-        "እባክዎ እንደገና ይሞክሩ።"
-      );
-
-    }
-
-  }
-);
-
-
-  // ----------------------------------------------------------
-  // ADMIN BUTTONS
-  // ----------------------------------------------------------
-  //
-  // IMPORTANT:
-  // Admin status comes from users.is_admin.
-  // There is NO hard-coded ADMIN_ID.
-  //
-  // The `user` object comes from the database.
-  // We also verify active/non-banned admin status here.
-  // ----------------------------------------------------------
-let admin = null;
-
-try {
-    admin = await getCurrentAdmin(ctx);
-} catch (err) {
-    console.error(
-        "Home admin check error:",
-        err
-    );
-}
-
-// Main admin = everything
-if (admin && admin.admin_role === "main") {
-      keyboard.push([
-        {
-            text: "👤 Manage User",
-            callback_data: "admin_manage_user"
-        },
-        {
-            text: "👑 Manage Admins",
-            callback_data: "admin_manage_admins"
-          }
-    ]);
-
-    keyboard.push([
-        {
-            text: "⏳ Pending",
-            callback_data: "admin_withdrawals"
-        },
-        {
-            text: "📢 Broadcast",
-            callback_data: "admin_broadcast"
-        }
-    ]);
-
-    keyboard.push([
-      {
-        text:
-          "💳 Accounts",
-    
-        callback_data:
-          "admin_accounts"
-      },
-    
-      {
-        text:
-          "📊 Statistics",
-    
-        callback_data:
-          "admin_statistics_menu"
-      }
-    ]);
-}
-
-// Broadcast admin = broadcast only
-else if (
-    admin &&
-    admin.admin_role === "broadcast"
-) {
-
-    keyboard.push([
-        {
-            text: "📢 Broadcast",
-            callback_data: "admin_broadcast"
-        }
-    ]);
-}
-
-// Withdrawal admin = withdrawal only
-else if (
-    admin &&
-    admin.admin_role === "withdrawal"
-) {
-
-    keyboard.push([
-        {
-            text: "⏳ Pending",
-            callback_data: "admin_withdrawals"
-        }
-    ]);
-}
-
-  await ctx.reply(
-
-    `Welcome back, *${user.name}!* 🎱\n\n` +    
-
-    `👋 Welcome to Beteseb Bingo! Choose an Option below:`,
-
-    {
-
-      parse_mode:
-        "Markdown",
-
-      reply_markup: {
-
-        inline_keyboard:
-          keyboard
-
-      }
-
-    }
-
-  );
-
-}
-
-// ============================================================
-// ADMIN ROLE MANAGEMENT
-// MAIN ADMIN ONLY
-// ============================================================
-
-bot.callbackQuery(
-  "admin_manage_admins",
-  async (ctx) => {
-    try {
-      await ctx.answerCallbackQuery();
-
-      const admin =
-        await db.getAdminByTelegramId(ctx.from.id);
-
-      if (
-        !admin ||
-        admin.admin_role !== "main"
-      ) {
-        return ctx.reply(
-          "⛔ You are not authorized to manage admins."
-        );
-      }
-
-      pendingAdminRoleSearch.set(
-        ctx.from.id,
-        {
-          step: "waiting_phone"
-        }
-      );
-
-      await ctx.editMessageText(
-        `👑 *Manage Admins*\n\n` +
-        `Send the user's phone number.\n\n` +
-        `Example:\n` +
-        `\`0912345678\`\n` +
-        `or\n` +
-        `\`+251912345678\``,
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "❌ Cancel",
-                  callback_data:
-                    "admin_manage_admins_cancel"
-                }
-              ]
-            ]
-          }
-        }
-      );
-
-    } catch (err) {
-      console.error(
-        "Admin role management error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Something went wrong."
-      );
-    }
-  }
-);
-// ============================================================
-// ADMIN MANAGE USER
-// ============================================================
-
-bot.callbackQuery("admin_manage_user", async (ctx) => {
-
-  try {
-
-    await ctx.answerCallbackQuery();
-
-    const admin =
-      await db.getAdminByTelegramId(ctx.from.id);
-
-    // Only main admin can manage users
-    if (
-      !admin ||
-      admin.admin_role !== "main"
-    ) {
-
-      return ctx.reply(
-        "⛔ You are not authorized to use this feature."
-      );
-
-    }
-
-    pendingAdminUserSearch.set(
-      ctx.from.id,
-      {
-        step: "waiting_phone"
-      }
-    );
-
-    await ctx.editMessageText(
-
-      `👤 *Manage User*\n\n` +
-      `Send the user's phone number.\n\n` +
-      `Example:\n` +
-      `\`0912345678\`\n` +
-      `or\n` +
-      `\`+251912345678\``,
-
-      {
-        parse_mode: "Markdown",
-
-        reply_markup: {
-
-          inline_keyboard: [
-            [
-            {
-              text: "🏠 Home",
-              callback_data:
-                "admin_home"
-            }
-          ],
-
-            [
-              {
-                text: "❌ Cancel",
-                callback_data:
-                  "admin_manage_user_cancel"
-              }
-            ]
-
-          ]
-
-        }
-
-      }
-
-    );
-
-  } catch (error) {
-
-    console.error(
-      "Admin manage user error:",
-      error
-    );
-
-    await ctx.reply(
-      "❌ Something went wrong."
-    );
-
-  }
-
-});
-
-bot.on("message:text", async (ctx, next) => {
-  try {
-    const telegramId = ctx.from.id;
-
-    // ============================================================
-    // MANAGE USER — WAITING FOR PHONE NUMBER
-    // ============================================================
-    const userSearchState =
-      pendingAdminUserSearch.get(telegramId);
-    
-
-    if (
-      userSearchState &&
-      userSearchState.step === "waiting_phone"
-    ) {
-      const admin =
-        await db.getAdminByTelegramId(telegramId);
-
-      // Only main admin can manage users
-      if (
-        !admin ||
-        admin.admin_role !== "main"
-      ) {
-        pendingAdminUserSearch.delete(telegramId);
-
-        return await ctx.reply(
-          "⛔ You are not authorized to manage users."
-        );
-      }
-
-      const phone =
-        ctx.message.text.trim();
-
-      console.log(
-        "Manage User phone search:",
-        phone
-      );
-
-      // Search user
-      const user =
-        await db.getUserByPhoneForAdmin(phone);
-
-      if (!user) {
-        return await ctx.reply(
-          `❌ *User not found*\n\n` +
-          `📱 Phone: \`${phone}\`\n\n` +
-          `Please send another phone number or press Cancel.`,
-          {
-            parse_mode: "Markdown",
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text: "🏠 Home",
-                    callback_data:
-                      "admin_home"
-                  }
-                ],
-                [
-                  {
-                    text: "❌ Cancel",
-                    callback_data:
-                      "admin_manage_user_cancel"
-                  }
-                ]
-              ]
-            }
-          }
-        );
-      }
-
-      // Prevent managing yourself
-      if (
-        String(user.telegram_id) ===
-        String(telegramId)
-      ) {
-        return await ctx.reply(
-          "⚠️ You cannot block or unblock your own admin account."
-        );
-      }
-
-      // Search completed
-      pendingAdminUserSearch.delete(telegramId);
-
-      const blockStatus =
-        user.is_blocked
-          ? "🚫 Blocked"
-          : "✅ Active";
-
-      const activeStatus =
-        user.is_active
-          ? "🟢 Active"
-          : "⚪ Inactive";
-
-      const keyboard = [];
-
-      // Block / unblock
-      if (user.is_blocked) {
-        keyboard.push([
-          {
-            text: "✅ Unblock User",
-            callback_data:
-              `admin_unblock_user_${user.id}`
-          }
-        ]);
-      } else {
-        keyboard.push([
-          {
-            text: "🚫 Block User",
-            callback_data:
-              `admin_block_user_${user.id}`
-          }
-        ]);
-      }
-
-      keyboard.push([
-        {
-          text: "👤 Manage Another User",
-          callback_data:
-            "admin_manage_user"
-        }
-      ]);
-
-            keyboard.push([
-        {
-        text: "🏠 Home",
-    callback_data:
-      "admin_home"
-        }
-      ]);
-
-      keyboard.push([
-        {
-          text: "❌ Close",
-          callback_data:
-            "admin_manage_user_cancel"
-        }
-      ]);
-
-      await ctx.reply(
-        `👤 *USER FOUND*\n\n` +
-        `👤 Name: *${user.name || "Unknown"}*\n` +
-        `📱 Phone: \`${user.phone || "Not available"}\`\n` +
-        `💰 Balance: *${user.balance || 0} ETB*\n` +
-        `📊 Account: ${activeStatus}\n` +
-        `🔒 Status: ${blockStatus}`,
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: keyboard
-          }
-        }
-      );
-
-      return;
-    }
-
-    // ============================================================
-// USER FINANCIAL STATISTICS PHONE SEARCH
-// ============================================================
-
-const financialStatsState =
-  pendingAdminRoleSearch.get(telegramId);
-
-if (
-  financialStatsState &&
-  financialStatsState.step ===
-    "financial_statistics_phone"
-) {
-
-  const admin =
-    await db.getAdminByTelegramId(
-      telegramId
-    );
-
-  if (
-    !admin ||
-    (
-      admin.admin_role !== "main" &&
-      admin.admin_role !== "statistics"
-    )
-  ) {
-
-    pendingAdminRoleSearch.delete(
-      telegramId
-    );
-
-    return await ctx.reply(
-      "⛔ You are not authorized to view statistics."
-    );
-
-  }
-
-  const phone =
-    ctx.message.text.trim();
-
-  const user =
-    await db.getUserByPhoneForAdmin(
-      phone
-    );
-
-  if (!user) {
-
-    return await ctx.reply(
-      "❌ User not found.\n\n" +
-      "Please send a valid registered phone number."
-    );
-
-  }
-
-  const stats =
-    await db.getUserFinancialStatistics(
-      user.id
-    );
-
-  pendingAdminRoleSearch.delete(
-    telegramId
-  );
-
-  const message =
-    `👤 *USER FINANCIAL STATISTICS*\n\n` +
-
-    `👤 Name: *${user.name || "Unknown"}*\n` +
-    `📱 Phone: \`${user.phone || phone}\`\n\n` +
-
-    `💎 *Total Deposits*\n` +
-    `*${stats.totalDepositAmount.toFixed(2)} ETB*\n\n` +
-
-    `🏧 *Withdrawals*\n` +
-    `⏳ Pending: *${stats.pendingWithdrawalAmount.toFixed(2)} ETB*\n` +
-    `✅ Approved: *${stats.approvedWithdrawalAmount.toFixed(2)} ETB*\n` +
-    `❌ Rejected: *${stats.rejectedWithdrawalAmount.toFixed(2)} ETB*`;
-
-  return await ctx.reply(
-    message,
-    {
-      parse_mode: "Markdown",
-      reply_markup: {
-        inline_keyboard: [
-
-          [
-            {
-              text: "👤 Search Another User",
-              callback_data:
-                "admin_user_financial_statistics"
-            }
-          ],
-
-          [
-            {
-              text: "⬅️ Statistics",
-              callback_data:
-                "admin_statistics_menu"
-            },
-            {
-              text: "🏠 Home",
-              callback_data:
-                "admin_home"
-            }
-          ]
-
-        ]
-      }
-    }
-  );
-}
-        // ============================================================
-    // MANAGE ADMINS — WAITING FOR PHONE NUMBER
-    // ============================================================
-
-    const roleSearchState =
-      pendingAdminRoleSearch.get(telegramId);
-
-    if (
-      roleSearchState &&
-      roleSearchState.step === "waiting_phone"
-    ) {
-
-      const admin =
-        await db.getAdminByTelegramId(
-          telegramId
-        );
-
-      // Only main admin can manage admins
-      if (
-        !admin ||
-        admin.admin_role !== "main"
-      ) {
-
-        pendingAdminRoleSearch.delete(
-          telegramId
-        );
-
-        return await ctx.reply(
-          "⛔ You are not authorized to manage admins."
-        );
-
-      }
-
-      const phone =
-        ctx.message.text.trim();
-
-      console.log(
-        "Manage Admins phone search:",
-        phone
-      );
-
-      // Search user
-      const user =
-        await db.getUserByPhoneForAdmin(
-          phone
-        );
-
-      if (!user) {
-
-        return await ctx.reply(
-          `❌ *User not found*\n\n` +
-          `📱 Phone: \`${phone}\`\n\n` +
-          `Please send another phone number or press Cancel.`,
-          {
-            parse_mode: "Markdown",
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text: "🏠 Home",
-                    callback_data:
-                      "admin_home"
-                  }
-                ],
-                [
-                  {
-                    text: "❌ Cancel",
-                    callback_data:
-                      "admin_manage_admins_cancel"
-                  }
-                ]
-              ]
-            }
-          }
-        );
-
-      }
-
-      // Do not allow changing your own admin role
-      if (
-        String(user.telegram_id) ===
-        String(telegramId)
-      ) {
-
-        pendingAdminRoleSearch.delete(
-          telegramId
-        );
-
-        return await ctx.reply(
-          "⚠️ You cannot change your own admin role.",
-          {
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text: "👑 Manage Another Admin",
-                    callback_data:
-                      "admin_manage_admins"
-                  }
-                ],
-                [
-                  {
-                    text: "🏠 Home",
-                    callback_data:
-                      "admin_home"
-                  }
-                ]
-              ]
-            }
-          }
-        );
-
-      }
-
-      // Search completed
-      pendingAdminRoleSearch.delete(
-        telegramId
-      );
-
-      const keyboard = [];
-
-      // Main Admin
-      keyboard.push([
-        {
-          text: "👑 Main Admin",
-          callback_data:
-            `set_admin_main_${user.id}`
-        }
-      ]);
-
-      // Statistics Admin
-      keyboard.push([
-        {
-          text: "📊 Statistics Admin",
-          callback_data:
-            `set_admin_statistics_${user.id}`
-        }
-      ]);
-
-      // Withdrawal Admin
-      keyboard.push([
-        {
-          text: "💸 Withdrawal Admin",
-          callback_data:
-            `set_admin_withdrawal_${user.id}`
-        }
-      ]);
-
-      // Broadcast Admin
-      keyboard.push([
-        {
-          text: "📢 Broadcast Admin",
-          callback_data:
-            `set_admin_broadcast_${user.id}`
-        }
-      ]);
-
-      // Remove Admin
-      if (user.is_admin === true) {
-
-        keyboard.push([
-          {
-            text: "🚫 Remove Admin Rights",
-            callback_data:
-              `remove_admin_${user.id}`
-          }
-        ]);
-
-      }
-
-      keyboard.push([
-        {
-          text: "👑 Manage Another Admin",
-          callback_data:
-            "admin_manage_admins"
-        }
-      ]);
-
-      keyboard.push([
-        {
-          text: "🏠 Home",
-          callback_data:
-            "admin_home"
-        }
-      ]);
-
-      const currentRole =
-        user.is_admin
-          ? (
-              user.admin_role === "main"
-                ? "👑 Main Admin"
-                : user.admin_role === "statistics"
-                ? "📊 Statistics Admin"
-                : user.admin_role === "withdrawal"
-                ? "💸 Withdrawal Admin"
-                : user.admin_role === "broadcast"
-                ? "📢 Broadcast Admin"
-                : "Admin"
-            )
-          : "👤 Normal User";
-
-      await ctx.reply(
-        `👑 *MANAGE ADMIN*\n\n` +
-        `👤 Name: *${user.name || "Unknown"}*\n` +
-        `📱 Phone: \`${user.phone || phone}\`\n` +
-        `🔐 Current Role: *${currentRole}*\n\n` +
-        `Select the new admin role:`,
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard:
-              keyboard
-          }
-        }
-      );
-
-      return;
-    }
-
-    // ============================================================
-    // NOT A MANAGE USER / MANAGE ADMINS MESSAGE
-    // ============================================================
-
-    return next();
-
-    // ============================================================
-    // NOT A MANAGE USER MESSAGE
-    // ============================================================
-    return next();
-
-  } catch (error) {
-    console.error(
-      "Admin user phone search error:",
-      error
-    );
-
-    pendingAdminUserSearch.delete(
-      ctx.from.id
-    );
-
-    await ctx.reply(
-      "❌ An error occurred while searching for the user."
-    );
-  }
-});
-
-
-    
-bot.callbackQuery(
-  /^admin_block_user_(\d+)$/,
-  async (ctx) => {
-
-    try {
-
-      await ctx.answerCallbackQuery();
-
-      const admin =
-        await db.getAdminByTelegramId(
-          ctx.from.id
-        );
-
-      if (
-        !admin ||
-        admin.admin_role !== "main"
-      ) {
-
-        return ctx.reply(
-          "⛔ You are not authorized."
-        );
-
-      }
-
-      const userId =
-        Number(ctx.match[1]);
-
-      const updatedUser =
-        await db.setUserBlocked(
-          userId,
-          true
-        );
-
-      if (!updatedUser) {
-
-        return ctx.reply(
-          "❌ User not found."
-        );
-
-      }
-
-      await ctx.editMessageText(
-
-        `🚫 *User Blocked Successfully*\n\n` +
-
-        `👤 Name: *${updatedUser.name || "Unknown"}*\n` +
-
-        `📱 Phone: \`${updatedUser.phone || "Not available"}\`\n\n` +
-
-        `The user can no longer access the bot.`,
-
-        {
-          parse_mode: "Markdown",
-
-          reply_markup: {
-
-            inline_keyboard: [
-
-              [
-                {
-                  text: "👤 Manage Another User",
-                  callback_data:
-                    "admin_manage_user"
-                }
-              ],
-
-              [
-                {
-                  text: "❌ Close",
-                  callback_data:
-                    "admin_manage_user_cancel"
-                }
-              ]
-
-            ]
-
-          }
-
-        }
-
-      );
-
-    } catch (error) {
-
-      console.error(
-        "Block user error:",
-        error
-      );
-
-      await ctx.reply(
-        "❌ Failed to block user."
-      );
-
-    }
-
-  }
-);
-
-bot.callbackQuery(
-  /^set_admin_(main|statistics|withdrawal|broadcast)_(\d+)$/,
-  async (ctx) => {
-    try {
-      const admin =
-        await db.getAdminByTelegramId(
-          ctx.from.id
-        );
-
-      if (
-        !admin ||
-        admin.admin_role !== "main"
-      ) {
-        return await ctx.answerCallbackQuery({
-          text: "❌ Unauthorized",
-          show_alert: true
-        });
-      }
-
-      const role =
-        ctx.match[1];
-
-      const userId =
-        Number(ctx.match[2]);
-
-      // Never allow changing yourself
-      if (
-        String(userId) ===
-        String(admin.id)
-      ) {
-        return await ctx.answerCallbackQuery({
-          text: "⚠️ You cannot change your own role.",
-          show_alert: true
-        });
-      }
-
-      const updatedUser =
-        await db.setUserAdminRole(
-          userId,
-          role
-        );
-
-      if (!updatedUser) {
-        return await ctx.answerCallbackQuery({
-          text: "❌ User not found.",
-          show_alert: true
-        });
-      }
-
-      await ctx.answerCallbackQuery({
-        text: "✅ Admin role updated."
-      });
-
-      const roleNames = {
-        main: "👑 Main Admin",
-        statistics: "📊 Statistics Admin",
-        withdrawal: "💸 Withdrawal Admin",
-        broadcast: "📢 Broadcast Admin"
-      };
-
-      await ctx.editMessageText(
-        `✅ *Admin Role Updated*\n\n` +
-        `👤 Name: *${updatedUser.name || "Unknown"}*\n` +
-        `📱 Phone: \`${updatedUser.phone || "Not available"}\`\n\n` +
-        `🔐 New Role: *${roleNames[role]}*`,
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "👑 Manage Another Admin",
-                  callback_data:
-                    "admin_manage_admins"
-                }
-              ],
-              [
-                {
-                  text: "🏠 Home",
-                  callback_data:
-                    "admin_home"
-                }
-              ]
-            ]
-          }
-        }
-      );
-
-    } catch (err) {
-      console.error(
-        "Set admin role error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Failed to update admin role."
-      );
-    }
-  }
-);
-bot.callbackQuery(
-  /^remove_admin_(\d+)$/,
-  async (ctx) => {
-    try {
-      const admin =
-        await db.getAdminByTelegramId(
-          ctx.from.id
-        );
-
-      if (
-        !admin ||
-        admin.admin_role !== "main"
-      ) {
-        return await ctx.answerCallbackQuery({
-          text: "❌ Unauthorized",
-          show_alert: true
-        });
-      }
-
-      const userId =
-        Number(ctx.match[1]);
-
-      if (
-        String(userId) ===
-        String(admin.id)
-      ) {
-        return await ctx.answerCallbackQuery({
-          text: "⚠️ You cannot remove your own admin rights.",
-          show_alert: true
-        });
-      }
-
-      const updatedUser =
-        await db.removeUserAdminRole(
-          userId
-        );
-
-      if (!updatedUser) {
-        return await ctx.answerCallbackQuery({
-          text: "❌ User not found.",
-          show_alert: true
-        });
-      }
-
-      await ctx.answerCallbackQuery({
-        text: "🚫 Admin rights removed."
-      });
-
-      await ctx.editMessageText(
-        `🚫 *Admin Rights Removed*\n\n` +
-        `👤 Name: *${updatedUser.name || "Unknown"}*\n` +
-        `📱 Phone: \`${updatedUser.phone || "Not available"}\`\n\n` +
-        `The user is now a normal user.`,
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "👑 Manage Another Admin",
-                  callback_data:
-                    "admin_manage_admins"
-                }
-              ],
-              [
-                {
-                  text: "🏠 Home",
-                  callback_data:
-                    "admin_home"
-                }
-              ]
-            ]
-          }
-        }
-      );
-
-    } catch (err) {
-      console.error(
-        "Remove admin role error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Failed to remove admin rights."
-      );
-    }
-  }
-);
-
-bot.callbackQuery(
-  "admin_manage_admins_cancel",
-  async (ctx) => {
-    await ctx.answerCallbackQuery();
-
-    pendingAdminRoleSearch.delete(
-      ctx.from.id
-    );
-
-    await ctx.editMessageText(
-      "❌ Admin management cancelled."
-    );
-  }
-);
-
-bot.callbackQuery(
-  /^admin_unblock_user_(\d+)$/,
-  async (ctx) => {
-
-    try {
-
-      await ctx.answerCallbackQuery();
-
-      const admin =
-        await db.getAdminByTelegramId(
-          ctx.from.id
-        );
-
-      if (
-        !admin ||
-        admin.admin_role !== "main"
-      ) {
-
-        return ctx.reply(
-          "⛔ You are not authorized."
-        );
-
-      }
-
-      const userId =
-        Number(ctx.match[1]);
-
-      const updatedUser =
-        await db.setUserBlocked(
-          userId,
-          false
-        );
-
-      if (!updatedUser) {
-
-        return ctx.reply(
-          "❌ User not found."
-        );
-
-      }
-
-      await ctx.editMessageText(
-
-        `✅ *User Unblocked Successfully*\n\n` +
-
-        `👤 Name: *${updatedUser.name || "Unknown"}*\n` +
-
-        `📱 Phone: \`${updatedUser.phone || "Not available"}\`\n\n` +
-
-        `The user can access the bot again.`,
-
-        {
-          parse_mode: "Markdown",
-
-          reply_markup: {
-
-            inline_keyboard: [
-
-              [
-                {
-                  text: "👤 Manage Another User",
-                  callback_data:
-                    "admin_manage_user"
-                }
-              ],
-              [
-                {
-                  text: "🏠 Home",
-                  callback_data:
-                    "admin_home"
-                }
-              ],
-
-              [
-                {
-                  text: "❌ Close",
-                  callback_data:
-                    "admin_manage_user_cancel"
-                }
-              ]
-
-            ]
-
-          }
-
-        }
-
-      );
-
-    } catch (error) {
-
-      console.error(
-        "Unblock user error:",
-        error
-      );
-
-      await ctx.reply(
-        "❌ Failed to unblock user."
-      );
-
-    }
-
-  }
-);
-
-bot.callbackQuery(
-  "admin_manage_user_cancel",
-  async (ctx) => {
-
-    try {
-
-      await ctx.answerCallbackQuery();
-
-      pendingAdminUserSearch.delete(
-        ctx.from.id
-      );
-
-      await ctx.editMessageText(
-        "❌ User management cancelled."
-      );
-
-    } catch (error) {
-
-      console.error(
-        "Admin manage user cancel error:",
-        error
-      );
-
-    }
-
-  }
-);
-
-// ============================================================
-// ADMIN STATISTICS MENU
-// ============================================================
-
-bot.callbackQuery(
-  "admin_statistics_menu",
-  async (ctx) => {
-
-    try {
-
-      await answerCallback(ctx);
-
-      const admin =
-        await requireAdminPermission(
-          ctx,
-          "statistics"
-        );
-
-      if (!admin) {
-        return;
-      }
-
-      await ctx.editMessageText(
-        "📊 *STATISTICS*\n\n" +
-        "Choose the type of statistics you want to view:",
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: [
-
-              [
-                {
-                  text: "📊 General Statistics",
-                  callback_data: "admin_statistics"
-                }
-              ],
-
-              [
-                {
-                  text: "💰 Financial Statistics",
-                  callback_data: "admin_financial_statistics"
-                }
-              ],
-
-              [
-                {
-                  text: "👤 User Financial Statistics",
-                  callback_data: "admin_user_financial_statistics"
-                }
-              ],
-
-              [
-                {
-                  text: "🏠 Home",
-                  callback_data: "admin_home"
-                }
-              ]
-
-            ]
-          }
-        }
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Admin statistics menu error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Could not open statistics."
-      );
-
-    }
-
-  }
-);
-// ============================================================
-// ADMIN FINANCIAL STATISTICS
-// ============================================================
-
-bot.callbackQuery(
-  "admin_financial_statistics",
-  async (ctx) => {
-
-    try {
-
-      await answerCallback(ctx);
-
-      const admin =
-        await requireAdminPermission(
-          ctx,
-          "statistics"
-        );
-
-      if (!admin) {
-        return;
-      }
-
-      const stats =
-        await db.getAdminFinancialStatistics();
-
-      const message =
-        `💰 *FINANCIAL STATISTICS*\n\n` +
-
-        `💎 *Total Deposits*\n` +
-        `*${stats.totalDepositAmount.toFixed(2)} ETB*\n\n` +
-
-        `🏧 *Withdrawals*\n` +
-        `⏳ Pending: *${stats.pendingWithdrawalAmount.toFixed(2)} ETB*\n` +
-        `✅ Approved: *${stats.approvedWithdrawalAmount.toFixed(2)} ETB*\n` +
-        `❌ Rejected: *${stats.rejectedWithdrawalAmount.toFixed(2)} ETB*`;
-
-      await ctx.editMessageText(
-        message,
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: [
-
-              [
-                {
-                  text: "🔄 Refresh",
-                  callback_data:
-                    "admin_financial_statistics"
-                }
-              ],
-
-              [
-                {
-                  text: "⬅️ Statistics",
-                  callback_data:
-                    "admin_statistics_menu"
-                },
-                {
-                  text: "🏠 Home",
-                  callback_data:
-                    "admin_home"
-                }
-              ]
-
-            ]
-          }
-        }
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Admin financial statistics error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Could not load financial statistics."
-      );
-
-    }
-
-  }
-);
-// ============================================================
-// ADMIN USER FINANCIAL STATISTICS
-// ============================================================
-
-bot.callbackQuery(
-  "admin_user_financial_statistics",
-  async (ctx) => {
-
-    try {
-
-      await answerCallback(ctx);
-
-      const admin =
-        await requireAdminPermission(
-          ctx,
-          "statistics"
-        );
-
-      if (!admin) {
-        return;
-      }
-
-      clearPendingState(ctx.from.id);
-
-      pendingAdminRoleSearch.set(
-        ctx.from.id,
-        {
-          step: "financial_statistics_phone"
-        }
-      );
-
-      await ctx.editMessageText(
-        "👤 *USER FINANCIAL STATISTICS*\n\n" +
-        "Please send the user's phone number.\n\n" +
-        "Example:\n" +
-        "`0912345678`\n" +
-        "or\n" +
-        "`+251912345678`",
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "⬅️ Statistics",
-                  callback_data:
-                    "admin_statistics_menu"
-                }
-              ],
-              [
-                {
-                  text: "🏠 Home",
-                  callback_data:
-                    "admin_home"
-                }
-              ]
-            ]
-          }
-        }
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Admin user financial statistics search error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Something went wrong."
-      );
-
-    }
-
-  }
-);
-// ============================================================
-// ADMIN STATISTICS
-// ============================================================
-
-bot.callbackQuery(
-  "admin_statistics",
-  async (ctx) => {
-
-    try {
-
-      await answerCallback(ctx);
-
-      // ------------------------------------------
-      // Verify admin
-      // ------------------------------------------
-
-      const admin =
-  await requireAdminPermission(
-    ctx,
-    "statistics"
-  );
-
-if (!admin) {
-  return;
-}
-
-
-      // ------------------------------------------
-      // Get statistics
-      // ------------------------------------------
-
-      const stats =
-        await db.getAdminStatistics();
-
-
-      // ------------------------------------------
-      // Display statistics
-      // ------------------------------------------
-
-      const message =
-        `📊 *SISTERS BINGO STATISTICS*\n\n` +
-
-        `💸 *Withdrawals*\n` +
-        `⏳ Pending: *${stats.pendingWithdrawals}*\n` +
-        `✅ Approved: *${stats.approvedWithdrawals}*\n` +
-        `❌ Rejected: *${stats.rejectedWithdrawals}*\n\n` +
-
-        `🔄 *Transfers*\n` +
-        `Total Transfers: *${stats.totalTransfers}*\n\n` +
-
-        `👥 *Users*\n` +
-        `🟢 Active Users: *${stats.activeUsers}*\n` +
-        `⚪ Inactive Users: *${stats.inactiveUsers}*\n` +
-        `🔴 Blocked Users: *${stats.blockedUsers}*\n\n` +
-
-        `👑 Administrators: *${stats.administrators}*`;
-
-
-      await ctx.reply(
-        message,
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "🔄 Refresh",
-                  callback_data: "admin_statistics"
-                }
-              ],
-              [
-                {
-                   text: "⬅️ Statistics",
-                   callback_data:
-                   "admin_statistics_menu"
-                },
-                {
-                  text: "🏠 Home",
-                  callback_data: "admin_home"
-                }
-              ]
-            ]
-          }
-        }
-      );
-
-
-    } catch (err) {
-
-      console.error(
-        "Admin statistics error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Could not load statistics."
-      );
-
-    }
-
-  }
-);
-// ============================================================
-// ADMIN — PAYMENT ACCOUNT MANAGEMENT
-// ============================================================
-//
-// Flow:
-//
-// Accounts
-//    ├── Add Account
-//    │      └── Payment Method
-//    │             └── Account Name
-//    │                    └── Account Number
-//    │                           └── Initial Balance
-//    │                                  └── Save
-//    │
-//    └── Manage Accounts
-//           └── Activate / Deactivate
-//
-// Account-number normalization:
-// ONLY Mobile / ሞባይል is normalized.
-// ============================================================
-
-
-// ============================================================
-// SHOW PAYMENT ACCOUNTS MENU
-// ============================================================
-
-async function showAdminAccounts(ctx) {
-
-  const admin =
-    await requireAdmin(ctx);
-
-  if (!admin) {
-    return;
-  }
-
-  try {
-
-    const accounts =
-      await db.getAllPaymentAccountsForAdmin();
-
-    let message =
-      "💳 *PAYMENT ACCOUNTS*\n\n";
-
-    if (
-      !accounts ||
-      accounts.length === 0
-    ) {
-
-      message +=
-        "No payment accounts have been created yet.\n\n";
-
-    } else {
-
-      accounts.forEach(
-        (account, index) => {
-
-          const methodName =
-            account.pm_amharic_name ||
-            account.pm_name ||
-            "Payment Method";
-
-          const typeName =
-            account.pt_amharic_name ||
-            account.pt_name ||
-            "";
-
-          const status =
-            account.is_active
-              ? "🟢 Active"
-              : "🔴 Inactive";
-
-          message +=
-            `${index + 1}. ${account.pm_emoji || "💳"} *${account.account_name}*\n` +
-            `💳 Method: *${methodName}*\n`;
-
-          if (typeName) {
-
-            message +=
-              `📂 Type: *${typeName}*\n`;
-
-          }
-
-          message +=
-            `📱 Account: \`${account.account_number}\`\n` +
-            `💰 Balance: *${account.balance} ETB*\n` +
-            `📌 Status: ${status}\n\n`;
-
-        }
-      );
-
-    }
-
-
-    const keyboard = [];
-
-
-    // ----------------------------------------------------------
-    // EXISTING ACCOUNT TOGGLE BUTTONS
-    // ----------------------------------------------------------
-
-    if (
-      accounts &&
-      accounts.length > 0
-    ) {
-
-      for (
-        const account of accounts
-      ) {
-
-        keyboard.push([
-          {
-            text:
-              account.is_active
-                ? `🔴 Deactivate ${account.account_name}`
-                : `🟢 Activate ${account.account_name}`,
-
-            callback_data:
-              `admin_account_toggle_${account.id}_${account.is_active ? "0" : "1"}`
-          }
-        ]);
-
-      }
-
-    }
-
-
-    // ----------------------------------------------------------
-    // MAIN BUTTONS
-    // ----------------------------------------------------------
-
-    keyboard.push([
-      {
-        text:
-          "➕ Add Account",
-
-        callback_data:
-          "admin_account_add"
-      }
-    ]);
-
-    keyboard.push([
-      {
-        text:
-          "🔄 Refresh",
-
-        callback_data:
-          "admin_accounts"
-      },
-
-      {
-        text:
-          "🏠 Home",
-
-        callback_data:
-          "admin_home"
-      }
-    ]);
-
-
-    const options = {
-
-      parse_mode:
-        "Markdown",
-
-      reply_markup: {
-        inline_keyboard:
-          keyboard
-      }
-
-    };
-
-
-    // ----------------------------------------------------------
-    // EDIT EXISTING MESSAGE WHEN CALLED FROM BUTTON
-    // ----------------------------------------------------------
-
-    if (
-      ctx.callbackQuery
-    ) {
-
-      try {
-
-        await ctx.editMessageText(
-          message,
-          options
-        );
-
-      } catch (err) {
-
-        // Message may already contain the same text
-        // or may not be editable.
-
-        await ctx.reply(
-          message,
-          options
-        );
-
-      }
-
-    } else {
-
-      await ctx.reply(
-        message,
-        options
-      );
-
-    }
-
-  } catch (err) {
-
-    console.error(
-      "Admin accounts screen error:",
-      err
-    );
-
-    await ctx.reply(
-      "❌ Could not load payment accounts."
-    );
-
-  }
-
-}
-
-
-// ============================================================
-// ADMIN ACCOUNTS BUTTON
-// ============================================================
-
-bot.callbackQuery(
-  "admin_accounts",
-  async (ctx) => {
-
-    const admin =
-      await requireAdmin(ctx);
-
-    if (!admin) {
-      return;
-    }
-
-    await answerCallback(ctx);
-
-    // Do not leave an unfinished account creation flow.
-    delete pendingAdminAccount[
-      admin.telegram_id
-    ];
-
-    await showAdminAccounts(
-      ctx
-    );
-
-  }
-);
-
-
-// ============================================================
-// ADD ACCOUNT — SELECT PAYMENT METHOD
-// ============================================================
-
-bot.callbackQuery(
-  "admin_account_add",
-  async (ctx) => {
-
-    const admin =
-      await requireAdmin(ctx);
-
-    if (!admin) {
-      return;
-    }
-
-    await answerCallback(ctx);
-
-    try {
-
-      const paymentMethods =
-        await db.getPaymentMethods();
-
-      if (
-        !paymentMethods ||
-        paymentMethods.length === 0
-      ) {
-
-        return ctx.reply(
-          "❌ No active payment methods are available."
-        );
-
-      }
-
-
-      const keyboard =
-        paymentMethods.map(
-          (pm) => [
-
-            {
-              text:
-                `${pm.emoji || "💳"} ${pm.amharic_name || pm.name}`,
-
-              callback_data:
-                `admin_account_method_${pm.id}`
-            }
-
-          ]
-        );
-
-
-      keyboard.push([
-        {
-          text:
-            "↩️ Back",
-
-          callback_data:
-            "admin_accounts"
-        }
-      ]);
-
-
-      await ctx.editMessageText(
-        "➕ *ADD PAYMENT ACCOUNT*\n\n" +
-        "First select the *payment method*:",
-        {
-          parse_mode:
-            "Markdown",
-
-          reply_markup: {
-            inline_keyboard:
-              keyboard
-          }
-        }
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Admin add account method error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Could not load payment methods."
-      );
-
-    }
-
-  }
-);
-
-
-// ============================================================
-// ADD ACCOUNT — PAYMENT METHOD SELECTED
-// ============================================================
-
-bot.callbackQuery(
-  /^admin_account_method_(\d+)$/,
-  async (ctx) => {
-
-    const admin =
-      await requireAdmin(ctx);
-
-    if (!admin) {
-      return;
-    }
-
-    await answerCallback(ctx);
-
-    const paymentMethodId =
-      Number(
-        ctx.match[1]
-      );
-
-    try {
-
-      const method =
-        await db.getPaymentMethodById(
-          paymentMethodId
-        );
-
-      if (!method) {
-
-        return ctx.reply(
-          "❌ Payment method not found."
-        );
-
-      }
-
-
-      pendingAdminAccount[
-        admin.telegram_id
-      ] = {
-
-        step:
-          "account_name",
-
-        paymentMethodId:
-          paymentMethodId,
-
-        paymentMethod:
-          method,
-
-        paymentTypeName:
-          method.type_name,
-
-        paymentTypeAmharicName:
-          method.am_type_name
-
-      };
-
-
-      await ctx.editMessageText(
-
-        "➕ *ADD PAYMENT ACCOUNT*\n\n" +
-
-        `💳 Payment Method: *${method.amharic_name || method.name}*\n` +
-
-        `📂 Payment Type: *${method.am_type_name || method.type_name || "-"}*\n\n` +
-
-        "Please enter the *account name*.\n\n" +
-
-        "Example:\n" +
-        "`Sisters Bingo Telebirr`",
-
-        {
-
-          parse_mode:
-            "Markdown",
-
-          reply_markup: {
-
-            inline_keyboard: [
-
-              [
-
-                {
-
-                  text:
-                    "❌ Cancel",
-
-                  callback_data:
-                    "admin_account_cancel"
-
-                }
-
-              ]
-
-            ]
-
-          }
-
-        }
-
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Admin account method selection error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Could not select the payment method."
-      );
-
-    }
-
-  }
-);
-
-
-// ============================================================
-// ADD ACCOUNT — CANCEL
-// ============================================================
-
-bot.callbackQuery(
-  "admin_account_cancel",
-  async (ctx) => {
-
-    const admin =
-      await requireAdmin(ctx);
-
-    if (!admin) {
-      return;
-    }
-
-    await answerCallback(ctx);
-
-    delete pendingAdminAccount[
-      admin.telegram_id
-    ];
-
-    await showAdminAccounts(
-      ctx
-    );
-
-  }
-);
-
-
-// ============================================================
-// TOGGLE ACCOUNT ACTIVE / INACTIVE
-// ============================================================
-
-bot.callbackQuery(
-  /^admin_account_toggle_(\d+)_(0|1)$/,
-  async (ctx) => {
-
-    const admin =
-      await requireAdmin(ctx);
-
-    if (!admin) {
-      return;
-    }
-
-    await answerCallback(
-      ctx,
-      "Updating account..."
-    );
-
-    const accountId =
-      Number(
-        ctx.match[1]
-      );
-
-    const isActive =
-      ctx.match[2] === "1";
-
-
-    try {
-
-      const account =
-        await db.setPaymentAccountActive(
-          accountId,
-          isActive
-        );
-
-      if (!account) {
-
-        return ctx.reply(
-          "❌ Payment account not found."
-        );
-
-      }
-
-
-      await showAdminAccounts(
-        ctx
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Payment account toggle error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Could not change the account status."
-      );
-
-    }
-
-  }
-);
-
-
-// ============================================================
-// ADD ACCOUNT — TEXT INPUT
-// ============================================================
-//
-// IMPORTANT:
-// This handler MUST appear BEFORE the existing
-// BROADCAST TEXT handler.
-//
-// Your current broadcast text handler starts around line 4589.
-// ============================================================
-
-bot.on(
-  "message:text",
-  async (ctx, next) => {
-
-    const admin =
-      await getCurrentAdmin(ctx);
-
-    if (!admin) {
-
-      return next();
-
-    }
-
-
-    const telegramId =
-      admin.telegram_id;
-
-    const pending =
-      pendingAdminAccount[
-        telegramId
-      ];
-
-
-    // No account creation in progress.
-    if (!pending) {
-
-      return next();
-
-    }
-
-
-    const text =
-      String(
-        ctx.message.text || ""
-      ).trim();
-
-
-    // ----------------------------------------------------------
-    // CANCEL
-    // ----------------------------------------------------------
-
-    if (
-      text === "/cancel"
-    ) {
-
-      delete pendingAdminAccount[
-        telegramId
-      ];
-
-      return ctx.reply(
-        "❌ Payment account creation cancelled."
-      );
-
-    }
-
-
-    // ==========================================================
-    // STEP 1 — ACCOUNT NAME
-    // ==========================================================
-
-    if (
-      pending.step ===
-      "account_name"
-    ) {
-
-      if (!text) {
-
-        return ctx.reply(
-          "❌ Account name cannot be empty.\n\n" +
-          "Please enter the account name:"
-        );
-
-      }
-
-
-      if (
-        text.length > 100
-      ) {
-
-        return ctx.reply(
-          "❌ Account name is too long.\n\n" +
-          "Please enter a name with 100 characters or fewer:"
-        );
-
-      }
-
-
-      pending.accountName =
-        text.substring(
-          0,
-          100
-        );
-
-
-      pending.step =
-        "account_number";
-
-
-      const isMobile =
-        String(
-          pending.paymentTypeName || ""
-        )
-          .trim()
-          .toLowerCase() ===
-          "mobile" ||
-
-        String(
-          pending.paymentTypeAmharicName || ""
-        ).trim() ===
-          "ሞባይል";
-
-
-      if (isMobile) {
-
-        return ctx.reply(
-
-          "📱 Please enter the *mobile account number*.\n\n" +
-
-          "Examples:\n" +
-          "`0912345678`\n" +
-          "`+251912345678`\n" +
-          "`251912345678`\n\n" +
-
-          "The number will be normalized to `+251...`.",
-
-          {
-            parse_mode:
-              "Markdown"
-          }
-
-        );
-
-      }
-
-
-      return ctx.reply(
-
-        "💳 Please enter the *account number*.\n\n" +
-
-        "The account number will be saved as entered.",
-
-        {
-          parse_mode:
-            "Markdown"
-        }
-
-      );
-
-    }
-
-
-    // ==========================================================
-    // STEP 2 — ACCOUNT NUMBER
-    // ==========================================================
-
-    if (
-      pending.step ===
-      "account_number"
-    ) {
-
-      if (!text) {
-
-        return ctx.reply(
-          "❌ Account number cannot be empty.\n\n" +
-          "Please enter the account number:"
-        );
-
-      }
-
-
-      const normalizedAccountNumber =
-        normalizePaymentAccountNumber(
-
-          text,
-
-          pending.paymentTypeName,
-
-          pending.paymentTypeAmharicName
-
-        );
-
-
-      const isMobile =
-        String(
-          pending.paymentTypeName || ""
-        )
-          .trim()
-          .toLowerCase() ===
-          "mobile" ||
-
-        String(
-          pending.paymentTypeAmharicName || ""
-        ).trim() ===
-          "ሞባይል";
-
-
-      // Mobile numbers MUST be valid Ethiopian numbers.
-      if (
-        isMobile &&
-        !normalizedAccountNumber
-      ) {
-
-        return ctx.reply(
-
-          "❌ Invalid Ethiopian mobile number.\n\n" +
-
-          "Please enter a valid number such as:\n" +
-          "`0912345678`\n" +
-          "`+251912345678`\n" +
-          "`251912345678`",
-
-          {
-            parse_mode:
-              "Markdown"
-          }
-
-        );
-
-      }
-
-
-      if (
-        !normalizedAccountNumber
-      ) {
-
-        return ctx.reply(
-          "❌ Invalid account number.\n\n" +
-          "Please enter the account number again."
-        );
-
-      }
-
-
-      pending.accountNumber =
-        normalizedAccountNumber;
-
-
-      pending.step =
-        "initial_balance";
-
-
-      return ctx.reply(
-
-        "💰 Please enter the *initial balance* in ETB.\n\n" +
-
-        "Example:\n" +
-        "`0`\n" +
-        "`5000`\n" +
-        "`12500.50`",
-
-        {
-          parse_mode:
-            "Markdown"
-        }
-
-      );
-
-    }
-
-
-    // ==========================================================
-    // STEP 3 — INITIAL BALANCE
-    // ==========================================================
-
-    if (
-      pending.step ===
-      "initial_balance"
-    ) {
-
-      const initialBalance =
-        Number(
-          text.replace(
-            /,/g,
-            ""
-          )
-        );
-
-
-      if (
-        !Number.isFinite(
-          initialBalance
-        ) ||
-        initialBalance < 0
-      ) {
-
-        return ctx.reply(
-
-          "❌ Invalid balance.\n\n" +
-
-          "Please enter a number greater than or equal to 0.\n\n" +
-
-          "Example:\n" +
-          "`0`\n" +
-          "`5000`\n" +
-          "`12500.50`",
-
-          {
-            parse_mode:
-              "Markdown"
-          }
-
-        );
-
-      }
-
-
-      try {
-
-        const result =
-          await db.createPaymentAccount(
-
-            pending.paymentMethodId,
-
-            pending.accountName,
-
-            pending.accountNumber,
-
-            initialBalance
-
-          );
-
-
-        if (
-          !result ||
-          result.success !== true
-        ) {
-
-          return ctx.reply(
-
-            `❌ ${result?.message || "Could not create payment account."}`
-
-          );
-
-        }
-
-
-        delete pendingAdminAccount[
-          telegramId
-        ];
-
-
-        const account =
-          result.account;
-
-
-        await ctx.reply(
-
-          "✅ *PAYMENT ACCOUNT CREATED*\n\n" +
-
-          `💳 Method: *${account.pm_amharic_name || account.pm_name}*\n` +
-
-          `📂 Type: *${account.pt_amharic_name || account.pt_name || "-"}*\n` +
-
-          `👤 Name: *${account.account_name}*\n` +
-
-          `📱 Account: \`${account.account_number}\`\n` +
-
-          `💰 Initial Balance: *${account.balance} ETB*\n` +
-
-          "📌 Status: 🟢 *Active*",
-
-          {
-
-            parse_mode:
-              "Markdown",
-
-            reply_markup: {
-
-              inline_keyboard: [
-
-                [
-
-                  {
-
-                    text:
-                      "💳 Accounts",
-
-                    callback_data:
-                      "admin_accounts"
-
-                  }
-
-                ],
-
-                [
-
-                  {
-
-                    text:
-                      "🏠 Home",
-
-                    callback_data:
-                      "admin_home"
-
-                  }
-
-                ]
-
-              ]
-
-            }
-
-          }
-
-        );
-
-      } catch (err) {
-
-        console.error(
-          "Create payment account error:",
-          err
-        );
-
-        await ctx.reply(
-
-          "❌ Could not create the payment account.\n\n" +
-          "Please try again."
-
-        );
-
-      }
-
-      return;
-
-    }
-
-
-    return next();
-
-  }
-);
-
-// ============================================================
-// /START
-// ============================================================
-
-bot.command(
-  "start",
-  async (ctx) => {
-
-    const telegramId =
-      ctx.from.id;
-
-    const firstName =
-      ctx.from.first_name ||
-      "Player";
-
-
-    clearPendingState(
-      telegramId
-    );
-
-    delete pendingPhone[
-      telegramId
-    ];
-
-    delete pendingAdminReject[
-      telegramId
-    ];
-
-
-    try {
-
-      const existing =
-  await db.getUserByTelegramIdIncludingInactive(
-    telegramId
-  );
-
-if (existing) {
-
-  // Banned users should remain blocked
-  if (existing.is_blocked === true) {
-
-   return ctx.reply(
-    "🚫 Your account has been blocked. Please contact support."
-  );
-
-  }
-
-  // Reactivate previously deleted account
-  if (existing.is_active === false) {
-
-    const reactivated =
-      await db.reactivateUserByTelegramId(
-        telegramId
-      );
-
-    if (!reactivated) {
-
-      return await ctx.reply(
-        "❌ Could not reactivate your account."
-      );
-
-    }
-
-    await ctx.reply(
-      "✅ *Welcome back!*\n\n" +
-      "Your Sisters Bingo account has been reactivated. 🎱",
-      {
-        parse_mode: "Markdown"
-      }
-    );
-
-    return await showHome(
-      ctx,
-      reactivated
-    );
-  }
-
-  return await showHome(
-    ctx,
-    existing
-  );
-}
-
-
-      // ------------------------------------------------------
-      // New user
-      // ------------------------------------------------------
-
-      pendingPhone[
-        telegramId
-      ] = {
-
-        name:
-          firstName,
-
-        step:
-          "ask_name"
-
-      };
-
-
-      await ctx.reply(
-
-        `👋 Welcome to *Sisters Bingo!*\n\n` +
-
-        `Let's get you registered.\n` +
-
-        `What should we call you?`,
-
-        {
-
-          parse_mode:
-            "Markdown"
-
-        }
-
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Start error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Something went wrong. Please try again."
-      );
-
-    }
-
-  }
-);
-
-
-// ============================================================
-// REGISTRATION TEXT
-// ============================================================
-
-bot.on(
-  "message:text",
-  async (ctx, next) => {
-
-    const telegramId =
-      ctx.from.id;
-
-    const text =
-      ctx.message.text;
-
-
-    const pending =
-      pendingPhone[
-        telegramId
-      ];
-
-
-    if (!pending) {
-
-      return next();
-
-    }
-
-
-    if (
-      pending.step === "ask_name" &&
-      text &&
-      !text.startsWith("/")
-    ) {
-
-      pending.name =
-        text
-          .trim()
-          .substring(
-            0,
-            30
-          );
-
-
-      pending.step =
-        "ask_phone";
-
-
-      await ctx.reply(
-
-        `Nice to meet you, *${pending.name}!*\n\n` +
-
-        `Please share your phone number so we can verify your account:`,
-
-        {
-
-          parse_mode:
-            "Markdown",
-
-          reply_markup: {
-
-            keyboard: [
-
-              [
-
-                {
-
-                  text:
-                    "📱 Share My Phone Number",
-
-                  request_contact:
-                    true
-
-                }
-
-              ]
-
-            ],
-
-            resize_keyboard:
-              true,
-
-            one_time_keyboard:
-              true
-
-          }
-
-        }
-
-      );
-
-
-      return;
-
-    }
-
-
-    return next();
-
-  }
-);
-
-
-// ============================================================
-// REGISTRATION CONTACT
-// ============================================================
-
-bot.on(
-  "message:contact",
-  async (ctx) => {
-
-    const telegramId =
-      ctx.from.id;
-
-
-    const pending =
-      pendingPhone[
-        telegramId
-      ];
-
-
-    if (
-      !pending ||
-      pending.step !== "ask_phone"
-    ) {
-
-      return;
-
-    }
-
-
-    const contact =
-      ctx.message.contact;
-
-
-    const phone =
-      contact.phone_number;
-
-
-    const name =
-      pending.name;
-
-
-    if (
-      contact.user_id &&
-      contact.user_id !== telegramId
-    ) {
-
-      return ctx.reply(
-        "❌ Please use the button to share your own phone number."
-      );
-
-    }
-
-
-    try {
-
-      const result =
-        await db.registerUser(
-          telegramId,
-          name,
-          phone
-        );
-
-
-      const user =
-        result.user;
-
-
-      delete pendingPhone[
-        telegramId
-      ];
-
-
-      await ctx.reply(
-
-        `✅ *Registered successfully!*\n\n` +
-
-        `Name: *${user.name}*\n` +
-
-        `Phone: ${phone}\n` +
-
-        `Starting balance: *${user.balance} ETB*\n\n` +
-
-        `You're all set! 🎱`,
-
-        {
-
-          parse_mode:
-            "Markdown"
-
-        }
-
-      );
-
-
-      await showHome(
-        ctx,
-        user
-      );
-
-
-    } catch (err) {
-
-      console.error(
-        "Registration error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Registration failed. Please try /start again."
-      );
-
-    }
-
-  }
-);
-
-
-// ============================================================
-// BALANCE
+// USER HOME
 // ============================================================
 
 async function showBalance(
@@ -3769,570 +596,78 @@ async function showBalance(
 ) {
 
   const user =
-    await db.getUserByTelegramId(
-      ctx.from.id
-    );
-
+    await getCurrentUser(ctx);
 
   if (!user) {
 
-    return ctx.reply(
+    await ctx.reply(
       "Please /start to register first."
     );
 
+    return;
+
   }
 
-
-  await ctx.reply(
-
-    `💰 Your balance: *${user.balance} ETB*`,
-
+  await safeEditMessage(
+    ctx,
+    `💰 *Your Balance*\n\n` +
+    `💵 ${formatAmount(user.balance)} ETB`,
     {
-
-      parse_mode:
-        "Markdown"
-
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "🏠 Home",
+              callback_data: "user_home"
+            }
+          ]
+        ]
+      }
     }
-
   );
 
 }
 
 
-bot.command(
-  "balance",
-  showBalance
-);
-
-bot.hears(
-  "balance",
-  showBalance
-);
-
-bot.hears(
-  "💰 Balance",
-  showBalance
-);
-
-
-bot.callbackQuery(
-  "balance",
-  async (ctx) => {
-
-    await answerCallback(
-      ctx
-    );
-
-    clearPendingState(
-      ctx.from.id
-    );
-
-    await showBalance(
-      ctx
-    );
-
-  }
-);
-
-
-// ============================================================
-// TRANSFER
-// ============================================================
-
-async function showTransfer(
+async function showSupport(
   ctx
 ) {
 
-  const telegramId =
-    ctx.from.id;
-
-
   const user =
-    await db.getUserByTelegramId(
-      telegramId
-    );
-
+    await getCurrentUser(ctx);
 
   if (!user) {
 
-    return ctx.reply(
+    await ctx.reply(
       "Please /start to register first."
     );
 
-  }
-
-
-  if (
-    Number(user.balance) <= 10
-  ) {
-
-    return ctx.reply(
-      "❌ ያሎት ሂሳብ ለሌላ ተጫዋች ለማስተላለፍ በቂ አይደለም።"
-    );
+    return;
 
   }
 
-
-  delete pendingTransfer[
-    telegramId
-  ];
-
-
-  pendingTransfer[
-    telegramId
-  ] = {
-
-    step:
-      "phone"
-
-  };
-
-
-  await ctx.reply(
-
-    "🔄 *ብር ማስተላለፍ*\n\n" +
-
-    "ማስተላለፍ የሚፈልጉትን ተጫዋች ስልክ ቁጥር ያስገቡ።\n\n" +
-
-    "ምሳሌ፦ `0912345678`",
-
+  await safeEditMessage(
+    ctx,
+    "🆘 *Support*\n\n" +
+    "ማንኛውም ጥያቄ ወይም ችግር ካለዎት ከታች ባለው የSupport አካውንት ያግኙን።\n\n" +
+    "👤 @sistersbingosupport",
     {
-
-      parse_mode:
-        "Markdown"
-
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "🏠 Home",
+              callback_data: "user_home"
+            }
+          ]
+        ]
+      }
     }
-
   );
 
 }
-
-
-bot.command(
-  "transfer",
-  showTransfer
-);
-
-bot.hears(
-  "transfer",
-  showTransfer
-);
-
-bot.hears(
-  "🔄 Transfer",
-  showTransfer
-);
-
-
-bot.callbackQuery(
-  "transfer",
-  async (ctx) => {
-
-    await answerCallback(
-      ctx
-    );
-
-    clearPendingState(
-      ctx.from.id
-    );
-
-    await showTransfer(
-      ctx
-    );
-
-  }
-);
-
-
-// ============================================================
-// TRANSFER PHONE
-// ============================================================
-
-bot.on(
-  "message:text",
-  async (ctx, next) => {
-
-    const telegramId =
-      ctx.from.id;
-
-    const text =
-      ctx.message.text.trim();
-
-
-    const transfer =
-      pendingTransfer[
-        telegramId
-      ];
-
-
-    if (!transfer) {
-
-      return next();
-
-    }
-
-
-    if (
-      transfer.step !== "phone"
-    ) {
-
-      return next();
-
-    }
-
-
-    if (
-      text.startsWith("/")
-    ) {
-
-      return next();
-
-    }
-
-
-    try {
-
-      const phone =
-        normalizeEthiopianPhone(
-          text
-        );
-
-
-      if (!phone) {
-
-        return ctx.reply(
-
-          "❌ እባክዎ ትክክለኛ የስልክ ቁጥር ያስገቡ።\n\n" +
-
-          "ምሳሌ፦ `0912345678`",
-
-          {
-
-            parse_mode:
-              "Markdown"
-
-          }
-
-        );
-
-      }
-
-
-      const sender =
-        await db.getUserByTelegramId(
-          telegramId
-        );
-
-
-      if (!sender) {
-
-        delete pendingTransfer[
-          telegramId
-        ];
-
-        return ctx.reply(
-          "❌ አካውንትዎ አልተገኘም። /start ብለው እንደገና ይጀምሩ።"
-        );
-
-      }
-
-
-      const recipient =
-        await db.getUserByPhone(
-          phone
-        );
-
-
-      if (!recipient) {
-
-        return ctx.reply(
-          "❌ ይህ ስልክ ቁጥር በሲስተማችን ውስጥ አልተመዘገበም።"
-        );
-
-      }
-
-
-      if (
-        Number(recipient.telegram_id) ===
-        Number(sender.telegram_id)
-      ) {
-
-        return ctx.reply(
-          "❌ ወደራስዎ ሂሳብ ብር ማስተላለፍ አይችሉም።"
-        );
-
-      }
-
-
-      pendingTransfer[
-        telegramId
-      ] = {
-
-        step:
-          "amount",
-
-        recipient
-
-      };
-
-
-      await ctx.reply(
-
-        "✅ *ተጫዋቹ ተረጋግጧል።*\n\n" +
-
-        `👤 ተቀባይ፦ *${recipient.name}*\n` +
-
-        `📱 ስልክ፦ ${phone}\n\n` +
-
-        "💰 ማስተላለፍ የሚፈልጉትን የብር መጠን ያስገቡ።",
-
-        {
-
-          parse_mode:
-            "Markdown"
-
-        }
-
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Transfer phone error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ የተጫዋቹን ስልክ ማረጋገጥ አልተቻለም።"
-      );
-
-    }
-
-  }
-);
-
-
-// ============================================================
-// TRANSFER AMOUNT
-// ============================================================
-
-bot.on(
-  "message:text",
-  async (ctx, next) => {
-
-    const telegramId =
-      ctx.from.id;
-
-    const text =
-      ctx.message.text.trim();
-
-
-    const transfer =
-      pendingTransfer[
-        telegramId
-      ];
-
-
-    if (!transfer) {
-
-      return next();
-
-    }
-
-
-    if (
-      transfer.step !== "amount"
-    ) {
-
-      return next();
-
-    }
-
-
-    if (
-      text.startsWith("/")
-    ) {
-
-      return next();
-
-    }
-
-
-    try {
-
-      const amount =
-        Number(text);
-
-
-      if (
-        !Number.isFinite(amount) ||
-        amount <= 0
-      ) {
-
-        return ctx.reply(
-          "❌ እባክዎ ትክክለኛ የብር መጠን ያስገቡ።"
-        );
-
-      }
-
-
-      if (
-        !Number.isInteger(amount)
-      ) {
-
-        return ctx.reply(
-          "❌ የሚያስተላልፉት የብር መጠን ሙሉ ቁጥር መሆን አለበት።"
-        );
-
-      }
-
-
-      if (
-        amount < 10
-      ) {
-
-        return ctx.reply(
-          "❌ ቢያንስ 10 ብር ማስተላለፍ ይችላሉ።"
-        );
-
-      }
-
-
-      const sender =
-        await db.getUserByTelegramId(
-          telegramId
-        );
-
-
-      if (!sender) {
-
-        delete pendingTransfer[
-          telegramId
-        ];
-
-        return ctx.reply(
-          "❌ አካውንትዎ አልተገኘም።"
-        );
-
-      }
-
-
-      const balance =
-        Number(sender.balance);
-
-
-      if (
-        amount > balance - 10
-      ) {
-
-        return ctx.reply(
-
-          `❌ በቂ ሂሳብ የሎትም።\n\n` +
-
-          `💰 ያለዎት ሂሳብ፦ ${balance} ETB\n` +
-
-          `💸 የፈለጉት፦ ${amount} ETB`
-
-        );
-
-      }
-
-
-      const recipient =
-        transfer.recipient;
-
-
-      const result =
-        await db.transferBalance(
-          sender.telegram_id,
-          recipient.telegram_id,
-          amount
-        );
-
-
-      if (
-        !result.success
-      ) {
-
-        return ctx.reply(
-          `❌ ${result.message || "ማስተላለፉ አልተሳካም።"}`
-        );
-
-      }
-
-
-      delete pendingTransfer[
-        telegramId
-      ];
-
-
-      await ctx.reply(
-
-        "✅ *ማስተላለፉ ተሳክቷል!*\n\n" +
-
-        `👤 ተቀባይ፦ *${recipient.name}*\n` +
-
-        `💸 የተላከው፦ *${amount} ETB*\n\n` +
-
-        `💰 አዲሱ ቀሪ ሂሳብ፦ *${result.senderAfter} ETB*`,
-
-        {
-
-          parse_mode:
-            "Markdown"
-
-        }
-
-      );
-
-
-      try {
-
-        await bot.api.sendMessage(
-
-          recipient.telegram_id,
-
-          "💰 *ብር ደርሶዎታል!*\n\n" +
-
-          `👤 ከ፦ *${sender.name}*\n` +
-
-          `💵 የደረሰዎት፦ *${amount} ETB*\n\n` +
-
-          `💰 አዲሱ ቀሪ ሂሳብ፦ *${result.recipientAfter} ETB*`,
-
-          {
-
-            parse_mode:
-              "Markdown"
-
-          }
-
-        );
-
-      } catch (err) {
-
-        console.error(
-          "Recipient notification error:",
-          err
-        );
-
-      }
-
-    } catch (err) {
-
-      console.error(
-        "Transfer amount error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ ማስተላለፉን ማከናወን አልተቻለም።"
-      );
-
-    }
-
-  }
-);
 
 
 // ============================================================
@@ -4344,471 +679,731 @@ async function showDeposit(
 ) {
 
   const user =
-    await db.getUserByTelegramId(
-      ctx.from.id
-    );
-
+    await getCurrentUser(ctx);
 
   if (!user) {
 
-    return ctx.reply(
+    await ctx.reply(
       "Please /start to register first."
     );
 
-  }
-
-
-  const paymentmethods =
-    await db.getPaymentMethods();
-
-
-  const paymentmethodtypes =
-    await db.getPaymentMethodTypes();
-
-
-  if (
-    !paymentmethodtypes ||
-    paymentmethodtypes.length === 0 ||
-    !paymentmethods ||
-    paymentmethods.length === 0
-  ) {
-
-    return ctx.reply(
-      "ይቅርታ! ለጊዜው የክፍያ መንገድ አልተዘጋጀም።"
-    );
+    return;
 
   }
 
+  try {
 
-  let mes =
-    "❇️ ብር ማስገባት የሚችሉት ቀጥሎ ";
+    const methods =
+      await db.getPaymentMethods();
 
+    if (
+      !methods ||
+      methods.length === 0
+    ) {
 
-  const some =
-    paymentmethods.length <= 1
-      ? "በተቀመጠው "
-      : "በተቀመጡት ";
-
-
-  const meslast =
-    paymentmethods.length <= 1
-      ? "አማራጭ"
-      : "አማራጮች";
-
-
-  mes += some;
-
-
-  if (
-    paymentmethodtypes.length === 1
-  ) {
-
-    mes +=
-      paymentmethodtypes[0]
-        .amharic_name;
-
-  } else {
-
-    const typeNames =
-      paymentmethodtypes.map(
-        type =>
-          `የ${type.amharic_name}`
+      await safeEditMessage(
+        ctx,
+        "💎 *Deposit*\n\n" +
+        "Deposit is currently unavailable.\n\n" +
+        "Please contact Support.",
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🆘 Support",
+                  callback_data: "support"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Home",
+                  callback_data: "user_home"
+                }
+              ]
+            ]
+          }
+        }
       );
 
-
-    const last =
-      typeNames.pop();
-
-
-    mes +=
-      typeNames.join(", ") +
-      " እና " +
-      last;
-
-  }
-
-
-  mes +=
-    ` ክፍያ ${meslast} ብቻ ነው።\n\n`;
-
-
-  mes +=
-    "🚫 ከዚህ ዉጭ የላከ አናስተናግድም 🚫\n\n";
-
-
-  const buttons =
-    paymentmethods.map(
-      pm => [
-
-        {
-
-          text:
-            `${pm.emoji} ${pm.amharic_name}`,
-
-          callback_data:
-            `payment_${pm.id}`
-
-        }
-
-      ]
-    );
-
-
-  buttons.push([
-
-    {
-
-      text:
-        "❌ ሰርዝ",
-
-      callback_data:
-        "canceldeposit"
+      return;
 
     }
 
-  ]);
+    const rows =
+      [];
+
+    for (
+      const method of methods
+    ) {
+
+      rows.push(
+        [
+          {
+            text:
+              `${method.name || method.payment_method_name || "Payment"} 💎`,
+            callback_data:
+              `deposit_method_${method.id}`
+          }
+        ]
+      );
+
+    }
+
+    rows.push(
+      [
+        {
+          text: "🏠 Home",
+          callback_data: "user_home"
+        }
+      ]
+    );
+
+    await safeEditMessage(
+      ctx,
+      "💎 *Deposit*\n\n" +
+      "እባክዎ የDeposit ዘዴ ይምረጡ።",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: rows
+        }
+      }
+    );
+
+  } catch (error) {
+
+    console.error(
+      "Show deposit error:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ Unable to load deposit methods. Please try again later."
+    );
+
+  }
+
+}
 
 
-  await ctx.reply(
-    mes,
-    {
+// ============================================================
+// DEPOSIT METHOD SELECTION
+// ============================================================
 
-      parse_mode:
-        "Markdown",
+bot.callbackQuery(
+  /^deposit_method_(\d+)$/,
+  async (ctx) => {
 
-      reply_markup: {
+    await answerCallback(ctx);
 
-        inline_keyboard:
-          buttons
+    const methodId =
+      Number(
+        ctx.match[1]
+      );
+
+    const user =
+      await getCurrentUser(ctx);
+
+    if (!user) {
+
+      await ctx.reply(
+        "Please /start to register first."
+      );
+
+      return;
+
+    }
+
+    try {
+
+      const method =
+        await db.getPaymentMethodById(
+          methodId
+        );
+
+      if (!method) {
+
+        await ctx.reply(
+          "❌ Payment method not found."
+        );
+
+        return;
 
       }
 
+      const types =
+        await db.getPaymentMethodTypes(
+          methodId
+        );
+
+      if (
+        !types ||
+        types.length === 0
+      ) {
+
+        await ctx.reply(
+          "❌ No active payment accounts are available for this method."
+        );
+
+        return;
+
+      }
+
+      if (
+        types.length === 1
+      ) {
+
+        const type =
+          types[0];
+
+        const account =
+          await db.getPaymentAccount(
+            methodId,
+            type.id
+          );
+
+        if (!account) {
+
+          await ctx.reply(
+            "❌ No active payment account is currently available."
+          );
+
+          return;
+
+        }
+
+        pendingDeposit[
+          getTelegramId(ctx)
+        ] = {
+          methodId,
+          paymentMethod:
+            method.name ||
+            method.payment_method_name ||
+            "Payment",
+          paymentTypeId:
+            type.id,
+          paymentTypeName:
+            type.name ||
+            type.payment_type_name ||
+            "",
+          accountId:
+            account.id,
+          accountNumber:
+            account.account_number
+        };
+
+        await safeEditMessage(
+          ctx,
+          "💎 *Deposit*\n\n" +
+          `Payment method: *${escapeMarkdown(
+            method.name ||
+            method.payment_method_name ||
+            "Payment"
+          )}*\n\n` +
+          `📱 Account: *${escapeMarkdown(
+            account.account_number || ""
+          )}*\n\n` +
+          "Please send the payment to the account above, then paste the Telebirr SMS message here.",
+          {
+            parse_mode: "Markdown",
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: "❌ Cancel",
+                    callback_data: "deposit_cancel"
+                  }
+                ]
+              ]
+            }
+          }
+        );
+
+        return;
+
+      }
+
+      const rows =
+        types.map(
+          (type) => [
+            {
+              text:
+                `${type.name || type.payment_type_name || "Account"} 💎`,
+              callback_data:
+                `deposit_type_${methodId}_${type.id}`
+            }
+          ]
+        );
+
+      rows.push(
+        [
+          {
+            text: "⬅️ Back",
+            callback_data: "deposit"
+          }
+        ]
+      );
+
+      await safeEditMessage(
+        ctx,
+        "💎 *Deposit*\n\n" +
+        "እባክዎ የክፍያ አይነት ይምረጡ።",
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: rows
+          }
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Deposit method selection error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to load the selected payment method."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// DEPOSIT TYPE SELECTION
+// ============================================================
+
+bot.callbackQuery(
+  /^deposit_type_(\d+)_(\d+)$/,
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const methodId =
+      Number(
+        ctx.match[1]
+      );
+
+    const typeId =
+      Number(
+        ctx.match[2]
+      );
+
+    const user =
+      await getCurrentUser(ctx);
+
+    if (!user) {
+
+      await ctx.reply(
+        "Please /start to register first."
+      );
+
+      return;
+
+    }
+
+    try {
+
+      const method =
+        await db.getPaymentMethodById(
+          methodId
+        );
+
+      const types =
+        await db.getPaymentMethodTypes(
+          methodId
+        );
+
+      const type =
+        (types || []).find(
+          item =>
+            Number(item.id) ===
+            typeId
+        );
+
+      if (!method || !type) {
+
+        await ctx.reply(
+          "❌ Payment option not found."
+        );
+
+        return;
+
+      }
+
+      const account =
+        await db.getPaymentAccount(
+          methodId,
+          typeId
+        );
+
+      if (!account) {
+
+        await safeEditMessage(
+          ctx,
+          "❌ No active payment account is currently available for this payment type.",
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: "⬅️ Back",
+                    callback_data:
+                      `deposit_method_${methodId}`
+                  }
+                ],
+                [
+                  {
+                    text: "🏠 Home",
+                    callback_data: "user_home"
+                  }
+                ]
+              ]
+            }
+          }
+        );
+
+        return;
+
+      }
+
+      pendingDeposit[
+        getTelegramId(ctx)
+      ] = {
+        methodId,
+        paymentMethod:
+          method.name ||
+          method.payment_method_name ||
+          "Payment",
+        paymentTypeId:
+          type.id,
+        paymentTypeName:
+          type.name ||
+          type.payment_type_name ||
+          "",
+        accountId:
+          account.id,
+        accountNumber:
+          account.account_number
+      };
+
+      await safeEditMessage(
+        ctx,
+        "💎 *Deposit*\n\n" +
+        `Payment method: *${escapeMarkdown(
+          method.name ||
+          method.payment_method_name ||
+          "Payment"
+        )}*\n` +
+        `Payment type: *${escapeMarkdown(
+          type.name ||
+          type.payment_type_name ||
+          ""
+        )}*\n\n` +
+        `📱 Account: *${escapeMarkdown(
+          account.account_number || ""
+        )}*\n\n` +
+        "Please send the payment to the account above, then paste the Telebirr SMS message here.",
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "❌ Cancel",
+                  callback_data: "deposit_cancel"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Deposit type selection error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to process the selected payment type."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// DEPOSIT CANCEL
+// ============================================================
+
+bot.callbackQuery(
+  "deposit_cancel",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const telegramId =
+      getTelegramId(ctx);
+
+    delete pendingDeposit[
+      telegramId
+    ];
+
+    await showHome(ctx);
+
+  }
+);
+
+
+// ============================================================
+// TELEBIRR DEPOSIT PROCESSING
+// ============================================================
+
+async function handleDepositText(
+  ctx
+) {
+
+  const telegramId =
+    getTelegramId(ctx);
+
+  if (!telegramId) {
+    return false;
+  }
+
+  const state =
+    pendingDeposit[
+      telegramId
+    ];
+
+  if (!state) {
+    return false;
+  }
+
+  const text =
+    ctx.message &&
+    ctx.message.text
+      ? ctx.message.text.trim()
+      : "";
+
+  if (!text) {
+    return false;
+  }
+
+  try {
+
+    await ctx.reply(
+      "⏳ Verifying your payment. Please wait..."
+    );
+
+    const result =
+      await processDeposit(
+        {
+          telegramId,
+          text,
+          paymentMethodId:
+            state.methodId,
+          paymentTypeId:
+            state.paymentTypeId,
+          paymentAccountId:
+            state.accountId,
+          paymentAccountNumber:
+            state.accountNumber
+        }
+      );
+
+    delete pendingDeposit[
+      telegramId
+    ];
+
+    if (
+      result &&
+      result.success
+    ) {
+
+      const receipt =
+        result.receipt || {};
+
+      const dateText =
+        receipt.paymentDate
+          ? String(
+              receipt.paymentDate
+            ).split(" ")[0]
+          : "";
+
+      let payerLast4 =
+        "";
+
+      if (
+        receipt.payerTelebirrNo
+      ) {
+
+        const digits =
+          String(
+            receipt.payerTelebirrNo
+          ).replace(
+            /\D/g,
+            ""
+          );
+
+        if (
+          digits.length >= 4
+        ) {
+
+          payerLast4 =
+            digits.slice(-4);
+
+        }
+
+      }
+
+      await ctx.reply(
+        "✅ *Deposit Successful!*\n\n" +
+        `💵 Amount: *${escapeMarkdown(
+          receipt.settledAmount ||
+          result.amount ||
+          ""
+        )}*\n` +
+        `👤 Payer: *${escapeMarkdown(
+          receipt.payerName ||
+          result.depositorName ||
+          ""
+        )}*\n` +
+        (
+          payerLast4
+            ? `📱 Telebirr: *••••${payerLast4}*\n`
+            : ""
+        ) +
+        (
+          dateText
+            ? `📅 Date: *${escapeMarkdown(
+                dateText
+              )}*\n`
+            : ""
+        ) +
+        (
+          receipt.receiptNo
+            ? `🧾 Receipt: *${escapeMarkdown(
+                receipt.receiptNo
+              )}*\n`
+            : ""
+        ) +
+        "\nYour balance has been updated.",
+        {
+          parse_mode: "Markdown"
+        }
+      );
+
+      return true;
+
+    }
+
+    await ctx.reply(
+      "❌ *Deposit Verification Failed*\n\n" +
+      `${escapeMarkdown(
+        result &&
+        result.message
+          ? result.message
+          : "The payment could not be verified."
+      )}`,
+      {
+        parse_mode: "Markdown"
+      }
+    );
+
+    return true;
+
+  } catch (error) {
+
+    console.error(
+      "Deposit processing error:",
+      error
+    );
+
+    delete pendingDeposit[
+      telegramId
+    ];
+
+    await ctx.reply(
+      "❌ An error occurred while verifying your deposit.\n\nPlease contact Support if the problem continues."
+    );
+
+    return true;
+
+  }
+
+}
+
+
+// ============================================================
+// TRANSFER
+// ============================================================
+
+async function showTransfer(
+  ctx
+) {
+
+  const user =
+    await getCurrentUser(ctx);
+
+  if (!user) {
+
+    await ctx.reply(
+      "Please /start to register first."
+    );
+
+    return;
+
+  }
+
+  pendingTransfer[
+    getTelegramId(ctx)
+  ] = {
+    step: "phone"
+  };
+
+  await safeEditMessage(
+    ctx,
+    "🔄 *Transfer*\n\n" +
+    "ወደሚላኩለት ተጠቃሚ የተመዘገበ ስልክ ቁጥር ያስገቡ።",
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "❌ Cancel",
+              callback_data: "transfer_cancel"
+            }
+          ]
+        ]
+      }
     }
   );
 
 }
 
 
-bot.command(
-  "deposit",
-  showDeposit
-);
-
-bot.hears(
-  "deposit",
-  showDeposit
-);
-
-
 bot.callbackQuery(
-  "deposit",
+  "transfer_cancel",
   async (ctx) => {
 
-    await answerCallback(
-      ctx
-    );
+    await answerCallback(ctx);
 
-    clearPendingState(
-      ctx.from.id
-    );
+    delete pendingTransfer[
+      getTelegramId(ctx)
+    ];
 
-    await showDeposit(
-      ctx
-    );
-
-  }
-);
-
-
-// ============================================================
-// PAYMENT METHOD
-// ============================================================
-
-bot.callbackQuery(
-  /^payment_(\d+)$/,
-  async (ctx) => {
-
-    await answerCallback(
-      ctx
-    );
-
-
-    const paymentMethodId =
-      Number(
-        ctx.match[1]
-      );
-
-
-    try {
-
-      const paymentMethod =
-        await db.getPaymentMethodById(
-          paymentMethodId
-        );
-
-
-      if (!paymentMethod) {
-
-        return ctx.reply(
-          "❌ የክፍያ መንገዱ አልተገኘም።"
-        );
-
-      }
-
-
-      if (
-        paymentMethod.name
-          .toLowerCase()
-          .includes("telebirr")
-      ) {
-
-        pendingDeposit[
-          ctx.from.id
-        ] = true;
-
-
-        const paymentaccount =
-          await db.getPaymentAccount(
-            paymentMethod.id
-          );
-
-
-        if (!paymentaccount) {
-
-          return ctx.reply(
-            "❌ የቴሌብር አካውንት አማራጭ አልተገኘም።"
-          );
-
-        }
-
-
-        await ctx.editMessageText(
-
-          "1. ከታች ባለው የ" +
-
-          paymentMethod.amharic_name +
-
-          " አካውንት ብር ያስገቡ\n\n" +
-
-          "📞 *" +
-
-          paymentMethod.name +
-
-          ":* `" +
-
-          paymentaccount.account_number +
-
-          "`\n\n" +
-
-          "2. የከፈሉበትን አጭር የጹሁፍ መልዕክት (SMS) " +
-
-          "copy በማድረግ እዚህ ላይ Paste አድርገው " +
-
-          "ያስገቡና ይላኩት👇👇👇",
-
-          {
-
-            parse_mode:
-              "Markdown"
-
-          }
-
-        );
-        setTimeout(async () => {
-        try {
-          await ctx.deleteMessage();
-        } catch (err) {
-          console.error("Could not delete message:", err);
-        }
-      }, 5000);
-
-
-        return;
-
-      }
-
-
-      await ctx.editMessageText(
-
-        `${paymentMethod.emoji || "💳"} ` +
-
-        `${paymentMethod.amharic_name}\n\n` +
-
-        `ይህ የክፍያ መንገድ በቅርቡ ይጀምራል။`
-
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Payment method error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ የክፍያ መንገዱን ማስኬድ አልተቻለም።"
-      );
-
-    }
-
-  }
-);
-
-
-// ============================================================
-// DEPOSIT SMS
-// ============================================================
-
-bot.on(
-  "message:text",
-  async (ctx, next) => {
-
-    const telegramId =
-      ctx.from.id;
-
-    const text =
-      ctx.message.text;
-
-
-    if (
-      !pendingDeposit[
-        telegramId
-      ]
-    ) {
-
-      return next();
-
-    }
-
-
-    try {
-
-      await ctx.reply(
-        "✅⏳ የክፍያ መልዕክትዎ ደርሶናል። ክፍያዎ እየተረጋገጠ ነው። እባክዎ ትንሽ ይጠብቁ።"
-      );
-
-
-      const result =
-        await processDeposit(
-          text
-        );
-
-
-      if (
-        typeof result === "object" &&
-        result !== null
-      ) {
-
-        const receipt =
-          result.receipt;
-
-
-        if (!receipt) {
-
-          return ctx.reply(
-            "❌ የክፍያ ደረሰኝ መረጃ አልተገኘም።"
-          );
-
-        }
-
-
-        const result2 =
-          await db.approveDeposit(
-            receipt,
-            telegramId
-          );
-
-
-        if (
-          result2 > 0
-        ) {
-
-          clearPendingState(
-            telegramId
-          );
-
-
-          return ctx.reply(
-
-            "✅ *የገቢ ጥያቄዎ ተሳክቷል!*\n\n" +
-
-            `💰 ${result2} ብር ወደ ሂሳብዎ ተጨምሯል።`,
-
-            {
-
-              parse_mode:
-                "Markdown"
-
-            }
-
-          );
-
-        }
-
-
-        return ctx.reply(
-          "❌ የገቢ ጥያቄዎ አልተሳካም።"
-        );
-
-      }
-
-
-      return ctx.reply(
-
-        "🚫 ጥያቄው አልተሳካም። " +
-
-        "እባክዎ ትክክለኛውን SMS ይላኩ።"
-
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Deposit processing error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ የክፍያውን ማረጋገጥ አልተቻለም።"
-      );
-
-    }
-
-  }
-);
-
-
-// ============================================================
-// CANCEL DEPOSIT
-// ============================================================
-
-bot.callbackQuery(
-  "canceldeposit",
-  async (ctx) => {
-
-    await answerCallback(
-      ctx
-    );
-
-
-    clearPendingState(
-      ctx.from.id
-    );
-
-
-    try {
-
-      await ctx.editMessageText(
-        "የገቢ ጥያቄዎ ተሰርዟል። ❌"
-      );
-
-    } catch {
-
-      await ctx.reply(
-        "የገቢ ጥያቄዎ ተሰርዟል። ❌"
-      );
-
-    }
+    await showHome(ctx);
 
   }
 );
@@ -4822,264 +1417,767 @@ async function showWithdrawal(
   ctx
 ) {
 
-  const telegramId =
-    ctx.from.id;
-
-
   const user =
-    await db.getUserByTelegramId(
-      telegramId
-    );
-
+    await getCurrentUser(ctx);
 
   if (!user) {
 
-    return ctx.reply(
+    await ctx.reply(
       "Please /start to register first."
     );
 
-  }
-
-
-  const balance =
-    Number(user.balance);
-
-
-  if (
-    balance < 10
-  ) {
-
-    return ctx.reply(
-
-      "❌ በቂ ቀሪ ሂሳብ የሎትም።\n\n" +
-
-      `💰 ያለዎት ሂሳብ፦ ${balance} ETB\n\n` +
-
-      "ዝቅተኛው የመውጫ መጠን 10 ETB ነው።"
-
-    );
+    return;
 
   }
-
-
-  const paymentMethods =
-    await db.getPaymentMethods();
-
-
-  if (
-    !paymentMethods ||
-    paymentMethods.length === 0
-  ) {
-
-    return ctx.reply(
-      "❌ ለጊዜው የመውጫ የክፍያ መንገድ አልተዘጋጀም።"
-    );
-
-  }
-
 
   pendingWithdrawal[
-    telegramId
+    getTelegramId(ctx)
   ] = {
-
-    step:
-      "payment_method"
-
+    step: "amount"
   };
 
-
-  const buttons =
-    paymentMethods.map(
-      pm => [
-
-        {
-
-          text:
-            `${pm.emoji || "💳"} ${pm.amharic_name}`,
-
-          callback_data:
-            `withdraw_method_${pm.id}`
-
-        }
-
-      ]
-    );
-
-
-  buttons.push([
-
+  await safeEditMessage(
+    ctx,
+    "🏧 *Withdraw*\n\n" +
+    `Available balance: *${formatAmount(
+      user.balance
+    )} ETB*\n\n` +
+    "የሚያወጡትን የገንዘብ መጠን ያስገቡ።",
     {
-
-      text:
-        "❌ ሰርዝ",
-
-      callback_data:
-        "cancelwithdrawal"
-
-    }
-
-  ]);
-
-
-  await ctx.reply(
-
-    "🏧 *ብር ማውጣት*\n\n" +
-
-    "እባክዎ ብርዎን ለመቀበል የሚፈልጉትን የክፍያ መንገድ ይምረጡ።",
-
-    {
-
-      parse_mode:
-        "Markdown",
-
+      parse_mode: "Markdown",
       reply_markup: {
-
-        inline_keyboard:
-          buttons
-
+        inline_keyboard: [
+          [
+            {
+              text: "❌ Cancel",
+              callback_data: "withdraw_cancel"
+            }
+          ]
+        ]
       }
-
     }
-
   );
 
 }
 
 
-bot.command(
-  "withdraw",
-  showWithdrawal
-);
-
-bot.hears(
-  "withdraw",
-  showWithdrawal
-);
-
-bot.hears(
-  "🏧 Withdraw",
-  showWithdrawal
-);
-
-
 bot.callbackQuery(
-  "withdraw",
+  "withdraw_cancel",
   async (ctx) => {
 
-    await answerCallback(
-      ctx
-    );
+    await answerCallback(ctx);
 
-    clearPendingState(
-      ctx.from.id
-    );
+    delete pendingWithdrawal[
+      getTelegramId(ctx)
+    ];
 
-    await showWithdrawal(
-      ctx
-    );
+    await showHome(ctx);
 
   }
 );
 
 
 // ============================================================
-// WITHDRAWAL PAYMENT METHOD
+// USER STATISTICS
+// IMPORTANT: These handlers must be registered OUTSIDE showHome()
 // ============================================================
 
-bot.callbackQuery(
-  /^withdraw_method_(\d+)$/,
-  async (ctx) => {
+async function showUserStatistics(
+  ctx
+) {
 
-    await answerCallback(
-      ctx
+  const user =
+    await getCurrentUser(ctx);
+
+  if (!user) {
+
+    await ctx.reply(
+      "Please /start to register first."
     );
 
+    return;
 
-    const telegramId =
-      ctx.from.id;
+  }
 
+  try {
 
-    const methodId =
-      Number(
-        ctx.match[1]
+    const stats =
+      await db.getUserStatistics(
+        user.telegram_id
       );
 
+    const financial =
+      typeof db.getUserFinancialStatistics ===
+      "function"
+        ? await db.getUserFinancialStatistics(
+            user.id
+          )
+        : null;
 
-    const pending =
-      pendingWithdrawal[
+    const totalDeposits =
+      Number(
+        stats &&
+        stats.totalDeposits || 0
+      );
+
+    const pendingWithdrawals =
+      Number(
+        stats &&
+        stats.pendingWithdrawals || 0
+      );
+
+    const approvedWithdrawals =
+      Number(
+        stats &&
+        stats.approvedWithdrawals || 0
+      );
+
+    const rejectedWithdrawals =
+      Number(
+        stats &&
+        stats.rejectedWithdrawals || 0
+      );
+
+    const totalTransfers =
+      Number(
+        stats &&
+        stats.totalTransfers || 0
+      );
+
+    const totalDepositAmount =
+      Number(
+        financial &&
+        financial.totalDepositAmount || 0
+      );
+
+    const approvedWithdrawalAmount =
+      Number(
+        financial &&
+        financial.approvedWithdrawalAmount || 0
+      );
+
+    const pendingWithdrawalAmount =
+      Number(
+        financial &&
+        financial.pendingWithdrawalAmount || 0
+      );
+
+    const rejectedWithdrawalAmount =
+      Number(
+        financial &&
+        financial.rejectedWithdrawalAmount || 0
+      );
+
+    await safeEditMessage(
+      ctx,
+      "📊 *My Statistics*\n\n" +
+      `🎮 Total Games: *${Number(
+        user.total_games || 0
+      )}*\n` +
+      `🏆 Total Wins: *${Number(
+        user.total_wins || 0
+      )}*\n` +
+      `💰 Total Winnings: *${formatAmount(
+        user.total_winnings || 0
+      )} ETB*\n\n` +
+      `💎 Deposits: *${totalDeposits}*\n` +
+      `💵 Deposit Amount: *${formatAmount(
+        totalDepositAmount
+      )} ETB*\n\n` +
+      `🏧 Pending Withdrawals: *${pendingWithdrawals}*\n` +
+      `⏳ Pending Amount: *${formatAmount(
+        pendingWithdrawalAmount
+      )} ETB*\n` +
+      `✅ Approved Withdrawals: *${approvedWithdrawals}*\n` +
+      `💵 Approved Amount: *${formatAmount(
+        approvedWithdrawalAmount
+      )} ETB*\n` +
+      `❌ Rejected Withdrawals: *${rejectedWithdrawals}*\n` +
+      `💵 Rejected Amount: *${formatAmount(
+        rejectedWithdrawalAmount
+      )} ETB*\n\n` +
+      `🔄 Transfers: *${totalTransfers}*`,
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🏠 Home",
+                callback_data: "user_home"
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+  } catch (error) {
+
+    console.error(
+      "User statistics error:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ Unable to load your statistics."
+    );
+
+  }
+
+}
+
+
+bot.callbackQuery(
+  "statistics",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    await showUserStatistics(ctx);
+
+  }
+);
+
+
+bot.callbackQuery(
+  "user_home",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    await showHome(ctx);
+
+  }
+);
+
+
+bot.callbackQuery(
+  "delete",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const user =
+      await getCurrentUser(ctx);
+
+    if (!user) {
+
+      await ctx.reply(
+        "Please /start to register first."
+      );
+
+      return;
+
+    }
+
+    pendingDelete[
+      getTelegramId(ctx)
+    ] = {
+      step: "confirm"
+    };
+
+    await safeEditMessage(
+      ctx,
+      "⚠️ *Delete Account*\n\n" +
+      "Are you sure you want to deactivate your Sisters Bingo account?\n\n" +
+      "Your account and financial history will be retained securely, but you will no longer be able to use the account until it is reactivated.",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "⚠️ Yes, Delete",
+                callback_data:
+                  "delete_confirm"
+              },
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "delete_cancel"
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+  }
+);
+
+
+bot.callbackQuery(
+  "delete_cancel",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    delete pendingDelete[
+      getTelegramId(ctx)
+    ];
+
+    await showHome(ctx);
+
+  }
+);
+
+
+bot.callbackQuery(
+  "delete_confirm",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const telegramId =
+      getTelegramId(ctx);
+
+    try {
+
+      const user =
+        await getCurrentUser(ctx);
+
+      if (!user) {
+
+        delete pendingDelete[
+          telegramId
+        ];
+
+        await ctx.reply(
+          "Your account could not be found."
+        );
+
+        return;
+
+      }
+
+      if (
+        Number(user.balance || 0) >
+        0
+      ) {
+
+        await ctx.reply(
+          "❌ You cannot delete your account while your balance is greater than 0 ETB.\n\nPlease withdraw your remaining balance first."
+        );
+
+        return;
+
+      }
+
+      if (
+        typeof db.deactivateUser !==
+        "function"
+      ) {
+
+        await ctx.reply(
+          "Account deletion is currently unavailable.\nPlease contact Support if you want to delete your account."
+        );
+
+        return;
+
+      }
+
+      await db.deactivateUser(
+        telegramId
+      );
+
+      delete pendingDelete[
         telegramId
       ];
 
+      await ctx.reply(
+        "✅ Your account has been deactivated successfully.\n\nThank you for using Sisters Bingo."
+      );
 
-    if (!pending) {
+    } catch (error) {
 
-      return ctx.reply(
-        "❌ የመውጫ ጥያቄው ጊዜው አልፎበታል። /start ይጫኑ።"
+      console.error(
+        "Account deletion error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to delete your account right now.\n\nPlease contact Support."
       );
 
     }
 
+  }
+);
 
-    try {
 
-      const paymentMethod =
-        await db.getPaymentMethodById(
-          methodId
+// ============================================================
+// HOME
+// ============================================================
+
+async function showHome(
+  ctx
+) {
+
+  try {
+
+    const telegramId =
+      getTelegramId(ctx);
+
+    if (!telegramId) {
+      return;
+    }
+
+    const user =
+      await db.getUserByTelegramId(
+        telegramId
+      );
+
+    if (!user) {
+
+      await ctx.reply(
+        "Please /start to register first."
+      );
+
+      return;
+
+    }
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    const keyboard = [
+      [
+        {
+          text: "🎮 Play Bingo",
+          web_app: {
+            url:
+              `${GAME_URL}?tid=${telegramId}`
+          }
+        }
+      ],
+      [
+        {
+          text: "💰 Balance",
+          callback_data: "balance"
+        },
+        {
+          text: "💎 Deposit",
+          callback_data: "deposit"
+        }
+      ],
+      [
+        {
+          text: "🔄 Transfer",
+          callback_data: "transfer"
+        },
+        {
+          text: "🏧 Withdraw",
+          callback_data: "withdraw"
+        }
+      ],
+      [
+        {
+          text: "📊 Statistics",
+          callback_data: "statistics"
+        },
+        {
+          text: "📚 Instruction",
+          callback_data: "instruction"
+        }
+      ],
+      [
+        {
+          text: "🏆 Leaderboard",
+          callback_data: "leaderboard"
+        },
+        {
+          text: "🆘 Support",
+          callback_data: "support"
+        }
+      ],
+      [
+        {
+          text: "🗑️ Delete Account",
+          callback_data: "delete"
+        }
+      ]
+    ];
+
+    if (admin) {
+
+      const role =
+        String(
+          admin.admin_role || ""
+        ).toLowerCase();
+
+      if (
+        role === "main"
+      ) {
+
+        keyboard.push(
+          [
+            {
+              text: "👥 Manage Users",
+              callback_data:
+                "admin_manage_users"
+            }
+          ],
+          [
+            {
+              text: "👤 Manage Admins",
+              callback_data:
+                "admin_manage_admins"
+            }
+          ],
+          [
+            {
+              text: "🏧 Pending Withdrawals",
+              callback_data:
+                "admin_pending"
+            }
+          ],
+          [
+            {
+              text: "📢 Broadcast",
+              callback_data:
+                "admin_broadcast"
+            }
+          ],
+          [
+            {
+              text: "💳 Payment Accounts",
+              callback_data:
+                "admin_accounts"
+            }
+          ],
+          [
+            {
+              text: "📊 Admin Statistics",
+              callback_data:
+                "admin_statistics_menu"
+            }
+          ]
         );
 
+      } else if (
+        role === "broadcast"
+      ) {
 
-      if (!paymentMethod) {
+        keyboard.push(
+          [
+            {
+              text: "📢 Broadcast",
+              callback_data:
+                "admin_broadcast"
+            }
+          ]
+        );
 
-        return ctx.reply(
-          "❌ የክፍያ መንገዱ አልተገኘም።"
+      } else if (
+        role === "withdrawal"
+      ) {
+
+        keyboard.push(
+          [
+            {
+              text: "🏧 Pending Withdrawals",
+              callback_data:
+                "admin_pending"
+            }
+          ]
+        );
+
+      } else if (
+        role === "statistics"
+      ) {
+
+        keyboard.push(
+          [
+            {
+              text: "📊 Admin Statistics",
+              callback_data:
+                "admin_statistics_menu"
+            }
+          ]
         );
 
       }
 
+    }
 
-      pendingWithdrawal[
-        telegramId
-      ] = {
+    const caption =
+      `🎱 *Welcome, ${escapeMarkdown(
+        user.name || "Player"
+      )}!*\n\n` +
+      `💰 Balance: *${formatAmount(
+        user.balance || 0
+      )} ETB*\n\n` +
+      "Choose an option below:";
 
-        step:
-          "account",
+    const extra = {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard:
+          keyboard
+      }
+    };
 
-        paymentMethodId:
-          methodId,
+    try {
 
-        paymentMethod
-
-      };
-
-
-      await ctx.editMessageText(
-
-        "🏧 *የመውጫ አካውንት*\n\n" +
-
-        `💳 የክፍያ መንገድ፦ *${paymentMethod.amharic_name}*\n\n` +
-
-        "📱 ብር የሚቀበሉበትን የአካውንት ቁጥር ያስገቡ።\n\n" +
-
-        "ምሳሌ፦ `0912345678`",
-
+      await ctx.replyWithPhoto(
+        "https://sisters-bingo.vercel.app/MainLogo.png",
         {
-
-          parse_mode:
-            "Markdown"
-
+          caption,
+          ...extra
         }
-
       );
 
-    } catch (err) {
+    } catch (photoError) {
 
       console.error(
-        "Withdrawal method error:",
-        err
+        "Home photo error:",
+        photoError
       );
 
       await ctx.reply(
-        "❌ የክፍያ መንገዱን ማስኬድ አልተቻለም።"
+        caption,
+        extra
+      );
+
+    }
+
+  } catch (error) {
+
+    console.error(
+      "User home button error:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ Unable to load the home menu. Please try again."
+    );
+
+  }
+
+}
+
+
+// ============================================================
+// /START
+// ============================================================
+
+bot.command(
+  "start",
+  async (ctx) => {
+
+    const telegramId =
+      getTelegramId(ctx);
+
+    if (!telegramId) {
+      return;
+    }
+
+    try {
+
+      clearPendingState(
+        telegramId
+      );
+
+      delete pendingPhone[
+        telegramId
+      ];
+
+      const user =
+        typeof db.getUserByTelegramIdIncludingInactive ===
+        "function"
+          ? await db.getUserByTelegramIdIncludingInactive(
+              telegramId
+            )
+          : await db.getUserByTelegramId(
+              telegramId
+            );
+
+      if (
+        user &&
+        user.is_blocked === true
+      ) {
+
+        await ctx.reply(
+          "🚫 Your account has been blocked.\n\nPlease contact Support."
+        );
+
+        return;
+
+      }
+
+      if (
+        user &&
+        user.is_active === false
+      ) {
+
+        if (
+          typeof db.reactivateUserByTelegramId ===
+          "function"
+        ) {
+
+          await db.reactivateUserByTelegramId(
+            telegramId
+          );
+
+          const reactivatedUser =
+            await db.getUserByTelegramId(
+              telegramId
+            );
+
+          if (reactivatedUser) {
+
+            await ctx.reply(
+              "✅ Welcome back! Your account has been reactivated."
+            );
+
+            await showHome(ctx);
+
+            return;
+
+          }
+
+        }
+
+      }
+
+      if (user) {
+
+        await showHome(ctx);
+
+        return;
+
+      }
+
+      const firstName =
+        ctx.from.first_name ||
+        "Player";
+
+      pendingPhone[
+        telegramId
+      ] = {
+        name: firstName,
+        step: "ask_name"
+      };
+
+      await ctx.reply(
+        "🎱 *Welcome to Sisters Bingo!*\n\n" +
+        "Let's create your account.\n\n" +
+        "Please enter your full name:",
+        {
+          parse_mode: "Markdown"
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Start error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Something went wrong while starting the bot. Please try again."
       );
 
     }
@@ -5089,7 +2187,310 @@ bot.callbackQuery(
 
 
 // ============================================================
-// WITHDRAWAL ACCOUNT
+// /BALANCE
+// ============================================================
+
+bot.command(
+  "balance",
+  async (ctx) => {
+
+    await showBalance(ctx);
+
+  }
+);
+
+
+bot.hears(
+  "balance",
+  async (ctx) => {
+
+    await showBalance(ctx);
+
+  }
+);
+
+
+bot.hears(
+  "💰 Balance",
+  async (ctx) => {
+
+    await showBalance(ctx);
+
+  }
+);
+
+
+bot.callbackQuery(
+  "balance",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    await showBalance(ctx);
+
+  }
+);
+
+
+// ============================================================
+// /SUPPORT
+// ============================================================
+
+bot.command(
+  "support",
+  async (ctx) => {
+
+    await showSupport(ctx);
+
+  }
+);
+
+
+bot.hears(
+  "support",
+  async (ctx) => {
+
+    await showSupport(ctx);
+
+  }
+);
+
+
+bot.callbackQuery(
+  "support",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    await showSupport(ctx);
+
+  }
+);
+
+
+// ============================================================
+// /DEPOSIT
+// ============================================================
+
+bot.command(
+  "deposit",
+  async (ctx) => {
+
+    await showDeposit(ctx);
+
+  }
+);
+
+
+bot.hears(
+  "deposit",
+  async (ctx) => {
+
+    await showDeposit(ctx);
+
+  }
+);
+
+
+bot.callbackQuery(
+  "deposit",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    await showDeposit(ctx);
+
+  }
+);
+
+
+// ============================================================
+// /TRANSFER
+// ============================================================
+
+bot.command(
+  "transfer",
+  async (ctx) => {
+
+    await showTransfer(ctx);
+
+  }
+);
+
+
+bot.hears(
+  "transfer",
+  async (ctx) => {
+
+    await showTransfer(ctx);
+
+  }
+);
+
+
+bot.callbackQuery(
+  "transfer",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    await showTransfer(ctx);
+
+  }
+);
+
+
+// ============================================================
+// /WITHDRAW
+// ============================================================
+
+bot.command(
+  "withdraw",
+  async (ctx) => {
+
+    await showWithdrawal(ctx);
+
+  }
+);
+
+
+bot.hears(
+  "withdraw",
+  async (ctx) => {
+
+    await showWithdrawal(ctx);
+
+  }
+);
+
+
+bot.callbackQuery(
+  "withdraw",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    await showWithdrawal(ctx);
+
+  }
+);
+
+
+// ============================================================
+// REGISTRATION — CONTACT
+// ============================================================
+
+bot.on(
+  "message:contact",
+  async (ctx) => {
+
+    const telegramId =
+      getTelegramId(ctx);
+
+    if (!telegramId) {
+      return;
+    }
+
+    const state =
+      pendingPhone[
+        telegramId
+      ];
+
+    if (!state) {
+      return;
+    }
+
+    try {
+
+      const contact =
+        ctx.message.contact;
+
+      const phone =
+        normalizeEthiopianPhone(
+          contact.phone_number
+        );
+
+      if (!phone) {
+
+        await ctx.reply(
+          "❌ Please provide a valid Ethiopian phone number."
+        );
+
+        return;
+
+      }
+
+      const name =
+        state.name ||
+        contact.first_name ||
+        ctx.from.first_name ||
+        "Player";
+
+      const existing =
+        typeof db.getUserByPhoneForAdmin ===
+        "function"
+          ? await db.getUserByPhoneForAdmin(
+              phone
+            )
+          : null;
+
+      if (
+        existing &&
+        Number(existing.telegram_id) !==
+        Number(telegramId)
+      ) {
+
+        await ctx.reply(
+          "❌ This phone number is already registered to another account."
+        );
+
+        return;
+
+      }
+
+      const registered =
+        await db.registerUser(
+          telegramId,
+          name,
+          phone
+        );
+
+      delete pendingPhone[
+        telegramId
+      ];
+
+      await ctx.reply(
+        "✅ *Registration successful!*\n\n" +
+        `Welcome, *${escapeMarkdown(
+          registered.name ||
+          name
+        )}*!`,
+        {
+          parse_mode: "Markdown"
+        }
+      );
+
+      await showHome(ctx);
+
+    } catch (error) {
+
+      console.error(
+        "Registration contact error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to complete registration. Please try again."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// REGISTRATION — TEXT
 // ============================================================
 
 bot.on(
@@ -5097,204 +2498,633 @@ bot.on(
   async (ctx, next) => {
 
     const telegramId =
-      ctx.from.id;
+      getTelegramId(ctx);
 
+    if (!telegramId) {
+      return next();
+    }
+
+    const state =
+      pendingPhone[
+        telegramId
+      ];
+
+    if (!state) {
+      return next();
+    }
 
     const text =
       ctx.message.text.trim();
 
+    if (
+      !text
+    ) {
 
-    const withdrawal =
-      pendingWithdrawal[
+      await ctx.reply(
+        "Please enter your name."
+      );
+
+      return;
+
+    }
+
+    if (
+      state.step === "ask_name"
+    ) {
+
+      state.name =
+        text;
+
+      state.step =
+        "ask_phone";
+
+      await ctx.reply(
+        "📱 Please share your Ethiopian phone number using the button below.",
+        {
+          reply_markup: {
+            keyboard: [
+              [
+                {
+                  text: "📱 Share Phone Number",
+                  request_contact: true
+                }
+              ]
+            ],
+            resize_keyboard: true,
+            one_time_keyboard: true
+          }
+        }
+      );
+
+      return;
+
+    }
+
+    return next();
+
+  }
+);
+
+
+// ============================================================
+// DEPOSIT TEXT MESSAGES
+// ============================================================
+
+bot.on(
+  "message:text",
+  async (ctx, next) => {
+
+    const handled =
+      await handleDepositText(ctx);
+
+    if (handled) {
+      return;
+    }
+
+    return next();
+
+  }
+);
+
+
+// ============================================================
+// TRANSFER TEXT FLOW
+// ============================================================
+
+async function handleTransferText(
+  ctx
+) {
+
+  const telegramId =
+    getTelegramId(ctx);
+
+  const state =
+    pendingTransfer[
+      telegramId
+    ];
+
+  if (!state) {
+    return false;
+  }
+
+  const text =
+    ctx.message.text.trim();
+
+  if (
+    state.step === "phone"
+  ) {
+
+    const phone =
+      normalizeEthiopianPhone(
+        text
+      );
+
+    if (!phone) {
+
+      await ctx.reply(
+        "❌ Please enter a valid Ethiopian phone number."
+      );
+
+      return true;
+
+    }
+
+    const recipient =
+      await db.getUserByPhone(
+        phone
+      );
+
+    if (!recipient) {
+
+      await ctx.reply(
+        "❌ No active user was found with that phone number."
+      );
+
+      return true;
+
+    }
+
+    if (
+      Number(recipient.id) ===
+      Number(
+        (await getCurrentUser(ctx)).id
+      )
+    ) {
+
+      await ctx.reply(
+        "❌ You cannot transfer money to yourself."
+      );
+
+      return true;
+
+    }
+
+    state.recipient =
+      recipient;
+
+    state.step =
+      "amount";
+
+    await ctx.reply(
+      `👤 Recipient: *${escapeMarkdown(
+        recipient.name || "User"
+      )}*\n\n` +
+      "💵 Enter the amount you want to transfer:",
+      {
+        parse_mode: "Markdown"
+      }
+    );
+
+    return true;
+
+  }
+
+  if (
+    state.step === "amount"
+  ) {
+
+    const amount =
+      parseAmount(text);
+
+    if (
+      amount <= 0
+    ) {
+
+      await ctx.reply(
+        "❌ Please enter a valid amount."
+      );
+
+      return true;
+
+    }
+
+    const user =
+      await getCurrentUser(ctx);
+
+    if (!user) {
+
+      delete pendingTransfer[
         telegramId
       ];
 
-
-    if (!withdrawal) {
-
-      return next();
-
-    }
-
-
-    if (
-      withdrawal.step !==
-      "account"
-    ) {
-
-      return next();
-
-    }
-
-
-    if (
-      text.startsWith("/")
-    ) {
-
-      return next();
-
-    }
-
-
-    const accountNumber =
-      text.replace(
-        /[\s\-()]/g,
-        ""
+      await ctx.reply(
+        "Please /start to register first."
       );
 
+      return true;
+
+    }
+
+    if (
+      amount >
+      Number(user.balance || 0)
+    ) {
+
+      await ctx.reply(
+        "❌ Insufficient balance."
+      );
+
+      return true;
+
+    }
+
+    state.amount =
+      amount;
+
+    state.step =
+      "confirm";
+
+    await ctx.reply(
+      "🔄 *Confirm Transfer*\n\n" +
+      `👤 To: *${escapeMarkdown(
+        state.recipient.name || ""
+      )}*\n` +
+      `📱 Phone: *${escapeMarkdown(
+        state.recipient.phone || ""
+      )}*\n` +
+      `💵 Amount: *${formatAmount(
+        amount
+      )} ETB*\n\n` +
+      "Do you want to continue?",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "✅ Confirm",
+                callback_data:
+                  "transfer_confirm"
+              },
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "transfer_cancel"
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+    return true;
+
+  }
+
+  return true;
+
+}
+
+
+bot.on(
+  "message:text",
+  async (ctx, next) => {
+
+    const handled =
+      await handleTransferText(ctx);
+
+    if (handled) {
+      return;
+    }
+
+    return next();
+
+  }
+);
+
+
+// ============================================================
+// CONFIRM TRANSFER
+// ============================================================
+
+bot.callbackQuery(
+  "transfer_confirm",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const telegramId =
+      getTelegramId(ctx);
+
+    const state =
+      pendingTransfer[
+        telegramId
+      ];
+
+    if (!state) {
+
+      await ctx.reply(
+        "❌ Transfer session expired. Please start again."
+      );
+
+      return;
+
+    }
+
+    try {
+
+      const sender =
+        await getCurrentUser(ctx);
+
+      if (!sender) {
+
+        delete pendingTransfer[
+          telegramId
+        ];
+
+        await ctx.reply(
+          "Please /start to register first."
+        );
+
+        return;
+
+      }
+
+      if (
+        !state.recipient ||
+        !state.amount
+      ) {
+
+        delete pendingTransfer[
+          telegramId
+        ];
+
+        await ctx.reply(
+          "❌ Transfer information is incomplete."
+        );
+
+        return;
+
+      }
+
+      const result =
+        await db.createTransfer(
+          sender.id,
+          state.recipient.id,
+          state.amount
+        );
+
+      delete pendingTransfer[
+        telegramId
+      ];
+
+      await safeEditMessage(
+        ctx,
+        "✅ *Transfer Successful!*\n\n" +
+        `👤 Recipient: *${escapeMarkdown(
+          state.recipient.name || ""
+        )}*\n` +
+        `💵 Amount: *${formatAmount(
+          state.amount
+        )} ETB*\n\n` +
+        `💰 New Balance: *${formatAmount(
+          result &&
+          result.senderBalance !== undefined
+            ? result.senderBalance
+            : (
+                Number(sender.balance || 0) -
+                Number(state.amount)
+              )
+        )} ETB*`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🏠 Home",
+                  callback_data: "user_home"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Transfer confirmation error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Transfer failed. Please try again later."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// WITHDRAWAL TEXT FLOW
+// ============================================================
+
+async function handleWithdrawalText(
+  ctx
+) {
+
+  const telegramId =
+    getTelegramId(ctx);
+
+  const state =
+    pendingWithdrawal[
+      telegramId
+    ];
+
+  if (!state) {
+    return false;
+  }
+
+  const text =
+    ctx.message.text.trim();
+
+  if (
+    state.step === "amount"
+  ) {
+
+    const amount =
+      parseAmount(text);
+
+    if (
+      amount <= 0
+    ) {
+
+      await ctx.reply(
+        "❌ Please enter a valid withdrawal amount."
+      );
+
+      return true;
+
+    }
+
+    const user =
+      await getCurrentUser(ctx);
+
+    if (!user) {
+
+      delete pendingWithdrawal[
+        telegramId
+      ];
+
+      await ctx.reply(
+        "Please /start to register first."
+      );
+
+      return true;
+
+    }
+
+    if (
+      amount >
+      Number(user.balance || 0)
+    ) {
+
+      await ctx.reply(
+        "❌ Insufficient balance."
+      );
+
+      return true;
+
+    }
+
+    state.amount =
+      amount;
+
+    state.step =
+      "account";
+
+    await ctx.reply(
+      `💵 Withdrawal amount: *${formatAmount(
+        amount
+      )} ETB*\n\n` +
+      "📱 Enter your payment account number:",
+      {
+        parse_mode: "Markdown"
+      }
+    );
+
+    return true;
+
+  }
+
+  if (
+    state.step === "account"
+  ) {
+
+    const accountNumber =
+      normalizeEthiopianPhone(
+        text
+      ) || text;
 
     if (
       !accountNumber
     ) {
 
-      return ctx.reply(
-        "❌ እባክዎ ትክክለኛ የአካውንት ቁጥር ያስገቡ።"
+      await ctx.reply(
+        "❌ Please enter a valid payment account number."
       );
+
+      return true;
 
     }
 
+    state.accountNumber =
+      accountNumber;
 
-    if (
-      accountNumber.length > 20
-    ) {
-
-      return ctx.reply(
-        "❌ የአካውንት ቁጥሩ ከ20 ፊደል/ቁጥር መብለጥ አይችልም።"
-      );
-
-    }
-
-
-    pendingWithdrawal[
-      telegramId
-    ] = {
-
-      ...withdrawal,
-
-      step:
-        "amount",
-
-      accountNumber
-
-    };
-
+    state.step =
+      "confirm";
 
     await ctx.reply(
-
-      "✅ *የአካውንት ቁጥር ተቀብለናል።*\n\n" +
-
-      `📱 አካውንት፦ *${accountNumber}*\n\n` +
-
-      "💰 አሁን ማውጣት የሚፈልጉትን የብር መጠን ያስገቡ።\n\n" +
-
-      "ምሳሌ፦ `100`",
-
+      "🏧 *Confirm Withdrawal*\n\n" +
+      `💵 Amount: *${formatAmount(
+        state.amount
+      )} ETB*\n` +
+      `📱 Account: *${escapeMarkdown(
+        state.accountNumber
+      )}*\n\n` +
+      "Do you want to submit this withdrawal request?",
       {
-
-        parse_mode:
-          "Markdown"
-
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "✅ Submit",
+                callback_data:
+                  "withdraw_confirm"
+              },
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "withdraw_cancel"
+              }
+            ]
+          ]
+        }
       }
-
     );
+
+    return true;
+
+  }
+
+  return true;
+
+}
+
+
+bot.on(
+  "message:text",
+  async (ctx, next) => {
+
+    const handled =
+      await handleWithdrawalText(ctx);
+
+    if (handled) {
+      return;
+    }
+
+    return next();
 
   }
 );
 
 
 // ============================================================
-// WITHDRAWAL AMOUNT
+// CONFIRM WITHDRAWAL
 // ============================================================
 
-bot.on(
-  "message:text",
-  async (ctx, next) => {
+bot.callbackQuery(
+  "withdraw_confirm",
+  async (ctx) => {
+
+    await answerCallback(ctx);
 
     const telegramId =
-      ctx.from.id;
+      getTelegramId(ctx);
 
-
-    const text =
-      ctx.message.text.trim();
-
-
-    const withdrawal =
+    const state =
       pendingWithdrawal[
         telegramId
       ];
 
+    if (!state) {
 
-    if (!withdrawal) {
+      await ctx.reply(
+        "❌ Withdrawal session expired. Please start again."
+      );
 
-      return next();
-
-    }
-
-
-    if (
-      withdrawal.step !==
-      "amount"
-    ) {
-
-      return next();
+      return;
 
     }
-
-
-    if (
-      text.startsWith("/")
-    ) {
-
-      return next();
-
-    }
-
 
     try {
 
-      const amount =
-        Number(text);
-
-
-      if (
-        !Number.isFinite(amount) ||
-        amount <= 0
-      ) {
-
-        return ctx.reply(
-          "❌ እባክዎ ትክክለኛ የብር መጠን ያስገቡ።\n\nምሳሌ፦ `100`"
-        );
-
-      }
-
-
-      if (
-        !Number.isInteger(amount)
-      ) {
-
-        return ctx.reply(
-          "❌ የመውጫ መጠኑ ሙሉ ቁጥር መሆን አለበት።"
-        );
-
-      }
-
-
-      if (
-        amount < 10
-      ) {
-
-        return ctx.reply(
-          "❌ ቢያንስ 10 ETB ማውጣት ይችላሉ።"
-        );
-
-      }
-
-
       const user =
-        await db.getUserByTelegramId(
-          telegramId
-        );
-
+        await getCurrentUser(ctx);
 
       if (!user) {
 
@@ -5302,94 +3132,863 @@ bot.on(
           telegramId
         ];
 
-        return ctx.reply(
-          "❌ አካውንትዎ አልተገኘም።"
+        await ctx.reply(
+          "Please /start to register first."
         );
 
+        return;
+
       }
-
-
-      const balance =
-        Number(user.balance);
-
 
       if (
-        amount > balance
+        Number(state.amount) <= 0 ||
+        Number(state.amount) >
+          Number(user.balance || 0)
       ) {
 
-        return ctx.reply(
-
-          `❌ በቂ ሂሳብ የሎትም።\n\n` +
-
-          `💰 ያለዎት ሂሳብ፦ ${balance} ETB\n` +
-
-          `💸 ለማውጣት የፈለጉት፦ ${amount} ETB`
-
+        await ctx.reply(
+          "❌ Invalid withdrawal amount or insufficient balance."
         );
+
+        return;
 
       }
 
+      if (
+        typeof db.createWithdrawal !==
+        "function"
+      ) {
 
-      const result =
+        await ctx.reply(
+          "❌ Withdrawal service is currently unavailable."
+        );
+
+        return;
+
+      }
+
+      const withdrawal =
         await db.createWithdrawal(
-
-          telegramId,
-
-          withdrawal.paymentMethodId,
-
-          withdrawal.accountNumber,
-
-          amount
-
+          user.id,
+          state.amount,
+          state.accountNumber
         );
-
-
-      if (
-        !result.success
-      ) {
-
-        return ctx.reply(
-          `❌ ${result.message}`
-        );
-
-      }
-
 
       delete pendingWithdrawal[
         telegramId
       ];
 
+      await safeEditMessage(
+        ctx,
+        "✅ *Withdrawal Request Submitted*\n\n" +
+        `💵 Amount: *${formatAmount(
+          state.amount
+        )} ETB*\n` +
+        `📱 Account: *${escapeMarkdown(
+          state.accountNumber
+        )}*\n\n` +
+        "Your withdrawal request is now pending admin approval.",
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🏠 Home",
+                  callback_data:
+                    "user_home"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+      console.log(
+        "Withdrawal created:",
+        withdrawal
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Withdrawal confirmation error:",
+        error
+      );
 
       await ctx.reply(
+        "❌ Unable to submit your withdrawal request. Please try again later."
+      );
 
-        "✅ *የመውጫ ጥያቄዎ ተቀብለናል!*\n\n" +
+    }
 
-        `💳 የክፍያ መንገድ፦ *${withdrawal.paymentMethod.amharic_name}*\n` +
+  }
+);
+// ============================================================
+// INSTRUCTION
+// ============================================================
 
-        `📱 አካውንት፦ *${withdrawal.accountNumber}*\n` +
+async function showInstruction(
+  ctx
+) {
 
-        `💰 መጠን፦ *${amount} ETB*\n\n` +
+  const text =
+    "📚 *How to Play Sisters Bingo*\n\n" +
+    "1️⃣ Register your account and add your phone number.\n\n" +
+    "2️⃣ Deposit money into your Sisters Bingo account.\n\n" +
+    "3️⃣ Tap *🎮 Play Bingo* to open the Bingo game.\n\n" +
+    "4️⃣ Select the game you want to join.\n\n" +
+    "5️⃣ Your balance will be used to purchase your Bingo ticket.\n\n" +
+    "6️⃣ Numbers will be called during the game.\n\n" +
+    "7️⃣ Match the called numbers on your ticket.\n\n" +
+    "8️⃣ Complete the required Bingo pattern to win.\n\n" +
+    "9️⃣ Winners receive the applicable prize according to the game rules.\n\n" +
+    "💡 *Important:* Make sure your account has sufficient balance before joining a game.";
 
-        "⏳ ጥያቄዎ በአስተዳዳሪ እየተገመገመ ነው።",
+  await safeEditMessage(
+    ctx,
+    text,
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "🏠 Home",
+              callback_data: "user_home"
+            }
+          ]
+        ]
+      }
+    }
+  );
 
+}
+
+
+bot.command(
+  "instruction",
+  async (ctx) => {
+
+    await showInstruction(ctx);
+
+  }
+);
+
+
+bot.hears(
+  "instruction",
+  async (ctx) => {
+
+    await showInstruction(ctx);
+
+  }
+);
+
+
+bot.callbackQuery(
+  "instruction",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    await showInstruction(ctx);
+
+  }
+);
+
+
+// ============================================================
+// LEADERBOARD
+// ============================================================
+
+async function showLeaderboard(
+  ctx
+) {
+
+  try {
+
+    const leaderboard =
+      await db.getLeaderboard(10);
+
+    if (
+      !leaderboard ||
+      leaderboard.length === 0
+    ) {
+
+      await safeEditMessage(
+        ctx,
+        "🏆 *Leaderboard*\n\n" +
+        "No leaderboard data is available yet.",
         {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🏠 Home",
+                  callback_data: "user_home"
+                }
+              ]
+            ]
+          }
+        }
+      );
 
-          parse_mode:
-            "Markdown"
+      return;
+
+    }
+
+    let message =
+      "🏆 *Sisters Bingo Leaderboard*\n\n";
+
+    leaderboard.forEach(
+      (player, index) => {
+
+        const position =
+          index + 1;
+
+        let medal =
+          "";
+
+        if (
+          position === 1
+        ) {
+
+          medal = "🥇";
+
+        } else if (
+          position === 2
+        ) {
+
+          medal = "🥈";
+
+        } else if (
+          position === 3
+        ) {
+
+          medal = "🥉";
+
+        } else {
+
+          medal = `${position}.`;
 
         }
 
+        message +=
+          `${medal} *${escapeMarkdown(
+            player.name ||
+            "Player"
+          )}* — ` +
+          `${formatAmount(
+            player.total_winnings ||
+            player.winnings ||
+            0
+          )} ETB\n`;
+
+      }
+    );
+
+    await safeEditMessage(
+      ctx,
+      message,
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🏠 Home",
+                callback_data: "user_home"
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+  } catch (error) {
+
+    console.error(
+      "Leaderboard error:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ Unable to load the leaderboard."
+    );
+
+  }
+
+}
+
+
+bot.command(
+  "leaderboard",
+  async (ctx) => {
+
+    await showLeaderboard(ctx);
+
+  }
+);
+
+
+bot.callbackQuery(
+  "leaderboard",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    await showLeaderboard(ctx);
+
+  }
+);
+
+
+// ============================================================
+// ADMIN — MAIN MENU
+// ============================================================
+
+async function showAdminMenu(
+  ctx
+) {
+
+  const admin =
+    await requireAdmin(ctx);
+
+  if (!admin) {
+    return;
+  }
+
+  const role =
+    String(
+      admin.admin_role || ""
+    ).toLowerCase();
+
+  const rows = [];
+
+  if (
+    role === "main"
+  ) {
+
+    rows.push(
+      [
+        {
+          text: "👥 Manage Users",
+          callback_data:
+            "admin_manage_users"
+        }
+      ],
+      [
+        {
+          text: "👤 Manage Admins",
+          callback_data:
+            "admin_manage_admins"
+        }
+      ],
+      [
+        {
+          text: "🏧 Pending Withdrawals",
+          callback_data:
+            "admin_pending"
+        }
+      ],
+      [
+        {
+          text: "📢 Broadcast",
+          callback_data:
+            "admin_broadcast"
+        }
+      ],
+      [
+        {
+          text: "💳 Payment Accounts",
+          callback_data:
+            "admin_accounts"
+        }
+      ],
+      [
+        {
+          text: "📊 Statistics",
+          callback_data:
+            "admin_statistics_menu"
+        }
+      ]
+    );
+
+  } else if (
+    role === "statistics"
+  ) {
+
+    rows.push(
+      [
+        {
+          text: "📊 Statistics",
+          callback_data:
+            "admin_statistics_menu"
+        }
+      ]
+    );
+
+  } else if (
+    role === "withdrawal"
+  ) {
+
+    rows.push(
+      [
+        {
+          text: "🏧 Pending Withdrawals",
+          callback_data:
+            "admin_pending"
+        }
+      ]
+    );
+
+  } else if (
+    role === "broadcast"
+  ) {
+
+    rows.push(
+      [
+        {
+          text: "📢 Broadcast",
+          callback_data:
+            "admin_broadcast"
+        }
+      ]
+    );
+
+  }
+
+  rows.push(
+    [
+      {
+        text: "🏠 User Home",
+        callback_data:
+          "user_home"
+      }
+    ]
+  );
+
+  await safeEditMessage(
+    ctx,
+    "🔐 *Admin Panel*\n\n" +
+    `👤 Admin: *${escapeMarkdown(
+      admin.name ||
+      "Administrator"
+    )}*\n` +
+    `🛡️ Role: *${escapeMarkdown(
+      role || "admin"
+    )}*`,
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard:
+          rows
+      }
+    }
+  );
+
+}
+
+
+bot.callbackQuery(
+  "admin_menu",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    await showAdminMenu(ctx);
+
+  }
+);
+
+
+// ============================================================
+// ADMIN — MANAGE USERS
+// ============================================================
+
+async function showAdminManageUsers(
+  ctx
+) {
+
+  const admin =
+    await requireAdminPermission(
+      ctx,
+      "main"
+    );
+
+  if (!admin) {
+    return;
+  }
+
+  pendingAdminUserSearch.set(
+    getTelegramId(ctx),
+    {
+      step: "phone"
+    }
+  );
+
+  await safeEditMessage(
+    ctx,
+    "👥 *Manage Users*\n\n" +
+    "Please enter the user's registered phone number.",
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "❌ Cancel",
+              callback_data:
+                "admin_cancel"
+            }
+          ]
+        ]
+      }
+    }
+  );
+
+}
+
+
+bot.callbackQuery(
+  "admin_manage_users",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    await showAdminManageUsers(ctx);
+
+  }
+);
+
+
+// ============================================================
+// ADMIN USER SEARCH
+// ============================================================
+
+async function handleAdminUserSearch(
+  ctx
+) {
+
+  const telegramId =
+    getTelegramId(ctx);
+
+  const state =
+    pendingAdminUserSearch.get(
+      telegramId
+    );
+
+  if (!state) {
+    return false;
+  }
+
+  const admin =
+    await getCurrentAdmin(ctx);
+
+  if (!admin) {
+
+    pendingAdminUserSearch.delete(
+      telegramId
+    );
+
+    await ctx.reply(
+      "🚫 You do not have administrator permission."
+    );
+
+    return true;
+
+  }
+
+  const text =
+    ctx.message.text.trim();
+
+  if (
+    !text
+  ) {
+
+    await ctx.reply(
+      "Please enter a phone number."
+    );
+
+    return true;
+
+  }
+
+  try {
+
+    const phone =
+      normalizeEthiopianPhone(
+        text
       );
 
-    } catch (err) {
+    if (!phone) {
+
+      await ctx.reply(
+        "❌ Please enter a valid Ethiopian phone number."
+      );
+
+      return true;
+
+    }
+
+    const user =
+      await db.getUserByPhoneForAdmin(
+        phone
+      );
+
+    if (!user) {
+
+      await ctx.reply(
+        "❌ No active user was found with that phone number."
+      );
+
+      return true;
+
+    }
+
+    pendingAdminUserSearch.set(
+      telegramId,
+      {
+        step: "view",
+        user
+      }
+    );
+
+    const status =
+      user.is_blocked === true
+        ? "🚫 Blocked"
+        : user.is_active === false
+          ? "⛔ Inactive"
+          : "✅ Active";
+
+    const adminStatus =
+      user.is_admin === true
+        ? `\n🛡️ Admin Role: *${escapeMarkdown(
+            user.admin_role ||
+            "admin"
+          )}*`
+        : "";
+
+    await ctx.reply(
+      "👤 *User Information*\n\n" +
+      `🆔 ID: *${user.id}*\n` +
+      `👤 Name: *${escapeMarkdown(
+        user.name || ""
+      )}*\n` +
+      `📱 Phone: *${escapeMarkdown(
+        user.phone || ""
+      )}*\n` +
+      `💰 Balance: *${formatAmount(
+        user.balance || 0
+      )} ETB*\n` +
+      `🎮 Games: *${Number(
+        user.total_games || 0
+      )}*\n` +
+      `🏆 Wins: *${Number(
+        user.total_wins || 0
+      )}*\n` +
+      `💵 Winnings: *${formatAmount(
+        user.total_winnings || 0
+      )} ETB*\n` +
+      `📌 Status: *${status}*` +
+      adminStatus,
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text:
+                  user.is_blocked === true
+                    ? "🔓 Unblock User"
+                    : "🚫 Block User",
+                callback_data:
+                  `admin_user_block_${user.id}`
+              }
+            ],
+            [
+              {
+                text: "📊 Financial Statistics",
+                callback_data:
+                  `admin_user_financial_${user.id}`
+              }
+            ],
+            [
+              {
+                text: "⬅️ Search Another User",
+                callback_data:
+                  "admin_manage_users"
+              }
+            ],
+            [
+              {
+                text: "🏠 Admin Menu",
+                callback_data:
+                  "admin_menu"
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+    return true;
+
+  } catch (error) {
+
+    console.error(
+      "Admin user search error:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ Unable to search for this user."
+    );
+
+    return true;
+
+  }
+
+}
+
+
+bot.on(
+  "message:text",
+  async (ctx, next) => {
+
+    const handled =
+      await handleAdminUserSearch(ctx);
+
+    if (handled) {
+      return;
+    }
+
+    return next();
+
+  }
+);
+
+
+// ============================================================
+// ADMIN USER BLOCK / UNBLOCK
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_user_block_(\d+)$/,
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "main"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    const userId =
+      Number(
+        ctx.match[1]
+      );
+
+    try {
+
+      if (
+        typeof db.getUserById !==
+        "function"
+      ) {
+
+        await ctx.reply(
+          "❌ User lookup function is unavailable."
+        );
+
+        return;
+
+      }
+
+      const user =
+        await db.getUserById(
+          userId
+        );
+
+      if (!user) {
+
+        await ctx.reply(
+          "❌ User not found."
+        );
+
+        return;
+
+      }
+
+      const newBlocked =
+        user.is_blocked !== true;
+
+      await db.setUserBlocked(
+        userId,
+        newBlocked
+      );
+
+      pendingAdminUserSearch.set(
+        getTelegramId(ctx),
+        {
+          step: "view",
+          user: {
+            ...user,
+            is_blocked:
+              newBlocked
+          }
+        }
+      );
+
+      await safeEditMessage(
+        ctx,
+        newBlocked
+          ? "🚫 *User Blocked*\n\n" +
+            `👤 ${escapeMarkdown(
+              user.name || "User"
+            )} has been blocked successfully.`
+          : "🔓 *User Unblocked*\n\n" +
+            `👤 ${escapeMarkdown(
+              user.name || "User"
+            )} has been unblocked successfully.`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "⬅️ Back to User",
+                  callback_data:
+                    "admin_manage_users"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Admin Menu",
+                  callback_data:
+                    "admin_menu"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
 
       console.error(
-        "Withdrawal amount error:",
-        err
+        "Admin block/unblock error:",
+        error
       );
 
       await ctx.reply(
-        "❌ የመውጫ ጥያቄውን ማስኬድ አልተቻለም።"
+        "❌ Unable to change the user's block status."
       );
 
     }
@@ -5399,33 +3998,684 @@ bot.on(
 
 
 // ============================================================
-// CANCEL WITHDRAWAL
+// ADMIN USER FINANCIAL STATISTICS
 // ============================================================
 
 bot.callbackQuery(
-  "cancelwithdrawal",
+  /^admin_user_financial_(\d+)$/,
   async (ctx) => {
 
-    await answerCallback(
-      ctx
-    );
+    await answerCallback(ctx);
 
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "main"
+      );
 
-    delete pendingWithdrawal[
-      ctx.from.id
-    ];
+    if (!admin) {
+      return;
+    }
 
+    const userId =
+      Number(
+        ctx.match[1]
+      );
 
     try {
 
-      await ctx.editMessageText(
-        "❌ የመውጫ ጥያቄዎ ተሰርዟል።"
+      const user =
+        typeof db.getUserById ===
+        "function"
+          ? await db.getUserById(
+              userId
+            )
+          : null;
+
+      if (!user) {
+
+        await ctx.reply(
+          "❌ User not found."
+        );
+
+        return;
+
+      }
+
+      if (
+        typeof db.getUserFinancialStatistics !==
+        "function"
+      ) {
+
+        await ctx.reply(
+          "❌ Financial statistics are currently unavailable."
+        );
+
+        return;
+
+      }
+
+      const stats =
+        await db.getUserFinancialStatistics(
+          userId
+        );
+
+      await safeEditMessage(
+        ctx,
+        "📊 *User Financial Statistics*\n\n" +
+        `👤 User: *${escapeMarkdown(
+          user.name || "User"
+        )}*\n` +
+        `📱 Phone: *${escapeMarkdown(
+          user.phone || ""
+        )}*\n\n` +
+        `💎 Total Deposits: *${formatAmount(
+          stats.totalDepositAmount || 0
+        )} ETB*\n` +
+        `✅ Approved Withdrawals: *${formatAmount(
+          stats.approvedWithdrawalAmount || 0
+        )} ETB*\n` +
+        `⏳ Pending Withdrawals: *${formatAmount(
+          stats.pendingWithdrawalAmount || 0
+        )} ETB*\n` +
+        `❌ Rejected Withdrawals: *${formatAmount(
+          stats.rejectedWithdrawalAmount || 0
+        )} ETB*`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "⬅️ Back",
+                  callback_data:
+                    "admin_manage_users"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Admin Menu",
+                  callback_data:
+                    "admin_menu"
+                }
+              ]
+            ]
+          }
+        }
       );
 
-    } catch {
+    } catch (error) {
+
+      console.error(
+        "Admin user financial statistics error:",
+        error
+      );
 
       await ctx.reply(
-        "❌ የመውጫ ጥያቄዎ ተሰርዟል።"
+        "❌ Unable to load financial statistics."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// ADMIN — MANAGE ADMINS
+// ============================================================
+
+async function showManageAdmins(
+  ctx
+) {
+
+  const admin =
+    await requireAdminPermission(
+      ctx,
+      "main"
+    );
+
+  if (!admin) {
+    return;
+  }
+
+  try {
+
+    const admins =
+      await db.getAllAdmins();
+
+    let text =
+      "👤 *Manage Admins*\n\n";
+
+    if (
+      !admins ||
+      admins.length === 0
+    ) {
+
+      text +=
+        "No administrators found.";
+
+    } else {
+
+      admins.forEach(
+        (item, index) => {
+
+          text +=
+            `${index + 1}. *${escapeMarkdown(
+              item.name || "Admin"
+            )}*\n` +
+            `📱 ${escapeMarkdown(
+              item.phone || ""
+            )}\n` +
+            `🛡️ Role: *${escapeMarkdown(
+              item.admin_role || ""
+            )}*\n\n`;
+
+        }
+      );
+
+    }
+
+    await safeEditMessage(
+      ctx,
+      text,
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "➕ Add / Change Admin Role",
+                callback_data:
+                  "admin_role_add"
+              }
+            ],
+            [
+              {
+                text: "➖ Remove Admin Role",
+                callback_data:
+                  "admin_role_remove"
+              }
+            ],
+            [
+              {
+                text: "🏠 Admin Menu",
+                callback_data:
+                  "admin_menu"
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+  } catch (error) {
+
+    console.error(
+      "Manage admins error:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ Unable to load administrators."
+    );
+
+  }
+
+}
+
+
+bot.callbackQuery(
+  "admin_manage_admins",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    await showManageAdmins(ctx);
+
+  }
+);
+
+
+// ============================================================
+// ADMIN ROLE SEARCH
+// ============================================================
+
+bot.callbackQuery(
+  "admin_role_add",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "main"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    pendingAdminRoleSearch.set(
+      getTelegramId(ctx),
+      {
+        action: "add",
+        step: "phone"
+      }
+    );
+
+    await safeEditMessage(
+      ctx,
+      "➕ *Add / Change Admin Role*\n\n" +
+      "Enter the user's registered phone number.",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "admin_manage_admins"
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+  }
+);
+
+
+bot.callbackQuery(
+  "admin_role_remove",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "main"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    pendingAdminRoleSearch.set(
+      getTelegramId(ctx),
+      {
+        action: "remove",
+        step: "phone"
+      }
+    );
+
+    await safeEditMessage(
+      ctx,
+      "➖ *Remove Admin Role*\n\n" +
+      "Enter the administrator's registered phone number.",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "admin_manage_admins"
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+  }
+);
+
+
+// ============================================================
+// ADMIN ROLE TEXT SEARCH
+// ============================================================
+
+async function handleAdminRoleSearch(
+  ctx
+) {
+
+  const telegramId =
+    getTelegramId(ctx);
+
+  const state =
+    pendingAdminRoleSearch.get(
+      telegramId
+    );
+
+  if (!state) {
+    return false;
+  }
+
+  const admin =
+    await getCurrentAdmin(ctx);
+
+  if (!admin) {
+
+    pendingAdminRoleSearch.delete(
+      telegramId
+    );
+
+    await ctx.reply(
+      "🚫 You do not have administrator permission."
+    );
+
+    return true;
+
+  }
+
+  const text =
+    ctx.message.text.trim();
+
+  const phone =
+    normalizeEthiopianPhone(
+      text
+    );
+
+  if (!phone) {
+
+    await ctx.reply(
+      "❌ Please enter a valid Ethiopian phone number."
+    );
+
+    return true;
+
+  }
+
+  try {
+
+    const user =
+      await db.getUserByPhoneForAdmin(
+        phone
+      );
+
+    if (!user) {
+
+      await ctx.reply(
+        "❌ No active user was found with that phone number."
+      );
+
+      return true;
+
+    }
+
+    if (
+      state.action === "add"
+    ) {
+
+      pendingAdminRoleSearch.set(
+        telegramId,
+        {
+          action: "add",
+          step: "role",
+          user
+        }
+      );
+
+      await ctx.reply(
+        "🛡️ *Select Admin Role*\n\n" +
+        `👤 User: *${escapeMarkdown(
+          user.name || "User"
+        )}*\n` +
+        `📱 Phone: *${escapeMarkdown(
+          user.phone || ""
+        )}*`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "👑 Main",
+                  callback_data:
+                    `admin_set_role_main_${user.id}`
+                }
+              ],
+              [
+                {
+                  text: "📊 Statistics",
+                  callback_data:
+                    `admin_set_role_statistics_${user.id}`
+                }
+              ],
+              [
+                {
+                  text: "🏧 Withdrawal",
+                  callback_data:
+                    `admin_set_role_withdrawal_${user.id}`
+                }
+              ],
+              [
+                {
+                  text: "📢 Broadcast",
+                  callback_data:
+                    `admin_set_role_broadcast_${user.id}`
+                }
+              ],
+              [
+                {
+                  text: "❌ Cancel",
+                  callback_data:
+                    "admin_manage_admins"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+      return true;
+
+    }
+
+    if (
+      state.action === "remove"
+    ) {
+
+      await db.removeAdminUser(
+        user.id
+      );
+
+      pendingAdminRoleSearch.delete(
+        telegramId
+      );
+
+      await ctx.reply(
+        `✅ Admin role removed from *${escapeMarkdown(
+          user.name || "User"
+        )}*.`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "👤 Manage Admins",
+                  callback_data:
+                    "admin_manage_admins"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Admin Menu",
+                  callback_data:
+                    "admin_menu"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+      return true;
+
+    }
+
+    return true;
+
+  } catch (error) {
+
+    console.error(
+      "Admin role search error:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ Unable to process administrator role request."
+    );
+
+    return true;
+
+  }
+
+}
+
+
+bot.on(
+  "message:text",
+  async (ctx, next) => {
+
+    const handled =
+      await handleAdminRoleSearch(ctx);
+
+    if (handled) {
+      return;
+    }
+
+    return next();
+
+  }
+);
+
+
+// ============================================================
+// SET ADMIN ROLE
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_set_role_(main|statistics|withdrawal|broadcast)_(\d+)$/,
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "main"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    const role =
+      ctx.match[1];
+
+    const userId =
+      Number(
+        ctx.match[2]
+      );
+
+    try {
+
+      if (
+        ![
+          "main",
+          "statistics",
+          "withdrawal",
+          "broadcast"
+        ].includes(role)
+      ) {
+
+        await ctx.reply(
+          "❌ Invalid admin role."
+        );
+
+        return;
+
+      }
+
+      const user =
+        typeof db.getUserById ===
+        "function"
+          ? await db.getUserById(
+              userId
+            )
+          : null;
+
+      if (!user) {
+
+        await ctx.reply(
+          "❌ User not found."
+        );
+
+        return;
+
+      }
+
+      await db.setUserAdminRole(
+        userId,
+        role
+      );
+
+      pendingAdminRoleSearch.delete(
+        getTelegramId(ctx)
+      );
+
+      await safeEditMessage(
+        ctx,
+        "✅ *Admin Role Updated*\n\n" +
+        `👤 User: *${escapeMarkdown(
+          user.name || "User"
+        )}*\n` +
+        `📱 Phone: *${escapeMarkdown(
+          user.phone || ""
+        )}*\n` +
+        `🛡️ Role: *${escapeMarkdown(
+          role
+        )}*`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "👤 Manage Admins",
+                  callback_data:
+                    "admin_manage_admins"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Admin Menu",
+                  callback_data:
+                    "admin_menu"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Set admin role error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to update administrator role."
       );
 
     }
@@ -5436,803 +4686,274 @@ bot.callbackQuery(
 
 // ============================================================
 // ADMIN — PENDING WITHDRAWALS
-// PAYMENT METHOD → PAYMENT ACCOUNT → PENDING LIST
-// ============================================================
-
-async function showAdminPaymentMethods(ctx) {
-
-  const admin = await requireAdmin(ctx);
-
-  if (!admin) {
-    return;
-  }
-
-  const paymentMethods =
-    await db.getPaymentMethods();
-
-  if (
-    !paymentMethods ||
-    paymentMethods.length === 0
-  ) {
-
-    return ctx.reply(
-      "❌ No active payment methods are available."
-    );
-
-  }
-
-  const keyboard =
-    paymentMethods.map(pm => [
-
-      {
-        text:
-          `${pm.emoji || "💳"} ${pm.amharic_name || pm.name}`,
-
-        callback_data:
-          `admin_pending_method_${pm.id}`
-      }
-
-    ]);
-
-  keyboard.push([
-
-    {
-      text:
-        "🏠 Home",
-
-      callback_data:
-        "admin_home"
-    }
-
-  ]);
-
-  await ctx.reply(
-
-    "👑 *PENDING WITHDRAWALS*\n\n" +
-
-    "First select the payment method you will use to process the withdrawals:",
-
-    {
-
-      parse_mode:
-        "Markdown",
-
-      reply_markup: {
-
-        inline_keyboard:
-          keyboard
-
-      }
-
-    }
-
-  );
-
-}
-
-
-// ============================================================
-// ADMIN PENDING BUTTON
-// ============================================================
-
-bot.callbackQuery(
-  "admin_withdrawals",
-  async (ctx) => {
-
-    const admin = await requireAdminPermission(
-    ctx,
-    "withdrawals"
-);
-
-    if (!admin) {
-      return;
-    }
-
-    await answerCallback(ctx);
-
-    // Clear previous payment account selection
-    delete pendingAdminWithdrawal[
-      admin.telegram_id
-    ];
-
-    try {
-
-      await showAdminPaymentMethods(ctx);
-
-    } catch (err) {
-
-      console.error(
-        "Admin payment method selection error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Could not load payment methods."
-      );
-
-    }
-
-  }
-);
-
-
-// ============================================================
-// ADMIN — SELECT PAYMENT METHOD
-// ============================================================
-
-bot.callbackQuery(
-  /^admin_pending_method_(\d+)$/,
-  async (ctx) => {
-
-    const admin =
-      await requireAdmin(ctx);
-
-    if (!admin) {
-      return;
-    }
-
-    await answerCallback(ctx);
-
-    const paymentMethodId =
-      Number(ctx.match[1]);
-
-    try {
-
-      const paymentMethod =
-        await db.getPaymentMethodById(
-          paymentMethodId
-        );
-
-      if (!paymentMethod) {
-
-        return ctx.reply(
-          "❌ Payment method not found."
-        );
-
-      }
-
-      const accounts =
-        await db.getPaymentAccountsByMethod(
-          paymentMethodId
-        );
-
-      if (
-        !accounts ||
-        accounts.length === 0
-      ) {
-
-        return ctx.reply(
-
-          "❌ No active payment accounts are available for " +
-          `${paymentMethod.amharic_name || paymentMethod.name}.`
-
-        );
-
-      }
-
-      const keyboard =
-        accounts.map(account => [
-
-          {
-            text:
-              `${account.account_number} — ` +
-              `${account.account_name || ""}`,
-
-            callback_data:
-              `admin_pending_account_${account.id}`
-          }
-
-        ]);
-
-      keyboard.push([
-
-        {
-          text:
-            "⬅️ Back",
-
-          callback_data:
-            "admin_withdrawals"
-        }
-
-      ]);
-
-      await ctx.editMessageText(
-
-        "👑 *SELECT PAYMENT ACCOUNT*\n\n" +
-
-        `💳 Payment method: *${
-          paymentMethod.amharic_name ||
-          paymentMethod.name
-        }*\n\n` +
-
-        "Select the account that will be used to pay the approved withdrawals:",
-
-        {
-
-          parse_mode:
-            "Markdown",
-
-          reply_markup: {
-
-            inline_keyboard:
-              keyboard
-
-          }
-
-        }
-
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Admin payment account selection error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Could not load payment accounts."
-      );
-
-    }
-
-  }
-);
-
-
-// ============================================================
-// ADMIN — SELECT PAYMENT ACCOUNT
-// ============================================================
-
-bot.callbackQuery(
-  /^admin_pending_account_(\d+)$/,
-  async (ctx) => {
-
-    const admin =
-      await requireAdmin(ctx);
-
-    if (!admin) {
-      return;
-    }
-
-    await answerCallback(ctx);
-
-    const paymentAccountId =
-      Number(ctx.match[1]);
-
-    try {
-
-      const account =
-        await db.getPaymentAccountById(
-          paymentAccountId
-        );
-
-      if (!account) {
-
-        return ctx.reply(
-          "❌ Payment account not found."
-        );
-
-      }
-
-      /*
-       * Store the selected account for this admin.
-       *
-       * This remains selected while the admin
-       * approves multiple withdrawal requests.
-       */
-
-      pendingAdminWithdrawal[
-        admin.telegram_id
-      ] = {
-
-        paymentMethodId:
-          account.payment_method_id,
-
-        paymentAccountId:
-          account.id,
-
-        paymentAccount:
-          account
-
-      };
-
-      await showPendingWithdrawals(
-        ctx,
-        true
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Admin payment account selection error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Could not select the payment account."
-      );
-
-    }
-
-  }
-);
-
-
-// ============================================================
-// SHOW MAXIMUM 5 PENDING WITHDRAWALS
 // ============================================================
 
 async function showPendingWithdrawals(
-  ctx,
-  editMessage = false
+  ctx
 ) {
 
   const admin =
-    await requireAdmin(ctx);
+    await requireAdminPermission(
+      ctx,
+      "withdrawals"
+    );
 
   if (!admin) {
     return;
   }
 
-  const adminState =
-    pendingAdminWithdrawal[
-      admin.telegram_id
-    ];
+  try {
 
-  if (!adminState) {
+    if (
+      typeof db.getPendingWithdrawals !==
+      "function"
+    ) {
 
-    return showAdminPaymentMethods(ctx);
-
-  }
-
-  const withdrawals =
-    await db.getPendingWithdrawals(
-      5
-    );
-
-  const account =
-    adminState.paymentAccount;
-
-  let message =
-
-    "👑 *PENDING WITHDRAWALS*\n\n" +
-
-    "━━━━━━━━━━━━━━━━━━━━\n" +
-
-    `💳 Method: *${
-      account.pm_amharic_name ||
-      account.pm_name ||
-      "Unknown"
-    }*\n` +
-
-    `📱 Payment Account: \`${account.account_number}\`\n` +
-
-    `💰 Available: *${account.balance} ETB*\n` +
-
-    "━━━━━━━━━━━━━━━━━━━━\n\n";
-
-  if (
-    !withdrawals ||
-    withdrawals.length === 0
-  ) {
-
-    message +=
-      "✅ There are no pending withdrawals.";
-
-  } else {
-
-    withdrawals.forEach(
-      (w, index) => {
-
-        const created =
-          w.created_at
-            ? new Date(
-                w.created_at
-              ).toLocaleString(
-                "en-GB"
-              )
-            : "";
-
-        message +=
-
-          `${index + 1}. 🆔 *#${w.id}*\n` +
-
-          `👤 ${w.name || "Unknown"}\n` +
-
-          `💳 ${
-            w.payment_method_amharic ||
-            w.payment_method ||
-            "Unknown"
-          }\n` +
-
-          `📱 Recipient: \`${w.account_number}\`\n` +
-
-          `💰 *${w.amount} ETB*\n` +
-
-          `${created
-            ? `📅 ${created}\n`
-            : ""}` +
-
-          "\n";
-
-      }
-    );
-
-  }
-
-  const keyboard = [];
-
-  for (
-    const w of withdrawals
-  ) {
-
-    keyboard.push([
-
-      {
-        text:
-          `✅ Approve #${w.id}`,
-
-        callback_data:
-          `approve_withdrawal_${w.id}`
-      },
-
-      {
-        text:
-          `❌ Reject #${w.id}`,
-
-        callback_data:
-          `reject_withdrawal_${w.id}`
-      }
-
-    ]);
-
-  }
-
-  keyboard.push([
-
-    {
-      text:
-        "💳 Change Account",
-
-      callback_data:
-        "admin_withdrawals"
-    },
-
-    {
-      text:
-        "🔄 Refresh",
-
-      callback_data:
-        "admin_pending_refresh"
-    }
-
-  ]);
-
-  keyboard.push([
-
-    {
-      text:
-        "🏠 Home",
-
-      callback_data:
-        "admin_home"
-    }
-
-  ]);
-
-  const options = {
-
-    parse_mode:
-      "Markdown",
-
-    reply_markup: {
-
-      inline_keyboard:
-        keyboard
-
-    }
-
-  };
-
-  if (editMessage) {
-
-    try {
-
-      await ctx.editMessageText(
-        message,
-        options
+      await ctx.reply(
+        "❌ Pending withdrawal function is unavailable."
       );
 
       return;
 
-    } catch (err) {
+    }
 
-      // If the message cannot be edited,
-      // send a new message instead.
+    const withdrawals =
+      await db.getPendingWithdrawals();
 
-      console.log(
-        "Pending message edit failed:",
-        err.description ||
-        err.message
+    if (
+      !withdrawals ||
+      withdrawals.length === 0
+    ) {
+
+      await safeEditMessage(
+        ctx,
+        "🏧 *Pending Withdrawals*\n\n" +
+        "✅ There are no pending withdrawal requests.",
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🏠 Admin Menu",
+                  callback_data:
+                    "admin_menu"
+                }
+              ]
+            ]
+          }
+        }
       );
+
+      return;
 
     }
 
-  }
+    const rows =
+      [];
 
-  await ctx.reply(
-    message,
-    options
-  );
+    withdrawals.forEach(
+      (withdrawal) => {
+
+        rows.push(
+          [
+            {
+              text:
+                `🏧 ${formatAmount(
+                  withdrawal.amount || 0
+                )} ETB — ${
+                  withdrawal.name ||
+                  withdrawal.user_name ||
+                  "User"
+                }`,
+              callback_data:
+                `admin_withdrawal_${withdrawal.id}`
+            }
+          ]
+        );
+
+      }
+    );
+
+    rows.push(
+      [
+        {
+          text: "🏠 Admin Menu",
+          callback_data:
+            "admin_menu"
+        }
+      ]
+    );
+
+    await safeEditMessage(
+      ctx,
+      "🏧 *Pending Withdrawals*\n\n" +
+      "Select a withdrawal request to review:",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard:
+            rows
+        }
+      }
+    );
+
+  } catch (error) {
+
+    console.error(
+      "Pending withdrawals error:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ Unable to load pending withdrawals."
+    );
+
+  }
 
 }
 
 
-// ============================================================
-// ADMIN — REFRESH PENDING LIST
-// ============================================================
-
 bot.callbackQuery(
-  "admin_pending_refresh",
+  "admin_pending",
   async (ctx) => {
-
-    const admin =
-      await requireAdmin(ctx);
-
-    if (!admin) {
-      return;
-    }
 
     await answerCallback(ctx);
 
-    await showPendingWithdrawals(
-      ctx,
-      true
-    );
+    await showPendingWithdrawals(ctx);
 
   }
 );
 
+
 // ============================================================
-// ADMIN PENDING BUTTON
+// ADMIN WITHDRAWAL DETAILS
 // ============================================================
 
 bot.callbackQuery(
-  "admin_withdrawals",
+  /^admin_withdrawal_(\d+)$/,
   async (ctx) => {
 
+    await answerCallback(ctx);
+
     const admin =
-      await requireAdmin(
-        ctx
+      await requireAdminPermission(
+        ctx,
+        "withdrawals"
       );
 
-
     if (!admin) {
-
       return;
-
     }
 
-
-    await answerCallback(
-      ctx
-    );
-
+    const withdrawalId =
+      Number(
+        ctx.match[1]
+      );
 
     try {
 
-      const withdrawals =
-        await db.getPendingWithdrawals(
-          20
-        );
-
-
-      let message =
-        "👑 *PENDING WITHDRAWALS*\n\n";
-
-
       if (
-        !withdrawals ||
-        withdrawals.length === 0
+        typeof db.getWithdrawalById !==
+        "function"
       ) {
 
-        message +=
-          "There are no pending withdrawals.";
-
-      } else {
-
-        withdrawals.forEach(
-          (w, index) => {
-
-            const created =
-              w.created_at
-                ? new Date(
-                    w.created_at
-                  ).toLocaleString(
-                    "en-GB"
-                  )
-                : "";
-
-
-            message +=
-
-              `${index + 1}. 🆔 *#${w.id}*\n` +
-
-              `👤 ${w.name || "Unknown"}\n` +
-
-              `💳 ${w.payment_method_amharic || w.payment_method || "Unknown"}\n` +
-
-              `📱 \`${w.account_number}\`\n` +
-
-              `💰 *${w.amount} ETB*\n` +
-
-              `${created ? `📅 ${created}\n` : ""}` +
-
-              "\n";
-
-          }
+        await ctx.reply(
+          "❌ Withdrawal lookup function is unavailable."
         );
 
-      }
-
-
-      const keyboard = [];
-
-
-      for (
-        const w of withdrawals
-      ) {
-
-        keyboard.push([
-
-          {
-
-            text:
-              `✅ Approve #${w.id}`,
-
-            callback_data:
-              `approve_withdrawal_${w.id}`
-
-          },
-
-          {
-
-            text:
-              `❌ Reject #${w.id}`,
-
-            callback_data:
-              `reject_withdrawal_${w.id}`
-
-          }
-
-        ]);
+        return;
 
       }
 
+      const withdrawal =
+        await db.getWithdrawalById(
+          withdrawalId
+        );
 
-      keyboard.push([
+      if (!withdrawal) {
 
+        await ctx.reply(
+          "❌ Withdrawal request not found."
+        );
+
+        return;
+
+      }
+
+      pendingAdminWithdrawal[
+        getTelegramId(ctx)
+      ] = {
+        withdrawalId,
+        withdrawal
+      };
+
+      await safeEditMessage(
+        ctx,
+        "🏧 *Withdrawal Request*\n\n" +
+        `👤 User: *${escapeMarkdown(
+          withdrawal.name ||
+          withdrawal.user_name ||
+          "User"
+        )}*\n` +
+        `📱 Phone: *${escapeMarkdown(
+          withdrawal.phone ||
+          ""
+        )}*\n` +
+        `💵 Amount: *${formatAmount(
+          withdrawal.amount || 0
+        )} ETB*\n` +
+        `🏦 Account: *${escapeMarkdown(
+          withdrawal.account_number ||
+          withdrawal.payment_account ||
+          ""
+        )}*\n` +
+        `📅 Date: *${escapeMarkdown(
+          withdrawal.created_at
+            ? new Date(
+                withdrawal.created_at
+              ).toISOString().split("T")[0]
+            : ""
+        )}*`,
         {
-
-          text:
-            "🔄 Refresh",
-
-          callback_data:
-            "admin_withdrawals"
-
-        },
-
-        {
-
-          text:
-            "🏠 Home",
-
-          callback_data:
-            "admin_home"
-
-        }
-
-      ]);
-
-
-      await ctx.editMessageText(
-
-        message,
-
-        {
-
-          parse_mode:
-            "Markdown",
-
+          parse_mode: "Markdown",
           reply_markup: {
-
-            inline_keyboard:
-              keyboard
-
+            inline_keyboard: [
+              [
+                {
+                  text: "✅ Approve",
+                  callback_data:
+                    `admin_approve_withdrawal_${withdrawalId}`
+                }
+              ],
+              [
+                {
+                  text: "❌ Reject",
+                  callback_data:
+                    `admin_reject_withdrawal_${withdrawalId}`
+                }
+              ],
+              [
+                {
+                  text: "⬅️ Back",
+                  callback_data:
+                    "admin_pending"
+                }
+              ]
+            ]
           }
-
         }
-
       );
 
-    } catch (err) {
+    } catch (error) {
 
       console.error(
-        "Admin withdrawal list error:",
-        err
+        "Withdrawal details error:",
+        error
       );
 
       await ctx.reply(
-        "❌ Could not load pending withdrawals."
-      );
-
-    }
-
-  }
-);
-
-
-// ============================================================
-// ADMIN HOME BUTTON
-// ============================================================
-
-bot.callbackQuery(
-  "admin_home",
-  async (ctx) => {
-  await answerCallback(ctx);
-
-  const telegramId = ctx.from.id;
-
-  // Forget everything the admin was in the middle of doing
-  clearPendingState(telegramId);
-
-
-    const admin =
-      await requireAdmin(
-        ctx
-      );
-
-
-    if (!admin) {
-
-      return;
-
-    }
-
-
-    try {
-
-      /*
-       * Use the currently logged-in admin's
-       * Telegram ID.
-       *
-       * There is no hard-coded ADMIN_ID.
-       */
-      const user =
-        await db.getUserByTelegramId(
-          admin.telegram_id
-        );
-
-
-      if (!user) {
-
-        return ctx.reply(
-          "❌ Admin account was not found."
-        );
-
-      }
-
-      await showHome(
-        ctx,
-        user
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Admin home error:",
-        err
+        "❌ Unable to load withdrawal details."
       );
 
     }
@@ -6246,175 +4967,105 @@ bot.callbackQuery(
 // ============================================================
 
 bot.callbackQuery(
-  /^approve_withdrawal_(\d+)$/,
+  /^admin_approve_withdrawal_(\d+)$/,
   async (ctx) => {
 
+    await answerCallback(ctx);
+
     const admin =
-      await requireAdmin(
-        ctx
+      await requireAdminPermission(
+        ctx,
+        "withdrawals"
       );
 
-
     if (!admin) {
-
       return;
-
     }
-
-
-    await answerCallback(
-      ctx,
-      "Approving..."
-    );
-
 
     const withdrawalId =
       Number(
         ctx.match[1]
       );
 
-
     try {
 
-      /*
-       * IMPORTANT:
-       *
-       * Pass the CURRENT ADMIN'S Telegram ID.
-       *
-       * db.approveWithdrawal() should then:
-       *
-       * 1. Verify the Telegram ID belongs to an
-       *    active, non-banned admin.
-       *
-       * 2. Store the actual users.id in
-       *    withdrawals.approved_by_id.
-       *
-       * 3. Approve the withdrawal.
-       *
-       * 4. Deduct the user's balance only once.
-       */
-
-      const adminState =
-  pendingAdminWithdrawal[
-    admin.telegram_id
-  ];
-
-if (!adminState) {
-
-  return ctx.reply(
-
-    "❌ Please select a payment account first.\n\n" +
-    "Press ⏳ Pending and select the payment account."
-
-  );
-
-}
-
-const result =
-  await db.approveWithdrawal(
-
-    withdrawalId,
-
-    admin.telegram_id,
-
-    adminState.paymentAccountId
-
-  );
-
-
       if (
-        !result ||
-        !result.success
+        typeof db.approveWithdrawal !==
+        "function"
       ) {
 
-        return ctx.reply(
-          `❌ ${result?.message || "Withdrawal approval failed."}`
+        await ctx.reply(
+          "❌ Withdrawal approval function is unavailable."
         );
+
+        return;
 
       }
 
-pendingAdminWithdrawal[admin.telegram_id]
-await ctx.reply(
+      const result =
+        await db.approveWithdrawal(
+          withdrawalId,
+          admin.id
+        );
 
-  "✅ *WITHDRAWAL APPROVED*\n\n" +
+      const withdrawal =
+        result &&
+        result.withdrawal
+          ? result.withdrawal
+          : result;
 
-  `🆔 #${withdrawalId}\n` +
+      delete pendingAdminWithdrawal[
+        getTelegramId(ctx)
+      ];
 
-  `👤 User: *${result.user_name}*\n` +
-
-  `💰 Amount: *${result.amount} ETB*\n` +
-
-  `📱 Recipient: \`${result.withdrawal.account_number}\`\n\n` +
-
-  `💳 Paid from: \`${result.payment_account_number}\`\n` +
-
-  `💰 Account balance after: *${result.payment_account_balance_after} ETB*\n\n` +
-
-  `👑 Approved by: *${admin.name || admin.telegram_id}*`,
-
-  {
-    parse_mode:
-      "Markdown"
-  }
-
-);
-      
-
-
-      // ------------------------------------------------------
-      // Notify user
-      // ------------------------------------------------------
-
-      try {
-
-        await bot.api.sendMessage(
-
-          result.telegram_id,
-
-          "✅ *የመውጫ ጥያቄዎ ጸድቋል!*\n\n" +
-
-          `💰 መጠን፦ *${result.amount} ETB*\n` +
-
-          `📱 አካውንት፦ \`${result.withdrawal.account_number}\`\n\n` +
-
-          `💰 አዲሱ ቀሪ ሂሳብ፦ *${result.balance_after} ETB*`,
-
-          {
-
-            parse_mode:
-              "Markdown"
-
+      await safeEditMessage(
+        ctx,
+        "✅ *Withdrawal Approved*\n\n" +
+        `💵 Amount: *${formatAmount(
+          withdrawal &&
+          withdrawal.amount
+            ? withdrawal.amount
+            : 0
+        )} ETB*\n\n` +
+        "The withdrawal has been approved successfully.",
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🏧 Pending Withdrawals",
+                  callback_data:
+                    "admin_pending"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Admin Menu",
+                  callback_data:
+                    "admin_menu"
+                }
+              ]
+            ]
           }
-
-        );
-
-      } catch (notifyError) {
-
-        console.error(
-          "Approval notification error:",
-          notifyError
-        );
-
-      }
-
-
-      // ------------------------------------------------------
-      // Refresh pending list
-      // ------------------------------------------------------
-
-      await showPendingWithdrawals(
-        ctx
+        }
       );
 
-    } catch (err) {
+    } catch (error) {
 
       console.error(
         "Approve withdrawal error:",
-        err
+        error
       );
 
       await ctx.reply(
-        "❌ Withdrawal approval failed."
+        "❌ Unable to approve this withdrawal.\n\n" +
+        (
+          error &&
+          error.message
+            ? error.message
+            : ""
+        )
       );
 
     }
@@ -6424,655 +5075,1686 @@ await ctx.reply(
 
 
 // ============================================================
-// ADMIN REJECT — ASK REASON
+// ADMIN REJECT WITHDRAWAL
 // ============================================================
 
 bot.callbackQuery(
-  /^reject_withdrawal_(\d+)$/,
+  /^admin_reject_withdrawal_(\d+)$/,
   async (ctx) => {
 
+    await answerCallback(ctx);
+
     const admin =
-      await requireAdmin(
-        ctx
+      await requireAdminPermission(
+        ctx,
+        "withdrawals"
       );
 
-
     if (!admin) {
-
       return;
-
     }
-
-
-    await answerCallback(
-      ctx
-    );
-
-
-    const telegramId =
-      admin.telegram_id;
-
 
     const withdrawalId =
       Number(
         ctx.match[1]
       );
 
-
-    try {
-
-      /*
-       * Make sure the withdrawal actually exists
-       * and is still pending before asking for a reason.
-       */
-
-      const withdrawals =
-        await db.getPendingWithdrawals(
-          100
-        );
-
-
-      const withdrawal =
-        withdrawals.find(
-          w =>
-            Number(w.id) ===
-            withdrawalId
-        );
-
-
-      if (!withdrawal) {
-
-        return ctx.reply(
-          "❌ This withdrawal is no longer pending."
-        );
-
+    pendingAdminReject.set(
+      getTelegramId(ctx),
+      {
+        withdrawalId
       }
+    );
 
-
-      /*
-       * Store rejection state under the
-       * CURRENT ADMIN'S Telegram ID.
-       *
-       * This allows multiple admins to use the
-       * bot independently.
-       */
-
-      pendingAdminReject[
-        telegramId
-      ] = {
-
-        withdrawalId,
-
-        withdrawal
-
-      };
-
-
-      await ctx.reply(
-
-        "❌ *REJECT WITHDRAWAL*\n\n" +
-
-        `🆔 Withdrawal: *#${withdrawalId}*\n` +
-
-        `👤 User: *${withdrawal.name || "Unknown"}*\n` +
-
-        `💰 Amount: *${withdrawal.amount} ETB*\n` +
-
-        `📱 Account: \`${withdrawal.account_number}\`\n\n` +
-
-        "📝 Please type the reason for rejection.\n\n" +
-
-        "Example:\n" +
-
-        "`የተላከው የአካውንት ቁጥር ትክክል አይደለም።`\n\n" +
-
-        "❌ Send /cancel to cancel.",
-
-        {
-
-          parse_mode:
-            "Markdown"
-
+    await safeEditMessage(
+      ctx,
+      "❌ *Reject Withdrawal*\n\n" +
+      "Please enter the reason for rejecting this withdrawal.",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "⬅️ Cancel",
+                callback_data:
+                  `admin_withdrawal_${withdrawalId}`
+              }
+            ]
+          ]
         }
-
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Reject preparation error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Could not prepare the withdrawal rejection."
-      );
-
-    }
+      }
+    );
 
   }
 );
 
 
 // ============================================================
-// ADMIN REJECTION REASON
+// ADMIN REJECTION TEXT
 // ============================================================
+
+async function handleAdminRejectText(
+  ctx
+) {
+
+  const telegramId =
+    getTelegramId(ctx);
+
+  const state =
+    pendingAdminReject.get(
+      telegramId
+    );
+
+  if (!state) {
+    return false;
+  }
+
+  const admin =
+    await getCurrentAdmin(ctx);
+
+  if (!admin) {
+
+    pendingAdminReject.delete(
+      telegramId
+    );
+
+    await ctx.reply(
+      "🚫 You do not have administrator permission."
+    );
+
+    return true;
+
+  }
+
+  const reason =
+    ctx.message.text.trim();
+
+  if (
+    !reason
+  ) {
+
+    await ctx.reply(
+      "Please enter a rejection reason."
+    );
+
+    return true;
+
+  }
+
+  try {
+
+    if (
+      typeof db.rejectWithdrawal !==
+      "function"
+    ) {
+
+      await ctx.reply(
+        "❌ Withdrawal rejection function is unavailable."
+      );
+
+      return true;
+
+    }
+
+    const result =
+      await db.rejectWithdrawal(
+        state.withdrawalId,
+        admin.id,
+        reason
+      );
+
+    pendingAdminReject.delete(
+      telegramId
+    );
+
+    delete pendingAdminWithdrawal[
+      telegramId
+    ];
+
+    await ctx.reply(
+      "❌ *Withdrawal Rejected*\n\n" +
+      `📝 Reason: *${escapeMarkdown(
+        reason
+      )}*`,
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🏧 Pending Withdrawals",
+                callback_data:
+                  "admin_pending"
+              }
+            ],
+            [
+              {
+                text: "🏠 Admin Menu",
+                callback_data:
+                  "admin_menu"
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+    console.log(
+      "Withdrawal rejected:",
+      result
+    );
+
+    return true;
+
+  } catch (error) {
+
+    console.error(
+      "Reject withdrawal error:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ Unable to reject this withdrawal.\n\n" +
+      (
+        error &&
+        error.message
+          ? error.message
+          : ""
+      )
+    );
+
+    return true;
+
+  }
+
+}
+
 
 bot.on(
   "message:text",
   async (ctx, next) => {
 
-    const telegramId =
-      ctx.from.id;
+    const handled =
+      await handleAdminRejectText(ctx);
 
-
-    /*
-     * Check whether this Telegram user is
-     * currently an authorized admin.
-     *
-     * No hard-coded ADMIN_ID.
-     */
-
-    const admin =
-      await getCurrentAdmin(
-        ctx
-      );
-
-
-    if (!admin) {
-
-      return next();
-
+    if (handled) {
+      return;
     }
 
+    return next();
 
-    const pending =
-      pendingAdminReject[
-        telegramId
-      ];
-
-
-    if (!pending) {
-
-      return next();
-
-    }
+  }
+);
 
 
-    const text =
-      ctx.message.text.trim();
+// ============================================================
+// ADMIN — PAYMENT ACCOUNTS
+// ============================================================
 
+async function showAdminAccounts(
+  ctx
+) {
 
-    // --------------------------------------------------------
-    // Cancel rejection
-    // --------------------------------------------------------
+  const admin =
+    await requireAdminPermission(
+      ctx,
+      "main"
+    );
+
+  if (!admin) {
+    return;
+  }
+
+  try {
+
+    const methods =
+      await db.getPaymentMethods();
 
     if (
-      text === "/cancel"
+      !methods ||
+      methods.length === 0
     ) {
 
-      delete pendingAdminReject[
-        telegramId
-      ];
-
-
-      return ctx.reply(
-        "❌ Withdrawal rejection cancelled."
-      );
-
-    }
-
-
-    // --------------------------------------------------------
-    // Validate reason
-    // --------------------------------------------------------
-
-    if (!text) {
-
-      return ctx.reply(
-        "❌ Please enter a rejection reason."
-      );
-
-    }
-
-
-    if (
-      text.length < 2
-    ) {
-
-      return ctx.reply(
-        "❌ Please provide a valid rejection reason."
-      );
-
-    }
-
-
-    const withdrawalId =
-      pending.withdrawalId;
-
-
-    const reason =
-      text.substring(
-        0,
-        500
-      );
-
-
-    /*
-     * Clear state BEFORE database operation
-     * so another message cannot accidentally
-     * trigger the same rejection.
-     */
-
-    delete pendingAdminReject[
-      telegramId
-    ];
-
-
-    try {
-
-      /*
-       * Pass the CURRENT ADMIN'S Telegram ID.
-       *
-       * db.rejectWithdrawal() should verify
-       * that this Telegram ID is an active admin.
-       */
-
-      const result =
-        await db.rejectWithdrawal(
-          withdrawalId,
-          admin.telegram_id,
-          reason
-        );
-
-
-      if (
-        !result ||
-        !result.success
-      ) {
-
-        return ctx.reply(
-          `❌ ${result?.message || "Withdrawal rejection failed."}`
-        );
-
-      }
-
-
-      // ------------------------------------------------------
-      // Tell admin
-      // ------------------------------------------------------
-
-      await ctx.reply(
-
-        "❌ *WITHDRAWAL REJECTED*\n\n" +
-
-        `🆔 #${withdrawalId}\n` +
-
-        `👤 User: *${result.user_name || pending.withdrawal.name || "Unknown"}*\n` +
-
-        `💰 Amount: *${result.amount || pending.withdrawal.amount} ETB*\n\n` +
-
-        `📝 Reason:\n${reason}\n\n` +
-
-        `👑 Rejected by: ${admin.name || admin.telegram_id}`,
-
+      await safeEditMessage(
+        ctx,
+        "💳 *Payment Accounts*\n\n" +
+        "No active payment methods found.",
         {
-
-          parse_mode:
-            "Markdown"
-
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🏠 Admin Menu",
+                  callback_data:
+                    "admin_menu"
+                }
+              ]
+            ]
+          }
         }
-
       );
-
-
-      // ------------------------------------------------------
-      // Notify user
-      // ------------------------------------------------------
-
-      if (
-        result.telegram_id
-      ) {
-
-        try {
-
-          await bot.api.sendMessage(
-
-            result.telegram_id,
-
-            "❌ *የመውጫ ጥያቄዎ ውድቅ ተደርጓል።*\n\n" +
-
-            `💰 መጠን፦ *${result.amount || pending.withdrawal.amount} ETB*\n\n` +
-
-            "📝 *የውድቅ ምክንያት፦*\n" +
-
-            `${reason}\n\n` +
-
-            "💰 ምንም ብር ከሂሳብዎ አልተቀነሰም።",
-
-            {
-
-              parse_mode:
-                "Markdown"
-
-            }
-
-          );
-
-        } catch (notifyError) {
-
-          console.error(
-            "Rejection notification error:",
-            notifyError
-          );
-
-        }
-
-      }
-
-
-      // ------------------------------------------------------
-      // Show refreshed pending withdrawals
-      // ------------------------------------------------------
-
-      await showPendingWithdrawals(
-        ctx
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Reject withdrawal error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Withdrawal rejection failed."
-      );
-
-    }
-
-  }
-);
-
-
-// ============================================================
-// SUPPORT
-// ============================================================
-
-async function showSupport(
-  ctx
-) {
-
-  const user =
-    await db.getUserByTelegramId(
-      ctx.from.id
-    );
-
-
-  if (!user) {
-
-    return ctx.reply(
-      "Please /start to register first."
-    );
-
-  }
-
-
-  await ctx.reply(
-
-    "🆘 ድጋፍ ይፈልጋሉ?\n\n" +
-
-    "👇 ለማንኛውም ጥያቄ ወይም አስተያየት 👇\n\n" +
-
-    "👤 @sistersbingosupport"
-
-  );
-
-}
-
-
-bot.command(
-  "support",
-  showSupport
-);
-
-bot.hears(
-  "support",
-  showSupport
-);
-
-
-bot.callbackQuery(
-  "support",
-  async (ctx) => {
-
-    await answerCallback(
-      ctx
-    );
-
-    clearPendingState(
-      ctx.from.id
-    );
-
-    await showSupport(
-      ctx
-    );
-
-  }
-);
-
-// ============================================================
-// LEADERBOARD
-// ============================================================
-
-async function showLeaderboard(
-  ctx
-) {
-
-  const rows =
-    await db.getLeaderboard(
-      10
-    );
-
-
-  const medals = [
-    "🥇",
-    "🥈",
-    "🥉"
-  ];
-
-
-  const text =
-    rows
-      .map(
-        (r, i) => {
-
-          const position =
-            medals[i] ||
-            `${i + 1}.`;
-
-
-          return (
-
-            `${position} ` +
-
-            `*${r.name}* — ` +
-
-            `${r.total_winnings} ETB ` +
-
-            `(${r.total_wins} wins)`
-
-          );
-
-        }
-      )
-      .join("\n");
-
-
-  await ctx.reply(
-
-    `🏆 *Leaderboard*\n\n` +
-
-    `${text || "No games yet!"}`,
-
-    {
-
-      parse_mode:
-        "Markdown"
-
-    }
-
-  );
-
-}
-
-
-bot.command(
-  "leaderboard",
-  showLeaderboard
-);
-
-bot.hears(
-  "📊 Leaderboard",
-  showLeaderboard
-);
-
-
-// ============================================================
-// PLAY
-// ============================================================
-
-async function showPlay(
-  ctx
-) {
-
-  const user =
-    await db.getUserByTelegramId(
-      ctx.from.id
-    );
-
-
-  if (!user) {
-
-    return ctx.reply(
-      "Please /start to register first."
-    );
-
-  }
-
-
-  await ctx.reply(
-
-    `Ready to play, *${user.name}*? 🎱\n` +
-
-    `Balance: *${user.balance} ETB*`,
-
-    {
-
-      parse_mode:
-        "Markdown",
-
-      reply_markup: {
-
-        inline_keyboard: [
-
-          [
-
-            {
-
-              text:
-                "🎮 Open Sisters Bingo",
-
-              web_app: {
-
-                url:
-                  `${GAME_URL}?tid=${ctx.from.id}`
-
-              }
-
-            }
-
-          ]
-
-        ]
-
-      }
-
-    }
-
-  );
-
-}
-
-
-bot.command(
-  "play",
-  showPlay
-);
-
-bot.hears(
-  "🎮 Play",
-  showPlay
-);
-
-
-// ============================================================
-// ADMIN BROADCAST
-// ============================================================
-
-bot.callbackQuery(
-  "admin_broadcast",
-  async (ctx) => {
-
-    const admin = await requireAdminPermission(
-    ctx,
-    "broadcast"
-);
-
-
-
-    if (!admin) {
 
       return;
 
     }
 
+    const rows =
+      [];
 
-    await answerCallback(
-      ctx
+    methods.forEach(
+      (method) => {
+
+        rows.push(
+          [
+            {
+              text:
+                `💳 ${method.name || method.payment_method_name || "Payment Method"}`,
+              callback_data:
+                `admin_accounts_method_${method.id}`
+            }
+          ]
+        );
+
+      }
     );
 
-
-    /*
-     * Store the broadcast draft against
-     * the CURRENT ADMIN'S Telegram ID.
-     *
-     * This means multiple admins can have
-     * independent broadcast drafts.
-     */
-
-    await db.createBroadcastDraft(
-      admin.telegram_id
+    rows.push(
+      [
+        {
+          text: "🏠 Admin Menu",
+          callback_data:
+            "admin_menu"
+        }
+      ]
     );
 
+    await safeEditMessage(
+      ctx,
+      "💳 *Payment Accounts*\n\n" +
+      "Select a payment method to manage its accounts.",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard:
+            rows
+        }
+      }
+    );
+
+  } catch (error) {
+
+    console.error(
+      "Admin accounts error:",
+      error
+    );
 
     await ctx.reply(
+      "❌ Unable to load payment accounts."
+    );
 
-      "📢 *Broadcast mode started!*\n\n" +
+  }
 
-      "Please send the image you want to broadcast.\n\n" +
+}
 
-      "❌ Send /cancel to cancel.",
 
-      {
+bot.callbackQuery(
+  "admin_accounts",
+  async (ctx) => {
 
-        parse_mode:
-          "Markdown"
+    await answerCallback(ctx);
+
+    await showAdminAccounts(ctx);
+
+  }
+);
+
+
+// ============================================================
+// ADMIN PAYMENT METHOD ACCOUNTS
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_accounts_method_(\d+)$/,
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "main"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    const methodId =
+      Number(
+        ctx.match[1]
+      );
+
+    try {
+
+      const method =
+        await db.getPaymentMethodById(
+          methodId
+        );
+
+      if (!method) {
+
+        await ctx.reply(
+          "❌ Payment method not found."
+        );
+
+        return;
 
       }
 
+      const types =
+        await db.getPaymentMethodTypes(
+          methodId
+        );
+
+      let text =
+        `💳 *${escapeMarkdown(
+          method.name ||
+          method.payment_method_name ||
+          "Payment Method"
+        )} Accounts*\n\n`;
+
+      const rows =
+        [];
+
+      if (
+        types &&
+        types.length
+      ) {
+
+        for (
+          const type of types
+        ) {
+
+          let account = null;
+
+          try {
+
+            account =
+              await db.getPaymentAccount(
+                methodId,
+                type.id,
+                true
+              );
+
+          } catch (accountError) {
+
+            console.error(
+              "Get payment account error:",
+              accountError
+            );
+
+          }
+
+          text +=
+            `📱 *${escapeMarkdown(
+              type.name ||
+              type.payment_type_name ||
+              "Account"
+            )}*\n`;
+
+          if (account) {
+
+            const active =
+              account.is_active !== false &&
+              account.is_removed !== true;
+
+            text +=
+              `• ${escapeMarkdown(
+                account.account_name ||
+                ""
+              )}\n` +
+              `• ${escapeMarkdown(
+                account.account_number ||
+                ""
+              )}\n` +
+              `• ${active ? "🟢 Active" : "🔴 Inactive"}\n\n`;
+
+            rows.push(
+              [
+                {
+                  text:
+                    `⚙️ ${type.name || type.payment_type_name || "Account"}`,
+                  callback_data:
+                    `admin_account_manage_${account.id}`
+                }
+              ]
+            );
+
+          } else {
+
+            text +=
+              "• No active account\n\n";
+
+            rows.push(
+              [
+                {
+                  text:
+                    `➕ Add ${type.name || type.payment_type_name || "Account"}`,
+                  callback_data:
+                    `admin_account_add_${methodId}_${type.id}`
+                }
+              ]
+            );
+
+          }
+
+        }
+
+      }
+
+      rows.push(
+        [
+          {
+            text: "⬅️ Payment Methods",
+            callback_data:
+              "admin_accounts"
+          }
+        ],
+        [
+          {
+            text: "🏠 Admin Menu",
+            callback_data:
+              "admin_menu"
+          }
+        ]
+      );
+
+      await safeEditMessage(
+        ctx,
+        text,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard:
+              rows
+          }
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Admin payment method accounts error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to load payment accounts."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// ADMIN ADD PAYMENT ACCOUNT
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_account_add_(\d+)_(\d+)$/,
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "main"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    const methodId =
+      Number(
+        ctx.match[1]
+      );
+
+    const typeId =
+      Number(
+        ctx.match[2]
+      );
+
+    try {
+
+      const method =
+        await db.getPaymentMethodById(
+          methodId
+        );
+
+      const types =
+        await db.getPaymentMethodTypes(
+          methodId
+        );
+
+      const type =
+        (types || []).find(
+          item =>
+            Number(item.id) ===
+            typeId
+        );
+
+      if (!method || !type) {
+
+        await ctx.reply(
+          "❌ Payment type not found."
+        );
+
+        return;
+
+      }
+
+      pendingAdminAccount[
+        getTelegramId(ctx)
+      ] = {
+        step: "account_name",
+        paymentMethodId:
+          methodId,
+        paymentMethod:
+          method.name ||
+          method.payment_method_name ||
+          "",
+        paymentTypeId:
+          typeId,
+        paymentTypeName:
+          type.name ||
+          type.payment_type_name ||
+          ""
+      };
+
+      await safeEditMessage(
+        ctx,
+        "➕ *Add Payment Account*\n\n" +
+        `💳 Method: *${escapeMarkdown(
+          method.name ||
+          method.payment_method_name ||
+          ""
+        )}*\n` +
+        `📱 Type: *${escapeMarkdown(
+          type.name ||
+          type.payment_type_name ||
+          ""
+        )}*\n\n` +
+        "Enter the account holder name:",
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "❌ Cancel",
+                  callback_data:
+                    `admin_accounts_method_${methodId}`
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Admin add account error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to start payment account creation."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// ADMIN PAYMENT ACCOUNT TEXT FLOW
+// ============================================================
+
+async function handleAdminAccountText(
+  ctx
+) {
+
+  const telegramId =
+    getTelegramId(ctx);
+
+  const state =
+    pendingAdminAccount[
+      telegramId
+    ];
+
+  if (!state) {
+    return false;
+  }
+
+  const admin =
+    await getCurrentAdmin(ctx);
+
+  if (!admin) {
+
+    delete pendingAdminAccount[
+      telegramId
+    ];
+
+    await ctx.reply(
+      "🚫 You do not have administrator permission."
     );
+
+    return true;
+
+  }
+
+  const text =
+    ctx.message.text.trim();
+
+  if (
+    !text
+  ) {
+
+    await ctx.reply(
+      "Please enter a valid value."
+    );
+
+    return true;
+
+  }
+
+  try {
+
+    if (
+      state.step === "account_name"
+    ) {
+
+      state.accountName =
+        text;
+
+      state.step =
+        "account_number";
+
+      await ctx.reply(
+        "📱 Enter the payment account number:"
+      );
+
+      return true;
+
+    }
+
+    if (
+      state.step === "account_number"
+    ) {
+
+      const accountNumber =
+        normalizePaymentAccountNumber(
+          text,
+          state.paymentTypeName
+        );
+
+      if (!accountNumber) {
+
+        await ctx.reply(
+          "❌ Please enter a valid account number."
+        );
+
+        return true;
+
+      }
+
+      state.accountNumber =
+        accountNumber;
+
+      state.step =
+        "confirm";
+
+      await ctx.reply(
+        "➕ *Confirm Payment Account*\n\n" +
+        `💳 Method: *${escapeMarkdown(
+          state.paymentMethod
+        )}*\n` +
+        `📱 Type: *${escapeMarkdown(
+          state.paymentTypeName
+        )}*\n` +
+        `👤 Name: *${escapeMarkdown(
+          state.accountName
+        )}*\n` +
+        `📞 Account: *${escapeMarkdown(
+          state.accountNumber
+        )}*\n\n` +
+        "Add this account?",
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "✅ Add Account",
+                  callback_data:
+                    "admin_account_confirm_add"
+                },
+                {
+                  text: "❌ Cancel",
+                  callback_data:
+                    `admin_accounts_method_${state.paymentMethodId}`
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+      return true;
+
+    }
+
+    return true;
+
+  } catch (error) {
+
+    console.error(
+      "Admin payment account text error:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ Unable to process payment account information."
+    );
+
+    return true;
+
+  }
+
+}
+
+
+bot.on(
+  "message:text",
+  async (ctx, next) => {
+
+    const handled =
+      await handleAdminAccountText(ctx);
+
+    if (handled) {
+      return;
+    }
+
+    return next();
+
+  }
+);
+
+
+// ============================================================
+// ADMIN CONFIRM PAYMENT ACCOUNT
+// ============================================================
+
+bot.callbackQuery(
+  "admin_account_confirm_add",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "main"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    const telegramId =
+      getTelegramId(ctx);
+
+    const state =
+      pendingAdminAccount[
+        telegramId
+      ];
+
+    if (!state) {
+
+      await ctx.reply(
+        "❌ Payment account creation session expired."
+      );
+
+      return;
+
+    }
+
+    try {
+
+      if (
+        typeof db.createPaymentAccount !==
+        "function"
+      ) {
+
+        await ctx.reply(
+          "❌ Payment account creation function is unavailable."
+        );
+
+        return;
+
+      }
+
+      const account =
+        await db.createPaymentAccount(
+          state.paymentMethodId,
+          state.paymentTypeId,
+          state.accountName,
+          state.accountNumber,
+          admin.id
+        );
+
+      delete pendingAdminAccount[
+        telegramId
+      ];
+
+      await safeEditMessage(
+        ctx,
+        "✅ *Payment Account Added*\n\n" +
+        `💳 Method: *${escapeMarkdown(
+          state.paymentMethod
+        )}*\n` +
+        `📱 Type: *${escapeMarkdown(
+          state.paymentTypeName
+        )}*\n` +
+        `👤 Name: *${escapeMarkdown(
+          state.accountName
+        )}*\n` +
+        `📞 Account: *${escapeMarkdown(
+          state.accountNumber
+        )}*`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "💳 Payment Accounts",
+                  callback_data:
+                    "admin_accounts"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Admin Menu",
+                  callback_data:
+                    "admin_menu"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+      console.log(
+        "Payment account created:",
+        account
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Create payment account error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to add the payment account.\n\n" +
+        (
+          error &&
+          error.message
+            ? error.message
+            : ""
+        )
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// ADMIN PAYMENT ACCOUNT MANAGEMENT
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_account_manage_(\d+)$/,
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "main"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    const accountId =
+      Number(
+        ctx.match[1]
+      );
+
+    try {
+
+      if (
+        typeof db.getPaymentAccountById !==
+        "function"
+      ) {
+
+        await ctx.reply(
+          "❌ Payment account lookup function is unavailable."
+        );
+
+        return;
+
+      }
+
+      const account =
+        await db.getPaymentAccountById(
+          accountId
+        );
+
+      if (!account) {
+
+        await ctx.reply(
+          "❌ Payment account not found."
+        );
+
+        return;
+
+      }
+
+      const active =
+        account.is_active !== false &&
+        account.is_removed !== true;
+
+      await safeEditMessage(
+        ctx,
+        "💳 *Payment Account*\n\n" +
+        `💳 Method: *${escapeMarkdown(
+          account.payment_method_name ||
+          account.method_name ||
+          ""
+        )}*\n` +
+        `📱 Type: *${escapeMarkdown(
+          account.payment_type_name ||
+          account.type_name ||
+          ""
+        )}*\n` +
+        `👤 Name: *${escapeMarkdown(
+          account.account_name ||
+          ""
+        )}*\n` +
+        `📞 Account: *${escapeMarkdown(
+          account.account_number ||
+          ""
+        )}*\n` +
+        `📌 Status: *${
+          active
+            ? "🟢 Active"
+            : "🔴 Inactive"
+        }*`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text:
+                    active
+                      ? "🔴 Deactivate"
+                      : "🟢 Activate",
+                  callback_data:
+                    `admin_account_toggle_${accountId}`
+                }
+              ],
+              [
+                {
+                  text: "🗑️ Remove Account",
+                  callback_data:
+                    `admin_account_remove_${accountId}`
+                }
+              ],
+              [
+                {
+                  text: "💳 Payment Accounts",
+                  callback_data:
+                    "admin_accounts"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Payment account management error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to load payment account."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// ADMIN TOGGLE PAYMENT ACCOUNT
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_account_toggle_(\d+)$/,
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "main"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    const accountId =
+      Number(
+        ctx.match[1]
+      );
+
+    try {
+
+      if (
+        typeof db.togglePaymentAccount !==
+        "function"
+      ) {
+
+        await ctx.reply(
+          "❌ Payment account toggle function is unavailable."
+        );
+
+        return;
+
+      }
+
+      const account =
+        await db.getPaymentAccountById(
+          accountId
+        );
+
+      if (!account) {
+
+        await ctx.reply(
+          "❌ Payment account not found."
+        );
+
+        return;
+
+      }
+
+      const newStatus =
+        account.is_active !== true;
+
+      await db.togglePaymentAccount(
+        accountId,
+        newStatus
+      );
+
+      await safeEditMessage(
+        ctx,
+        newStatus
+          ? "🟢 *Payment Account Activated*"
+          : "🔴 *Payment Account Deactivated*",
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "💳 Payment Accounts",
+                  callback_data:
+                    "admin_accounts"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Admin Menu",
+                  callback_data:
+                    "admin_menu"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Toggle payment account error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to change payment account status."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// ADMIN REMOVE PAYMENT ACCOUNT
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_account_remove_(\d+)$/,
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "main"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    const accountId =
+      Number(
+        ctx.match[1]
+      );
+
+    try {
+
+      if (
+        typeof db.removePaymentAccount !==
+        "function"
+      ) {
+
+        await ctx.reply(
+          "❌ Payment account removal function is unavailable."
+        );
+
+        return;
+
+      }
+
+      await db.removePaymentAccount(
+        accountId,
+        admin.id
+      );
+
+      await safeEditMessage(
+        ctx,
+        "🗑️ *Payment Account Removed*\n\n" +
+        "The payment account has been removed successfully.",
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "💳 Payment Accounts",
+                  callback_data:
+                    "admin_accounts"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Admin Menu",
+                  callback_data:
+                    "admin_menu"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Remove payment account error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to remove payment account."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// ADMIN STATISTICS MENU
+// ============================================================
+
+async function showAdminStatisticsMenu(
+  ctx
+) {
+
+  const admin =
+    await requireAdminPermission(
+      ctx,
+      "statistics"
+    );
+
+  if (!admin) {
+    return;
+  }
+
+  await safeEditMessage(
+    ctx,
+    "📊 *Admin Statistics*\n\n" +
+    "Select the statistics you want to view.",
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "📊 Overall Statistics",
+              callback_data:
+                "admin_statistics"
+            }
+          ],
+          [
+            {
+              text: "💰 Financial Statistics",
+              callback_data:
+                "admin_financial_statistics"
+            }
+          ],
+          [
+            {
+              text: "🏠 Admin Menu",
+              callback_data:
+                "admin_menu"
+            }
+          ]
+        ]
+      }
+    }
+  );
+
+}
+
+
+bot.callbackQuery(
+  "admin_statistics_menu",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    await showAdminStatisticsMenu(ctx);
+
+  }
+);
+
+
+// ============================================================
+// ADMIN OVERALL STATISTICS
+// ============================================================
+
+bot.callbackQuery(
+  "admin_statistics",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "statistics"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    try {
+
+      if (
+        typeof db.getAdminStatistics !==
+        "function"
+      ) {
+
+        await ctx.reply(
+          "❌ Admin statistics function is unavailable."
+        );
+
+        return;
+
+      }
+
+      const stats =
+        await db.getAdminStatistics();
+
+      await safeEditMessage(
+        ctx,
+        "📊 *Overall Statistics*\n\n" +
+        `👥 Total Users: *${Number(
+          stats.totalUsers || 0
+        )}*\n` +
+        `🟢 Active Users: *${Number(
+          stats.activeUsers || 0
+        )}*\n` +
+        `🚫 Blocked Users: *${Number(
+          stats.blockedUsers || 0
+        )}*\n` +
+        `👑 Admins: *${Number(
+          stats.totalAdmins || 0
+        )}*\n\n` +
+        `🎮 Total Games: *${Number(
+          stats.totalGames || 0
+        )}*\n` +
+        `🏆 Total Wins: *${Number(
+          stats.totalWins || 0
+        )}*\n` +
+        `💰 Total Winnings: *${formatAmount(
+          stats.totalWinnings || 0
+        )} ETB*`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "⬅️ Back",
+                  callback_data:
+                    "admin_statistics_menu"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Admin Menu",
+                  callback_data:
+                    "admin_menu"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Admin statistics error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to load admin statistics."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// ADMIN FINANCIAL STATISTICS
+// ============================================================
+
+bot.callbackQuery(
+  "admin_financial_statistics",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "statistics"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    try {
+
+      if (
+        typeof db.getAdminFinancialStatistics !==
+        "function"
+      ) {
+
+        await ctx.reply(
+          "❌ Admin financial statistics function is unavailable."
+        );
+
+        return;
+
+      }
+
+      const stats =
+        await db.getAdminFinancialStatistics();
+
+      await safeEditMessage(
+        ctx,
+        "💰 *Financial Statistics*\n\n" +
+        `💎 Total Deposits: *${formatAmount(
+          stats.totalDepositAmount || 0
+        )} ETB*\n\n` +
+        `🏧 Approved Withdrawals: *${formatAmount(
+          stats.approvedWithdrawalAmount || 0
+        )} ETB*\n` +
+        `⏳ Pending Withdrawals: *${formatAmount(
+          stats.pendingWithdrawalAmount || 0
+        )} ETB*\n` +
+        `❌ Rejected Withdrawals: *${formatAmount(
+          stats.rejectedWithdrawalAmount || 0
+        )} ETB*\n\n` +
+        `🔄 Total Transfers: *${formatAmount(
+          stats.totalTransferAmount || 0
+        )} ETB*`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "⬅️ Back",
+                  callback_data:
+                    "admin_statistics_menu"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Admin Menu",
+                  callback_data:
+                    "admin_menu"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Admin financial statistics error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to load financial statistics."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// ADMIN — BROADCAST
+// ============================================================
+
+async function showBroadcastMenu(
+  ctx
+) {
+
+  const admin =
+    await requireAdminPermission(
+      ctx,
+      "broadcast"
+    );
+
+  if (!admin) {
+    return;
+  }
+
+  try {
+
+    let draft =
+      null;
+
+    if (
+      typeof db.getBroadcastDraft ===
+      "function"
+    ) {
+
+      draft =
+        await db.getBroadcastDraft(
+          admin.id
+        );
+
+    }
+
+    const imageStatus =
+      draft &&
+      draft.image_url
+        ? "🖼️ Image: Added"
+        : "🖼️ Image: None";
+
+    const messageStatus =
+      draft &&
+      draft.message
+        ? "📝 Message: Added"
+        : "📝 Message: None";
+
+    await safeEditMessage(
+      ctx,
+      "📢 *Broadcast*\n\n" +
+      `${imageStatus}\n` +
+      `${messageStatus}\n\n` +
+      "Create a broadcast to send a message to all active users.",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🖼️ Add / Change Image",
+                callback_data:
+                  "broadcast_image"
+              }
+            ],
+            [
+              {
+                text: "📝 Add / Change Message",
+                callback_data:
+                  "broadcast_message"
+              }
+            ],
+            [
+              {
+                text: "👁️ Preview",
+                callback_data:
+                  "broadcast_preview"
+              }
+            ],
+            [
+              {
+                text: "📤 Send Broadcast",
+                callback_data:
+                  "broadcast_send"
+              }
+            ],
+            [
+              {
+                text: "🗑️ Clear Draft",
+                callback_data:
+                  "broadcast_clear"
+              }
+            ],
+            [
+              {
+                text: "🏠 Admin Menu",
+                callback_data:
+                  "admin_menu"
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+  } catch (error) {
+
+    console.error(
+      "Broadcast menu error:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ Unable to load broadcast menu."
+    );
+
+  }
+
+}
+
+
+bot.callbackQuery(
+  "admin_broadcast",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    await showBroadcastMenu(ctx);
 
   }
 );
@@ -7082,74 +6764,49 @@ bot.callbackQuery(
 // BROADCAST IMAGE
 // ============================================================
 
-bot.on(
-  "message:photo",
+const pendingBroadcastImage =
+  new Map();
+
+
+bot.callbackQuery(
+  "broadcast_image",
   async (ctx) => {
 
-    const admin =
-      await getCurrentAdmin(
-        ctx
-      );
+    await answerCallback(ctx);
 
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "broadcast"
+      );
 
     if (!admin) {
-
       return;
-
     }
 
-
-    const adminTelegramId =
-      admin.telegram_id;
-
-
-    const draft =
-      await db.getBroadcastDraft(
-        adminTelegramId
-      );
-
-
-    if (!draft) {
-
-      return;
-
-    }
-
-
-    if (
-      draft.status !==
-      "waiting_image"
-    ) {
-
-      return;
-
-    }
-
-
-    const photo =
-      ctx.message.photo[
-        ctx.message.photo.length - 1
-      ];
-
-
-    const fileId =
-      photo.file_id;
-
-
-    await db.updateBroadcastImage(
-      adminTelegramId,
-      fileId
+    pendingBroadcastImage.set(
+      getTelegramId(ctx),
+      true
     );
 
-
-    await ctx.reply(
-
-      "✅ Image received!\n\n" +
-
-      "Now send the message/caption you want to broadcast.\n\n" +
-
-      "❌ Send /cancel to cancel."
-
+    await safeEditMessage(
+      ctx,
+      "🖼️ *Broadcast Image*\n\n" +
+      "Please send the image you want to use for the broadcast.",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "admin_broadcast"
+              }
+            ]
+          ]
+        }
+      }
     );
 
   }
@@ -7157,427 +6814,896 @@ bot.on(
 
 
 // ============================================================
-// BROADCAST TEXT
+// RECEIVE BROADCAST PHOTO
+// ============================================================
+
+bot.on(
+  "message:photo",
+  async (ctx, next) => {
+
+    const telegramId =
+      getTelegramId(ctx);
+
+    if (
+      !pendingBroadcastImage.has(
+        telegramId
+      )
+    ) {
+
+      return next();
+
+    }
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+
+      pendingBroadcastImage.delete(
+        telegramId
+      );
+
+      return next();
+
+    }
+
+    try {
+
+      const photos =
+        ctx.message.photo;
+
+      const largest =
+        photos[
+          photos.length - 1
+        ];
+
+      if (
+        !largest ||
+        !largest.file_id
+      ) {
+
+        await ctx.reply(
+          "❌ Unable to read the image."
+        );
+
+        return;
+
+      }
+
+      if (
+        typeof db.createBroadcastDraft !==
+        "function"
+      ) {
+
+        await ctx.reply(
+          "❌ Broadcast draft function is unavailable."
+        );
+
+        return;
+
+      }
+
+      let draft =
+        null;
+
+      if (
+        typeof db.getBroadcastDraft ===
+        "function"
+      ) {
+
+        draft =
+          await db.getBroadcastDraft(
+            admin.id
+          );
+
+      }
+
+      if (!draft) {
+
+        draft =
+          await db.createBroadcastDraft(
+            admin.id
+          );
+
+      }
+
+      if (
+        typeof db.updateBroadcastImage ===
+        "function"
+      ) {
+
+        await db.updateBroadcastImage(
+          draft.id,
+          largest.file_id
+        );
+
+      }
+
+      pendingBroadcastImage.delete(
+        telegramId
+      );
+
+      await ctx.reply(
+        "✅ Broadcast image saved.",
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "📢 Broadcast Menu",
+                  callback_data:
+                    "admin_broadcast"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Broadcast image error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to save broadcast image."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// BROADCAST MESSAGE STATE
+// ============================================================
+
+const pendingBroadcastMessage =
+  new Map();
+
+
+bot.callbackQuery(
+  "broadcast_message",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "broadcast"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    pendingBroadcastMessage.set(
+      getTelegramId(ctx),
+      true
+    );
+
+    await safeEditMessage(
+      ctx,
+      "📝 *Broadcast Message*\n\n" +
+      "Please send the message you want to broadcast to all active users.",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "admin_broadcast"
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+  }
+);
+
+
+// ============================================================
+// RECEIVE BROADCAST MESSAGE
 // ============================================================
 
 bot.on(
   "message:text",
   async (ctx, next) => {
 
-    const admin =
-      await getCurrentAdmin(
-        ctx
-      );
-
-
-    if (!admin) {
-
-      return next();
-
-    }
-
-
-    const adminTelegramId =
-      admin.telegram_id;
-
-
-    /*
-     * Do not intercept rejection reason here.
-     * The rejection handler above handles it first.
-     */
+    const telegramId =
+      getTelegramId(ctx);
 
     if (
-      pendingAdminReject[
-        adminTelegramId
-      ]
+      !pendingBroadcastMessage.has(
+        telegramId
+      )
     ) {
 
       return next();
 
     }
 
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+
+      pendingBroadcastMessage.delete(
+        telegramId
+      );
+
+      return next();
+
+    }
+
+    try {
+
+      const message =
+        ctx.message.text.trim();
+
+      if (!message) {
+
+        await ctx.reply(
+          "❌ Broadcast message cannot be empty."
+        );
+
+        return;
+
+      }
+
+      let draft =
+        null;
+
+      if (
+        typeof db.getBroadcastDraft ===
+        "function"
+      ) {
+
+        draft =
+          await db.getBroadcastDraft(
+            admin.id
+          );
+
+      }
+
+      if (!draft) {
+
+        draft =
+          await db.createBroadcastDraft(
+            admin.id
+          );
+
+      }
+
+      if (
+        typeof db.updateBroadcastMessage ===
+        "function"
+      ) {
+
+        await db.updateBroadcastMessage(
+          draft.id,
+          message
+        );
+
+      }
+
+      pendingBroadcastMessage.delete(
+        telegramId
+      );
+
+      await ctx.reply(
+        "✅ Broadcast message saved.",
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "📢 Broadcast Menu",
+                  callback_data:
+                    "admin_broadcast"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Broadcast message error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to save broadcast message."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// BROADCAST PREVIEW
+// ============================================================
+
+bot.callbackQuery(
+  "broadcast_preview",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "broadcast"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    try {
+
+      const draft =
+        await db.getBroadcastDraft(
+          admin.id
+        );
+
+      if (!draft) {
+
+        await ctx.reply(
+          "❌ No broadcast draft exists."
+        );
+
+        return;
+
+      }
+
+      if (
+        draft.image_url
+      ) {
+
+        await ctx.replyWithPhoto(
+          draft.image_url,
+          {
+            caption:
+              draft.message ||
+              "No broadcast message has been added."
+          }
+        );
+
+      } else {
+
+        await ctx.reply(
+          draft.message ||
+          "No broadcast message has been added."
+        );
+
+      }
+
+      await ctx.reply(
+        "👁️ Preview complete.",
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "📢 Broadcast Menu",
+                  callback_data:
+                    "admin_broadcast"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Broadcast preview error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to preview broadcast."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// BROADCAST CLEAR
+// ============================================================
+
+bot.callbackQuery(
+  "broadcast_clear",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "broadcast"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    try {
+
+      const draft =
+        await db.getBroadcastDraft(
+          admin.id
+        );
+
+      if (
+        draft &&
+        typeof db.deleteBroadcastDraft ===
+        "function"
+      ) {
+
+        await db.deleteBroadcastDraft(
+          draft.id
+        );
+
+      }
+
+      pendingBroadcastImage.delete(
+        getTelegramId(ctx)
+      );
+
+      pendingBroadcastMessage.delete(
+        getTelegramId(ctx)
+      );
+
+      await safeEditMessage(
+        ctx,
+        "🗑️ *Broadcast Draft Cleared*",
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "📢 Broadcast Menu",
+                  callback_data:
+                    "admin_broadcast"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Clear broadcast error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to clear broadcast draft."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// BROADCAST SEND CONFIRMATION
+// ============================================================
+
+bot.callbackQuery(
+  "broadcast_send",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "broadcast"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    try {
+
+      const draft =
+        await db.getBroadcastDraft(
+          admin.id
+        );
+
+      if (!draft) {
+
+        await ctx.reply(
+          "❌ No broadcast draft exists."
+        );
+
+        return;
+
+      }
+
+      if (
+        !draft.message
+      ) {
+
+        await ctx.reply(
+          "❌ Please add a broadcast message first."
+        );
+
+        return;
+
+      }
+
+      await safeEditMessage(
+        ctx,
+        "📤 *Send Broadcast?*\n\n" +
+        "This will send the broadcast to all active users.\n\n" +
+        "Are you sure?",
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "✅ Yes, Send",
+                  callback_data:
+                    "broadcast_confirm_send"
+                }
+              ],
+              [
+                {
+                  text: "❌ Cancel",
+                  callback_data:
+                    "admin_broadcast"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Broadcast send preparation error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Unable to prepare broadcast."
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// CONFIRM BROADCAST
+// ============================================================
+
+bot.callbackQuery(
+  "broadcast_confirm_send",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const admin =
+      await requireAdminPermission(
+        ctx,
+        "broadcast"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    try {
+
+      const draft =
+        await db.getBroadcastDraft(
+          admin.id
+        );
+
+      if (!draft || !draft.message) {
+
+        await ctx.reply(
+          "❌ Broadcast draft is incomplete."
+        );
+
+        return;
+
+      }
+
+      const users =
+        await db.getAllActiveUsers();
+
+      if (
+        !users ||
+        users.length === 0
+      ) {
+
+        await ctx.reply(
+          "❌ There are no active users to broadcast to."
+        );
+
+        return;
+
+      }
+
+      let sent =
+        0;
+
+      let failed =
+        0;
+
+      for (
+        const user of users
+      ) {
+
+        try {
+
+          if (
+            draft.image_url
+          ) {
+
+            await ctx.api.sendPhoto(
+              user.telegram_id,
+              draft.image_url,
+              {
+                caption:
+                  draft.message
+              }
+            );
+
+          } else {
+
+            await ctx.api.sendMessage(
+              user.telegram_id,
+              draft.message
+            );
+
+          }
+
+          sent++;
+
+        } catch (sendError) {
+
+          failed++;
+
+          console.error(
+            `Broadcast send error for ${user.telegram_id}:`,
+            sendError
+          );
+
+        }
+
+      }
+
+      if (
+        typeof db.deleteBroadcastDraft ===
+        "function"
+      ) {
+
+        await db.deleteBroadcastDraft(
+          draft.id
+        );
+
+      }
+
+      await safeEditMessage(
+        ctx,
+        "📢 *Broadcast Complete*\n\n" +
+        `✅ Sent: *${sent}*\n` +
+        `❌ Failed: *${failed}*\n` +
+        `👥 Total: *${users.length}*`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "📢 Broadcast Menu",
+                  callback_data:
+                    "admin_broadcast"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Admin Menu",
+                  callback_data:
+                    "admin_menu"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Broadcast execution error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ Broadcast failed.\n\n" +
+        (
+          error &&
+          error.message
+            ? error.message
+            : ""
+        )
+      );
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// ADMIN CANCEL
+// ============================================================
+
+bot.callbackQuery(
+  "admin_cancel",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const telegramId =
+      getTelegramId(ctx);
+
+    pendingAdminUserSearch.delete(
+      telegramId
+    );
+
+    pendingAdminRoleSearch.delete(
+      telegramId
+    );
+
+    pendingAdminReject.delete(
+      telegramId
+    );
+
+    pendingBroadcastImage.delete(
+      telegramId
+    );
+
+    pendingBroadcastMessage.delete(
+      telegramId
+    );
+
+    delete pendingAdminAccount[
+      telegramId
+    ];
+
+    await showAdminMenu(ctx);
+
+  }
+);
+
+
+// ============================================================
+// FALLBACK TEXT COMMANDS
+// ============================================================
+
+bot.hears(
+  "🎮 Play Bingo",
+  async (ctx) => {
+
+    const telegramId =
+      getTelegramId(ctx);
+
+    if (!telegramId) {
+      return;
+    }
+
+    const user =
+      await getCurrentUser(ctx);
+
+    if (!user) {
+
+      await ctx.reply(
+        "Please /start to register first."
+      );
+
+      return;
+
+    }
+
+    await ctx.reply(
+      "🎮 Tap the button below to open Sisters Bingo.",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🎮 Play Bingo",
+                web_app: {
+                  url:
+                    `${GAME_URL}?tid=${telegramId}`
+                }
+              }
+            ],
+            [
+              {
+                text: "🏠 Home",
+                callback_data:
+                  "user_home"
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+  }
+);
+
+
+// ============================================================
+// UNKNOWN TEXT HANDLER
+// ============================================================
+
+bot.on(
+  "message:text",
+  async (ctx) => {
 
     const text =
       ctx.message.text.trim();
 
-
     if (
-      text === "/cancel"
+      text.startsWith("/")
     ) {
-
-      const draft =
-        await db.getBroadcastDraft(
-          adminTelegramId
-        );
-
-
-      if (!draft) {
-
-        return next();
-
-      }
-
-
-      await db.deleteBroadcastDraft(
-        adminTelegramId
-      );
-
-
-      return ctx.reply(
-        "❌ Broadcast cancelled."
-      );
-
-    }
-
-
-    const draft =
-      await db.getBroadcastDraft(
-        adminTelegramId
-      );
-
-
-    if (!draft) {
-
-      return next();
-
-    }
-
-
-    if (
-      draft.status !==
-      "waiting_message"
-    ) {
-
-      return next();
-
-    }
-
-
-    await db.updateBroadcastMessage(
-      adminTelegramId,
-      text
-    );
-
-
-    const users =
-      await db.getAllActiveUsers();
-
-
-    /*
-     * Preview is sent only to the CURRENT admin.
-     */
-
-    await bot.api.sendPhoto(
-
-      adminTelegramId,
-
-      draft.image_url,
-
-      {
-
-        caption:
-          text,
-
-        reply_markup: {
-
-          inline_keyboard: [
-
-            [
-
-              {
-
-                text:
-                  "🎮 Play Now",
-
-                web_app: {
-
-                  url:
-                    `${GAME_URL}?tid=${adminTelegramId}`
-
-                }
-
-              }
-
-            ]
-
-          ]
-
-        }
-
-      }
-
-    );
-
-
-    await ctx.reply(
-
-      `📢 *BROADCAST PREVIEW*\n\n` +
-
-      `👥 Recipients: ${users.length}\n\n` +
-
-      `Are you sure you want to send this to everyone?`,
-
-      {
-
-        parse_mode:
-          "Markdown",
-
-        reply_markup: {
-
-          inline_keyboard: [
-
-            [
-
-              {
-
-                text:
-                  "✅ SEND TO ALL",
-
-                callback_data:
-                  "broadcast_confirm"
-
-              },
-
-              {
-
-                text:
-                  "❌ CANCEL",
-
-                callback_data:
-                  "broadcast_cancel"
-
-              }
-
-            ]
-
-          ]
-
-        }
-
-      }
-
-    );
-
-  }
-);
-
-
-// ============================================================
-// BROADCAST CONFIRM
-// ============================================================
-
-bot.callbackQuery(
-  "broadcast_confirm",
-  async (ctx) => {
-
-    const admin =
-      await requireAdmin(
-        ctx
-      );
-
-
-    if (!admin) {
 
       return;
 
     }
 
-
-    await answerCallback(
-      ctx
-    );
-
-
-    const adminTelegramId =
-      admin.telegram_id;
-
-
-    const draft =
-      await db.getBroadcastDraft(
-        adminTelegramId
-      );
-
-
-    if (!draft) {
-
-      return ctx.editMessageText(
-        "❌ Broadcast draft not found."
-      );
-
-    }
-
-
-    if (
-      !draft.image_url ||
-      !draft.message
-    ) {
-
-      return ctx.editMessageText(
-        "❌ Broadcast information is incomplete."
-      );
-
-    }
-
-
-    const users =
-      await db.getAllActiveUsers();
-
-
-    let sent = 0;
-
-    let failed = 0;
-
-
-    await ctx.editMessageText(
-
-      `📢 Broadcasting...\n\n` +
-
-      `👥 Users: ${users.length}\n\n` +
-
-      `⏳ Please wait...`
-
-    );
-
-
-    for (
-      const user of users
-    ) {
-
-      try {
-
-        await bot.api.sendPhoto(
-
-          user.telegram_id,
-
-          draft.image_url,
-
-          {
-
-            caption:
-              draft.message,
-
-            reply_markup: {
-
-              inline_keyboard: [
-
-                [
-
-                  {
-
-                    text:
-                      "🎮 Play Now",
-
-                    web_app: {
-
-                      url:
-                        `${GAME_URL}?tid=${user.telegram_id}`
-
-                    }
-
-                  }
-
-                ]
-
-              ]
-
-            }
-
-          }
-
-        );
-
-
-        sent++;
-
-
-        await new Promise(
-          resolve =>
-            setTimeout(
-              resolve,
-              40
-            )
-        );
-
-      } catch (err) {
-
-        failed++;
-
-
-        console.error(
-
-          `❌ Failed to send to ${user.telegram_id}:`,
-
-          err.description ||
-          err.message
-
-        );
-
-      }
-
-    }
-
-
-    await db.deleteBroadcastDraft(
-      adminTelegramId
-    );
-
-
     await ctx.reply(
-
-      `📢 *Broadcast completed!*\n\n` +
-
-      `👥 Total: ${users.length}\n` +
-
-      `✅ Sent: ${sent}\n` +
-
-      `❌ Failed: ${failed}`,
-
+      "❓ I didn't understand that command.\n\n" +
+      "Please use the buttons in the menu or send /start.",
       {
-
-        parse_mode:
-          "Markdown"
-
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🏠 Home",
+                callback_data:
+                  "user_home"
+              }
+            ]
+          ]
+        }
       }
-
-    );
-
-  }
-);
-
-
-// ============================================================
-// BROADCAST CANCEL
-// ============================================================
-
-bot.callbackQuery(
-  "broadcast_cancel",
-  async (ctx) => {
-
-    const admin =
-      await requireAdmin(
-        ctx
-      );
-
-
-    if (!admin) {
-
-      return;
-
-    }
-
-
-    await answerCallback(
-      ctx
-    );
-
-
-    await db.deleteBroadcastDraft(
-      admin.telegram_id
-    );
-
-
-    await ctx.editMessageText(
-      "❌ Broadcast cancelled."
     );
 
   }
@@ -7589,11 +7715,11 @@ bot.callbackQuery(
 // ============================================================
 
 bot.catch(
-  (err) => {
+  (error) => {
 
     console.error(
       "Telegram bot error:",
-      err.error
+      error
     );
 
   }
@@ -7601,11 +7727,15 @@ bot.catch(
 
 
 // ============================================================
-// VERCEL WEBHOOK
+// VERCEL WEBHOOK HANDLER
 // ============================================================
 
-module.exports =
+const handler =
   webhookCallback(
     bot,
-    "http"
+    "https"
   );
+
+
+module.exports =
+  handler;
