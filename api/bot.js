@@ -1193,8 +1193,8 @@ if (
 
     // Main admin cannot manage himself
     if (
-      String(user.id) ===
-      String(ctx.from.id)
+      Number(user.id) ===
+       Number(ctx.from.id)
     ) {
       return ctx.reply(
         "⚠️ You cannot change your own admin rights."
@@ -1209,6 +1209,9 @@ if (
       "🚫 No Admin";
 
     if (user.is_admin) {
+      ctx.reply(
+        user.admin_role
+      );
       if (user.admin_role === "main") {
         currentRole = "👑 Main Admin";
       } else if (
@@ -1224,10 +1227,6 @@ if (
       ) {
         currentRole = "📢 Broadcast Admin";
       }
-    }
-    else
-    {
-      currentRole = "Normal user";
     }
 
     await ctx.reply(
