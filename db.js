@@ -130,7 +130,8 @@ async function setUserBlocked(userId, isBlocked) {
       balance,
       is_admin,
       is_active,
-      is_banned
+      is_banned,
+      is_blocked
     FROM users
     WHERE telegram_id = $1
     LIMIT 1
