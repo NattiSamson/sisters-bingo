@@ -141,7 +141,8 @@ async getUserByPhoneForAdmin(phone) {
         balance,
         is_active,
         is_blocked,
-        is_admin
+        is_admin,
+        admin_role
       FROM users
       WHERE phone = $1
       AND is_active = TRUE
