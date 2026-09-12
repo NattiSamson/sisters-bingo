@@ -56,6 +56,70 @@ function normalizeEthiopianPhone(phone) {
 }
 
 module.exports = {
+  // ============================================================
+// ADMIN ROLE MANAGEMENT
+// ============================================================
+
+async setUserAdminRole(userId, role) {
+  const validRoles = [
+    "main",
+    "statistics",
+    "withdrawal",
+    "broadcast"
+  ];
+
+  if (!validRoles.includes(role)) {
+    throw new Error("Invalid admin role");
+  }
+
+  const { rows } = await pool.query(
+    `
+    UPDATE users
+    SET
+      is_admin = TRUE,
+      admin_role = $1
+    WHERE id = $2
+    RETURNING
+      id,
+      telegram_id,
+      name,
+      phone,
+      is_admin,
+      admin_role,
+      is_active,
+      is_banned,
+      is_blocked
+    `,
+    [role, userId]
+  );
+
+  return rows[0] || null;
+},
+
+async removeUserAdminRole(userId) {
+  const { rows } = await pool.query(
+    `
+    UPDATE users
+    SET
+      is_admin = FALSE,
+      admin_role = NULL
+    WHERE id = $1
+    RETURNING
+      id,
+      telegram_id,
+      name,
+      phone,
+      is_admin,
+      admin_role,
+      is_active,
+      is_banned,
+      is_blocked
+    `,
+    [userId]
+  );
+
+  return rows[0] || null;
+},
 
   // =========================
 // ADMIN USER MANAGEMENT
