@@ -450,7 +450,7 @@ async function showDepositBonusSchedules(ctx) {
       await db.getDepositBonusSchedules();
 
     let message =
-      "🎁 *DEPOSIT TIME BONUS*\\n\\n";
+      "🎁 *DEPOSIT TIME BONUS*\n\n";
 
     if (
       !schedules ||
@@ -509,16 +509,16 @@ async function showDepositBonusSchedules(ctx) {
             : "🔄 Every deposit";
 
         message +=
-          `🎁 *${campaign.name}*\\n` +
-          `${status}\\n` +
+          `🎁 *${campaign.name}*\n` +
+          `${status}\n` +
           `⏰ Start: *${formatBonusDate(
             campaign.starts_at
-          )}*\\n` +
+          )}*\n` +
           `⏰ End: *${formatBonusDate(
             campaign.ends_at
-          )}*\\n` +
-          `${bonusText}\\n` +
-          `📌 ${frequencyText}\\n\\n`;
+          )}*\n` +
+          `${bonusText}\n` +
+          `📌 ${frequencyText}\n\n`;
       }
     }
 
@@ -1712,11 +1712,11 @@ bot.callbackQuery(
 
       await ctx.editMessageText(
 
-        "➕ *CREATE DEPOSIT TIME BONUS*\\n\\n" +
+        "➕ *CREATE DEPOSIT TIME BONUS*\n\n" +
 
-        "Please enter the bonus campaign name.\\n\\n" +
+        "Please enter the bonus campaign name.\n\n" +
 
-        "Example:\\n" +
+        "Example:\n" +
         "`Weekend Deposit Bonus`",
 
         {
