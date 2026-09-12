@@ -8547,7 +8547,7 @@ if (
 
   return ctx.reply(
 
-    "🔁 *BONUS FREQUENCY*\\n\\n" +
+    "🔁 *BONUS FREQUENCY*\n\n" +
 
     "How should this deposit bonus work?",
 
