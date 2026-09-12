@@ -435,107 +435,29 @@ function formatBonusDate(
 // Expired campaigns are NOT displayed.
 // ============================================================
 
+// ============================================================
+// SHOW ACTIVE DEPOSIT BONUS SCHEDULES
+// ============================================================
+
 async function showDepositBonusSchedules(ctx) {
 
-  const admin =
-    await requireAdmin(ctx);
+  const schedules =
+    await db.getDepositBonusSchedules();
 
-  if (!admin) {
-    return;
-  }
+  if (!schedules || schedules.length === 0) {
 
-  try {
-
-    const schedules =
-      await db.getDepositBonusSchedules();
-
-    let message =
-      "🎁 *DEPOSIT TIME BONUS*\n\n";
-
-    if (
-      !schedules ||
-      schedules.length === 0
-    ) {
-
-      message +=
-        "There are currently no active or upcoming deposit bonus schedules.";
-
-    } else {
-
-      for (
-        const campaign of schedules
-      ) {
-
-        const now =
-          Date.now();
-
-        const start =
-          new Date(
-            campaign.starts_at
-          ).getTime();
-
-        const end =
-          new Date(
-            campaign.ends_at
-          ).getTime();
-
-        let status =
-          "⏳ Upcoming";
-
-        if (
-          start <= now &&
-          end >= now
-        ) {
-          status =
-            "🟢 Active";
-        }
-
-        const bonusText =
-          campaign.bonus_mode ===
-          "match_deposit"
-
-            ? "💯 Match deposit"
-
-            : `💰 Fixed ${Number(
-                campaign.bonus_amount || 0
-              ).toFixed(2)} ETB`;
-
-        const frequencyText =
-          campaign.deposit_frequency ===
-          "one_time"
-
-            ? "1️⃣ One time"
-
-            : "🔄 Every deposit";
-
-        message +=
-          `🎁 *${campaign.name}*\n` +
-          `${status}\n` +
-          `⏰ Start: *${formatBonusDate(
-            campaign.starts_at
-          )}*\n` +
-          `⏰ End: *${formatBonusDate(
-            campaign.ends_at
-          )}*\n` +
-          `${bonusText}\n` +
-          `📌 ${frequencyText}\n\n`;
-      }
-    }
-
-    await ctx.editMessageText(
-      message,
+    return ctx.editMessageText(
+      "🎁 *DEPOSIT BONUS SCHEDULES*\n\n" +
+      "There are currently no upcoming active bonus schedules.",
       {
-        parse_mode:
-          "Markdown",
+        parse_mode: "Markdown",
 
         reply_markup: {
           inline_keyboard: [
 
             [
               {
-                text:
-                  "➕ Add Deposit Time Bonus",
-
+                text: "➕ Create Schedule",
                 callback_data:
                   "admin_bonus_time_add"
               }
@@ -543,27 +465,15 @@ async function showDepositBonusSchedules(ctx) {
 
             [
               {
-                text:
-                  "🔄 Refresh",
-
+                text: "🎁 Bonus Menu",
                 callback_data:
-                  "admin_bonus_time"
+                  "admin_bonus"
               }
             ],
 
             [
               {
-                text:
-                  "⬅️ Bonus Menu",
-
-                callback_data:
-                  "admin_bonus"
-              },
-
-              {
-                text:
-                  "🏠 Home",
-
+                text: "🏠 Home",
                 callback_data:
                   "admin_home"
               }
@@ -573,18 +483,117 @@ async function showDepositBonusSchedules(ctx) {
         }
       }
     );
-
-  } catch (err) {
-
-    console.error(
-      "Deposit bonus schedules error:",
-      err
-    );
-
-    await ctx.reply(
-      "❌ Could not load deposit bonus schedules."
-    );
   }
+
+  let text =
+    "🎁 *DEPOSIT BONUS SCHEDULES*\n\n";
+
+  const keyboard = [];
+
+  for (const schedule of schedules) {
+
+    const start =
+      new Date(schedule.starts_at);
+
+    const end =
+      new Date(schedule.ends_at);
+
+    const startText =
+      start.toLocaleString(
+        "en-GB",
+        {
+          timeZone: "Africa/Addis_Ababa",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false
+        }
+      );
+
+    const endText =
+      end.toLocaleString(
+        "en-GB",
+        {
+          timeZone: "Africa/Addis_Ababa",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false
+        }
+      );
+
+    const frequency =
+      schedule.deposit_frequency ===
+      "one_time"
+        ? "1️⃣ One time"
+        : "🔄 Every deposit";
+
+    const mode =
+      schedule.bonus_mode ===
+      "match_deposit"
+        ? "💯 Match deposit"
+        : `💰 Fixed ${schedule.bonus_amount}`;
+
+    text +=
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `🎁 *${schedule.name}*\n` +
+      `🆔 ID: \`${schedule.id}\`\n` +
+      `📅 Start: ${startText}\n` +
+      `⏰ End: ${endText}\n` +
+      `📌 Frequency: ${frequency}\n` +
+      `💵 Type: ${mode}\n\n`;
+
+    keyboard.push([
+      {
+        text:
+          `🗑️ Deactivate — ${schedule.name}`,
+
+        callback_data:
+          `admin_bonus_deactivate_${schedule.id}`
+      }
+    ]);
+  }
+
+  text +=
+    "━━━━━━━━━━━━━━━━━━\n\n" +
+    "Select a schedule below to deactivate it.";
+
+  keyboard.push([
+    {
+      text: "➕ Create Schedule",
+      callback_data:
+        "admin_bonus_time_add"
+    }
+  ]);
+
+  keyboard.push([
+    {
+      text: "🎁 Bonus Menu",
+      callback_data:
+        "admin_bonus"
+    },
+
+    {
+      text: "🏠 Home",
+      callback_data:
+        "admin_home"
+    }
+  ]);
+
+  return ctx.editMessageText(
+    text,
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard:
+          keyboard
+      }
+    }
+  );
 }
 // ============================================================
 // PHONE NORMALIZATION
@@ -1411,6 +1420,91 @@ bot.callbackQuery(
 );
 
 // ============================================================
+// ADMIN — DEACTIVATE ONE BONUS SCHEDULE
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_bonus_deactivate_(\d+)$/,
+  async (ctx) => {
+
+    try {
+
+      await answerCallback(ctx);
+
+      const admin =
+        await requireAdmin(ctx);
+
+      if (!admin) {
+        return;
+      }
+
+      const campaignId =
+        Number(ctx.match[1]);
+
+      if (!Number.isInteger(campaignId) || campaignId <= 0) {
+        return ctx.reply(
+          "❌ Invalid bonus schedule."
+        );
+      }
+
+      const result =
+        await db.deactivateBonusCampaign(
+          campaignId
+        );
+
+      if (!result) {
+        return ctx.reply(
+          "❌ Bonus schedule was not found or is already inactive."
+        );
+      }
+
+      await ctx.editMessageText(
+        "✅ *BONUS SCHEDULE DEACTIVATED*\n\n" +
+        `Campaign: *${result.name}*\n` +
+        `ID: \`${result.id}\`\n\n` +
+        "This bonus schedule will no longer apply to deposits.",
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🎁 Bonus Schedules",
+                  callback_data:
+                    "admin_bonus_time"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Home",
+                  callback_data:
+                    "admin_home"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Deactivate bonus schedule error:",
+        err
+      );
+
+      try {
+
+        await ctx.reply(
+          "❌ Could not deactivate the bonus schedule."
+        );
+
+      } catch (_) {}
+    }
+  }
+);
+
+// ============================================================
 // TIME BONUS — MATCH DEPOSIT
 // ============================================================
 
@@ -1685,9 +1779,7 @@ bot.callbackQuery(
 
     await answerCallback(ctx);
 
-    delete pendingAdminBonus[
-      admin.telegram_id
-    ];
+    pendingAdminBonus.delete(admin.telegram_id);
 
     await ctx.editMessageText(
       "🎁 *BONUS MANAGEMENT*\n\n" +
