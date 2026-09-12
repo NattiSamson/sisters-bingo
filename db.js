@@ -2148,6 +2148,457 @@ async getPaymentAccountById(
     return rows;
   },
 
+    // ============================================================
+  // ADMIN — PAYMENT ACCOUNT MANAGEMENT
+  // ============================================================
+
+  /**
+   * Get ALL payment accounts for admin management.
+   *
+   * IMPORTANT:
+   * Unlike getPaymentAccountsByMethod(), this function
+   * intentionally includes inactive accounts.
+   */
+  async getAllPaymentAccountsForAdmin() {
+
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+
+          pa.id,
+
+          pa.payment_method_id,
+
+          pa.account_number,
+
+          pa.account_name,
+
+          pa.balance,
+
+          pa.is_active,
+
+          pm.name AS pm_name,
+
+          pm.amharic_name AS pm_amharic_name,
+
+          pm.emoji AS pm_emoji,
+
+          pt.name AS pt_name,
+
+          pt.amharic_name AS pt_amharic_name,
+
+          pt.emoji AS pt_emoji
+
+        FROM payment_accounts pa
+
+        INNER JOIN payment_methods pm
+          ON pa.payment_method_id = pm.id
+
+        INNER JOIN payment_types pt
+          ON pm.type_id = pt.id
+
+        ORDER BY
+          pm.order ASC,
+          pa.id ASC
+        `
+      );
+
+    return rows;
+
+  },
+
+
+  /**
+   * Create a new payment account.
+   *
+   * accountNumber is expected to already be normalized
+   * by bot.js when the payment type is Mobile / ሞባይል.
+   *
+   * Non-mobile account numbers are kept as entered.
+   */
+  async createPaymentAccount(
+    paymentMethodId,
+    accountName,
+    accountNumber,
+    initialBalance
+  ) {
+
+    const cleanName =
+      String(
+        accountName || ""
+      ).trim();
+
+    const cleanNumber =
+      String(
+        accountNumber || ""
+      ).trim();
+
+    const balance =
+      Number(
+        initialBalance
+      );
+
+
+    // ----------------------------------------------------------
+    // VALIDATION
+    // ----------------------------------------------------------
+
+    if (
+      !Number.isInteger(
+        Number(paymentMethodId)
+      ) ||
+      Number(paymentMethodId) <= 0
+    ) {
+
+      return {
+        success: false,
+        message:
+          "Invalid payment method."
+      };
+
+    }
+
+
+    if (!cleanName) {
+
+      return {
+        success: false,
+        message:
+          "Account name cannot be empty."
+      };
+
+    }
+
+
+    if (!cleanNumber) {
+
+      return {
+        success: false,
+        message:
+          "Account number cannot be empty."
+      };
+
+    }
+
+
+    if (
+      !Number.isFinite(balance) ||
+      balance < 0
+    ) {
+
+      return {
+        success: false,
+        message:
+          "Initial balance must be 0 or greater."
+      };
+
+    }
+
+
+    try {
+
+      // --------------------------------------------------------
+      // VERIFY PAYMENT METHOD
+      // --------------------------------------------------------
+
+      const methodResult =
+        await pool.query(
+          `
+          SELECT
+
+            pm.id,
+
+            pm.name,
+
+            pm.amharic_name,
+
+            pm.is_active,
+
+            pt.name AS type_name,
+
+            pt.amharic_name AS am_type_name,
+
+            pt.is_active AS type_is_active
+
+          FROM payment_methods pm
+
+          INNER JOIN payment_types pt
+            ON pm.type_id = pt.id
+
+          WHERE pm.id = $1
+
+          LIMIT 1
+          `,
+          [
+            Number(paymentMethodId)
+          ]
+        );
+
+
+      if (
+        methodResult.rows.length === 0
+      ) {
+
+        return {
+          success: false,
+          message:
+            "Payment method not found."
+        };
+
+      }
+
+
+      const method =
+        methodResult.rows[0];
+
+
+      if (
+        method.is_active !== true ||
+        method.type_is_active !== true
+      ) {
+
+        return {
+          success: false,
+          message:
+            "The selected payment method is not active."
+        };
+
+      }
+
+
+      // --------------------------------------------------------
+      // DUPLICATE CHECK
+      // --------------------------------------------------------
+      //
+      // Same account number + same payment method cannot
+      // be created twice.
+      //
+      // We intentionally do NOT compare accounts belonging
+      // to different payment methods.
+      // --------------------------------------------------------
+
+      const duplicateResult =
+        await pool.query(
+          `
+          SELECT
+            id,
+            account_name,
+            account_number,
+            is_active
+
+          FROM payment_accounts
+
+          WHERE payment_method_id = $1
+            AND account_number = $2
+
+          LIMIT 1
+          `,
+          [
+            Number(paymentMethodId),
+            cleanNumber
+          ]
+        );
+
+
+      if (
+        duplicateResult.rows.length > 0
+      ) {
+
+        const duplicate =
+          duplicateResult.rows[0];
+
+
+        if (
+          duplicate.is_active
+        ) {
+
+          return {
+            success: false,
+            message:
+              "An active payment account with this account number already exists for this payment method."
+          };
+
+        }
+
+
+        return {
+          success: false,
+          message:
+            "An inactive payment account with this account number already exists for this payment method. Please activate the existing account instead."
+        };
+
+      }
+
+
+      // --------------------------------------------------------
+      // INSERT ACCOUNT
+      // --------------------------------------------------------
+
+      const insertResult =
+        await pool.query(
+          `
+          INSERT INTO payment_accounts (
+            payment_method_id,
+            account_number,
+            account_name,
+            balance,
+            is_active
+          )
+
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            TRUE
+          )
+
+          RETURNING id
+          `,
+          [
+            Number(paymentMethodId),
+            cleanNumber,
+            cleanName,
+            balance
+          ]
+        );
+
+
+      const accountId =
+        insertResult.rows[0].id;
+
+
+      // --------------------------------------------------------
+      // RETURN COMPLETE ACCOUNT
+      // --------------------------------------------------------
+
+      const accountResult =
+        await pool.query(
+          `
+          SELECT
+
+            pa.id,
+
+            pa.payment_method_id,
+
+            pa.account_number,
+
+            pa.account_name,
+
+            pa.balance,
+
+            pa.is_active,
+
+            pm.name AS pm_name,
+
+            pm.amharic_name AS pm_amharic_name,
+
+            pm.emoji AS pm_emoji,
+
+            pt.name AS pt_name,
+
+            pt.amharic_name AS pt_amharic_name,
+
+            pt.emoji AS pt_emoji
+
+          FROM payment_accounts pa
+
+          INNER JOIN payment_methods pm
+            ON pa.payment_method_id = pm.id
+
+          INNER JOIN payment_types pt
+            ON pm.type_id = pt.id
+
+          WHERE pa.id = $1
+
+          LIMIT 1
+          `,
+          [
+            accountId
+          ]
+        );
+
+
+      return {
+        success: true,
+        account:
+          accountResult.rows[0]
+      };
+
+    } catch (err) {
+
+      console.error(
+        "createPaymentAccount error:",
+        err
+      );
+
+      throw err;
+
+    }
+
+  },
+
+
+  /**
+   * Activate or deactivate an existing payment account.
+   *
+   * This does NOT:
+   * - delete the account
+   * - change the balance
+   * - change the account number
+   * - change the account name
+   */
+  async setPaymentAccountActive(
+    paymentAccountId,
+    isActive
+  ) {
+
+    const accountId =
+      Number(
+        paymentAccountId
+      );
+
+
+    if (
+      !Number.isInteger(accountId) ||
+      accountId <= 0
+    ) {
+
+      return null;
+
+    }
+
+
+    const { rows } =
+      await pool.query(
+        `
+        UPDATE payment_accounts
+
+        SET
+          is_active = $1
+
+        WHERE id = $2
+
+        RETURNING
+          id,
+          payment_method_id,
+          account_number,
+          account_name,
+          balance,
+          is_active
+        `,
+        [
+          Boolean(isActive),
+          accountId
+        ]
+      );
+
+
+    return rows[0] || null;
+
+  },
+
   // ============================================================
   // DEPOSIT
   // ============================================================
