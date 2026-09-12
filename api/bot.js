@@ -1199,8 +1199,216 @@ else if (
 
 }
 // ============================================================
-// TIME BONUS — MATCH DEPOSIT
+// TIME BONUS — ONE TIME
 // ============================================================
+
+bot.callbackQuery(
+  "admin_bonus_frequency_one_time",
+  async (ctx) => {
+
+    try {
+
+      await answerCallback(ctx);
+
+      const admin =
+        await requireAdmin(ctx);
+
+      if (!admin) {
+        return;
+      }
+
+      const telegramId =
+        admin.telegram_id;
+
+      const pending =
+        pendingAdminBonus.get(
+          telegramId
+        );
+
+      if (
+        !pending ||
+        pending.type !==
+          "time_bonus"
+      ) {
+
+        return ctx.reply(
+          "❌ Bonus creation session expired. Please start again."
+        );
+      }
+
+      pending.depositFrequency =
+        "one_time";
+
+      pending.step =
+        "mode";
+
+      await ctx.editMessageText(
+
+        "🎁 *BONUS TYPE*\\n\\n" +
+
+        "Choose how much bonus the user receives:",
+
+        {
+          parse_mode:
+            "Markdown",
+
+          reply_markup: {
+            inline_keyboard: [
+
+              [
+                {
+                  text:
+                    "💯 Match Deposit",
+
+                  callback_data:
+                    "admin_bonus_mode_match"
+                }
+              ],
+
+              [
+                {
+                  text:
+                    "💰 Fixed Amount",
+
+                  callback_data:
+                    "admin_bonus_mode_fixed"
+                }
+              ],
+
+              [
+                {
+                  text:
+                    "❌ Cancel",
+
+                  callback_data:
+                    "admin_bonus_cancel"
+                }
+              ]
+
+            ]
+          }
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "One-time bonus frequency error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not set bonus frequency."
+      );
+    }
+  }
+);
+
+// ============================================================
+// TIME BONUS — EVERY DEPOSIT
+// ============================================================
+
+bot.callbackQuery(
+  "admin_bonus_frequency_every_deposit",
+  async (ctx) => {
+
+    try {
+
+      await answerCallback(ctx);
+
+      const admin =
+        await requireAdmin(ctx);
+
+      if (!admin) {
+        return;
+      }
+
+      const telegramId =
+        admin.telegram_id;
+
+      const pending =
+        pendingAdminBonus.get(
+          telegramId
+        );
+
+      if (
+        !pending ||
+        pending.type !==
+          "time_bonus"
+      ) {
+
+        return ctx.reply(
+          "❌ Bonus creation session expired. Please start again."
+        );
+      }
+
+      pending.depositFrequency =
+        "every_deposit";
+
+      pending.step =
+        "mode";
+
+      await ctx.editMessageText(
+
+        "🎁 *BONUS TYPE*\\n\\n" +
+
+        "Choose how much bonus the user receives:",
+
+        {
+          parse_mode:
+            "Markdown",
+
+          reply_markup: {
+            inline_keyboard: [
+
+              [
+                {
+                  text:
+                    "💯 Match Deposit",
+
+                  callback_data:
+                    "admin_bonus_mode_match"
+                }
+              ],
+
+              [
+                {
+                  text:
+                    "💰 Fixed Amount",
+
+                  callback_data:
+                    "admin_bonus_mode_fixed"
+                }
+              ],
+
+              [
+                {
+                  text:
+                    "❌ Cancel",
+
+                  callback_data:
+                    "admin_bonus_cancel"
+                }
+              ]
+
+            ]
+          }
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Every-deposit bonus frequency error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not set bonus frequency."
+      );
+    }
+  }
+);
 
 // ============================================================
 // TIME BONUS — MATCH DEPOSIT
@@ -8593,218 +8801,8 @@ if (
     }
   );
 }
-    // ============================================================
-// TIME BONUS — ONE TIME
-// ============================================================
-
-bot.callbackQuery(
-  "admin_bonus_frequency_one_time",
-  async (ctx) => {
-
-    try {
-
-      await answerCallback(ctx);
-
-      const admin =
-        await requireAdmin(ctx);
-
-      if (!admin) {
-        return;
-      }
-
-      const telegramId =
-        admin.telegram_id;
-
-      const pending =
-        pendingAdminBonus.get(
-          telegramId
-        );
-
-      if (
-        !pending ||
-        pending.type !==
-          "time_bonus"
-      ) {
-
-        return ctx.reply(
-          "❌ Bonus creation session expired. Please start again."
-        );
-      }
-
-      pending.depositFrequency =
-        "one_time";
-
-      pending.step =
-        "mode";
-
-      await ctx.editMessageText(
-
-        "🎁 *BONUS TYPE*\\n\\n" +
-
-        "Choose how much bonus the user receives:",
-
-        {
-          parse_mode:
-            "Markdown",
-
-          reply_markup: {
-            inline_keyboard: [
-
-              [
-                {
-                  text:
-                    "💯 Match Deposit",
-
-                  callback_data:
-                    "admin_bonus_mode_match"
-                }
-              ],
-
-              [
-                {
-                  text:
-                    "💰 Fixed Amount",
-
-                  callback_data:
-                    "admin_bonus_mode_fixed"
-                }
-              ],
-
-              [
-                {
-                  text:
-                    "❌ Cancel",
-
-                  callback_data:
-                    "admin_bonus_cancel"
-                }
-              ]
-
-            ]
-          }
-        }
-      );
-
-    } catch (err) {
-
-      console.error(
-        "One-time bonus frequency error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Could not set bonus frequency."
-      );
-    }
-  }
-);
 
 
-// ============================================================
-// TIME BONUS — EVERY DEPOSIT
-// ============================================================
-
-bot.callbackQuery(
-  "admin_bonus_frequency_every_deposit",
-  async (ctx) => {
-
-    try {
-
-      await answerCallback(ctx);
-
-      const admin =
-        await requireAdmin(ctx);
-
-      if (!admin) {
-        return;
-      }
-
-      const telegramId =
-        admin.telegram_id;
-
-      const pending =
-        pendingAdminBonus.get(
-          telegramId
-        );
-
-      if (
-        !pending ||
-        pending.type !==
-          "time_bonus"
-      ) {
-
-        return ctx.reply(
-          "❌ Bonus creation session expired. Please start again."
-        );
-      }
-
-      pending.depositFrequency =
-        "every_deposit";
-
-      pending.step =
-        "mode";
-
-      await ctx.editMessageText(
-
-        "🎁 *BONUS TYPE*\\n\\n" +
-
-        "Choose how much bonus the user receives:",
-
-        {
-          parse_mode:
-            "Markdown",
-
-          reply_markup: {
-            inline_keyboard: [
-
-              [
-                {
-                  text:
-                    "💯 Match Deposit",
-
-                  callback_data:
-                    "admin_bonus_mode_match"
-                }
-              ],
-
-              [
-                {
-                  text:
-                    "💰 Fixed Amount",
-
-                  callback_data:
-                    "admin_bonus_mode_fixed"
-                }
-              ],
-
-              [
-                {
-                  text:
-                    "❌ Cancel",
-
-                  callback_data:
-                    "admin_bonus_cancel"
-                }
-              ]
-
-            ]
-          }
-        }
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Every-deposit bonus frequency error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Could not set bonus frequency."
-      );
-    }
-  }
-);
 
 
     // ========================================================
