@@ -144,6 +144,8 @@ async getUserByPhoneForAdmin(phone) {
         is_admin
       FROM users
       WHERE phone = $1
+      AND is_active = TRUE
+      AND is_blocked = FALSE
       LIMIT 1
       `,
       [
