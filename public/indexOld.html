@@ -554,7 +554,8 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
     <div class="result-card-body" id="resultCardBody"></div>
   </div>
   <div class="result-status" id="resultStatus"></div>
-  <div id="resetCountdown" style="margin-top:9px;font-size:13px;font-weight:800;color:var(--gold)">ቀጣዩ ዙር በ 10 ሰከንድ ውስጥ ይጀምራል</div>
+  <div id="resetCountdown" style="margin-top:9px;font-size:13px;font-weight:800;color:var(--gold)">ቀጣዩ ዙር በ 20 ሰከንድ ውስጥ ይጀምራል</div>
+  <button id="refreshCardsBtn" type="button" style="display:none" onclick="refreshCardsForNewRound()">Refresh Cards</button>
 </div>
 
 <div class="disq-overlay" id="disqOverlay">
@@ -958,6 +959,44 @@ function cancelPostGameWalletBounce(){
   if(postGameWalletReturnTimer){ clearTimeout(postGameWalletReturnTimer); postGameWalletReturnTimer=null; }
 }
 
+let postGameAutoRefreshTimer=null;
+
+function refreshCardsForNewRound(){
+  if(postGameAutoRefreshTimer){
+    clearTimeout(postGameAutoRefreshTimer);
+    postGameAutoRefreshTimer=null;
+  }
+
+  // Clear the previous round locally first.
+  myCardId=null; myCardId2=null;
+  myCardNumbers=[]; myCardNumbers2=[];
+  resetAutomaticGameState();
+  claimWindowOpen=false;
+  autoClaimSent=false;
+  resetSlotUI();
+  hideWinnerOverlay();
+  navGo('screenCards','navCards');
+
+  // Ask the server for the current same-stake room/card pool. Once the room
+  // is reset to waiting, reconnect returns the fresh card pool.
+  const roomId=myRoomId || localStorage.getItem('roomId');
+  const tid=telegramId || getTelegramId();
+  if(roomId && tid){
+    wsSend({type:'reconnect',roomId:roomId,telegramId:tid});
+  }
+}
+
+function schedulePostGameAutoRefresh(seconds){
+  if(postGameAutoRefreshTimer) clearTimeout(postGameAutoRefreshTimer);
+  const total=Math.max(0,Number(seconds)||0);
+  postGameAutoRefreshTimer=setTimeout(()=>{
+    postGameAutoRefreshTimer=null;
+    const btn=document.getElementById('refreshCardsBtn');
+    if(btn) btn.click();
+    else refreshCardsForNewRound();
+  },total*1000);
+}
+
 function updatePostGameCountdown(seconds){
   const n=Math.max(0,Number(seconds)||0);
   const el=document.getElementById('resetCountdown');
@@ -966,6 +1005,7 @@ function updatePostGameCountdown(seconds){
 
 function finishPostGameReset(msg={}){
   cancelPostGameWalletBounce();
+  if(postGameAutoRefreshTimer){ clearTimeout(postGameAutoRefreshTimer); postGameAutoRefreshTimer=null; }
   if(postGameResetTimer){ clearInterval(postGameResetTimer); postGameResetTimer=null; }
   if(postGameResetRejoinTimer){ clearTimeout(postGameResetRejoinTimer); postGameResetRejoinTimer=null; }
 
@@ -1205,8 +1245,10 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
                  (Array.isArray(msg.winnerTelegramIds)&&msg.winnerTelegramIds.map(String).includes(String(telegramId)));
       showToast(iWon?'🏆 አሸንፈዋል! የሽልማት ገንዘብዎ ወደ ሂሳብዎ ተጨምሯል።':'ዙሩ ተጠናቋል — ሂሳብዎ በጨዋታው ሰርቨር ተስተካክሏል።','');
       setTimeout(()=>refreshAccountBalance(),300);
-      // The SERVER controls the countdown and final reset. Do not start another
-      // browser timer here; wait for backToCardSelection from the server.
+      // The server remains authoritative for the actual room reset. The hidden
+      // refresh button is clicked automatically when this same countdown ends,
+      // which forces the card-selection screen to request the fresh card pool.
+      schedulePostGameAutoRefresh(Number(msg.resetCountdown)||20);
       break;
 
     case 'resetCountdown':
@@ -1216,6 +1258,12 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
 
     case 'backToCardSelection':
       finishPostGameReset(msg);
+      // The server has completed the 20-second countdown/reset. Now actually
+      // trigger the hidden refresh button so the browser requests and displays
+      // the fresh same-stake card pool.
+      const refreshBtn=document.getElementById('refreshCardsBtn');
+      if(refreshBtn) refreshBtn.click();
+      else refreshCardsForNewRound();
       break;
 
     case 'balanceUpdate':
@@ -1896,7 +1944,7 @@ function ballLetter(n){
   return 'o';
 }
 
-// Preload all 75 audio files in background after user first interacts sdfsdf
+// Preload all 75 audio files in background after user first interacts
 function preloadAudio(){
   for(let i=1;i<=75;i++){
     const letter=ballLetter(i);

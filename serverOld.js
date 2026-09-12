@@ -707,7 +707,7 @@ async function endGame(room, winners, customMsg, noWinner){
 
   // Broadcast the result to EVERY connected player in the room. Keep the room/stake
   // identifiers in this message so clients can return to the same stake.
-  const RESET_SECONDS=10;
+  const RESET_SECONDS=20;
   broadcast(room,{
     type:'gameOver',
     roomId:room.roomId,

@@ -190,6 +190,30 @@ if (process.env.DATABASE_URL) {
         await this.q(`UPDATE users SET total_games=total_games+1 WHERE telegram_id=ANY(
           SELECT DISTINCT u.telegram_id FROM game_participants gp JOIN users u ON u.id=gp.user_id WHERE gp.game_id=$1)`, [gameId]);
       },
+      async getGameHistory(tid, limit=50) {
+        // The existing stake transactions use the game room_id as their reference.
+        // Use those transactions to link this Telegram user to finished games, so
+        // history works with the current database without changing the schema.
+        return this.q(
+          `SELECT
+             g.id, g.stake_id, g.stake_amount, g.pot, g.win_amount,
+             g.status, g.started_at, g.ended_at,
+             COALESCE(SUM(ABS(t.amount)) FILTER (WHERE t.type='stake'),0)::numeric AS amount_played,
+             COALESCE(SUM(t.amount) FILTER (WHERE t.type='win'),0)::numeric AS amount_won,
+             CASE WHEN $1 = ANY(COALESCE(g.winner_ids, ARRAY[]::text[])) THEN true ELSE false END AS won
+           FROM games g
+           JOIN transactions t ON t.reference=g.room_id
+           JOIN users u ON u.id=t.user_id
+           WHERE u.telegram_id=$1
+             AND g.status='finished'
+             AND t.type IN ('stake','win')
+           GROUP BY g.id, g.stake_id, g.stake_amount, g.pot, g.win_amount,
+                    g.status, g.started_at, g.ended_at, g.winner_ids
+           ORDER BY g.started_at DESC
+           LIMIT $2`,
+          [String(tid), Math.min(Math.max(Number(limit)||50,1),100)]
+        );
+      },
 
       // ── Deposits ──
       async createDeposit(tid, amount, txRef) {
@@ -1102,7 +1126,7 @@ wss.on('connection',(ws)=>{
                   // Do not query Neon again on every card click. The variable is updated
                   // after each successful charge and stays authoritative for this session.
                   if(Number(client.balance) < Number(room.stake)){
-                    return send(ws,{type:'error',message:`Insufficient balance. Balance: ${(Number(client.balance)||0).toFixed(2)} ETB. Required: ${room.stake} ETB.`});
+                    return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። ቀሪ ሂሳብ: ${(Number(client.balance)||0).toFixed(2)} ብር። ያስፈልጋል: ${room.stake} ብር።`});
                   }
 
                   let newBal;
@@ -1116,7 +1140,7 @@ wss.on('connection',(ws)=>{
 
                     if(e.code==='INSUFFICIENT_BALANCE'){
 
-                      return send(ws,{type:'error',message:`Insufficient balance. Neon balance: ${(Number(e.balance)||0).toFixed(2)} ETB. Required: ${room.stake} ETB.`});
+                      return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። የአካውንት ቀሪ ሂሳብ: ${(Number(e.balance)||0).toFixed(2)} ብር። ያስፈልጋል: ${room.stake} ብር።`});
 
                     }
 
@@ -1168,7 +1192,7 @@ wss.on('connection',(ws)=>{
 
                   // Use the current session balance. No extra Neon balance read.
                   if(Number(client.balance) < Number(room.stake)){
-                    return send(ws,{type:'error',message:`Insufficient balance. Balance: ${(Number(client.balance)||0).toFixed(2)} ETB. Required: ${room.stake} ETB.`});
+                    return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። ቀሪ ሂሳብ: ${(Number(client.balance)||0).toFixed(2)} ብር። ያስፈልጋል: ${room.stake} ብር።`});
                   }
 
                   let newBal;
@@ -1181,7 +1205,7 @@ wss.on('connection',(ws)=>{
 
                     if(e.code==='INSUFFICIENT_BALANCE'){
 
-                      return send(ws,{type:'error',message:`Insufficient balance. Neon balance: ${(Number(e.balance)||0).toFixed(2)} ETB. Required: ${room.stake} ETB.`});
+                      return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። የአካውንት ቀሪ ሂሳብ: ${(Number(e.balance)||0).toFixed(2)} ብር። ያስፈልጋል: ${room.stake} ብር።`});
 
                     }
 
@@ -1692,6 +1716,20 @@ app.get('/api/user/:tid', async(req,res)=>{
   }catch(e){
     console.error('GET /api/user error:',e.message);
     res.status(500).json({error:'Database query failed'});
+  }
+});
+
+
+app.get('/api/history/:tid', async(req,res)=>{
+  const tid=String(req.params.tid||'').trim();
+  if(!tid) return res.status(400).json({error:'Missing Telegram ID'});
+  if(!db) return res.status(503).json({error:'Database unavailable'});
+  try{
+    const rows=await db.getGameHistory(tid, req.query.limit);
+    res.json(rows);
+  }catch(e){
+    console.error('GET /api/history error:',e.message);
+    res.status(500).json({error:'Could not load game history'});
   }
 });
 
