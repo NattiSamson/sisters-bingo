@@ -356,7 +356,72 @@ async function answerCallback(
 
 }
 
+// ============================================================
+// ETHIOPIA DATE/TIME PARSER
+// ============================================================
 
+function parseEthiopianDateTime(
+  input
+) {
+  const value =
+    String(input || "")
+      .trim();
+
+  const match =
+    value.match(
+      /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/
+    );
+
+  if (!match) {
+    return null;
+  }
+
+  const [
+    ,
+    year,
+    month,
+    day,
+    hour,
+    minute
+  ] = match;
+
+  const iso =
+    `${year}-${month}-${day}T${hour}:${minute}:00+03:00`;
+
+  const date =
+    new Date(iso);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function formatBonusDate(
+  value
+) {
+  const date =
+    new Date(value);
+
+  return date.toLocaleString(
+    "en-GB",
+    {
+      timeZone:
+        "Africa/Addis_Ababa",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }
+  );
+}
 // ============================================================
 // PHONE NORMALIZATION
 // ============================================================
@@ -910,6 +975,12 @@ if (admin && admin.admin_role === "main") {
           "admin_statistics_menu"
       }
     ]);
+   keyboard.push([
+          {
+            text: "🎁 Bonus",
+            callback_data: "admin_bonus"
+          }
+    ]);
 }
 
 // Broadcast admin = broadcast only
@@ -963,6 +1034,428 @@ else if (
   );
 
 }
+// ============================================================
+// TIME BONUS — MATCH DEPOSIT
+// ============================================================
+
+bot.callbackQuery(
+  "admin_bonus_mode_match",
+  async (ctx) => {
+
+    const admin =
+      await requireAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const pending =
+      pendingAdminBonus.get(
+        admin.telegram_id
+      );
+
+    if (
+      !pending ||
+      pending.type !== "time_bonus"
+    ) {
+
+      return ctx.reply(
+        "❌ Bonus session expired. Please start again."
+      );
+    }
+
+    try {
+
+      const campaign =
+        await db.createBonusCampaign(
+          pending.name,
+          pending.startsAt,
+          pending.endsAt,
+          "match_deposit",
+          null,
+          admin.telegram_id
+        );
+
+      pendingAdminBonus.delete(
+        admin.telegram_id
+      );
+
+      await ctx.editMessageText(
+        "✅ *DEPOSIT BONUS CREATED*\n\n" +
+        `🎁 Name: *${campaign.name}*\n` +
+        `⏰ Start: *${formatBonusDate(campaign.starts_at)}*\n` +
+        `⏰ End: *${formatBonusDate(campaign.ends_at)}*\n\n` +
+        "💯 Bonus: *100% of every deposit*\n\n" +
+        "Example:\n" +
+        "Deposit 500 ETB → Bonus 500 ETB",
+        {
+          parse_mode: "Markdown",
+
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🎁 Bonus Menu",
+                  callback_data:
+                    "admin_bonus"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Home",
+                  callback_data:
+                    "admin_home"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Match deposit bonus creation error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not create the deposit bonus."
+      );
+    }
+  }
+);
+
+
+// ============================================================
+// TIME BONUS — FIXED AMOUNT
+// ============================================================
+
+bot.callbackQuery(
+  "admin_bonus_mode_fixed",
+  async (ctx) => {
+
+    const admin =
+      await requireAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const pending =
+      pendingAdminBonus.get(
+        admin.telegram_id
+      );
+
+    if (
+      !pending ||
+      pending.type !== "time_bonus"
+    ) {
+
+      return ctx.reply(
+        "❌ Bonus session expired."
+      );
+    }
+
+    pending.step =
+      "fixed_amount";
+
+    await ctx.editMessageText(
+      "💰 *FIXED DEPOSIT BONUS*\n\n" +
+      "Enter the bonus amount.\n\n" +
+      "Example:\n" +
+      "`100`\n\n" +
+      "A user depositing 500 ETB will receive:\n" +
+      "500 ETB deposit + 100 ETB bonus.",
+      {
+        parse_mode: "Markdown",
+
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "admin_bonus_cancel"
+              }
+            ]
+          ]
+        }
+      }
+    );
+  }
+);
+// ============================================================
+// ADMIN BONUS MENU
+// ============================================================
+
+bot.callbackQuery(
+  "admin_bonus",
+  async (ctx) => {
+
+    const admin =
+      await requireAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    delete pendingAdminBonus[
+      admin.telegram_id
+    ];
+
+    await ctx.editMessageText(
+      "🎁 *BONUS MANAGEMENT*\n\n" +
+      "Choose a bonus option:",
+      {
+        parse_mode: "Markdown",
+
+        reply_markup: {
+          inline_keyboard: [
+
+            [
+              {
+                text: "👤 Specific User",
+                callback_data:
+                  "admin_bonus_user"
+              }
+            ],
+
+            [
+              {
+                text: "👥 All Active Users",
+                callback_data:
+                  "admin_bonus_all"
+              }
+            ],
+
+            [
+              {
+                text: "⏰ Deposit Time Bonus",
+                callback_data:
+                  "admin_bonus_time"
+              }
+            ],
+
+            [
+              {
+                text: "🏠 Home",
+                callback_data:
+                  "admin_home"
+              }
+            ]
+
+          ]
+        }
+      }
+    );
+  }
+);
+
+// ============================================================
+// BONUS — SPECIFIC USER
+// ============================================================
+
+bot.callbackQuery(
+  "admin_bonus_user",
+  async (ctx) => {
+
+    const admin =
+      await requireAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    pendingAdminBonus.set(
+      admin.telegram_id,
+      {
+        type: "specific_user",
+        step: "phone"
+      }
+    );
+
+    await ctx.editMessageText(
+      "👤 *BONUS FOR SPECIFIC USER*\n\n" +
+      "Please enter the user's phone number.\n\n" +
+      "Example:\n" +
+      "`0912345678`\n" +
+      "`+251912345678`",
+      {
+        parse_mode: "Markdown",
+
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "admin_bonus_cancel"
+              }
+            ]
+          ]
+        }
+      }
+    );
+  }
+);
+
+// ============================================================
+// BONUS — ALL ACTIVE USERS
+// ============================================================
+
+bot.callbackQuery(
+  "admin_bonus_all",
+  async (ctx) => {
+
+    const admin =
+      await requireAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    pendingAdminBonus.set(
+      admin.telegram_id,
+      {
+        type: "all_users",
+        step: "amount"
+      }
+    );
+
+    await ctx.editMessageText(
+      "👥 *BONUS FOR ALL ACTIVE USERS*\n\n" +
+      "This bonus will be given to every user who is:\n\n" +
+      "✅ Active\n" +
+      "✅ Not blocked\n" +
+      "✅ Not banned\n\n" +
+      "Please enter the bonus amount in ETB.\n\n" +
+      "Example:\n" +
+      "`50`\n" +
+      "`100`\n" +
+      "`250.50`",
+      {
+        parse_mode: "Markdown",
+
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "admin_bonus_cancel"
+              }
+            ]
+          ]
+        }
+      }
+    );
+  }
+);
+// ============================================================
+// BONUS — TIME BASED DEPOSIT BONUS
+// ============================================================
+
+bot.callbackQuery(
+  "admin_bonus_time",
+  async (ctx) => {
+
+    const admin =
+      await requireAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    pendingAdminBonus.set(
+      admin.telegram_id,
+      {
+        type: "time_bonus",
+        step: "name"
+      }
+    );
+
+    await ctx.editMessageText(
+      "⏰ *DEPOSIT TIME BONUS*\n\n" +
+      "First enter a name for this bonus campaign.\n\n" +
+      "Example:\n" +
+      "`Weekend Deposit Bonus`",
+      {
+        parse_mode: "Markdown",
+
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "admin_bonus_cancel"
+              }
+            ]
+          ]
+        }
+      }
+    );
+  }
+);
+// ============================================================
+// BONUS CANCEL
+// ============================================================
+
+bot.callbackQuery(
+  "admin_bonus_cancel",
+  async (ctx) => {
+
+    const admin =
+      await requireAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    pendingAdminBonus.delete(
+      admin.telegram_id
+    );
+
+    await ctx.editMessageText(
+      "🎁 Bonus operation cancelled.",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🎁 Bonus",
+                callback_data:
+                  "admin_bonus"
+              }
+            ],
+            [
+              {
+                text: "🏠 Home",
+                callback_data:
+                  "admin_home"
+              }
+            ]
+          ]
+        }
+      }
+    );
+  }
+);
 
 // ============================================================
 // ADMIN ROLE MANAGEMENT
@@ -4729,22 +5222,60 @@ bot.on(
           clearPendingState(
             telegramId
           );
+let depositBonus = null;
 
+if (result2 > 0) {
 
-          return ctx.reply(
+  try {
 
-            "✅ *የገቢ ጥያቄዎ ተሳክቷል!*\n\n" +
+    depositBonus =
+      await db.applyDepositBonus(
+        telegramId,
+        result2,
+        receipt.receiptNo ||
+        receipt.invoiceNo ||
+        null,
+        new Date()
+      );
 
-            `💰 ${result2} ብር ወደ ሂሳብዎ ተጨምሯል።`,
+  } catch (bonusErr) {
 
-            {
+    console.error(
+      "Automatic deposit bonus error:",
+      bonusErr
+    );
 
-              parse_mode:
-                "Markdown"
+    // IMPORTANT:
+    // The deposit itself was already successful.
+    // Do not reject the customer's deposit because
+    // the bonus subsystem failed.
+    depositBonus = null;
+  }
 
-            }
+}
 
-          );
+          let successMessage =
+  "✅ *የገቢ ጥያቄዎ ተሳክቷል!*\n\n" +
+  `💰 ${result2} ብር ወደ ሂሳብዎ ተጨምሯል።`;
+
+if (
+  depositBonus &&
+  depositBonus.applied
+) {
+
+  successMessage +=
+    "\n\n" +
+    "🎁 *BONUS!*\n" +
+    `🎁 ${depositBonus.amount.toFixed(2)} ብር ቦነስ ተጨምሯል።`;
+
+}
+
+return await ctx.reply(
+  successMessage,
+  {
+    parse_mode: "Markdown"
+  }
+);
 
         }
 
@@ -7155,6 +7686,603 @@ bot.on(
 
     );
 
+  }
+);
+
+// ============================================================
+// ADMIN BONUS TEXT INPUT
+// ============================================================
+
+bot.on(
+  "message:text",
+  async (ctx, next) => {
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+      return next();
+    }
+
+    const telegramId =
+      admin.telegram_id;
+
+    const pending =
+      pendingAdminBonus.get(
+        telegramId
+      );
+
+    if (!pending) {
+      return next();
+    }
+
+    const text =
+      String(
+        ctx.message.text || ""
+      ).trim();
+
+    if (
+      text === "/cancel"
+    ) {
+
+      pendingAdminBonus.delete(
+        telegramId
+      );
+
+      return ctx.reply(
+        "❌ Bonus operation cancelled."
+      );
+    }
+
+    // ========================================================
+    // SPECIFIC USER — PHONE
+    // ========================================================
+
+    if (
+      pending.type ===
+        "specific_user" &&
+      pending.step === "phone"
+    ) {
+
+      const phone =
+        normalizeEthiopianPhone(
+          text
+        );
+
+      if (!phone) {
+
+        return ctx.reply(
+          "❌ Invalid Ethiopian phone number.\n\n" +
+          "Please enter a valid phone number."
+        );
+      }
+
+      const user =
+        await db.getUserByPhoneForAdmin(
+          phone
+        );
+
+      if (!user) {
+
+        return ctx.reply(
+          "❌ User not found.\n\n" +
+          "Please enter another phone number."
+        );
+      }
+
+      if (
+        user.is_blocked ||
+        user.is_banned ||
+        !user.is_active
+      ) {
+
+        return ctx.reply(
+          "🚫 This user is not eligible for a bonus."
+        );
+      }
+
+      pending.phone =
+        phone;
+
+      pending.user =
+        user;
+
+      pending.step =
+        "amount";
+
+      return ctx.reply(
+        "👤 *USER FOUND*\n\n" +
+        `Name: *${user.name}*\n` +
+        `Phone: \`${user.phone}\`\n` +
+        `Current Balance: *${Number(user.balance || 0).toFixed(2)} ETB*\n\n` +
+        "💰 Enter the bonus amount:",
+        {
+          parse_mode: "Markdown"
+        }
+      );
+    }
+
+    // ========================================================
+    // SPECIFIC USER — AMOUNT
+    // ========================================================
+
+    if (
+      pending.type ===
+        "specific_user" &&
+      pending.step === "amount"
+    ) {
+
+      const amount =
+        Number(
+          text.replace(/,/g, "")
+        );
+
+      if (
+        !Number.isFinite(amount) ||
+        amount <= 0
+      ) {
+
+        return ctx.reply(
+          "❌ Invalid bonus amount.\n\n" +
+          "Please enter a positive amount."
+        );
+      }
+
+      try {
+
+        const result =
+          await db.giveBonusToUserByPhone(
+            pending.phone,
+            amount,
+            telegramId
+          );
+
+        if (!result.success) {
+
+          return ctx.reply(
+            `❌ ${result.message}`
+          );
+        }
+
+        pendingAdminBonus.delete(
+          telegramId
+        );
+
+        await ctx.reply(
+          "✅ *BONUS ADDED*\n\n" +
+          `👤 User: *${result.user.name}*\n` +
+          `📱 Phone: \`${result.user.phone}\`\n` +
+          `🎁 Bonus: *${result.amount.toFixed(2)} ETB*\n` +
+          `💰 New Balance: *${result.balance.toFixed(2)} ETB*`,
+          {
+            parse_mode: "Markdown",
+
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: "🎁 Bonus Menu",
+                    callback_data:
+                      "admin_bonus"
+                  }
+                ],
+                [
+                  {
+                    text: "🏠 Home",
+                    callback_data:
+                      "admin_home"
+                  }
+                ]
+              ]
+            }
+          }
+        );
+
+        // Notify user
+        if (result.user.telegram_id) {
+
+          try {
+
+            await bot.api.sendMessage(
+              result.user.telegram_id,
+
+              "🎁 *BONUS RECEIVED!*\n\n" +
+              `You received a bonus of *${result.amount.toFixed(2)} ETB*.\n\n` +
+              `💰 New Balance: *${result.balance.toFixed(2)} ETB*`,
+
+              {
+                parse_mode: "Markdown"
+              }
+            );
+
+          } catch (notifyErr) {
+
+            console.error(
+              "Specific bonus notification error:",
+              notifyErr
+            );
+          }
+        }
+
+      } catch (err) {
+
+        console.error(
+          "Specific user bonus error:",
+          err
+        );
+
+        return ctx.reply(
+          "❌ Could not add the bonus."
+        );
+      }
+
+      return;
+    }
+
+    // ========================================================
+    // ALL USERS — AMOUNT
+    // ========================================================
+
+    if (
+      pending.type ===
+        "all_users" &&
+      pending.step === "amount"
+    ) {
+
+      const amount =
+        Number(
+          text.replace(/,/g, "")
+        );
+
+      if (
+        !Number.isFinite(amount) ||
+        amount <= 0
+      ) {
+
+        return ctx.reply(
+          "❌ Invalid bonus amount."
+        );
+      }
+
+      await ctx.reply(
+        "⏳ Applying the bonus to all active users..."
+      );
+
+      try {
+
+        const result =
+          await db.giveBonusToAllActiveUsers(
+            amount,
+            telegramId
+          );
+
+        pendingAdminBonus.delete(
+          telegramId
+        );
+
+        await ctx.reply(
+          "✅ *BONUS DISTRIBUTION COMPLETE*\n\n" +
+          `👥 Users rewarded: *${result.count}*\n` +
+          `🎁 Bonus per user: *${amount.toFixed(2)} ETB*\n` +
+          `💰 Total bonus distributed: *${result.total.toFixed(2)} ETB*`,
+          {
+            parse_mode: "Markdown",
+
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: "🎁 Bonus Menu",
+                    callback_data:
+                      "admin_bonus"
+                  }
+                ],
+                [
+                  {
+                    text: "🏠 Home",
+                    callback_data:
+                      "admin_home"
+                  }
+                ]
+              ]
+            }
+          }
+        );
+
+        // Notify users
+        for (
+          const recipient
+          of result.recipients
+        ) {
+
+          if (!recipient.telegramId) {
+            continue;
+          }
+
+          try {
+
+            await bot.api.sendMessage(
+              recipient.telegramId,
+
+              "🎁 *BONUS RECEIVED!*\n\n" +
+              `You received *${recipient.amount.toFixed(2)} ETB* bonus.\n\n` +
+              `💰 New Balance: *${recipient.balance.toFixed(2)} ETB*`,
+
+              {
+                parse_mode: "Markdown"
+              }
+            );
+
+          } catch (notifyErr) {
+
+            console.error(
+              "All-user bonus notification error:",
+              notifyErr
+            );
+          }
+        }
+
+      } catch (err) {
+
+        console.error(
+          "All-user bonus error:",
+          err
+        );
+
+        await ctx.reply(
+          "❌ Could not distribute the bonus."
+        );
+      }
+
+      return;
+    }
+
+    // ========================================================
+    // TIME BONUS — NAME
+    // ========================================================
+
+    if (
+      pending.type ===
+        "time_bonus" &&
+      pending.step === "name"
+    ) {
+
+      if (!text) {
+
+        return ctx.reply(
+          "❌ Bonus campaign name cannot be empty."
+        );
+      }
+
+      pending.name =
+        text.substring(
+          0,
+          100
+        );
+
+      pending.step =
+        "start";
+
+      return ctx.reply(
+        "⏰ Enter the *starting date and time*.\n\n" +
+        "Use this format:\n" +
+        "`2026-09-13 10:00`\n\n" +
+        "Ethiopia time (UTC+3).",
+        {
+          parse_mode: "Markdown"
+        }
+      );
+    }
+
+    // ========================================================
+    // TIME BONUS — START
+    // ========================================================
+
+    if (
+      pending.type ===
+        "time_bonus" &&
+      pending.step === "start"
+    ) {
+
+      const start =
+        parseEthiopianDateTime(
+          text
+        );
+
+      if (!start) {
+
+        return ctx.reply(
+          "❌ Invalid date/time.\n\n" +
+          "Use:\n" +
+          "`2026-09-13 10:00`",
+          {
+            parse_mode: "Markdown"
+          }
+        );
+      }
+
+      pending.startsAt =
+        start;
+
+      pending.step =
+        "end";
+
+      return ctx.reply(
+        "⏰ Enter the *ending date and time*.\n\n" +
+        "Example:\n" +
+        "`2026-09-13 18:00`",
+        {
+          parse_mode: "Markdown"
+        }
+      );
+    }
+
+    // ========================================================
+    // TIME BONUS — END
+    // ========================================================
+
+    if (
+      pending.type ===
+        "time_bonus" &&
+      pending.step === "end"
+    ) {
+
+      const end =
+        parseEthiopianDateTime(
+          text
+        );
+
+      if (!end) {
+
+        return ctx.reply(
+          "❌ Invalid date/time."
+        );
+      }
+
+      if (
+        end <= pending.startsAt
+      ) {
+
+        return ctx.reply(
+          "❌ End time must be after start time."
+        );
+      }
+
+      pending.endsAt =
+        end;
+
+      pending.step =
+        "mode";
+
+      return ctx.reply(
+        "🎁 *BONUS TYPE*\n\n" +
+        "Choose how the deposit bonus should work:",
+        {
+          parse_mode: "Markdown",
+
+          reply_markup: {
+            inline_keyboard: [
+
+              [
+                {
+                  text:
+                    "💯 Match Deposit",
+                  callback_data:
+                    "admin_bonus_mode_match"
+                }
+              ],
+
+              [
+                {
+                  text:
+                    "💰 Fixed Amount",
+                  callback_data:
+                    "admin_bonus_mode_fixed"
+                }
+              ],
+
+              [
+                {
+                  text:
+                    "❌ Cancel",
+                  callback_data:
+                    "admin_bonus_cancel"
+                }
+              ]
+
+            ]
+          }
+        }
+      );
+    }
+
+
+    // ========================================================
+// TIME BONUS — FIXED AMOUNT
+// ========================================================
+
+if (
+  pending.type === "time_bonus" &&
+  pending.step === "fixed_amount"
+) {
+
+  const amount =
+    Number(
+      text.replace(/,/g, "")
+    );
+
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
+
+    return ctx.reply(
+      "❌ Invalid fixed bonus amount."
+    );
+  }
+
+  try {
+
+    const campaign =
+      await db.createBonusCampaign(
+        pending.name,
+        pending.startsAt,
+        pending.endsAt,
+        "fixed",
+        amount,
+        admin.telegram_id
+      );
+
+    pendingAdminBonus.delete(
+      telegramId
+    );
+
+    await ctx.reply(
+      "✅ *DEPOSIT BONUS CREATED*\n\n" +
+      `🎁 Name: *${campaign.name}*\n` +
+      `⏰ Start: *${formatBonusDate(campaign.starts_at)}*\n` +
+      `⏰ End: *${formatBonusDate(campaign.ends_at)}*\n` +
+      `💰 Bonus: *${amount.toFixed(2)} ETB per deposit*`,
+      {
+        parse_mode: "Markdown",
+
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🎁 Bonus Menu",
+                callback_data:
+                  "admin_bonus"
+              }
+            ],
+            [
+              {
+                text: "🏠 Home",
+                callback_data:
+                  "admin_home"
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+  } catch (err) {
+
+    console.error(
+      "Fixed deposit bonus creation error:",
+      err
+    );
+
+    await ctx.reply(
+      "❌ Could not create the deposit bonus."
+    );
+  }
+
+  return;
+}
+    
+    return next();
   }
 );
 
