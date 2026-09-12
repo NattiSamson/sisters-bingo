@@ -7,17 +7,13 @@
  * No hard-coded ADMIN_ID is used.
  *
  * Install:
- *   npm install pg
+ *   npm install pgf
  *
  * Environment:
  *   DATABASE_URL=postgresql://user:pass@host:5432/beteseb_bingo
  */
 
 const { Pool } = require("pg");
-
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL environment variable is missing");
-}
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -91,466 +87,428 @@ function normalizeEthiopianPhone(phone) {
 module.exports = {
 
   // ============================================================
-  // USER FINANCIAL STATISTICS
-  // ============================================================
+// USER FINANCIAL STATISTICS
+// ============================================================
 
-  async getUserFinancialStatistics(
+async getUserFinancialStatistics(
+  userId
+) {
+
+  const result = await pool.query(`
+    SELECT
+
+      (
+        SELECT COALESCE(
+          SUM(d.amount),
+          0
+        )
+        FROM deposits d
+        WHERE d.user_id = u.id
+      ) AS total_deposit_amount,
+
+      (
+        SELECT COALESCE(
+          SUM(w.amount),
+          0
+        )
+        FROM withdrawals w
+        WHERE w.user_id = u.id
+          AND w.is_pending = FALSE
+          AND w.is_approved = TRUE
+      ) AS approved_withdrawal_amount,
+
+      (
+        SELECT COALESCE(
+          SUM(w.amount),
+          0
+        )
+        FROM withdrawals w
+        WHERE w.user_id = u.id
+          AND w.is_pending = TRUE
+          AND w.is_approved = FALSE
+      ) AS pending_withdrawal_amount,
+
+      (
+        SELECT COALESCE(
+          SUM(w.amount),
+          0
+        )
+        FROM withdrawals w
+        WHERE w.user_id = u.id
+          AND w.is_pending = FALSE
+          AND w.is_approved = FALSE
+          AND w.reject_reason IS NOT NULL
+      ) AS rejected_withdrawal_amount
+
+    FROM users u
+
+    WHERE u.id = $1
+
+    LIMIT 1
+  `, [
     userId
+  ]);
+
+  if (
+    result.rows.length === 0
   ) {
+    return null;
+  }
 
-    const result = await pool.query(`
-      SELECT
+  const row =
+    result.rows[0];
 
-        (
-          SELECT COALESCE(
-            SUM(d.amount),
-            0
-          )
-          FROM deposits d
-          WHERE d.user_id = u.id
-        ) AS total_deposit_amount,
+  return {
 
-        (
-          SELECT COALESCE(
-            SUM(w.amount),
-            0
-          )
-          FROM withdrawals w
-          WHERE w.user_id = u.id
-            AND w.is_pending = FALSE
-            AND w.is_approved = TRUE
-        ) AS approved_withdrawal_amount,
+    totalDepositAmount:
+      Number(
+        row.total_deposit_amount || 0
+      ),
 
-        (
-          SELECT COALESCE(
-            SUM(w.amount),
-            0
-          )
-          FROM withdrawals w
-          WHERE w.user_id = u.id
-            AND w.is_pending = TRUE
-            AND w.is_approved = FALSE
-        ) AS pending_withdrawal_amount,
+    approvedWithdrawalAmount:
+      Number(
+        row.approved_withdrawal_amount || 0
+      ),
 
-        (
-          SELECT COALESCE(
-            SUM(w.amount),
-            0
-          )
-          FROM withdrawals w
-          WHERE w.user_id = u.id
-            AND w.is_pending = FALSE
-            AND w.is_approved = FALSE
-            AND w.reject_reason IS NOT NULL
-        ) AS rejected_withdrawal_amount
+    pendingWithdrawalAmount:
+      Number(
+        row.pending_withdrawal_amount || 0
+      ),
 
-      FROM users u
+    rejectedWithdrawalAmount:
+      Number(
+        row.rejected_withdrawal_amount || 0
+      )
 
-      WHERE u.id = $1
+  };
 
-      LIMIT 1
-    `, [
-      userId
-    ]);
+},
 
-    if (
-      result.rows.length === 0
-    ) {
-      return null;
-    }
+  // ============================================================
+// ADMIN FINANCIAL STATISTICS
+// ============================================================
 
-    const row =
-      result.rows[0];
+async getAdminFinancialStatistics() {
 
-    return {
+  const result = await pool.query(`
+    SELECT
 
-      totalDepositAmount:
-        Number(
-          row.total_deposit_amount || 0
-        ),
-
-      approvedWithdrawalAmount:
-        Number(
-          row.approved_withdrawal_amount || 0
-        ),
-
-      pendingWithdrawalAmount:
-        Number(
-          row.pending_withdrawal_amount || 0
-        ),
-
-      rejectedWithdrawalAmount:
-        Number(
-          row.rejected_withdrawal_amount || 0
+      (
+        SELECT COALESCE(
+          SUM(amount),
+          0
         )
+        FROM deposits
+      ) AS total_deposit_amount,
 
-    };
-
-  },
-
-  // ============================================================
-  // ADMIN FINANCIAL STATISTICS
-  // ============================================================
-
-  async getAdminFinancialStatistics() {
-
-    const result = await pool.query(`
-      SELECT
-
-        (
-          SELECT COALESCE(
-            SUM(amount),
-            0
-          )
-          FROM deposits
-        ) AS total_deposit_amount,
-
-        (
-          SELECT COALESCE(
-            SUM(amount),
-            0
-          )
-          FROM withdrawals
-          WHERE is_pending = FALSE
-            AND is_approved = TRUE
-        ) AS approved_withdrawal_amount,
-
-        (
-          SELECT COALESCE(
-            SUM(amount),
-            0
-          )
-          FROM withdrawals
-          WHERE is_pending = TRUE
-            AND is_approved = FALSE
-        ) AS pending_withdrawal_amount,
-
-        (
-          SELECT COALESCE(
-            SUM(amount),
-            0
-          )
-          FROM withdrawals
-          WHERE is_pending = FALSE
-            AND is_approved = FALSE
-            AND reject_reason IS NOT NULL
-        ) AS rejected_withdrawal_amount
-    `);
-
-    const row =
-      result.rows[0];
-
-    return {
-      totalDepositAmount:
-        Number(
-          row.total_deposit_amount || 0
-        ),
-
-      approvedWithdrawalAmount:
-        Number(
-          row.approved_withdrawal_amount || 0
-        ),
-
-      pendingWithdrawalAmount:
-        Number(
-          row.pending_withdrawal_amount || 0
-        ),
-
-      rejectedWithdrawalAmount:
-        Number(
-          row.rejected_withdrawal_amount || 0
+      (
+        SELECT COALESCE(
+          SUM(amount),
+          0
         )
-    };
+        FROM withdrawals
+        WHERE is_pending = FALSE
+          AND is_approved = TRUE
+      ) AS approved_withdrawal_amount,
 
-  },
+      (
+        SELECT COALESCE(
+          SUM(amount),
+          0
+        )
+        FROM withdrawals
+        WHERE is_pending = TRUE
+          AND is_approved = FALSE
+      ) AS pending_withdrawal_amount,
 
+      (
+        SELECT COALESCE(
+          SUM(amount),
+          0
+        )
+        FROM withdrawals
+        WHERE is_pending = FALSE
+          AND is_approved = FALSE
+          AND reject_reason IS NOT NULL
+      ) AS rejected_withdrawal_amount
+  `);
+
+  const row =
+    result.rows[0];
+
+  return {
+    totalDepositAmount:
+      Number(
+        row.total_deposit_amount || 0
+      ),
+
+    approvedWithdrawalAmount:
+      Number(
+        row.approved_withdrawal_amount || 0
+      ),
+
+    pendingWithdrawalAmount:
+      Number(
+        row.pending_withdrawal_amount || 0
+      ),
+
+    rejectedWithdrawalAmount:
+      Number(
+        row.rejected_withdrawal_amount || 0
+      )
+  };
+
+},
+  
   // ============================================================
-  // ADMIN ROLE MANAGEMENT
-  // ============================================================
+// ADMIN ROLE MANAGEMENT
+// ============================================================
 
-  async setUserAdminRole(userId, role) {
+async setUserAdminRole(userId, role) {
+  const validRoles = [
+    "main",
+    "statistics",
+    "withdrawal",
+    "broadcast"
+  ];
 
-    const validRoles = [
-      "main",
-      "statistics",
-      "withdrawal",
-      "broadcast"
-    ];
+  if (!validRoles.includes(role)) {
+    throw new Error("Invalid admin role");
+  }
 
-    if (!validRoles.includes(role)) {
-      throw new Error("Invalid admin role");
-    }
+  const { rows } = await pool.query(
+    `
+    UPDATE users
+    SET
+      is_admin = TRUE,
+      admin_role = $1
+    WHERE id = $2
+    RETURNING
+      id,
+      telegram_id,
+      name,
+      phone,
+      is_admin,
+      admin_role,
+      is_active,
+      is_banned,
+      is_blocked
+    `,
+    [role, userId]
+  );
 
-    const { rows } = await pool.query(
+  return rows[0] || null;
+},
+
+async removeUserAdminRole(userId) {
+  const { rows } = await pool.query(
+    `
+    UPDATE users
+    SET
+      is_admin = FALSE,
+      admin_role = NULL
+    WHERE id = $1
+    RETURNING
+      id,
+      telegram_id,
+      name,
+      phone,
+      is_admin,
+      admin_role,
+      is_active,
+      is_banned,
+      is_blocked
+    `,
+    [userId]
+  );
+
+  return rows[0] || null;
+},
+
+  // =========================
+// ADMIN USER MANAGEMENT
+// =========================
+
+async getUserByPhoneForAdmin(phone) {
+
+  const normalizedPhone =
+    normalizeEthiopianPhone(phone);
+
+  const result =
+    await pool.query(
       `
-      UPDATE users
-      SET
-        is_admin = TRUE,
-        admin_role = $1
-      WHERE id = $2
-        AND is_active = TRUE
-        AND is_banned = FALSE
-        AND is_blocked = FALSE
-      RETURNING
-        id,
-        telegram_id,
-        name,
-        phone,
-        is_admin,
-        admin_role,
-        is_active,
-        is_banned,
-        is_blocked
-      `,
-      [role, userId]
-    );
-
-    return rows[0] || null;
-  },
-
-  async removeUserAdminRole(userId) {
-
-    const { rows } = await pool.query(
-      `
-      UPDATE users
-      SET
-        is_admin = FALSE,
-        admin_role = NULL
-      WHERE id = $1
-      RETURNING
-        id,
-        telegram_id,
-        name,
-        phone,
-        is_admin,
-        admin_role,
-        is_active,
-        is_banned,
-        is_blocked
-      `,
-      [userId]
-    );
-
-    return rows[0] || null;
-  },
-
-  // ============================================================
-  // ADMIN USER MANAGEMENT
-  // ============================================================
-
-  async getUserByPhoneForAdmin(phone) {
-
-    const normalizedPhone =
-      normalizeEthiopianPhone(phone);
-
-    const result =
-      await pool.query(
-        `
-        SELECT
-          id,
-          telegram_id,
-          name,
-          phone,
-          balance,
-          is_active,
-          is_blocked,
-          is_admin,
-          admin_role
-        FROM users
-        WHERE phone = $1
-        LIMIT 1
-        `,
-        [
-          normalizedPhone
-        ]
-      );
-
-    return result.rows[0] || null;
-  },
-
-  async setUserBlocked(userId, isBlocked) {
-
-    const result = await pool.query(
-      `
-      UPDATE users
-      SET is_blocked = $1
-      WHERE id = $2
-        AND is_admin = FALSE
-      RETURNING
+      SELECT
         id,
         telegram_id,
         name,
         phone,
         balance,
-        is_blocked,
         is_active,
-        is_admin
+        is_blocked,
+        is_admin,
+        admin_role
+      FROM users
+      WHERE phone = $1
+      AND is_active = TRUE      
+      LIMIT 1
       `,
       [
-        isBlocked,
-        userId
+        normalizedPhone
       ]
     );
 
-    return result.rows[0] || null;
-  },
+  return result.rows[0] || null;
+},
 
+async setUserBlocked(userId, isBlocked) {
+
+  const result = await pool.query(
+    `
+    UPDATE users
+    SET is_blocked = $1
+    WHERE id = $2
+      AND is_admin = FALSE
+    RETURNING
+      id,
+      telegram_id,
+      name,
+      phone,
+      balance,
+      is_blocked,
+      is_active,
+      is_admin
+    `,
+    [
+      isBlocked,
+      userId
+    ]
+  );
+
+  return result.rows[0] || null;
+},
   async reactivateUserByTelegramId(telegramId) {
 
-    const result = await pool.query(
-      `
-      UPDATE users
-      SET is_active = TRUE
-      WHERE telegram_id = $1
-        AND is_banned = FALSE
-        AND is_blocked = FALSE
-      RETURNING *
-      `,
-      [telegramId]
-    );
+  const result = await pool.query(
+    `
+    UPDATE users
+    SET is_active = TRUE
+    WHERE telegram_id = $1
+    RETURNING *
+    `,
+    [telegramId]
+  );
 
-    return result.rows[0] || null;
-  },
-
+  return result.rows[0] || null;
+},
   async getUserByTelegramIdIncludingInactive(telegramId) {
 
-    const result = await pool.query(
-      `
-      SELECT
-        id,
-        telegram_id,
-        name,
-        phone,
-        balance,
-        is_admin,
-        is_active,
-        is_banned,
-        is_blocked
-      FROM users
-      WHERE telegram_id = $1
-      LIMIT 1
-      `,
-      [telegramId]
-    );
+  const result = await pool.query(
+    `
+    SELECT
+      id,
+      telegram_id,
+      name,
+      phone,
+      balance,
+      is_admin,
+      is_active,
+      is_banned,
+      is_blocked
+    FROM users
+    WHERE telegram_id = $1
+    LIMIT 1
+    `,
+    [telegramId]
+  );
 
-    return result.rows[0] || null;
-  },
-
+  return result.rows[0] || null;
+},
   async deactivateUser(telegramId) {
 
-    const result = await pool.query(
-      `
-      UPDATE users
-      SET is_active = FALSE
-      WHERE telegram_id = $1
-        AND is_admin = FALSE
-      RETURNING *
-      `,
-      [telegramId]
-    );
+  const result = await pool.query(
+    `
+    UPDATE users
+    SET is_active = FALSE
+    WHERE telegram_id = $1
+    RETURNING *
+    `,
+    [telegramId]
+  );
 
-    return result.rows[0] || null;
-  },
-
+  return result.rows[0] || null;
+},
   // ============================================================
-  // USER STATISTICS
-  // ============================================================
+// USER STATISTICS
+// ============================================================
 
-  async getUserStatistics(telegramId) {
+async getUserStatistics(telegramId) {
+  const result = await pool.query(
+    `
+    SELECT
+      (
+        SELECT COUNT(*)
+        FROM deposits d
+        WHERE d.user_id = u.id
+      ) AS total_deposits,
 
-    const result = await pool.query(
-      `
-      SELECT
-        (
-          SELECT COUNT(*)
-          FROM deposits d
-          WHERE d.user_id = u.id
-        ) AS total_deposits,
+      (
+        SELECT COUNT(*)
+        FROM withdrawals w
+        WHERE w.user_id = u.id
+          AND w.is_pending = TRUE
+          AND w.is_approved = FALSE
+      ) AS pending_withdrawals,
 
-        (
-          SELECT COUNT(*)
-          FROM withdrawals w
-          WHERE w.user_id = u.id
-            AND w.is_pending = TRUE
-            AND w.is_approved = FALSE
-        ) AS pending_withdrawals,
+      (
+        SELECT COUNT(*)
+        FROM withdrawals w
+        WHERE w.user_id = u.id
+          AND w.is_pending = FALSE
+          AND w.is_approved = TRUE
+      ) AS approved_withdrawals,
 
-        (
-          SELECT COUNT(*)
-          FROM withdrawals w
-          WHERE w.user_id = u.id
-            AND w.is_pending = FALSE
-            AND w.is_approved = TRUE
-        ) AS approved_withdrawals,
+      (
+        SELECT COUNT(*)
+        FROM withdrawals w
+        WHERE w.user_id = u.id
+          AND w.is_pending = FALSE
+          AND w.is_approved = FALSE
+      ) AS rejected_withdrawals,
 
-        (
-          SELECT COUNT(*)
-          FROM withdrawals w
-          WHERE w.user_id = u.id
-            AND w.is_pending = FALSE
-            AND w.is_approved = FALSE
-        ) AS rejected_withdrawals,
+      (
+        SELECT COUNT(*)
+        FROM transfers t
+        WHERE t.sender_telegram_id = u.telegram_id
+           OR t.recipient_telegram_id = u.telegram_id
+      ) AS total_transfers
 
-        (
-          SELECT COUNT(*)
-          FROM transfers t
-          WHERE t.sender_telegram_id = u.telegram_id
-             OR t.recipient_telegram_id = u.telegram_id
-        ) AS total_transfers
+    FROM users u
+    WHERE u.telegram_id = $1
+    LIMIT 1
+    `,
+    [telegramId]
+  );
 
-      FROM users u
+  if (result.rows.length === 0) {
+    return null;
+  }
 
-      WHERE u.telegram_id = $1
+  const row = result.rows[0];
 
-      LIMIT 1
-      `,
-      [telegramId]
-    );
-
-    if (result.rows.length === 0) {
-      return null;
-    }
-
-    const row =
-      result.rows[0];
-
-    return {
-      totalDeposits:
-        Number(
-          row.total_deposits || 0
-        ),
-
-      pendingWithdrawals:
-        Number(
-          row.pending_withdrawals || 0
-        ),
-
-      approvedWithdrawals:
-        Number(
-          row.approved_withdrawals || 0
-        ),
-
-      rejectedWithdrawals:
-        Number(
-          row.rejected_withdrawals || 0
-        ),
-
-      totalTransfers:
-        Number(
-          row.total_transfers || 0
-        )
-    };
-  },
+  return {
+    totalDeposits: Number(row.total_deposits || 0),
+    pendingWithdrawals: Number(row.pending_withdrawals || 0),
+    approvedWithdrawals: Number(row.approved_withdrawals || 0),
+    rejectedWithdrawals: Number(row.rejected_withdrawals || 0),
+    totalTransfers: Number(row.total_transfers || 0)
+  };
+},
 
   // ============================================================
   // USER OPERATIONS
   // ============================================================
 
-  async registerUser(
-    telegramId,
-    name,
-    phone
-  ) {
+  async registerUser(telegramId, name, phone) {
 
     const normalizedPhone =
       normalizeEthiopianPhone(phone);
@@ -561,215 +519,232 @@ module.exports = {
       );
     }
 
-    const client =
-      await pool.connect();
+    const client = await pool.connect();
 
     try {
 
       await client.query("BEGIN");
 
-      // Check Telegram ID first
-      const telegramResult =
+      // Check Telegram account
+      const telegramResult = await client.query(
+        `
+        SELECT *
+        FROM users
+        WHERE telegram_id = $1
+        LIMIT 1
+        FOR UPDATE
+        `,
+        [telegramId]
+      );
+
+      if (telegramResult.rows.length > 0) {
+
+        await client.query("ROLLBACK");
+
+        return {
+          status: "existing_telegram",
+          user: telegramResult.rows[0]
+        };
+      }
+
+      // Check normalized phone
+      const phoneResult = await client.query(
+        `
+        SELECT *
+        FROM users
+        WHERE phone = $1
+        LIMIT 1
+        FOR UPDATE
+        `,
+        [normalizedPhone]
+      );
+
+     // Existing account
+if (phoneResult.rows.length > 0) {
+
+  const existingUser =
+    phoneResult.rows[0];
+
+  const updated =
+    await client.query(
+      `
+      UPDATE users
+      SET
+        telegram_id = $1,
+        name = $2,
+        is_active = TRUE
+      WHERE id = $3
+      RETURNING *
+      `,
+      [
+        telegramId,
+        name,
+        existingUser.id
+      ]
+    );
+
+  await client.query("COMMIT");
+
+  return {
+    status: "reconnected",
+    user: updated.rows[0]
+  };
+}
+      // New account
+      const newUser = await client.query(
+        `
+        INSERT INTO users (
+          telegram_id,
+          name,
+          phone,
+          balance,
+          is_active,
+          is_banned,
+          is_admin
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          0,
+          TRUE,
+          FALSE,
+          FALSE
+        )
+        RETURNING *
+        `,
+        [
+          telegramId,
+          name,
+          normalizedPhone
+        ]
+      );
+
+      await client.query("COMMIT");
+
+      return {
+        status: "new",
+        user: newUser.rows[0]
+      };
+
+    } catch (err) {
+
+      await client.query("ROLLBACK");
+      throw err;
+
+    } finally {
+
+      client.release();
+
+    }
+  },
+
+  async reconnectUserByPhone(
+    telegramId,
+    name,
+    phone
+  ) {
+
+    const client = await pool.connect();
+
+    try {
+
+      await client.query("BEGIN");
+
+      const { rows } = await client.query(
+        `
+        SELECT *
+        FROM users
+        WHERE RIGHT(
+          REGEXP_REPLACE(phone, '[^0-9]', '', 'g'),
+          9
+        ) =
+        RIGHT(
+          REGEXP_REPLACE($1, '[^0-9]', '', 'g'),
+          9
+        )
+        LIMIT 1
+        FOR UPDATE
+        `,
+        [phone]
+      );
+
+      if (rows.length === 0) {
+
+        await client.query("ROLLBACK");
+
+        return {
+          status: "not_found"
+        };
+      }
+
+      const user = rows[0];
+
+      // Same Telegram account
+      if (
+        String(user.telegram_id) ===
+        String(telegramId)
+      ) {
+
+        await client.query("ROLLBACK");
+
+        return {
+          status: "same_account",
+          user
+        };
+      }
+
+      // Make sure new Telegram ID isn't
+      // connected to another user
+      const existingTelegram =
         await client.query(
           `
           SELECT *
           FROM users
           WHERE telegram_id = $1
-          FOR UPDATE
+          LIMIT 1
           `,
           [telegramId]
         );
 
-      const telegramUser =
-        telegramResult.rows[0];
+      if (existingTelegram.rows.length > 0) {
 
-      if (telegramUser) {
-
-        if (
-          telegramUser.is_banned
-        ) {
-
-          await client.query(
-            "ROLLBACK"
-          );
-
-          return {
-            status: "banned",
-            user: telegramUser
-          };
-        }
-
-        if (
-          telegramUser.is_blocked
-        ) {
-
-          await client.query(
-            "ROLLBACK"
-          );
-
-          return {
-            status: "blocked",
-            user: telegramUser
-          };
-        }
-
-        const updateResult =
-          await client.query(
-            `
-            UPDATE users
-            SET
-              name = $1,
-              phone = $2,
-              is_active = TRUE
-            WHERE id = $3
-            RETURNING *
-            `,
-            [
-              name,
-              normalizedPhone,
-              telegramUser.id
-            ]
-          );
-
-        await client.query(
-          "COMMIT"
-        );
+        await client.query("ROLLBACK");
 
         return {
-          status: "existing",
-          user:
-            updateResult.rows[0]
+          status: "telegram_already_used"
         };
       }
 
-      // Check whether phone already belongs to
-      // another Telegram account.
-      const phoneResult =
-        await client.query(
-          `
-          SELECT *
-          FROM users
-          WHERE phone = $1
-          FOR UPDATE
-          `,
-          [normalizedPhone]
-        );
-
-      const phoneUser =
-        phoneResult.rows[0];
-
-      if (phoneUser) {
-
-        if (
-          phoneUser.is_banned
-        ) {
-
-          await client.query(
-            "ROLLBACK"
-          );
-
-          return {
-            status: "banned",
-            user: phoneUser
-          };
-        }
-
-        if (
-          phoneUser.is_blocked
-        ) {
-
-          await client.query(
-            "ROLLBACK"
-          );
-
-          return {
-            status: "blocked",
-            user: phoneUser
-          };
-        }
-
-        const reconnectResult =
-          await client.query(
-            `
-            UPDATE users
-            SET
-              telegram_id = $1,
-              name = $2,
-              is_active = TRUE
-            WHERE id = $3
-            RETURNING *
-            `,
-            [
-              telegramId,
-              name,
-              phoneUser.id
-            ]
-          );
-
-        await client.query(
-          "COMMIT"
-        );
-
-        return {
-          status: "reconnected",
-          user:
-            reconnectResult.rows[0]
-        };
-      }
-
-      // Create new user
-      const insertResult =
-        await client.query(
-          `
-          INSERT INTO users (
-            telegram_id,
-            name,
-            phone,
-            balance,
-            is_active,
-            is_banned,
-            is_blocked,
-            is_admin
-          )
-          VALUES (
-            $1,
-            $2,
-            $3,
-            0,
-            TRUE,
-            FALSE,
-            FALSE,
-            FALSE
-          )
-          RETURNING *
-          `,
-          [
-            telegramId,
-            name,
-            normalizedPhone
-          ]
-        );
-
-      await client.query(
-        "COMMIT"
+      const result = await client.query(
+        `
+        UPDATE users
+        SET
+          telegram_id = $1,
+          name = $2
+        WHERE id = $3
+        RETURNING *
+        `,
+        [
+          telegramId,
+          name,
+          user.id
+        ]
       );
 
+      await client.query("COMMIT");
+
       return {
-        status: "created",
-        user:
-          insertResult.rows[0]
+        status: "reconnected",
+        user: result.rows[0]
       };
 
     } catch (err) {
 
-      try {
-        await client.query(
-          "ROLLBACK"
-        );
-      } catch (_) {}
+      await client.query("ROLLBACK");
 
       console.error(
-        "registerUser error:",
+        "reconnectUserByPhone error:",
         err
       );
 
@@ -782,1172 +757,542 @@ module.exports = {
     }
   },
 
-  // ============================================================
-  // RECONNECT USER BY PHONE
-  // ============================================================
+// ============================================================
+// ADMIN STATISTICS
+// ============================================================
 
-  async reconnectUserByPhone(
-    telegramId,
-    phone
-  ) {
+async getAdminStatistics() {
 
-    const normalizedPhone =
-      normalizeEthiopianPhone(phone);
+  const result = await pool.query(`
+    SELECT
 
-    if (!normalizedPhone) {
+      -- WITHDRAWALS
+      (
+        SELECT COUNT(*)
+        FROM withdrawals
+        WHERE is_pending = TRUE
+          AND is_approved = FALSE
+      ) AS pending_withdrawals,
+
+      (
+        SELECT COUNT(*)
+        FROM withdrawals
+        WHERE is_pending = FALSE
+          AND is_approved = TRUE
+      ) AS approved_withdrawals,
+
+      (
+        SELECT COUNT(*)
+        FROM withdrawals
+        WHERE is_pending = FALSE
+          AND is_approved = FALSE
+          AND reject_reason IS NOT NULL
+      ) AS rejected_withdrawals,
+
+
+      -- TRANSFERS
+      (
+        SELECT COUNT(*)
+        FROM transfers
+      ) AS total_transfers,
+
+
+      -- USERS
+      (
+        SELECT COUNT(*)
+        FROM users
+        WHERE is_active = TRUE
+          AND is_blocked = FALSE
+      ) AS active_users,
+
+      (
+        SELECT COUNT(*)
+        FROM users
+        WHERE is_active = FALSE
+      ) AS inactive_users,
+
+      (
+        SELECT COUNT(*)
+        FROM users
+        WHERE is_blocked = TRUE
+      ) AS blocked_users,
+
+
+      -- ADMINISTRATORS
+      (
+        SELECT COUNT(*)
+        FROM users
+        WHERE is_admin = TRUE
+          AND is_active = TRUE
+          AND is_banned = FALSE
+      ) AS administrators
+  `);
+
+  const row = result.rows[0];
+
+  return {
+    pendingWithdrawals:
+      Number(row.pending_withdrawals || 0),
+
+    approvedWithdrawals:
+      Number(row.approved_withdrawals || 0),
+
+    rejectedWithdrawals:
+      Number(row.rejected_withdrawals || 0),
+
+    totalTransfers:
+      Number(row.total_transfers || 0),
+
+    activeUsers:
+      Number(row.active_users || 0),
+
+    inactiveUsers:
+      Number(row.inactive_users || 0),
+
+    blockedUsers:
+      Number(row.blocked_users || 0),
+
+    administrators:
+      Number(row.administrators || 0)
+  };
+},
+
+ async getUserByTelegramId(telegramId) {
+    const result = await pool.query(
+        `
+        SELECT
+            id,
+            telegram_id,
+            name,
+            phone,
+            balance,
+            is_admin,
+            admin_role,
+            is_active,
+            is_banned,
+            is_blocked
+        FROM users
+        WHERE telegram_id = $1
+        LIMIT 1
+        `,
+        [telegramId]
+    );
+
+    return result.rows[0] || null;
+},
+  
+  async getUserByPhone(phone) {
+
+    const digits =
+      String(phone).replace(/\D/g, "");
+
+    if (digits.length < 9) {
       return null;
     }
 
-    const result =
-      await pool.query(
-        `
-        UPDATE users
-        SET
-          telegram_id = $1,
-          is_active = TRUE
-        WHERE phone = $2
-          AND is_banned = FALSE
-          AND is_blocked = FALSE
-        RETURNING *
-        `,
-        [
-          telegramId,
-          normalizedPhone
-        ]
-      );
+    const last9 = digits.slice(-9);
 
-    return result.rows[0] || null;
+    const { rows } = await pool.query(
+      `
+      SELECT
+        id,
+        telegram_id,
+        name,
+        phone,
+        balance,
+        is_banned,
+        is_active,
+        is_admin
+      FROM users
+      WHERE RIGHT(
+        REGEXP_REPLACE(
+          phone,
+          '[^0-9]',
+          '',
+          'g'
+        ),
+        9
+      ) = $1
+        AND is_active = TRUE
+        AND is_banned = FALSE
+      LIMIT 1
+      `,
+      [last9]
+    );
+
+    return rows[0] || null;
   },
+  async isAdmin(telegramId) {
+  const result = await pool.query(
+    `
+    SELECT id
+    FROM users
+    WHERE telegram_id = $1
+      AND is_admin = TRUE
+    LIMIT 1
+    `,
+    [telegramId]
+  );
+
+  return result.rows.length > 0;
+},
 
   // ============================================================
-  // GET USER
+  // ADMIN OPERATIONS
   // ============================================================
 
-  async getUserByTelegramId(
-    telegramId
-  ) {
+  /**
+   * Find an admin using the users.is_admin column.
+   *
+   * No ADMIN_ID is required.
+   */
 
-    const result =
-      await pool.query(
-        `
-        SELECT *
-        FROM users
-        WHERE telegram_id = $1
-          AND is_active = TRUE
-        LIMIT 1
-        `,
-        [telegramId]
-      );
-
-    return result.rows[0] || null;
-  },
-
-  async getUserById(
-    userId
-  ) {
-
-    const result =
-      await pool.query(
-        `
-        SELECT *
-        FROM users
-        WHERE id = $1
-        LIMIT 1
-        `,
-        [userId]
-      );
-
-    return result.rows[0] || null;
-  },
-
-  // ============================================================
-  // ADMIN CHECK
-  // ============================================================
-
-  async isAdmin(
-    telegramId
-  ) {
-
-    const result =
-      await pool.query(
+async getAdminByTelegramId(telegramId) {
+    const { rows } = await pool.query(
         `
         SELECT
-          is_admin,
-          admin_role
+            id,
+            telegram_id,
+            name,
+            phone,
+            is_admin,
+            admin_role,
+            is_active,
+            is_banned,
+            is_blocked
         FROM users
         WHERE telegram_id = $1
+          AND is_admin = TRUE
           AND is_active = TRUE
           AND is_banned = FALSE
           AND is_blocked = FALSE
-          AND is_admin = TRUE
         LIMIT 1
         `,
         [telegramId]
-      );
+    );
 
-    return result.rows[0] || null;
+    return rows[0] || null;
+},
+
+  async isAdmin(telegramId) {
+
+    const { rows } = await pool.query(
+      `
+      SELECT id
+      FROM users
+      WHERE telegram_id = $1
+        AND is_admin = TRUE
+        AND is_active = TRUE
+        AND is_banned = FALSE
+      LIMIT 1
+      `,
+      [telegramId]
+    );
+
+    return rows.length > 0;
   },
-
-  // ============================================================
-  // GET ALL ADMINS
-  // ============================================================
 
   async getAllAdmins() {
 
-    const result =
-      await pool.query(
+    const { rows } = await pool.query(
+      `
+      SELECT
+        id,
+        telegram_id,
+        name,
+        phone,
+        is_admin,
+        is_active
+      FROM users
+      WHERE is_admin = TRUE
+        AND is_active = TRUE
+        AND is_banned = FALSE
+      ORDER BY id
+      `
+    );
+
+    return rows;
+  },
+
+  // ============================================================
+  // BALANCE
+  // ============================================================
+
+  async updateBalance(userId, amount) {
+
+    const { rows } = await pool.query(
+      `
+      UPDATE users
+      SET balance = $1
+      WHERE id = $2
+      RETURNING balance
+      `,
+      [
+        amount,
+        userId
+      ]
+    );
+
+    return rows[0]?.balance;
+  },
+
+  async deductStake(userId, amount, gameId) {
+
+    const { rows } = await pool.query(
+      `
+      SELECT deduct_stake($1,$2,$3)
+      `,
+      [
+        userId,
+        amount,
+        gameId
+      ]
+    );
+
+    return rows[0].deduct_stake;
+  },
+
+  async awardWin(userId, amount, gameId) {
+
+    const { rows } = await pool.query(
+      `
+      SELECT award_win($1,$2,$3)
+      `,
+      [
+        userId,
+        amount,
+        gameId
+      ]
+    );
+
+    return rows[0].award_win;
+  },
+
+  // ============================================================
+  // WITHDRAWALS
+  // ============================================================
+
+  async createWithdrawal(
+    telegramId,
+    paymentMethodId,
+    accountNumber,
+    amount
+  ) {
+
+    const client = await pool.connect();
+
+    try {
+
+      await client.query("BEGIN");
+
+      // Find and lock user
+      const userResult = await client.query(
         `
         SELECT
           id,
           telegram_id,
           name,
-          phone,
-          is_admin,
-          admin_role,
-          is_active
+          balance
         FROM users
-        WHERE is_admin = TRUE
+        WHERE telegram_id = $1
           AND is_active = TRUE
           AND is_banned = FALSE
-          AND is_blocked = FALSE
-        ORDER BY
-          CASE
-            WHEN admin_role = 'main'
-              THEN 1
-            WHEN admin_role = 'statistics'
-              THEN 2
-            WHEN admin_role = 'withdrawal'
-              THEN 3
-            WHEN admin_role = 'broadcast'
-              THEN 4
-            ELSE 5
-          END,
-          name
-        `
-      );
-
-    return result.rows;
-  },
-
-  // ============================================================
-  // ADMIN STATISTICS
-  // ============================================================
-
-  async getAdminStatistics() {
-
-    const result = await pool.query(`
-      SELECT
-
-        (
-          SELECT COUNT(*)
-          FROM withdrawals
-          WHERE is_pending = TRUE
-            AND is_approved = FALSE
-        ) AS pending_withdrawals,
-
-        (
-          SELECT COUNT(*)
-          FROM withdrawals
-          WHERE is_pending = FALSE
-            AND is_approved = TRUE
-        ) AS approved_withdrawals,
-
-        (
-          SELECT COUNT(*)
-          FROM withdrawals
-          WHERE is_pending = FALSE
-            AND is_approved = FALSE
-            AND reject_reason IS NOT NULL
-        ) AS rejected_withdrawals,
-
-        (
-          SELECT COUNT(*)
-          FROM transfers
-        ) AS total_transfers,
-
-        (
-          SELECT COUNT(*)
-          FROM users
-          WHERE is_active = TRUE
-            AND is_blocked = FALSE
-        ) AS active_users,
-
-        (
-          SELECT COUNT(*)
-          FROM users
-          WHERE is_active = FALSE
-        ) AS inactive_users,
-
-        (
-          SELECT COUNT(*)
-          FROM users
-          WHERE is_blocked = TRUE
-        ) AS blocked_users,
-
-        (
-          SELECT COUNT(*)
-          FROM users
-          WHERE is_admin = TRUE
-            AND is_active = TRUE
-            AND is_banned = FALSE
-            AND is_blocked = FALSE
-        ) AS administrators
-    `);
-
-    const row = result.rows[0];
-
-    return {
-      pendingWithdrawals:
-        Number(row.pending_withdrawals || 0),
-
-      approvedWithdrawals:
-        Number(row.approved_withdrawals || 0),
-
-      rejectedWithdrawals:
-        Number(row.rejected_withdrawals || 0),
-
-      totalTransfers:
-        Number(row.total_transfers || 0),
-
-      activeUsers:
-        Number(row.active_users || 0),
-
-      inactiveUsers:
-        Number(row.inactive_users || 0),
-
-      blockedUsers:
-        Number(row.blocked_users || 0),
-
-      administrators:
-        Number(row.administrators || 0)
-    };
-  },
-
-  // ============================================================
-  // PAYMENT METHODS
-  // ============================================================
-
-  async getActivePaymentMethods() {
-
-    const { rows } =
-      await pool.query(
-        `
-        SELECT
-          id,
-          name,
-          amharic_name,
-          type,
-          emoji,
-          is_active
-        FROM payment_methods
-        WHERE is_active = TRUE
-        ORDER BY id
-        `
-      );
-
-    return rows;
-  },
-
-  async getPaymentMethodById(
-    paymentMethodId
-  ) {
-
-    const { rows } =
-      await pool.query(
-        `
-        SELECT
-          id,
-          name,
-          amharic_name,
-          type,
-          emoji,
-          is_active
-        FROM payment_methods
-        WHERE id = $1
-        LIMIT 1
+        FOR UPDATE
         `,
-        [paymentMethodId]
+        [telegramId]
       );
 
-    return rows[0] || null;
-  },
+      if (userResult.rows.length === 0) {
 
-  // ============================================================
-  // PAYMENT ACCOUNTS
-  // ============================================================
+        await client.query("ROLLBACK");
 
-  async getActivePaymentAccounts(
-    paymentMethodId
-  ) {
-
-    const { rows } =
-      await pool.query(
-        `
-        SELECT
-          pa.id,
-          pa.payment_method_id,
-          pa.account_name,
-          pa.account_number,
-          pa.balance,
-          pa.is_active,
-          pa.is_removed,
-
-          pm.name AS payment_method,
-          pm.amharic_name AS payment_method_amharic,
-          pm.type AS payment_method_type,
-          pm.emoji AS payment_method_emoji
-
-        FROM payment_accounts pa
-
-        INNER JOIN payment_methods pm
-          ON pm.id = pa.payment_method_id
-
-        WHERE pa.payment_method_id = $1
-          AND pa.is_active = TRUE
-          AND COALESCE(pa.is_removed, FALSE) = FALSE
-          AND pm.is_active = TRUE
-
-        ORDER BY pa.id
-        `,
-        [paymentMethodId]
-      );
-
-    return rows;
-  },
-
-  async getPaymentAccountById(
-    paymentAccountId
-  ) {
-
-    const { rows } =
-      await pool.query(
-        `
-        SELECT
-          pa.id,
-          pa.payment_method_id,
-          pa.account_name,
-          pa.account_number,
-          pa.balance,
-          pa.is_active,
-          pa.is_removed,
-
-          pm.name AS payment_method,
-          pm.amharic_name AS payment_method_amharic,
-          pm.type AS payment_method_type,
-          pm.emoji AS payment_method_emoji
-
-        FROM payment_accounts pa
-
-        INNER JOIN payment_methods pm
-          ON pm.id = pa.payment_method_id
-
-        WHERE pa.id = $1
-        LIMIT 1
-        `,
-        [paymentAccountId]
-      );
-
-    return rows[0] || null;
-  },
-
-  // ============================================================
-  // CREATE PAYMENT ACCOUNT
-  // ============================================================
-
-  async createPaymentAccount(
-    paymentMethodId,
-    accountName,
-    accountNumber,
-    balance = 0
-  ) {
-
-    const methodResult =
-      await pool.query(
-        `
-        SELECT
-          id,
-          name,
-          type,
-          is_active
-        FROM payment_methods
-        WHERE id = $1
-          AND is_active = TRUE
-        LIMIT 1
-        `,
-        [paymentMethodId]
-      );
-
-    if (
-      methodResult.rows.length === 0
-    ) {
-      throw new Error(
-        "Payment method not found or inactive."
-      );
-    }
-
-    const method =
-      methodResult.rows[0];
-
-    let cleanAccount =
-      String(accountNumber || "")
-        .trim();
-
-    /*
-     * Only mobile payment accounts are
-     * normalized by removing spaces,
-     * dashes and parentheses.
-     *
-     * Bank accounts / other payment types
-     * keep their supplied format.
-     */
-    if (
-      String(method.type || "")
-        .toLowerCase() === "mobile" ||
-      String(method.type || "")
-        .includes("ሞባይል")
-    ) {
-      cleanAccount =
-        cleanAccount.replace(
-          /[\s\-()]/g,
-          ""
-        );
-    }
-
-    if (!cleanAccount) {
-      throw new Error(
-        "Account number is required."
-      );
-    }
-
-    const accountNameClean =
-      String(accountName || "")
-        .trim();
-
-    if (!accountNameClean) {
-      throw new Error(
-        "Account name is required."
-      );
-    }
-
-    const initialBalance =
-      Number(balance);
-
-    if (
-      !Number.isFinite(initialBalance) ||
-      initialBalance < 0
-    ) {
-      throw new Error(
-        "Invalid initial balance."
-      );
-    }
-
-    // Prevent duplicate active account
-    // under the same payment method.
-    const duplicateResult =
-      await pool.query(
-        `
-        SELECT id
-        FROM payment_accounts
-        WHERE payment_method_id = $1
-          AND account_number = $2
-          AND COALESCE(is_removed, FALSE) = FALSE
-        LIMIT 1
-        `,
-        [
-          paymentMethodId,
-          cleanAccount
-        ]
-      );
-
-    if (
-      duplicateResult.rows.length > 0
-    ) {
-      throw new Error(
-        "This payment account already exists."
-      );
-    }
-
-    const { rows } =
-      await pool.query(
-        `
-        INSERT INTO payment_accounts (
-          payment_method_id,
-          account_name,
-          account_number,
-          balance,
-          is_active,
-          is_removed
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          TRUE,
-          FALSE
-        )
-        RETURNING
-          id,
-          payment_method_id,
-          account_name,
-          account_number,
-          balance,
-          is_active,
-          is_removed
-        `,
-        [
-          paymentMethodId,
-          accountNameClean,
-          cleanAccount,
-          initialBalance
-        ]
-      );
-
-    return rows[0] || null;
-  },
-
-  // ============================================================
-  // TOGGLE PAYMENT ACCOUNT
-  // ============================================================
-
-  async togglePaymentAccount(
-    paymentAccountId
-  ) {
-
-    const { rows } =
-      await pool.query(
-        `
-        UPDATE payment_accounts
-
-        SET
-          is_active =
-            NOT COALESCE(is_active, FALSE)
-
-        WHERE id = $1
-          AND COALESCE(is_removed, FALSE) = FALSE
-
-        RETURNING
-          id,
-          payment_method_id,
-          account_name,
-          account_number,
-          balance,
-          is_active,
-          is_removed
-        `,
-        [paymentAccountId]
-      );
-
-    return rows[0] || null;
-  },
-
-  async removePaymentAccount(
-    paymentAccountId
-  ) {
-
-    const { rows } =
-      await pool.query(
-        `
-        UPDATE payment_accounts
-
-        SET
-          is_active = FALSE,
-          is_removed = TRUE
-
-        WHERE id = $1
-
-        RETURNING
-          id,
-          payment_method_id,
-          account_name,
-          account_number,
-          balance,
-          is_active,
-          is_removed
-        `,
-        [paymentAccountId]
-      );
-
-    return rows[0] || null;
-  },
-
-  // ============================================================
-  // FIND TELEBIRR PAYMENT ACCOUNT
-  // ============================================================
-
-  async findActivePaymentAccountByLast4(
-    last4
-  ) {
-
-    const cleanLast4 =
-      String(last4 || "")
-        .replace(/\D/g, "")
-        .slice(-4);
-
-    if (
-      cleanLast4.length !== 4
-    ) {
-      return null;
-    }
-
-    const { rows } =
-      await pool.query(
-        `
-        SELECT
-          pa.id,
-          pa.payment_method_id,
-          pa.account_name,
-          pa.account_number,
-          pa.balance,
-          pa.is_active,
-          pa.is_removed,
-
-          pm.name AS payment_method,
-          pm.amharic_name AS payment_method_amharic,
-          pm.type AS payment_method_type,
-          pm.emoji AS payment_method_emoji
-
-        FROM payment_accounts pa
-
-        INNER JOIN payment_methods pm
-          ON pm.id = pa.payment_method_id
-
-        WHERE pa.is_active = TRUE
-          AND COALESCE(pa.is_removed, FALSE) = FALSE
-          AND pm.is_active = TRUE
-
-          AND (
-            LOWER(COALESCE(pm.name, '')) =
-              LOWER('Telebirr')
-
-            OR LOWER(
-              COALESCE(pm.type, '')
-            ) = LOWER('mobile')
-
-            OR COALESCE(pm.type, '') LIKE '%ሞባይል%'
-          )
-
-          AND RIGHT(
-            REGEXP_REPLACE(
-              pa.account_number,
-              '[^0-9]',
-              '',
-              'g'
-            ),
-            4
-          ) = $1
-
-        ORDER BY pa.id
-
-        LIMIT 1
-        `,
-        [cleanLast4]
-      );
-
-    return rows[0] || null;
-  },
-
-  // ============================================================
-  // DEPOSIT APPROVAL
-  //
-  // IMPORTANT:
-  // This operation is transactional.
-  //
-  // It locks:
-  //   1. User
-  //   2. Payment account
-  //
-  // Then:
-  //   - checks duplicate receipt
-  //   - increases user balance
-  //   - inserts deposit
-  //   - increases payment account balance
-  //
-  // Everything commits together.
-  // ============================================================
-
-  async approveDepositttttttttttt(
-    receipt,
-    telegramId
-  ) {
-
-    if (!receipt) {
-      throw new Error(
-        "Receipt data is missing."
-      );
-    }
-
-    const receiptNo =
-      String(
-        receipt.receiptNo ||
-        receipt.receiptNumber ||
-        ""
-      ).trim();
-
-    if (!receiptNo) {
-      throw new Error(
-        "Receipt number is missing."
-      );
-    }
-
-    const creditedAccount =
-      String(
-        receipt.creditedPartyAccountNo ||
-        receipt.creditedPartyAccount ||
-        ""
-      ).trim();
-
-    if (!creditedAccount) {
-      throw new Error(
-        "Credited payment account is missing."
-      );
-    }
-
-    const amountString =
-      String(
-        receipt.settledAmount ||
-        receipt.totalPaidAmount ||
-        ""
-      );
-
-    const numericAmount =
-      Number(
-        amountString.replace(
-          /[^0-9.]/g,
-          ""
-        )
-      );
-
-    if (
-      !Number.isFinite(numericAmount) ||
-      numericAmount <= 0
-    ) {
-      throw new Error(
-        "Invalid receipt amount."
-      );
-    }
-
-    const client =
-      await pool.connect();
-
-    try {
-
-      await client.query(
-        "BEGIN"
-      );
-
-      // ========================================================
-      // 1. LOCK USER
-      // ========================================================
-
-      const userResult =
-        await client.query(
-          `
-          SELECT
-            id,
-            telegram_id,
-            name,
-            balance,
-            is_active,
-            is_banned,
-            is_blocked
-          FROM users
-          WHERE telegram_id = $1
-          FOR UPDATE
-          `,
-          [telegramId]
-        );
-
-      if (
-        userResult.rows.length === 0
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        throw new Error(
-          "User account not found."
-        );
+        return {
+          success: false,
+          message: "አካውንትዎ አልተገኘም።"
+        };
       }
 
       const user =
         userResult.rows[0];
 
+      const currentBalance =
+        Number(user.balance);
+
+      const withdrawalAmount =
+        Number(amount);
+
+      // Validate amount
       if (
-        user.is_active !== true
+        !Number.isFinite(withdrawalAmount) ||
+        withdrawalAmount <= 0
       ) {
 
-        await client.query(
-          "ROLLBACK"
-        );
-
-        throw new Error(
-          "Your account is inactive."
-        );
-      }
-
-      if (
-        user.is_banned === true
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        throw new Error(
-          "Your account is banned."
-        );
-      }
-
-      if (
-        user.is_blocked === true
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        throw new Error(
-          "Your account is blocked."
-        );
-      }
-
-      // ========================================================
-      // 2. FIND + LOCK PAYMENT ACCOUNT
-      // ========================================================
-
-      const accountDigits =
-        creditedAccount
-          .replace(
-            /\D/g,
-            ""
-          );
-
-      const last4 =
-        accountDigits.slice(-4);
-
-      if (
-        last4.length !== 4
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        throw new Error(
-          "Invalid credited payment account."
-        );
-      }
-
-      const accountResult =
-        await client.query(
-          `
-          SELECT
-            pa.id,
-            pa.payment_method_id,
-            pa.account_name,
-            pa.account_number,
-            pa.balance,
-            pa.is_active,
-            pa.is_removed,
-
-            pm.name AS payment_method,
-            pm.amharic_name AS payment_method_amharic,
-            pm.type AS payment_method_type
-
-          FROM payment_accounts pa
-
-          INNER JOIN payment_methods pm
-            ON pm.id = pa.payment_method_id
-
-          WHERE pa.is_active = TRUE
-            AND COALESCE(pa.is_removed, FALSE) = FALSE
-            AND pm.is_active = TRUE
-
-            AND (
-              LOWER(COALESCE(pm.name, '')) =
-                LOWER('Telebirr')
-
-              OR LOWER(
-                COALESCE(pm.type, '')
-              ) = LOWER('mobile')
-
-              OR COALESCE(pm.type, '') LIKE '%ሞባይል%'
-            )
-
-            AND RIGHT(
-              REGEXP_REPLACE(
-                pa.account_number,
-                '[^0-9]',
-                '',
-                'g'
-              ),
-              4
-            ) = $1
-
-          ORDER BY pa.id
-
-          LIMIT 1
-
-          FOR UPDATE
-          `,
-          [last4]
-        );
-
-      if (
-        accountResult.rows.length === 0
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        throw new Error(
-          "The payment account in the receipt does not match an active Telebirr account."
-        );
-      }
-
-      const account =
-        accountResult.rows[0];
-
-      // ========================================================
-      // 3. OPTIONAL ACCOUNT NAME MATCH
-      // ========================================================
-
-      if (
-        receipt.creditedPartyName &&
-        account.account_name
-      ) {
-
-        const receiptName =
-          String(
-            receipt.creditedPartyName
-          )
-            .trim()
-            .toLowerCase();
-
-        const accountName =
-          String(
-            account.account_name
-          )
-            .trim()
-            .toLowerCase();
-
-        if (
-          receiptName &&
-          accountName &&
-          receiptName !== accountName
-        ) {
-
-          await client.query(
-            "ROLLBACK"
-          );
-
-          throw new Error(
-            "The payment account name does not match."
-          );
-        }
-      }
-
-      // ========================================================
-      // 4. DUPLICATE RECEIPT CHECK
-      // ========================================================
-
-      const duplicateResult =
-        await client.query(
-          `
-          SELECT
-            id
-          FROM deposits
-          WHERE reference = $1
-          LIMIT 1
-          `,
-          [receiptNo]
-        );
-
-      if (
-        duplicateResult.rows.length > 0
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
+        await client.query("ROLLBACK");
 
         return {
           success: false,
-          duplicate: true,
-          message:
-            "This deposit receipt has already been used."
+          message: "የተሳሳተ የመውጫ መጠን ነው።"
         };
       }
 
-      // ========================================================
-      // 5. BALANCES
-      // ========================================================
+      if (!Number.isInteger(withdrawalAmount)) {
 
-      const currentUserBalance =
-        Number(
-          user.balance || 0
+        await client.query("ROLLBACK");
+
+        return {
+          success: false,
+          message:
+            "የመውጫ መጠኑ ሙሉ ቁጥር መሆን አለበት።"
+        };
+      }
+
+      if (withdrawalAmount < 10) {
+
+        await client.query("ROLLBACK");
+
+        return {
+          success: false,
+          message:
+            "ቢያንስ 10 ETB ማውጣት ይችላሉ።"
+        };
+      }
+
+      // Check balance
+      if (withdrawalAmount > currentBalance) {
+
+        await client.query("ROLLBACK");
+
+        return {
+          success: false,
+          message:
+            `በቂ ሂሳብ የሎትም። ` +
+            `ያለዎት ሂሳብ፦ ${currentBalance} ETB`
+        };
+      }
+
+      // Check payment method
+      const methodResult =
+        await client.query(
+          `
+          SELECT
+            id,
+            name,
+            amharic_name,
+            emoji
+          FROM payment_methods
+          WHERE id = $1
+            AND is_active = TRUE
+          `,
+          [paymentMethodId]
         );
 
-      const currentAccountBalance =
-        Number(
-          account.balance || 0
-        );
+      if (methodResult.rows.length === 0) {
 
-      const userBalanceAfter =
-        currentUserBalance +
-        numericAmount;
+        await client.query("ROLLBACK");
 
-      const accountBalanceAfter =
-        currentAccountBalance +
-        numericAmount;
+        return {
+          success: false,
+          message:
+            "የክፍያ መንገዱ አልተገኘም።"
+        };
+      }
 
-      // ========================================================
-      // 6. UPDATE USER BALANCE
-      // ========================================================
+      // Validate account
+      const cleanAccount =
+        String(accountNumber)
+          .trim()
+          .replace(/[\s\-()]/g, "");
 
-      const userUpdate =
+      if (
+        !cleanAccount ||
+        cleanAccount.length > 20
+      ) {
+
+        await client.query("ROLLBACK");
+
+        return {
+          success: false,
+          message:
+            "የአካውንት ቁጥሩ ትክክል አይደለም።"
+        };
+      }
+
+      if (!/^\d+$/.test(cleanAccount)) {
+
+        await client.query("ROLLBACK");
+
+        return {
+          success: false,
+          message:
+            "የአካውንት ቁጥሩ ትክክል አይደለም።"
+        };
+      }
+
+      // Deduct immediately
+      const newBalance =
+        currentBalance - withdrawalAmount;
+
+      const balanceResult =
         await client.query(
           `
           UPDATE users
-
-          SET
-            balance = $1,
-            last_seen = NOW()
-
+          SET balance = $1
           WHERE id = $2
-
           RETURNING balance
           `,
           [
-            userBalanceAfter,
+            newBalance,
             user.id
           ]
         );
 
-      if (
-        userUpdate.rows.length === 0
-      ) {
-
-        throw new Error(
-          "Could not update user balance."
-        );
-      }
-
-      // ========================================================
-      // 7. INSERT DEPOSIT
-      // ========================================================
-
-      const depositResult =
+      // Create withdrawal
+      const withdrawalResult =
         await client.query(
           `
-          INSERT INTO deposits (
+          INSERT INTO withdrawals (
             user_id,
+            payment_method_id,
             payment_account_id,
-            deposit_method_id,
-            depositor_name,
-            depositor_account,
+            approved_by_id,
+            account_number,
             amount,
-            amount_after,
-            reference,
-            created_at
+            is_pending,
+            is_approved,
+            reject_reason,
+            created_at,
+            updated_at
           )
           VALUES (
             $1,
             $2,
+            NULL,
+            NULL,
             $3,
             $4,
-            $5,
-            $6,
-            $7,
-            $8,
+            TRUE,
+            FALSE,
+            NULL,
+            NOW(),
             NOW()
           )
-
-          ON CONFLICT (reference)
-          WHERE reference IS NOT NULL
-          DO NOTHING
-
-          RETURNING id
+          RETURNING *
           `,
           [
             user.id,
-            account.id,
-            account.payment_method_id,
-            receipt.payerName || null,
-            receipt.payerTelebirrNo || null,
-            numericAmount,
-            userBalanceAfter,
-            receiptNo
+            paymentMethodId,
+            cleanAccount,
+            withdrawalAmount
           ]
         );
 
-      // If another request inserted the same
-      // receipt between the duplicate check
-      // and this insert, do not credit twice.
-      if (
-        depositResult.rows.length === 0
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        return {
-          success: false,
-          duplicate: true,
-          message:
-            "This deposit receipt has already been used."
-        };
-      }
-
-      // ========================================================
-      // 8. UPDATE PAYMENT ACCOUNT BALANCE
-      // ========================================================
-
-      const accountUpdate =
-        await client.query(
-          `
-          UPDATE payment_accounts
-
-          SET
-            balance = $1
-
-          WHERE id = $2
-
-          RETURNING balance
-          `,
-          [
-            accountBalanceAfter,
-            account.id
-          ]
-        );
-
-      if (
-        accountUpdate.rows.length === 0
-      ) {
-
-        throw new Error(
-          "Could not update payment account balance."
-        );
-      }
-
-      // ========================================================
-      // 9. COMMIT
-      // ========================================================
-
-      await client.query(
-        "COMMIT"
-      );
+      await client.query("COMMIT");
 
       return {
-
         success: true,
 
-        deposit_id:
-          depositResult.rows[0].id,
+        withdrawal:
+          withdrawalResult.rows[0],
 
         user_id:
           user.id,
@@ -1955,54 +1300,42 @@ module.exports = {
         telegram_id:
           user.telegram_id,
 
+        user_name:
+          user.name,
+
         amount:
-          numericAmount,
+          withdrawalAmount,
 
         balance_before:
-          currentUserBalance,
+          currentBalance,
 
         balance_after:
-          userBalanceAfter,
-
-        payment_account_id:
-          account.id,
-
-        payment_account_balance_before:
-          currentAccountBalance,
-
-        payment_account_balance_after:
-          accountBalanceAfter,
-
-        receipt_no:
-          receiptNo,
-
-        payer_name:
-          receipt.payerName || null,
-
-        payer_account:
-          receipt.payerTelebirrNo || null
-
+          Number(
+            balanceResult.rows[0].balance
+          )
       };
 
     } catch (err) {
 
       try {
-        await client.query(
-          "ROLLBACK"
-        );
+        await client.query("ROLLBACK");
       } catch (rollbackError) {
         console.error(
-          "Deposit rollback error:",
+          "Rollback error:",
           rollbackError
         );
       }
 
       console.error(
-        "approveDeposit error:",
+        "createWithdrawal error:",
         err
       );
 
-      throw err;
+      return {
+        success: false,
+        message:
+          "የመውጫ ጥያቄውን ማስኬድ አልተቻለም።"
+      };
 
     } finally {
 
@@ -2010,6 +1343,642 @@ module.exports = {
 
     }
   },
+
+  // ============================================================
+  // GET PENDING WITHDRAWALS
+  // ============================================================
+
+  async getPendingWithdrawals(limit = 5) {
+
+    const { rows } = await pool.query(
+      `
+      SELECT
+        w.id,
+        w.user_id,
+        w.payment_method_id,
+        w.payment_account_id,
+        w.approved_by_id,
+        w.account_number,
+        w.amount,
+        w.is_pending,
+        w.is_approved,
+        w.created_at,
+        w.updated_at,
+
+        u.telegram_id,
+        u.name,
+        u.phone,
+        u.balance,
+
+        pm.name AS payment_method,
+        pm.amharic_name AS payment_method_amharic,
+        pm.emoji AS payment_method_emoji
+
+      FROM withdrawals w
+
+      JOIN users u
+        ON w.user_id = u.id
+
+      LEFT JOIN payment_methods pm
+        ON w.payment_method_id = pm.id
+
+      WHERE w.is_pending = TRUE
+        AND w.is_approved = FALSE
+
+      ORDER BY w.created_at ASC
+
+      LIMIT $1
+      `,
+      [limit]
+    );
+
+    return rows;
+  },
+
+  // ============================================================
+  // APPROVE WITHDRAWAL
+  // Admin is identified through is_admin
+  // ============================================================
+
+  async approveWithdrawal(
+  withdrawalId,
+  adminTelegramId,
+  paymentAccountId
+) {
+
+  const client = await pool.connect();
+
+  try {
+
+    await client.query("BEGIN");
+
+
+    // ========================================================
+    // 1. GET WITHDRAWAL + USER
+    // ========================================================
+
+    const withdrawalResult = await client.query(
+      `
+      SELECT
+        w.id,
+        w.user_id,
+        w.payment_method_id,
+        w.payment_account_id,
+        w.account_number,
+        w.amount,
+        w.is_pending,
+        w.is_approved,
+        w.reject_reason,
+        w.created_at,
+        w.updated_at,
+
+        u.telegram_id,
+        u.name,
+        u.balance
+
+      FROM withdrawals w
+
+      INNER JOIN users u
+        ON u.id = w.user_id
+
+      WHERE w.id = $1
+
+      FOR UPDATE
+      `,
+      [
+        withdrawalId
+      ]
+    );
+
+
+    if (withdrawalResult.rows.length === 0) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Withdrawal request not found."
+      };
+
+    }
+
+
+    const withdrawal =
+      withdrawalResult.rows[0];
+
+
+    // ========================================================
+    // 2. CHECK PENDING STATUS
+    // ========================================================
+
+    if (withdrawal.is_pending !== true) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "This withdrawal has already been processed."
+      };
+
+    }
+
+
+    if (withdrawal.is_approved === true) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "This withdrawal has already been approved."
+      };
+
+    }
+
+
+    // ========================================================
+    // 3. GET ADMIN
+    // ========================================================
+
+    const adminResult = await client.query(
+      `
+      SELECT
+        id
+      FROM users
+      WHERE telegram_id = $1
+        AND is_admin = TRUE
+        AND is_active = TRUE
+        AND is_banned = FALSE
+      LIMIT 1
+      `,
+      [
+        adminTelegramId
+      ]
+    );
+
+
+    if (adminResult.rows.length === 0) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Admin account not found."
+      };
+
+    }
+
+
+    const adminId =
+      adminResult.rows[0].id;
+
+
+    // ========================================================
+    // 4. VALIDATE PAYMENT ACCOUNT ID
+    // ========================================================
+
+    if (
+      !paymentAccountId ||
+      !Number.isInteger(
+        Number(paymentAccountId)
+      )
+    ) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "A valid payment account must be selected."
+      };
+
+    }
+
+
+    // ========================================================
+    // 5. GET + LOCK PAYMENT ACCOUNT
+    // ========================================================
+
+    const paymentAccountResult =
+      await client.query(
+        `
+        SELECT
+          pa.id,
+          pa.payment_method_id,
+          pa.account_number,
+          pa.account_name,
+          pa.balance,
+          pa.is_active
+
+        FROM payment_accounts pa
+
+        WHERE pa.id = $1
+
+        FOR UPDATE
+        `,
+        [
+          Number(paymentAccountId)
+        ]
+      );
+
+
+    if (
+      paymentAccountResult.rows.length === 0
+    ) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "Payment account not found."
+      };
+
+    }
+
+
+    const paymentAccount =
+      paymentAccountResult.rows[0];
+
+
+    // ========================================================
+    // 6. CHECK PAYMENT ACCOUNT ACTIVE
+    // ========================================================
+
+    if (
+      paymentAccount.is_active !== true
+    ) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "The selected payment account is inactive."
+      };
+
+    }
+
+
+    // ========================================================
+    // 7. CHECK PAYMENT METHOD MATCH
+    // ========================================================
+
+    if (
+      Number(
+        paymentAccount.payment_method_id
+      ) !==
+      Number(
+        withdrawal.payment_method_id
+      )
+    ) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "The selected payment account does not belong to this payment method."
+      };
+
+    }
+
+
+    // ========================================================
+    // 8. CHECK PAYMENT ACCOUNT BALANCE
+    // ========================================================
+
+    const paymentAccountBalance =
+      Number(
+        paymentAccount.balance
+      );
+
+    const withdrawalAmount =
+      Number(
+        withdrawal.amount
+      );
+
+
+    if (
+      !Number.isFinite(
+        withdrawalAmount
+      ) ||
+      withdrawalAmount <= 0
+    ) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "Invalid withdrawal amount."
+      };
+
+    }
+
+
+    if (
+      paymentAccountBalance <
+      withdrawalAmount
+    ) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+
+        message:
+          `Insufficient balance in payment account ` +
+          `${paymentAccount.account_number}. ` +
+          `Available: ${paymentAccountBalance} ETB, ` +
+          `Required: ${withdrawalAmount} ETB.`
+      };
+
+    }
+
+
+    // ========================================================
+    // 9. DEDUCT FROM PAYMENT ACCOUNT
+    //
+    // IMPORTANT:
+    // DO NOT TOUCH users.balance.
+    //
+    // The user's balance was already deducted
+    // when createWithdrawal() was called.
+    // ========================================================
+
+    const paymentAccountBalanceAfter =
+      paymentAccountBalance -
+      withdrawalAmount;
+
+
+    const paymentAccountUpdate =
+      await client.query(
+        `
+        UPDATE payment_accounts
+
+        SET
+          balance = $1
+
+        WHERE id = $2
+
+        RETURNING balance
+        `,
+        [
+          paymentAccountBalanceAfter,
+          paymentAccount.id
+        ]
+      );
+
+
+    if (
+      paymentAccountUpdate.rows.length === 0
+    ) {
+
+      throw new Error(
+        "Could not update payment account balance."
+      );
+
+    }
+
+
+    // ========================================================
+    // 10. APPROVE WITHDRAWAL
+    // ========================================================
+
+    const updateResult =
+      await client.query(
+        `
+        UPDATE withdrawals
+
+        SET
+          payment_account_id = $1,
+          approved_by_id = $2,
+          is_pending = FALSE,
+          is_approved = TRUE,
+          reject_reason = NULL,
+          updated_at = NOW()
+
+        WHERE id = $3
+
+          AND is_pending = TRUE
+
+          AND is_approved = FALSE
+
+        RETURNING *
+        `,
+        [
+          paymentAccount.id,
+          adminId,
+          withdrawalId
+        ]
+      );
+
+
+    if (
+      updateResult.rows.length === 0
+    ) {
+
+      throw new Error(
+        "This withdrawal has already been processed."
+      );
+
+    }
+
+
+    // ========================================================
+    // 11. COMMIT
+    // ========================================================
+
+    await client.query("COMMIT");
+
+
+    // ========================================================
+    // 12. RETURN RESULT
+    // ========================================================
+
+    return {
+
+      success: true,
+
+      withdrawal_id:
+        withdrawal.id,
+
+      telegram_id:
+        withdrawal.telegram_id,
+
+      user_id:
+        withdrawal.user_id,
+
+      user_name:
+        withdrawal.name,
+
+      amount:
+        withdrawalAmount,
+
+      account_number:
+        withdrawal.account_number,
+
+      payment_method_id:
+        withdrawal.payment_method_id,
+
+      payment_account_id:
+        paymentAccount.id,
+
+      payment_account_number:
+        paymentAccount.account_number,
+
+      payment_account_balance_before:
+        paymentAccountBalance,
+
+      payment_account_balance_after:
+        paymentAccountBalanceAfter,
+
+      // User balance was NOT changed during approval
+      balance_after:
+        Number(withdrawal.balance),
+
+      withdrawal:
+        updateResult.rows[0]
+    };
+
+
+  } catch (err) {
+
+    try {
+
+      await client.query(
+        "ROLLBACK"
+      );
+
+    } catch (rollbackError) {
+
+      console.error(
+        "Rollback error:",
+        rollbackError
+      );
+
+    }
+
+
+    console.error(
+      "approveWithdrawal error:",
+      err
+    );
+
+
+    return {
+
+      success: false,
+
+      message:
+        err.message ||
+        "Withdrawal approval failed."
+
+    };
+
+
+  } finally {
+
+    client.release();
+
+  }
+
+},
+  // ============================================================
+  // REJECT WITHDRAWAL
+  // Admin is identified through is_admin
+  // ============================================================
+
+  async rejectWithdrawal(
+    withdrawalId,
+    adminTelegramId,
+    reason
+  ) {
+
+    const client = await pool.connect();
+
+    try {
+
+      await client.query("BEGIN");
+
+      const withdrawalResult =
+        await client.query(
+          `
+          SELECT
+            w.id,
+            w.user_id,
+            w.payment_method_id,
+            w.payment_account_id,
+            w.approved_by_id,
+            w.amount,
+            w.account_number,
+            w.is_pending,
+            w.is_approved,
+            w.reject_reason,
+            u.telegram_id,
+            u.name,
+            u.balance
+
+          FROM withdrawals w
+
+          INNER JOIN users u
+            ON u.id = w.user_id
+
+          WHERE w.id = $1
+
+          FOR UPDATE
+          `,
+          [withdrawalId]
+        );
+
+      if (
+        withdrawalResult.rows.length === 0
+      ) {
+
+        await client.query("ROLLBACK");
+
+        return {
+          success: false,
+          message:
+            "Withdrawal request not found."
+        };
+      }
+
+      const withdrawal =
+        withdrawalResult.rows[0];
+
+      if (
+        withdrawal.is_approved === true
+      ) {
+
+        await client.query("ROLLBACK");
+
+        return {
+          success: false,
+          message:
+            "This withdrawal has already been approved."
+        };
+      }
+
+      if (withdrawal.is_approved === true) {
+
+        await client.query("ROLLBACK");
+
+        return {
+          success: false,
+          message:
+            "This withdrawal has already been processed."
+        };
+      }
+
+      if (
+        withdrawal.is_pending === false
+      ) {
+
+        await client.query("ROLLBACK");
+
         return {
           success: false,
           message:
@@ -2027,8 +1996,6 @@ module.exports = {
             AND is_admin = TRUE
             AND is_active = TRUE
             AND is_banned = FALSE
-            AND is_blocked = FALSE
-            AND admin_role IN ('main', 'withdrawal')
           LIMIT 1
           `,
           [adminTelegramId]
@@ -2263,105 +2230,6 @@ module.exports = {
   // ============================================================
   // PAYMENT ACCOUNTS
   // ============================================================
-
-  /**
-   * Create a payment account for an active payment method.
-   * Main-admin authorization is enforced by bot.js; this function
-   * performs database validation and returns the complete account row.
-   */
-  async createPaymentAccount(
-    paymentMethodId,
-    accountName,
-    accountNumber,
-    initialBalance = 0
-  ) {
-    const methodId = Number(paymentMethodId);
-    const balance = Number(initialBalance);
-    const name = String(accountName || "").trim();
-    const number = String(accountNumber || "").trim();
-
-    if (!Number.isInteger(methodId) || methodId <= 0) {
-      return { success: false, message: "Invalid payment method." };
-    }
-    if (!name || name.length > 100) {
-      return { success: false, message: "Invalid account name." };
-    }
-    if (!number || number.length > 100) {
-      return { success: false, message: "Invalid account number." };
-    }
-    if (!Number.isFinite(balance) || balance < 0 || balance > 99999999.99) {
-      return { success: false, message: "Invalid initial balance." };
-    }
-
-    try {
-      const duplicate = await pool.query(
-        `SELECT 1
-         FROM payment_accounts
-         WHERE payment_method_id = $1
-           AND account_number = $2
-           AND is_removed = FALSE
-         LIMIT 1`,
-        [methodId, number]
-      );
-
-      if (duplicate.rows.length) {
-        return { success: false, message: "This payment account already exists for the selected payment method." };
-      }
-
-      const { rows } = await pool.query(
-        `
-        INSERT INTO payment_accounts (
-          payment_method_id,
-          account_name,
-          account_number,
-          balance,
-          is_active,
-          is_removed
-        )
-        SELECT
-          pm.id,
-          $2,
-          $3,
-          $4,
-          TRUE,
-          FALSE
-        FROM payment_methods pm
-        JOIN payment_types pt ON pt.id = pm.type_id
-        WHERE pm.id = $1
-          AND pm.is_active = TRUE
-          AND pt.is_active = TRUE
-          AND (pt.maximum_balance IS NULL OR $4 <= pt.maximum_balance)
-        RETURNING id
-        `,
-        [methodId, name, number, balance]
-      );
-
-      if (!rows.length) {
-        return { success: false, message: "Payment method is inactive or not found." };
-      }
-
-      const { rows: accountRows } = await pool.query(
-        `
-        SELECT
-          pa.id, pa.payment_method_id, pa.account_name, pa.account_number,
-          pa.balance, pa.is_active, pa.is_removed,
-          pm.name AS pm_name, pm.amharic_name AS pm_amharic_name, pm.emoji AS pm_emoji,
-          pt.name AS pt_name, pt.amharic_name AS pt_amharic_name, pt.emoji AS pt_emoji
-        FROM payment_accounts pa
-        JOIN payment_methods pm ON pm.id = pa.payment_method_id
-        JOIN payment_types pt ON pt.id = pm.type_id
-        WHERE pa.id = $1
-        LIMIT 1
-        `,
-        [rows[0].id]
-      );
-
-      return { success: true, account: accountRows[0] || null };
-    } catch (err) {
-      console.error("createPaymentAccount error:", err);
-      return { success: false, message: "Could not create payment account." };
-    }
-  },
 
   async getPaymentAccount(
     paymentMethodId
@@ -2640,7 +2508,7 @@ async getPaymentAccountById(
     return rows;
   },
 
-  // ============================================================
+    // ============================================================
   // ADMIN — PAYMENT ACCOUNT MANAGEMENT
   // ============================================================
 
@@ -2787,127 +2655,179 @@ async getAllPaymentAccountsForAdmin() {
   // DEPOSIT
   // ============================================================
 
-  async approveDepositttttttttttt(receipt, telegramId) {
-    const client = await pool.connect();
+  async approveDepositttttttttttt(
+    receipt,
+    id
+  ) {
 
-    try {
-      const reference = String(receipt?.receiptNo || "").trim();
-      if (!reference) return -1;
-
-      const creditedAccount = String(receipt?.creditedPartyAccountNo || "").trim();
-      const creditedName = String(receipt?.creditedPartyName || "").trim();
-      const rawAmount = String(receipt?.settledAmount || "");
-      const depositAmount = Number(rawAmount.replace(/[^0-9.]/g, ""));
-
-      if (!creditedAccount || creditedAccount.length < 4 || !Number.isFinite(depositAmount) || depositAmount <= 0) {
-        return -2;
-      }
-
-      await client.query("BEGIN");
-
-      // Lock the target user so concurrent deposits cannot overwrite balance.
-      const userResult = await client.query(
-        `SELECT id, telegram_id, balance, is_active, is_banned, is_blocked
-         FROM users WHERE telegram_id = $1 FOR UPDATE`,
-        [telegramId]
+    const u =
+      await pool.query(
+        `
+        SELECT count(id)
+        FROM deposits
+        WHERE reference = $1
+        `,
+        [receipt.receiptNo]
       );
-      if (!userResult.rows.length) throw new Error("User not found");
-      const user = userResult.rows[0];
-      if (!user.is_active || user.is_banned || user.is_blocked) {
-        await client.query("ROLLBACK");
-        return -3;
-      }
 
-      // Match an active Telebirr receiving account by the last 4 digits.
-      const accountResult = await client.query(
+    if (
+      Number(u.rows[0].count) > 0
+    ) {
+      return -1;
+    }
+
+    const { rows: u2 } =
+      await pool.query(
+        `
+        SELECT id
+        FROM payment_accounts
+        WHERE is_active = TRUE
+          AND RIGHT(
+            account_number,
+            4
+          ) =
+          RIGHT(
+            $1,
+            4
+          )
+        `,
+        [receipt.creditedPartyAccountNo]
+      );
+
+    if (u2.length === 0) {
+      return -2;
+    }
+
+    const u3 =
+      await pool.query(
+        `
+        SELECT count(id)
+        FROM payment_accounts
+        WHERE is_active = TRUE
+          AND account_name = $1
+        `,
+        [receipt.creditedPartyName]
+      );
+
+    if (
+      Number(u3.rows[0].count) <= 0
+    ) {
+      return -3;
+    }
+
+    console.log(
+      "aaaaaa " + id
+    );
+
+    const { rows } =
+      await pool.query(
         `
         SELECT
-          pa.id, pa.payment_method_id, pa.account_number, pa.account_name, pa.balance,
-          pm.name AS pm_name, pm.amharic_name AS pm_amharic_name,
-          pt.name AS pt_name, pt.amharic_name AS pt_amharic_name
-        FROM payment_accounts pa
-        JOIN payment_methods pm ON pm.id = pa.payment_method_id
-        JOIN payment_types pt ON pt.id = pm.type_id
-        WHERE pa.is_active = TRUE
-          AND pa.is_removed = FALSE
-          AND pm.is_active = TRUE
-          AND pt.is_active = TRUE
-          AND RIGHT(REGEXP_REPLACE(pa.account_number, '[^0-9]', '', 'g'), 4) =
-              RIGHT(REGEXP_REPLACE($1, '[^0-9]', '', 'g'), 4)
-          AND LOWER(pm.name) LIKE '%telebirr%'
-        ORDER BY pa.id
-        LIMIT 1
-        FOR UPDATE OF pa
+          id,
+          balance
+        FROM users
+        WHERE telegram_id = $1
         `,
-        [creditedAccount]
+        [id]
       );
 
-      if (!accountResult.rows.length) {
-        await client.query("ROLLBACK");
-        return -4;
-      }
-
-      const account = accountResult.rows[0];
-
-      // If Telebirr supplied the credited name, require the configured account name to match.
-      if (creditedName && account.account_name && creditedName.trim() !== account.account_name.trim()) {
-        await client.query("ROLLBACK");
-        return -5;
-      }
-
-      // Database uniqueness is the final duplicate-protection layer.
-      const duplicate = await client.query(
-        `SELECT 1 FROM deposits WHERE reference = $1 LIMIT 1 FOR UPDATE`,
-        [reference]
+    if (rows.length === 0) {
+      throw new Error(
+        "User not found"
       );
-      if (duplicate.rows.length) {
-        await client.query("ROLLBACK");
-        return -1;
-      }
-
-      const userBalanceResult = await client.query(
-        `UPDATE users
-         SET balance = balance + $1, last_seen = NOW()
-         WHERE id = $2
-         RETURNING balance`,
-        [depositAmount, user.id]
-      );
-      const amountAfter = Number(userBalanceResult.rows[0].balance);
-
-      const depositResult = await client.query(
-        `INSERT INTO deposits (
-          user_id, payment_account_id, deposit_method_id, depositor_name,
-          depositor_account, amount, amount_after, reference, created_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
-        ON CONFLICT (reference) DO NOTHING
-        RETURNING id`,
-        [
-          user.id, account.id, account.payment_method_id, creditedName || receipt?.payerName || null,
-          receipt?.payerTelebirrNo || null, depositAmount, amountAfter, reference
-        ]
-      );
-
-      if (!depositResult.rows.length) {
-        throw new Error("Duplicate deposit reference");
-      }
-
-      await client.query(
-        `UPDATE payment_accounts
-         SET balance = COALESCE(balance, 0) + $1
-         WHERE id = $2`,
-        [depositAmount, account.id]
-      );
-
-      await client.query("COMMIT");
-      return depositAmount;
-    } catch (err) {
-      try { await client.query("ROLLBACK"); } catch (_) {}
-      if (err.message === "Duplicate deposit reference") return -1;
-      console.error("approveDeposit error:", err);
-      throw err;
-    } finally {
-      client.release();
     }
+
+    const depositAmount =
+      Number(
+        receipt.settledAmount
+          .replace(/[^0-9.]/g, "")
+      );
+
+    const currentBalance =
+      Number(rows[0].balance);
+
+    const amountAfter =
+      currentBalance +
+      depositAmount;
+
+    console.log(
+      "Current balance:",
+      currentBalance
+    );
+
+    console.log(
+      "Deposit amount:",
+      depositAmount
+    );
+
+    console.log(
+      "Amount after:",
+      amountAfter
+    );
+
+    await pool.query(
+      `
+      INSERT INTO deposits (
+        user_id,
+        payment_account_id,
+        deposit_method_id,
+        depositor_name,
+        depositor_account,
+        amount,
+        amount_after,
+        reference,
+        created_at
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        NOW()
+      )
+      RETURNING id
+      `,
+      [
+        rows[0].id,
+        u2[0].id,
+        1,
+        receipt.payerName,
+        receipt.payerTelebirrNo,
+        depositAmount,
+        amountAfter,
+        receipt.receiptNo
+      ]
+    );
+
+    await pool.query(
+      `
+      UPDATE users
+      SET balance = $1
+      WHERE telegram_id = $2
+      `,
+      [
+        amountAfter,
+        id
+      ]
+    );
+
+    await pool.query(
+      `
+      UPDATE payment_accounts
+      SET balance = balance + $1
+      WHERE id = $2
+      `,
+      [
+        depositAmount,
+        u2[0].id
+      ]
+    );
+
+    return depositAmount;
   },
 
   // ============================================================
@@ -2954,8 +2874,7 @@ async getAllPaymentAccountsForAdmin() {
             phone,
             balance,
             is_active,
-            is_banned,
-            is_blocked
+            is_banned
 
           FROM users
 
@@ -3009,8 +2928,7 @@ async getAllPaymentAccountsForAdmin() {
 
       if (
         !sender.is_active ||
-        sender.is_banned ||
-        sender.is_blocked
+        sender.is_banned
       ) {
 
         await client.query("ROLLBACK");
@@ -3024,8 +2942,7 @@ async getAllPaymentAccountsForAdmin() {
 
       if (
         !recipient.is_active ||
-        recipient.is_banned ||
-        recipient.is_blocked
+        recipient.is_banned
       ) {
 
         await client.query("ROLLBACK");
