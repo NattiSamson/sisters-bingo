@@ -51,9 +51,9 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .pool-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;height:320px;overflow-y:auto;padding:3px}
 .pool-btn{background:#fff;border:1px solid #d8d8d8;color:#1a0a2e;padding:6px 2px;border-radius:6px;font-weight:700;cursor:pointer;text-align:center;font-size:10px;line-height:1.1;transition:all .15s}
 .pool-btn:hover{border-color:var(--gold)}
-.pool-btn.taken{background:#3a1515;color:#ff8888;cursor:not-allowed;opacity:.55}
-.pool-btn.mine1{background:var(--purple)!important;color:#fff!important;border-color:#a78bfa!important}
-.pool-btn.mine2{background:#d97706!important;color:#fff!important;border-color:#fbbf24!important}
+.pool-btn.taken{background:#8b1e1e;color:#ffd0d0;cursor:not-allowed;opacity:.78}
+/* A card selected by the current player is GREEN; cards taken by other players are RED. */
+.pool-btn.mine1,.pool-btn.mine2{background:#16a34a!important;color:#fff!important;border-color:#4ade80!important;box-shadow:0 0 0 1px rgba(74,222,128,.18)}
 /* Selected card slots */
 .selected-cards-row{display:flex;gap:8px;margin-bottom:10px}
 .selected-slot{flex:1;background:var(--card);border:2px dashed #4a2d7a;border-radius:10px;padding:8px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:52px}
@@ -180,19 +180,33 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .refresh-btn{background:transparent;border:1px solid #4a2d7a;color:var(--gray);padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;gap:5px}
 .refresh-btn:hover{border-color:var(--gold);color:#fff}
 
-/* WINNER OVERLAY */
-.winner-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:500;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:30px}
-.winner-overlay.show{display:flex;animation:overlayIn .4s ease}
-@keyframes overlayIn{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
-.confetti-row{font-size:40px;animation:confettiBounce 1s infinite alternate}
-@keyframes confettiBounce{0%{transform:translateY(0)}100%{transform:translateY(-12px) rotate(10deg)}}
-.winner-trophy{font-size:80px;margin:10px 0;animation:trophySpin 1s ease;filter:drop-shadow(0 0 20px var(--gold))}
+/* END-GAME RESULT OVERLAY */
+.winner-overlay{position:fixed;inset:0;background:rgba(5,10,22,.94);z-index:500;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:18px;overflow-y:auto}
+.winner-overlay.show{display:flex;animation:overlayIn .35s ease}
+@keyframes overlayIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+.confetti-row{font-size:30px;animation:confettiBounce 1s infinite alternate;margin-bottom:2px}
+@keyframes confettiBounce{0%{transform:translateY(0)}100%{transform:translateY(-8px) rotate(5deg)}}
+.winner-trophy{font-size:54px;margin:3px 0 2px;animation:trophySpin 1s ease;filter:drop-shadow(0 0 18px var(--gold))}
 @keyframes trophySpin{0%{transform:scale(0) rotate(-180deg)}60%{transform:scale(1.15) rotate(5deg)}100%{transform:scale(1) rotate(0deg)}}
-.winner-label{font-size:13px;color:var(--gray);text-transform:uppercase;letter-spacing:2px}
-.winner-name{font-family:'Orbitron',sans-serif;font-size:26px;font-weight:900;color:var(--gold);margin:6px 0;text-shadow:0 0 20px var(--gold)}
-.winner-amount{font-size:32px;font-weight:700;color:var(--green);margin:4px 0}
-.winner-split-tag{background:rgba(245,197,24,.15);border:1px solid var(--gold);color:var(--gold);padding:5px 14px;border-radius:20px;font-size:12px;margin:6px 0}
-.winner-msg{font-size:13px;color:var(--gray);margin-top:8px;max-width:280px}
+.winner-label{font-size:12px;color:var(--gray);text-transform:uppercase;letter-spacing:2px}
+.winner-name{font-family:'Orbitron',sans-serif;font-size:24px;font-weight:900;color:var(--gold);margin:4px 0;text-shadow:0 0 20px var(--gold)}
+.winner-amount{font-size:25px;font-weight:800;color:var(--green);margin:3px 0}
+.winner-overlay.result-loser .winner-amount{color:var(--red)}
+.winner-split-tag{background:rgba(245,197,24,.15);border:1px solid var(--gold);color:var(--gold);padding:4px 12px;border-radius:20px;font-size:11px;margin:4px 0}
+.winner-msg{font-size:12px;color:var(--gray);margin:3px 0 8px;max-width:310px}
+.result-card-wrap{width:min(100%,350px);background:linear-gradient(145deg,#303b4b,#243444);border:1px solid rgba(255,255,255,.16);border-radius:18px;padding:10px 10px 12px;box-shadow:0 14px 35px rgba(0,0,0,.35)}
+.result-card-title{font-weight:800;font-size:14px;color:#fff;margin-bottom:8px}
+.result-card-head{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:4px}
+.result-card-head div{height:30px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:14px}
+.result-card-head .rh-b{background:#3b82f6}.result-card-head .rh-i{background:#6366f1}.result-card-head .rh-n{background:#a855f7}.result-card-head .rh-g{background:#10b981}.result-card-head .rh-o{background:#f97316}
+.result-card-body{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.result-card-cell{height:39px;background:#f3f4f6;color:#263244;border-radius:5px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px}
+.result-card-cell.called{background:#f59e0b;color:#fff}
+.result-card-cell.winning{background:#16a34a;color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
+.result-card-cell.free{font-size:16px}
+.result-status{margin-top:8px;font-size:13px;font-weight:800;color:var(--green)}
+.winner-overlay.result-loser .result-status{color:#f87171}
+@media(max-width:420px){.result-card-wrap{width:min(100%,330px)}.result-card-cell{height:36px;font-size:13px}.result-card-head div{height:28px;font-size:13px}.winner-name{font-size:21px}.winner-amount{font-size:22px}}
 .disq-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:400;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:30px}
 .disq-overlay.show{display:flex;animation:overlayIn .3s ease}
 .disq-icon{font-size:72px;margin-bottom:12px}
@@ -545,14 +559,20 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 </div>
 
 <div class="winner-overlay" id="winnerOverlay">
-  <div class="confetti-row">🎊🎉🎊🎉🎊</div>
-  <div class="winner-trophy">🏆</div>
-  <div class="winner-label">WINNER</div>
+  <div class="confetti-row" id="resultConfetti">🎊🎉🎊🎉🎊</div>
+  <div class="winner-trophy" id="resultTrophy">🏆</div>
+  <div class="winner-label" id="winnerLabel">BINGO!</div>
   <div class="winner-name" id="winnerName">—</div>
   <div class="winner-amount" id="winnerAmount">0 ETB</div>
   <div class="winner-split-tag" id="splitTag" style="display:none">🤝 Split Prize</div>
   <div class="winner-msg" id="winnerMsg"></div>
-  <div id="resetCountdown" style="margin-top:14px;font-size:14px;font-weight:800;color:var(--gold)">ቀጣዩ ዙር በ 9 ሰከንድ ውስጥ ይጀምራል</div>
+  <div class="result-card-wrap" id="resultCardWrap">
+    <div class="result-card-title" id="resultCardTitle">🏆 Winning Cartela : —</div>
+    <div class="result-card-head"><div class="rh-b">B</div><div class="rh-i">I</div><div class="rh-n">N</div><div class="rh-g">G</div><div class="rh-o">O</div></div>
+    <div class="result-card-body" id="resultCardBody"></div>
+  </div>
+  <div class="result-status" id="resultStatus"></div>
+  <div id="resetCountdown" style="margin-top:9px;font-size:13px;font-weight:800;color:var(--gold)">ቀጣዩ ዙር በ 9 ሰከንድ ውስጥ ይጀምራል</div>
 </div>
 
 <div class="disq-overlay" id="disqOverlay">
@@ -1230,7 +1250,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       const winnerList=Array.isArray(msg.winners)?msg.winners.map(String):[];
       const iWon=winnerList.includes(String(myName)) ||
                  winnerList.includes(String(myPlayerId)) ||
-                 (msg.winnerTelegramId && String(msg.winnerTelegramId)===String(telegramId));
+                 (Array.isArray(msg.winnerTelegramIds)&&msg.winnerTelegramIds.map(String).includes(String(telegramId)));
       showToast(iWon?'🏆 You won! Your prize has been added to your account.':'Round finished — your balance was settled by the game server.','');
       setTimeout(()=>refreshAccountBalance(),300);
       // Do NOT depend on the server's final navigation message. Start a client-side
@@ -1582,13 +1602,68 @@ function startClaimBar(ms){
   claimBarAnim=setTimeout(()=>{claimWindowOpen=false;},ms);
 }
 // ─── WINNER OVERLAY ───────────────────────────────────────────
+function getResultWinningPattern(nums,called,marked){
+  if(!Array.isArray(nums)||nums.length<25) return [];
+  const calledSet=new Set((called||[]).map(Number));
+  const markedSet=new Set((marked||[]).map(Number));
+  markedSet.add(12);
+  const hit=i=>i===12||(calledSet.has(Number(nums[i]))&&markedSet.has(i));
+  const patterns=[
+    [0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],
+    [0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],
+    [0,6,12,18,24],[4,8,12,16,20],[0,4,20,24]
+  ];
+  return patterns.find(p=>p.every(hit))||[];
+}
+function renderResultCard(card,calledNumbers){
+  const body=document.getElementById('resultCardBody');
+  const wrap=document.getElementById('resultCardWrap');
+  if(!body||!wrap||!card||!Array.isArray(card.cardNumbers)||card.cardNumbers.length<25){
+    if(wrap) wrap.style.display='none';
+    return;
+  }
+  wrap.style.display='block'; body.innerHTML='';
+  const nums=card.cardNumbers, called=new Set((calledNumbers||[]).map(Number));
+  const winningPattern=new Set(getResultWinningPattern(nums,calledNumbers,card.markedIndices||[]));
+  const marked=new Set((card.markedIndices||[]).map(Number)); marked.add(12);
+  nums.forEach((n,i)=>{
+    const cell=document.createElement('div');
+    cell.className='result-card-cell';
+    if(i===12){cell.classList.add('free');cell.innerText='✦';}
+    else{
+      cell.innerText=n;
+      if(winningPattern.has(i)) cell.classList.add('winning');
+      else if(called.has(Number(n))&&marked.has(i)) cell.classList.add('called');
+    }
+    body.appendChild(cell);
+  });
+  document.getElementById('resultCardTitle').innerText=`🏆 Winning Cartela : ${card.cardId}`;
+}
 function showWinnerOverlay(msg){
   const ov=document.getElementById('winnerOverlay');
-  document.getElementById('winnerName').innerText=msg.winners&&msg.winners.length?msg.winners.join(' & '):msg.noWinner?'No Winner':'-';
-  document.getElementById('winnerAmount').innerText=msg.noWinner?'—':`${msg.winAmount} ETB`;
+  const winnerList=Array.isArray(msg.winners)?msg.winners.map(String):[];
+  const iWon=winnerList.includes(String(myName)) ||
+             winnerList.includes(String(myPlayerId)) ||
+             (Array.isArray(msg.winnerTelegramIds)&&msg.winnerTelegramIds.map(String).includes(String(telegramId)));
+  const noWinner=!!msg.noWinner;
+  ov.classList.toggle('result-loser',!iWon&&!noWinner);
+  document.getElementById('winnerLabel').innerText=noWinner?'ROUND OVER':(iWon?'BINGO!':'ROUND OVER');
+  document.getElementById('resultTrophy').innerText=noWinner?'🎯':(iWon?'🏆':'😔');
+  document.getElementById('resultConfetti').style.display=iWon?'block':'none';
+  document.getElementById('winnerName').innerText=winnerList.length?winnerList.join(' & '):'No Winner';
+  document.getElementById('winnerAmount').innerText=noWinner?'—':(iWon?`+${msg.winAmount} ETB`:`Prize: ${msg.winAmount} ETB`);
   document.getElementById('splitTag').style.display=msg.isSplit?'inline-block':'none';
-  document.getElementById('winnerMsg').innerText=msg.message||'';
-  ov.classList.add('show'); startConfetti();
+  document.getElementById('winnerMsg').innerText=iWon?'🎉 Congratulations! You won this round.':(noWinner?'No valid BINGO was claimed this round.':'The round has ended. The winning cartela is shown below.');
+  document.getElementById('resultStatus').innerText=iWon?'Your prize has been added to your account.':(noWinner?'No prize was awarded.':'You did not win this round.');
+
+  const cards=Array.isArray(msg.winningCards)?msg.winningCards:[];
+  let winningCard=cards[0]||null;
+  if(iWon){
+    winningCard=cards.find(c=>String(c.telegramId)===String(telegramId))||cards.find(c=>String(c.playerName)===String(myName))||winningCard;
+  }
+  renderResultCard(winningCard,msg.calledNumbers||[]);
+  ov.classList.add('show');
+  if(iWon) startConfetti(); else stopConfetti();
 }
 function hideWinnerOverlay(){document.getElementById('winnerOverlay').classList.remove('show');stopConfetti();}
 

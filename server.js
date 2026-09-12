@@ -619,8 +619,13 @@ function evaluateClaims(room){
     // Check card 2
     const card2=p.cardId2?getCard(p.cardId2):null;
     const win2=card2&&checkWin(card2.numbers,room.calledNumbers,claim.markedIndices2);
-    if(win1||win2) winners.push(p);
-    else cheaters.push(p);
+    if(win1||win2){
+      // Keep the exact winning card and marked cells so the end-of-game result
+      // screen can show the same winning cartela to every player.
+      p._winningCardId = win1 ? p.cardId : p.cardId2;
+      p._winningMarkedIndices = win1 ? Array.from(claim.markedIndices||[]) : Array.from(claim.markedIndices2||[]);
+      winners.push(p);
+    }else cheaters.push(p);
   });
 
   cheaters.forEach(p=>{
@@ -686,6 +691,20 @@ async function endGame(room, winners, customMsg, noWinner){
     isSplit?`🤝 Split! ${winnerNames.join(' & ')} each win ${winAmount} ETB!`
            :`🏆 ${winnerNames[0]} wins ${winAmount} ETB!`);
 
+  // Include the winning cartela(s) so both winners and losers see a clear
+  // result page with the winning card, just like the reference design.
+  const winningCards=(winners||[]).map(w=>{
+    const winningId=w._winningCardId||w.cardId||null;
+    const card=winningId?getCard(winningId):null;
+    return {
+      playerName:w.playerName,
+      telegramId:String(w.telegramId||clients[w.playerId]?.telegramId||''),
+      cardId:winningId,
+      cardNumbers:card?card.numbers:[],
+      markedIndices:Array.isArray(w._winningMarkedIndices)?w._winningMarkedIndices:[]
+    };
+  });
+
   // Broadcast the result to EVERY connected player in the room. Keep the room/stake
   // identifiers in this message so clients can return to the same stake.
   const RESET_SECONDS=9;
@@ -699,6 +718,8 @@ async function endGame(room, winners, customMsg, noWinner){
     message:msg,
     noWinner:!!noWinner,
     winnerTelegramIds:winnerTids,
+    winningCards,
+    calledNumbers:room.calledNumbers,
     resetCountdown:RESET_SECONDS
   });
 
