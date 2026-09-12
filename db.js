@@ -4499,7 +4499,7 @@ async giveBonusToAllActiveUsers(
 // CREATE TIME-BASED DEPOSIT BONUS
 // ============================================================
 
-async function createBonusCampaign(
+async createBonusCampaign(
   name,
   startsAt,
   endsAt,
