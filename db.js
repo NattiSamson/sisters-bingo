@@ -4009,6 +4009,687 @@ module.exports = {
 
     return rows[0] || null;
   },
+  // ============================================================
+// BONUS SYSTEM
+// ============================================================
+
+async addBonusToUser(
+  client,
+  userId,
+  amount,
+  bonusType,
+  reference,
+  description,
+  campaignId = null
+) {
+  const numericAmount = Number(amount);
+
+  if (
+    !Number.isFinite(numericAmount) ||
+    numericAmount <= 0
+  ) {
+    throw new Error("Invalid bonus amount");
+  }
+
+  const userResult = await client.query(
+    `
+    SELECT
+      id,
+      telegram_id,
+      balance,
+      is_active,
+      is_banned,
+      is_blocked
+    FROM users
+    WHERE id = $1
+    FOR UPDATE
+    `,
+    [userId]
+  );
+
+  if (!userResult.rows.length) {
+    throw new Error("User not found");
+  }
+
+  const user = userResult.rows[0];
+
+  if (
+    !user.is_active ||
+    user.is_banned ||
+    user.is_blocked
+  ) {
+    throw new Error("User is not eligible for bonus");
+  }
+
+  // Deposit bonuses must never be duplicated.
+  if (
+    bonusType === "deposit_bonus" &&
+    campaignId &&
+    reference
+  ) {
+    const duplicate = await client.query(
+      `
+      SELECT id
+      FROM bonus_transactions
+      WHERE bonus_campaign_id = $1
+        AND bonus_type = 'deposit_bonus'
+        AND reference = $2
+      LIMIT 1
+      `,
+      [
+        campaignId,
+        reference
+      ]
+    );
+
+    if (duplicate.rows.length) {
+      return {
+        applied: false,
+        duplicate: true,
+        amount: 0,
+        balance: Number(user.balance || 0)
+      };
+    }
+  }
+
+  const balanceResult = await client.query(
+    `
+    UPDATE users
+    SET balance = balance + $1
+    WHERE id = $2
+    RETURNING balance
+    `,
+    [
+      numericAmount,
+      userId
+    ]
+  );
+
+  const newBalance = Number(
+    balanceResult.rows[0].balance
+  );
+
+  await client.query(
+    `
+    INSERT INTO bonus_transactions (
+      user_id,
+      bonus_campaign_id,
+      bonus_type,
+      amount,
+      balance_after,
+      reference,
+      description
+    )
+    VALUES (
+      $1,
+      $2,
+      $3,
+      $4,
+      $5,
+      $6,
+      $7
+    )
+    `,
+    [
+      userId,
+      campaignId,
+      bonusType,
+      numericAmount,
+      newBalance,
+      reference || null,
+      description || null
+    ]
+  );
+
+  // Also put the bonus into the existing transaction history.
+  await client.query(
+    `
+    INSERT INTO transactions (
+      user_id,
+      type,
+      amount,
+      balance_after,
+      reference
+    )
+    VALUES (
+      $1,
+      'bonus',
+      $2,
+      $3,
+      $4
+    )
+    `,
+    [
+      userId,
+      numericAmount,
+      newBalance,
+      reference || null
+    ]
+  );
+
+  return {
+    applied: true,
+    duplicate: false,
+    amount: numericAmount,
+    balance: newBalance,
+    telegramId: user.telegram_id
+  };
+}
+
+
+// ============================================================
+// SPECIFIC USER BONUS
+// ============================================================
+
+async giveBonusToUserByPhone(
+  phone,
+  amount,
+  adminTelegramId
+) {
+  const numericAmount = Number(amount);
+
+  if (
+    !Number.isFinite(numericAmount) ||
+    numericAmount <= 0
+  ) {
+    throw new Error("Invalid bonus amount");
+  }
+
+  const searchLast9 = last9(phone);
+
+  if (!searchLast9) {
+    throw new Error(
+      "Invalid Ethiopian phone number"
+    );
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const userResult = await client.query(
+      `
+      SELECT
+        id,
+        telegram_id,
+        name,
+        phone,
+        balance,
+        is_active,
+        is_banned,
+        is_blocked
+      FROM users
+      WHERE RIGHT(
+        REGEXP_REPLACE(
+          phone,
+          '[^0-9]',
+          '',
+          'g'
+        ),
+        9
+      ) = $1
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [searchLast9]
+    );
+
+    if (!userResult.rows.length) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "User not found."
+      };
+    }
+
+    const user = userResult.rows[0];
+
+    if (
+      !user.is_active ||
+      user.is_banned ||
+      user.is_blocked
+    ) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "This user is inactive, blocked, or banned."
+      };
+    }
+
+    const reference =
+      `manual_bonus:user:${user.id}:${Date.now()}`;
+
+    const result = await addBonusToUser(
+      client,
+      user.id,
+      numericAmount,
+      "manual_user_bonus",
+      reference,
+      `Manual bonus by admin ${adminTelegramId}`
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      success: true,
+      user,
+      amount: result.amount,
+      balance: result.balance
+    };
+
+  } catch (err) {
+
+    await safeRollback(client);
+
+    throw err;
+
+  } finally {
+
+    client.release();
+
+  }
+}
+
+
+// ============================================================
+// BONUS FOR ALL ACTIVE / UNBLOCKED USERS
+// ============================================================
+
+async giveBonusToAllActiveUsers(
+  amount,
+  adminTelegramId
+) {
+  const numericAmount = Number(amount);
+
+  if (
+    !Number.isFinite(numericAmount) ||
+    numericAmount <= 0
+  ) {
+    throw new Error("Invalid bonus amount");
+  }
+
+  const client = await pool.connect();
+
+  try {
+
+    await client.query("BEGIN");
+
+    const usersResult = await client.query(
+      `
+      SELECT
+        id,
+        telegram_id,
+        name,
+        balance
+      FROM users
+      WHERE is_active = TRUE
+        AND is_banned = FALSE
+        AND is_blocked = FALSE
+      ORDER BY id
+      FOR UPDATE
+      `
+    );
+
+    let count = 0;
+    let total = 0;
+
+    const recipients = [];
+
+    for (
+      const user of usersResult.rows
+    ) {
+
+      const reference =
+        `manual_bonus:all:${Date.now()}:${user.id}`;
+
+      const result =
+        await addBonusToUser(
+          client,
+          user.id,
+          numericAmount,
+          "manual_all_bonus",
+          reference,
+          `Bonus for all active users by admin ${adminTelegramId}`
+        );
+
+      if (result.applied) {
+
+        count++;
+
+        total += numericAmount;
+
+        recipients.push({
+          telegramId: user.telegram_id,
+          name: user.name,
+          amount: numericAmount,
+          balance: result.balance
+        });
+      }
+    }
+
+    await client.query("COMMIT");
+
+    return {
+      success: true,
+      count,
+      total,
+      recipients
+    };
+
+  } catch (err) {
+
+    await safeRollback(client);
+
+    throw err;
+
+  } finally {
+
+    client.release();
+
+  }
+}
+
+
+// ============================================================
+// CREATE TIME-BASED DEPOSIT BONUS
+// ============================================================
+
+async createBonusCampaign(
+  name,
+  startsAt,
+  endsAt,
+  bonusMode,
+  bonusAmount,
+  adminTelegramId
+) {
+  const mode = String(
+    bonusMode || ""
+  ).trim();
+
+  if (
+    mode !== "match_deposit" &&
+    mode !== "fixed"
+  ) {
+    throw new Error(
+      "Invalid bonus mode"
+    );
+  }
+
+  const start = new Date(startsAt);
+  const end = new Date(endsAt);
+
+  if (
+    Number.isNaN(start.getTime()) ||
+    Number.isNaN(end.getTime())
+  ) {
+    throw new Error(
+      "Invalid start or end date"
+    );
+  }
+
+  if (end <= start) {
+    throw new Error(
+      "End time must be after start time"
+    );
+  }
+
+  let amount = null;
+
+  if (mode === "fixed") {
+
+    amount = Number(
+      bonusAmount
+    );
+
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      throw new Error(
+        "Invalid fixed bonus amount"
+      );
+    }
+  }
+
+  const { rows } = await pool.query(
+    `
+    INSERT INTO bonus_campaigns (
+      name,
+      starts_at,
+      ends_at,
+      bonus_mode,
+      bonus_amount,
+      is_active,
+      created_by
+    )
+    VALUES (
+      $1,
+      $2,
+      $3,
+      $4,
+      $5,
+      TRUE,
+      $6
+    )
+    RETURNING *
+    `,
+    [
+      String(name || "Deposit Bonus")
+        .trim()
+        .substring(0, 100),
+
+      start,
+
+      end,
+
+      mode,
+
+      amount,
+
+      adminTelegramId
+    ]
+  );
+
+  return rows[0];
+}
+
+
+// ============================================================
+// GET CURRENT ACTIVE DEPOSIT BONUS
+// ============================================================
+
+async getActiveDepositBonus(
+  client,
+  depositTime = new Date()
+) {
+  const { rows } = await client.query(
+    `
+    SELECT
+      id,
+      name,
+      starts_at,
+      ends_at,
+      bonus_mode,
+      bonus_amount
+    FROM bonus_campaigns
+    WHERE is_active = TRUE
+      AND starts_at <= $1
+      AND ends_at >= $1
+    ORDER BY id DESC
+    LIMIT 1
+    `,
+    [depositTime]
+  );
+
+  return rows[0] || null;
+}
+
+
+// ============================================================
+// APPLY TIME-BASED BONUS TO A DEPOSIT
+// ============================================================
+//
+// Call this AFTER the deposit has successfully been approved.
+//
+// depositReference should be the Telebirr receipt number.
+// ============================================================
+
+async applyDepositBonus(
+  telegramId,
+  depositAmount,
+  depositReference,
+  depositTime = new Date()
+) {
+  const amount = Number(
+    depositAmount
+  );
+
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
+    return {
+      applied: false,
+      amount: 0,
+      campaign: null
+    };
+  }
+
+  const client = await pool.connect();
+
+  try {
+
+    await client.query("BEGIN");
+
+    const userResult = await client.query(
+      `
+      SELECT
+        id,
+        telegram_id,
+        balance,
+        is_active,
+        is_banned,
+        is_blocked
+      FROM users
+      WHERE telegram_id = $1
+      FOR UPDATE
+      `,
+      [telegramId]
+    );
+
+    if (!userResult.rows.length) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        applied: false,
+        amount: 0,
+        campaign: null
+      };
+    }
+
+    const user = userResult.rows[0];
+
+    if (
+      !user.is_active ||
+      user.is_banned ||
+      user.is_blocked
+    ) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        applied: false,
+        amount: 0,
+        campaign: null
+      };
+    }
+
+    const campaign =
+      await getActiveDepositBonus(
+        client,
+        depositTime
+      );
+
+    if (!campaign) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        applied: false,
+        amount: 0,
+        campaign: null
+      };
+    }
+
+    let bonusAmount;
+
+    if (
+      campaign.bonus_mode ===
+      "match_deposit"
+    ) {
+
+      bonusAmount = amount;
+
+    } else {
+
+      bonusAmount =
+        Number(
+          campaign.bonus_amount
+        );
+    }
+
+    if (
+      !Number.isFinite(bonusAmount) ||
+      bonusAmount <= 0
+    ) {
+
+      await client.query("ROLLBACK");
+
+      return {
+        applied: false,
+        amount: 0,
+        campaign
+      };
+    }
+
+    const result =
+      await addBonusToUser(
+        client,
+        user.id,
+        bonusAmount,
+        "deposit_bonus",
+        depositReference,
+        `Deposit bonus: ${campaign.name}`,
+        campaign.id
+      );
+
+    await client.query("COMMIT");
+
+    return {
+      applied: result.applied,
+      duplicate: result.duplicate,
+      amount: result.amount,
+      balance: result.balance,
+      campaign
+    };
+
+  } catch (err) {
+
+    await safeRollback(client);
+
+    throw err;
+
+  } finally {
+
+    client.release();
+
+  }
+},
 
   // ============================================================
   // LEADERBOARD
