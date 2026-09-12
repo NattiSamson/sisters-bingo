@@ -517,27 +517,30 @@ async getAdminStatistics() {
   };
 },
 
-  async getUserByTelegramId(telegramId) {
-
+ async getUserByTelegramId(telegramId) {
     const result = await pool.query(
-    `
-    SELECT
-      id,
-      telegram_id,
-      name,
-      phone,
-      balance,
-      is_admin
-    FROM users
-    WHERE telegram_id = $1
-    LIMIT 1
-    `,
-    [telegramId]
-  );
+        `
+        SELECT
+            id,
+            telegram_id,
+            name,
+            phone,
+            balance,
+            is_admin,
+            admin_role,
+            is_active,
+            is_banned,
+            is_blocked
+        FROM users
+        WHERE telegram_id = $1
+        LIMIT 1
+        `,
+        [telegramId]
+    );
 
-  return result.rows[0] || null;
-  },
-
+    return result.rows[0] || null;
+},
+  
   async getUserByPhone(phone) {
 
     const digits =
@@ -604,23 +607,32 @@ async getAdminStatistics() {
    * No ADMIN_ID is required.
    */
 
-  async getAdminByTelegramId(telegramId) {
-
+async getAdminByTelegramId(telegramId) {
     const { rows } = await pool.query(
-      `
-      SELECT *
-      FROM users
-      WHERE telegram_id = $1
-        AND is_admin = TRUE
-        AND is_active = TRUE
-        AND is_banned = FALSE
-      LIMIT 1
-      `,
-      [telegramId]
+        `
+        SELECT
+            id,
+            telegram_id,
+            name,
+            phone,
+            is_admin,
+            admin_role,
+            is_active,
+            is_banned,
+            is_blocked
+        FROM users
+        WHERE telegram_id = $1
+          AND is_admin = TRUE
+          AND is_active = TRUE
+          AND is_banned = FALSE
+          AND is_blocked = FALSE
+        LIMIT 1
+        `,
+        [telegramId]
     );
 
     return rows[0] || null;
-  },
+},
 
   async isAdmin(telegramId) {
 
