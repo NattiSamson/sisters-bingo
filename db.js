@@ -174,8 +174,7 @@ async getUserByPhoneForAdmin(phone) {
         admin_role
       FROM users
       WHERE phone = $1
-      AND is_active = TRUE
-      AND is_blocked = FALSE
+      AND is_active = TRUE      
       LIMIT 1
       `,
       [
