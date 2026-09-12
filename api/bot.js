@@ -1193,7 +1193,7 @@ if (
 
     // Main admin cannot manage himself
     if (
-      String(user.telegram_id) ===
+      String(user.id) ===
       String(ctx.from.id)
     ) {
       return ctx.reply(
@@ -1224,6 +1224,10 @@ if (
       ) {
         currentRole = "📢 Broadcast Admin";
       }
+    }
+    else
+    {
+      currentRole = "Normal user";
     }
 
     await ctx.reply(
