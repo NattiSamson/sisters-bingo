@@ -5601,6 +5601,19 @@ bot.callbackQuery(
 bot.callbackQuery(
   "admin_home",
   async (ctx) => {
+  await answerCallback(ctx);
+
+  const telegramId = ctx.from.id;
+
+  // IMPORTANT:
+  // Forget any pending Manage User phone search
+  pendingAdminUserSearch.delete(telegramId);
+
+  // Also clear any pending admin role search
+  pendingAdminRoleSearch.delete(telegramId);
+
+  // Clear other pending states as well
+  clearPendingState(telegramId);
 
     const admin =
       await requireAdmin(
@@ -5613,11 +5626,6 @@ bot.callbackQuery(
       return;
 
     }
-
-
-    await answerCallback(
-      ctx
-    );
 
 
     try {
@@ -5642,9 +5650,6 @@ bot.callbackQuery(
 
       }
 
- clearPendingState(user.id
-
-    );
       await showHome(
         ctx,
         user
