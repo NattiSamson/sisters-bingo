@@ -1231,8 +1231,7 @@ if (
       `👤 Name: *${user.name || "Unknown"}*\n` +
       `📱 Phone: \`${user.phone || "Not available"}\`\n` +
       `💰 Balance: *${user.balance || 0} ETB*\n\n` +
-      `🔐 Current Role: *${currentRole}*\n`+
-      `🔐 Current Role: *${user.admin_role}*`,
+      `🔐 Current Role: *${currentRole}*\n`,
       {
         parse_mode: "Markdown",
         reply_markup: {
