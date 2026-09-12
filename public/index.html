@@ -858,7 +858,17 @@ async function refreshAccountProfile(retries=6, delayMs=500){
 async function refreshAccountBalance(retries=6, delayMs=500){
   return refreshAccountProfile(retries,delayMs);
 }
-function goScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');}
+function goScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  const target=document.getElementById(id);
+  if(target) target.classList.add('active');
+  // A finished-round result is an overlay, not a screen. When switching back
+  // to any normal app screen, force the overlay completely out of the way.
+  if(id==='screenCards' || id==='screenGame' || id==='screenLobby'){
+    const overlay=document.getElementById('winnerOverlay');
+    if(overlay){ overlay.classList.remove('show'); overlay.style.display='none'; }
+  }
+}
 function navGo(screen, navId){
   goScreen(screen);
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
@@ -1578,6 +1588,8 @@ function renderResultCard(card,calledNumbers){
 }
 function showWinnerOverlay(msg){
   const ov=document.getElementById('winnerOverlay');
+  // Clear the forced hidden state used when returning to normal screens.
+  ov.style.display='';
   const winnerList=Array.isArray(msg.winners)?msg.winners.map(String):[];
   const iWon=winnerList.includes(String(myName)) ||
              winnerList.includes(String(myPlayerId)) ||
@@ -1602,7 +1614,11 @@ function showWinnerOverlay(msg){
   ov.classList.add('show');
   if(iWon) startConfetti(); else stopConfetti();
 }
-function hideWinnerOverlay(){document.getElementById('winnerOverlay').classList.remove('show');stopConfetti();}
+function hideWinnerOverlay(){
+  const ov=document.getElementById('winnerOverlay');
+  if(ov){ ov.classList.remove('show'); ov.style.display='none'; }
+  stopConfetti();
+}
 
 // ─── CONFETTI ─────────────────────────────────────────────────
 let cCv,cCt,cPs=[],cRaf;
