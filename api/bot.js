@@ -817,103 +817,66 @@ bot.callbackQuery(
   // The `user` object comes from the database.
   // We also verify active/non-banned admin status here.
   // ----------------------------------------------------------
+let admin = null;
 
-  let isAdmin =
-    false;
-
-
-  try {
-
-    if (
-      user &&
-      user.is_admin === true &&
-      user.is_active !== false &&
-      user.is_banned !== true
-    ) {
-
-      isAdmin = true;
-
-    } else {
-
-      const admin =
-        await getCurrentAdmin(
-          ctx
-        );
-
-      isAdmin =
-        !!admin;
-
-    }
-
-  } catch (err) {
-
+try {
+    admin = await getCurrentAdmin(ctx);
+} catch (err) {
     console.error(
-      "Home admin check error:",
-      err
+        "Home admin check error:",
+        err
     );
+}
 
-  }
-
-
-  if (
-    isAdmin
-  ) {
-    if (
-        admin.admin_role === "main" ||
-        admin.admin_role === "withdrawal"
-    ){
+// Main admin = everything
+if (admin && admin.admin_role === "main") {
 
     keyboard.push([
-
-      {
-
-        text:
-          "⏳ Pending",
-
-        callback_data:
-          "admin_withdrawals"
-
-      }
-      ]);
-    }
- if (
-        admin.admin_role === "main" ||
-        admin.admin_role === "broadcast"
-    )
-   keyboard.push([ {
-      
-
-        text:
-          "📢 Broadcast",
-
-        callback_data:
-          "admin_broadcast"
-
-      }
-
+        {
+            text: "⏳ Pending",
+            callback_data: "admin_withdrawals"
+        },
+        {
+            text: "📢 Broadcast",
+            callback_data: "admin_broadcast"
+        }
     ]);
- 
-    if (admin.admin_role === "main") {
+
     keyboard.push([
-  {
-    text:
-      "💳 Accounts",
+        {
+            text: "📊 Statistics",
+            callback_data: "admin_statistics"
+        }
+    ]);
+}
 
-    callback_data:
-      "admin_accounts"
-  },
+// Broadcast admin = broadcast only
+else if (
+    admin &&
+    admin.admin_role === "broadcast"
+) {
 
-  {
-    text:
-      "📊 Statistics",
+    keyboard.push([
+        {
+            text: "📢 Broadcast",
+            callback_data: "admin_broadcast"
+        }
+    ]);
+}
 
-    callback_data:
-      "admin_statistics"
-  }
-]);
+// Withdrawal admin = withdrawal only
+else if (
+    admin &&
+    admin.admin_role === "withdrawal"
+) {
 
-  }
-  }
+    keyboard.push([
+        {
+            text: "⏳ Pending",
+            callback_data: "admin_withdrawals"
+        }
+    ]);
+}
 
   await ctx.reply(
 
