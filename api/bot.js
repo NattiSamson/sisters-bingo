@@ -1523,7 +1523,7 @@ bot.callbackQuery(
 
         `👥 *Users*\n` +
         `🟢 Active Users: *${stats.activeUsers}*\n` +
-        `⚪ Inactive Users: *${stats.inactiveUsers}*\n\n` +
+        `⚪ Inactive Users: *${stats.inactiveUsers}*\n` +
         `🔴 Blocked Users: *${stats.blockedUsers}*\n\n` +
 
         `👑 Administrators: *${stats.administrators}*`;
