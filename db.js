@@ -2370,8 +2370,7 @@ async getAllPaymentAccountsForAdmin() {
       INNER JOIN payment_types pt
         ON pm.type_id = pt.id
 
-      WHERE
-        pa.is_active = TRUE
+      WHERE        
 
         AND pm.is_active = TRUE
 
