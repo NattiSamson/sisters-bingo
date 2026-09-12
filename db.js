@@ -85,6 +85,181 @@ function normalizeEthiopianPhone(phone) {
 
 
 module.exports = {
+
+  // ============================================================
+// USER FINANCIAL STATISTICS
+// ============================================================
+
+async getUserFinancialStatistics(
+  userId
+) {
+
+  const result = await pool.query(`
+    SELECT
+
+      (
+        SELECT COALESCE(
+          SUM(d.amount),
+          0
+        )
+        FROM deposits d
+        WHERE d.user_id = u.id
+      ) AS total_deposit_amount,
+
+      (
+        SELECT COALESCE(
+          SUM(w.amount),
+          0
+        )
+        FROM withdrawals w
+        WHERE w.user_id = u.id
+          AND w.is_pending = FALSE
+          AND w.is_approved = TRUE
+      ) AS approved_withdrawal_amount,
+
+      (
+        SELECT COALESCE(
+          SUM(w.amount),
+          0
+        )
+        FROM withdrawals w
+        WHERE w.user_id = u.id
+          AND w.is_pending = TRUE
+          AND w.is_approved = FALSE
+      ) AS pending_withdrawal_amount,
+
+      (
+        SELECT COALESCE(
+          SUM(w.amount),
+          0
+        )
+        FROM withdrawals w
+        WHERE w.user_id = u.id
+          AND w.is_pending = FALSE
+          AND w.is_approved = FALSE
+          AND w.reject_reason IS NOT NULL
+      ) AS rejected_withdrawal_amount
+
+    FROM users u
+
+    WHERE u.id = $1
+
+    LIMIT 1
+  `, [
+    userId
+  ]);
+
+  if (
+    result.rows.length === 0
+  ) {
+    return null;
+  }
+
+  const row =
+    result.rows[0];
+
+  return {
+
+    totalDepositAmount:
+      Number(
+        row.total_deposit_amount || 0
+      ),
+
+    approvedWithdrawalAmount:
+      Number(
+        row.approved_withdrawal_amount || 0
+      ),
+
+    pendingWithdrawalAmount:
+      Number(
+        row.pending_withdrawal_amount || 0
+      ),
+
+    rejectedWithdrawalAmount:
+      Number(
+        row.rejected_withdrawal_amount || 0
+      )
+
+  };
+
+},
+
+  // ============================================================
+// ADMIN FINANCIAL STATISTICS
+// ============================================================
+
+async getAdminFinancialStatistics() {
+
+  const result = await pool.query(`
+    SELECT
+
+      (
+        SELECT COALESCE(
+          SUM(amount),
+          0
+        )
+        FROM deposits
+      ) AS total_deposit_amount,
+
+      (
+        SELECT COALESCE(
+          SUM(amount),
+          0
+        )
+        FROM withdrawals
+        WHERE is_pending = FALSE
+          AND is_approved = TRUE
+      ) AS approved_withdrawal_amount,
+
+      (
+        SELECT COALESCE(
+          SUM(amount),
+          0
+        )
+        FROM withdrawals
+        WHERE is_pending = TRUE
+          AND is_approved = FALSE
+      ) AS pending_withdrawal_amount,
+
+      (
+        SELECT COALESCE(
+          SUM(amount),
+          0
+        )
+        FROM withdrawals
+        WHERE is_pending = FALSE
+          AND is_approved = FALSE
+          AND reject_reason IS NOT NULL
+      ) AS rejected_withdrawal_amount
+  `);
+
+  const row =
+    result.rows[0];
+
+  return {
+    totalDepositAmount:
+      Number(
+        row.total_deposit_amount || 0
+      ),
+
+    approvedWithdrawalAmount:
+      Number(
+        row.approved_withdrawal_amount || 0
+      ),
+
+    pendingWithdrawalAmount:
+      Number(
+        row.pending_withdrawal_amount || 0
+      ),
+
+    rejectedWithdrawalAmount:
+      Number(
+        row.rejected_withdrawal_amount || 0
+      )
+  };
+
+},
+  
   // ============================================================
 // ADMIN ROLE MANAGEMENT
 // ============================================================
