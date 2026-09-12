@@ -4760,6 +4760,7 @@ async applyDepositBonus(
       );
 
     return rows;
-  }
+  },
+  giveBonusToUserByPhone
 
 };
