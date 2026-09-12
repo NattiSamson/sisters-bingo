@@ -62,44 +62,56 @@ module.exports = {
 // =========================
 
 async getUserByPhoneForAdmin(phone) {
-  const normalizedPhone = normalizeEthiopianPhone(phone);
 
-  const result = await pool.query(
-    `
-    SELECT
-      id,
-      telegram_id,
-      name,
-      phone,
-      balance,
-      is_active,
-      is_blocked,
-      is_admin
-    FROM users
-    WHERE phone = $1
-    LIMIT 1
-    `,
-    [normalizedPhone]
-  );
+  const normalizedPhone =
+    normalizeEthiopianPhone(phone);
+
+  const result =
+    await pool.query(
+      `
+      SELECT
+        id,
+        telegram_id,
+        name,
+        phone,
+        balance,
+        is_active,
+        is_blocked,
+        is_admin
+      FROM users
+      WHERE phone = $1
+      LIMIT 1
+      `,
+      [
+        normalizedPhone
+      ]
+    );
 
   return result.rows[0] || null;
 },
 
 async setUserBlocked(userId, isBlocked) {
+
   const result = await pool.query(
     `
     UPDATE users
     SET is_blocked = $1
     WHERE id = $2
+      AND is_admin = FALSE
     RETURNING
       id,
+      telegram_id,
       name,
       phone,
       balance,
       is_blocked,
-      is_active
+      is_active,
+      is_admin
     `,
-    [isBlocked, userId]
+    [
+      isBlocked,
+      userId
+    ]
   );
 
   return result.rows[0] || null;
