@@ -28,19 +28,46 @@ function normalizeEthiopianPhone(phone) {
     return null;
   }
 
-  let digits = String(phone).replace(/\D/g, "");
+  let digits =
+    String(phone).replace(/\D/g, "");
 
   // 0912345678 → 251912345678
-  if (digits.startsWith("0") && digits.length === 10) {
-    digits = "251" + digits.substring(1);
+  if (
+    digits.startsWith("09") &&
+    digits.length === 10
+  ) {
+    digits =
+      "251" + digits.substring(1);
+  }
+
+  // 0712345678 → 251712345678
+  else if (
+    digits.startsWith("07") &&
+    digits.length === 10
+  ) {
+    digits =
+      "251" + digits.substring(1);
   }
 
   // 912345678 → 251912345678
-  else if (digits.length === 9 && digits.startsWith("9")) {
-    digits = "251" + digits;
+  else if (
+    digits.length === 9 &&
+    digits.startsWith("9")
+  ) {
+    digits =
+      "251" + digits;
   }
 
-  // 251912345678 → already correct
+  // 712345678 → 251712345678
+  else if (
+    digits.length === 9 &&
+    digits.startsWith("7")
+  ) {
+    digits =
+      "251" + digits;
+  }
+
+  // 251912345678 / 251712345678
   else if (
     digits.startsWith("251") &&
     digits.length === 12
@@ -54,6 +81,8 @@ function normalizeEthiopianPhone(phone) {
 
   return digits;
 }
+
+
 
 module.exports = {
   // ============================================================
