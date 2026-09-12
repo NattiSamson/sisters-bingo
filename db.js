@@ -445,12 +445,17 @@ async function getActiveDepositBonus(
       starts_at,
       ends_at,
       bonus_mode,
-      bonus_amount
+      bonus_amount,
+      deposit_frequency,
+      is_active,
+      created_by
     FROM bonus_campaigns
     WHERE is_active = TRUE
       AND starts_at <= $1
       AND ends_at >= $1
-    ORDER BY id DESC
+    ORDER BY
+      starts_at DESC,
+      id DESC
     LIMIT 1
     `,
     [depositTime]
@@ -458,7 +463,37 @@ async function getActiveDepositBonus(
 
   return rows[0] || null;
 }
+async function getDepositBonusSchedules() {
+  const { rows } = await pool.query(
+    `
+    SELECT
+      id,
+      name,
+      starts_at,
+      ends_at,
+      bonus_mode,
+      bonus_amount,
+      deposit_frequency,
+      is_active,
+      created_by,
+      created_at
+    FROM bonus_campaigns
+    WHERE is_active = TRUE
+      AND ends_at >= NOW()
+    ORDER BY
+      CASE
+        WHEN starts_at <= NOW()
+         AND ends_at >= NOW()
+        THEN 0
+        ELSE 1
+      END,
+      starts_at ASC,
+      id ASC
+    `
+  );
 
+  return rows;
+}
 
 
 module.exports = {
@@ -4464,17 +4499,32 @@ async giveBonusToAllActiveUsers(
 // CREATE TIME-BASED DEPOSIT BONUS
 // ============================================================
 
-async createBonusCampaign(
+async function createBonusCampaign(
   name,
   startsAt,
   endsAt,
   bonusMode,
   bonusAmount,
+  depositFrequency,
   adminTelegramId
 ) {
+  const cleanName = String(
+    name || "Deposit Bonus"
+  )
+    .trim()
+    .substring(0, 100);
+
+  if (!cleanName) {
+    throw new Error(
+      "Bonus campaign name is required"
+    );
+  }
+
   const mode = String(
     bonusMode || ""
-  ).trim();
+  )
+    .trim()
+    .toLowerCase();
 
   if (
     mode !== "match_deposit" &&
@@ -4482,6 +4532,21 @@ async createBonusCampaign(
   ) {
     throw new Error(
       "Invalid bonus mode"
+    );
+  }
+
+  const frequency = String(
+    depositFrequency || ""
+  )
+    .trim()
+    .toLowerCase();
+
+  if (
+    frequency !== "one_time" &&
+    frequency !== "every_deposit"
+  ) {
+    throw new Error(
+      "Invalid deposit bonus frequency"
     );
   }
 
@@ -4503,13 +4568,16 @@ async createBonusCampaign(
     );
   }
 
+  if (end.getTime() <= Date.now()) {
+    throw new Error(
+      "Bonus end time must be in the future"
+    );
+  }
+
   let amount = null;
 
   if (mode === "fixed") {
-
-    amount = Number(
-      bonusAmount
-    );
+    amount = Number(bonusAmount);
 
     if (
       !Number.isFinite(amount) ||
@@ -4529,6 +4597,7 @@ async createBonusCampaign(
       ends_at,
       bonus_mode,
       bonus_amount,
+      deposit_frequency,
       is_active,
       created_by
     )
@@ -4538,24 +4607,19 @@ async createBonusCampaign(
       $3,
       $4,
       $5,
+      $6,
       TRUE,
-      $6
+      $7
     )
     RETURNING *
     `,
     [
-      String(name || "Deposit Bonus")
-        .trim()
-        .substring(0, 100),
-
+      cleanName,
       start,
-
       end,
-
       mode,
-
       amount,
-
+      frequency,
       adminTelegramId
     ]
   );
@@ -4581,9 +4645,7 @@ async applyDepositBonus(
   depositReference,
   depositTime = new Date()
 ) {
-  const amount = Number(
-    depositAmount
-  );
+  const amount = Number(depositAmount);
 
   if (
     !Number.isFinite(amount) ||
@@ -4591,6 +4653,7 @@ async applyDepositBonus(
   ) {
     return {
       applied: false,
+      duplicate: false,
       amount: 0,
       campaign: null
     };
@@ -4599,8 +4662,11 @@ async applyDepositBonus(
   const client = await pool.connect();
 
   try {
-
     await client.query("BEGIN");
+
+    // ----------------------------------------------------------
+    // LOCK USER
+    // ----------------------------------------------------------
 
     const userResult = await client.query(
       `
@@ -4619,11 +4685,11 @@ async applyDepositBonus(
     );
 
     if (!userResult.rows.length) {
-
       await client.query("ROLLBACK");
 
       return {
         applied: false,
+        duplicate: false,
         amount: 0,
         campaign: null
       };
@@ -4636,63 +4702,156 @@ async applyDepositBonus(
       user.is_banned ||
       user.is_blocked
     ) {
-
       await client.query("ROLLBACK");
 
       return {
         applied: false,
+        duplicate: false,
         amount: 0,
         campaign: null
       };
     }
 
-    const campaign =
-      await getActiveDepositBonus(
-        client,
-        depositTime
-      );
+    // ----------------------------------------------------------
+    // FIND ACTIVE CAMPAIGN
+    // ----------------------------------------------------------
+
+    const campaign = await getActiveDepositBonus(
+      client,
+      depositTime
+    );
 
     if (!campaign) {
-
       await client.query("ROLLBACK");
 
       return {
         applied: false,
+        duplicate: false,
         amount: 0,
         campaign: null
       };
     }
 
-    let bonusAmount;
+    // ----------------------------------------------------------
+    // ONE-TIME BONUS
+    // ----------------------------------------------------------
+    //
+    // A user can receive this campaign only once.
+    //
+    // Example:
+    // Deposit 100  -> bonus
+    // Deposit 500  -> no bonus
+    // Deposit 1000 -> no bonus
+    //
+    // Other users can still receive the same campaign once.
+    // ----------------------------------------------------------
+
+    if (
+      campaign.deposit_frequency ===
+      "one_time"
+    ) {
+      const alreadyReceived =
+        await client.query(
+          `
+          SELECT id
+          FROM bonus_transactions
+          WHERE user_id = $1
+            AND bonus_campaign_id = $2
+            AND bonus_type = 'deposit_bonus'
+          LIMIT 1
+          `,
+          [
+            user.id,
+            campaign.id
+          ]
+        );
+
+      if (
+        alreadyReceived.rows.length
+      ) {
+        await client.query("ROLLBACK");
+
+        return {
+          applied: false,
+          duplicate: true,
+          amount: 0,
+          campaign
+        };
+      }
+    }
+
+    // ----------------------------------------------------------
+    // PREVENT SAME DEPOSIT FROM GETTING SAME BONUS TWICE
+    // ----------------------------------------------------------
+
+    if (depositReference) {
+      const duplicate =
+        await client.query(
+          `
+          SELECT id
+          FROM bonus_transactions
+          WHERE bonus_campaign_id = $1
+            AND bonus_type = 'deposit_bonus'
+            AND reference = $2
+          LIMIT 1
+          `,
+          [
+            campaign.id,
+            depositReference
+          ]
+        );
+
+      if (duplicate.rows.length) {
+        await client.query("ROLLBACK");
+
+        return {
+          applied: false,
+          duplicate: true,
+          amount: 0,
+          campaign
+        };
+      }
+    }
+
+    // ----------------------------------------------------------
+    // CALCULATE BONUS
+    // ----------------------------------------------------------
+
+    let bonusAmount = 0;
 
     if (
       campaign.bonus_mode ===
       "match_deposit"
     ) {
-
       bonusAmount = amount;
+    }
 
-    } else {
-
-      bonusAmount =
-        Number(
-          campaign.bonus_amount
-        );
+    else if (
+      campaign.bonus_mode ===
+      "fixed"
+    ) {
+      bonusAmount = Number(
+        campaign.bonus_amount
+      );
     }
 
     if (
       !Number.isFinite(bonusAmount) ||
       bonusAmount <= 0
     ) {
-
       await client.query("ROLLBACK");
 
       return {
         applied: false,
+        duplicate: false,
         amount: 0,
         campaign
       };
     }
+
+    // ----------------------------------------------------------
+    // APPLY BONUS
+    // ----------------------------------------------------------
 
     const result =
       await addBonusToUser(
@@ -4716,15 +4875,17 @@ async applyDepositBonus(
     };
 
   } catch (err) {
-
     await safeRollback(client);
+
+    console.error(
+      "applyDepositBonus error:",
+      err
+    );
 
     throw err;
 
   } finally {
-
     client.release();
-
   }
 },
 
@@ -4762,6 +4923,9 @@ async applyDepositBonus(
 
     return rows;
   },
+  getDepositBonusSchedules,
+  createBonusCampaign,
+  applyDepositBonus,
   giveBonusToUserByPhone
 
 };
