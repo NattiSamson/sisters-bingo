@@ -881,7 +881,7 @@ bot.callbackQuery(
         admin.admin_role === "broadcast"
     )
    keyboard.push([ {
-      {
+      
 
         text:
           "📢 Broadcast",
@@ -892,7 +892,7 @@ bot.callbackQuery(
       }
 
     ]);
- }
+ 
     if (admin.admin_role === "main") {
     keyboard.push([
   {
