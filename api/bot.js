@@ -1073,6 +1073,13 @@ bot.callbackQuery("admin_manage_user", async (ctx) => {
         reply_markup: {
 
           inline_keyboard: [
+            [
+            {
+              text: "🏠 Home",
+              callback_data:
+                "admin_home"
+            }
+          ],
 
             [
               {
@@ -1155,6 +1162,13 @@ bot.on("message:text", async (ctx, next) => {
             parse_mode: "Markdown",
             reply_markup: {
               inline_keyboard: [
+                [
+                  {
+                    text: "🏠 Home",
+                    callback_data:
+                      "admin_home"
+                  }
+                ],
                 [
                   {
                     text: "❌ Cancel",
