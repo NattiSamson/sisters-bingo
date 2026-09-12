@@ -426,6 +426,167 @@ function formatBonusDate(
   );
 }
 // ============================================================
+// SHOW DEPOSIT TIME BONUS SCHEDULES
+// ============================================================
+// Shows ONLY:
+//   • Currently active campaigns
+//   • Future campaigns
+//
+// Expired campaigns are NOT displayed.
+// ============================================================
+
+async function showDepositBonusSchedules(ctx) {
+
+  const admin =
+    await requireAdmin(ctx);
+
+  if (!admin) {
+    return;
+  }
+
+  try {
+
+    const schedules =
+      await db.getDepositBonusSchedules();
+
+    let message =
+      "🎁 *DEPOSIT TIME BONUS*\\n\\n";
+
+    if (
+      !schedules ||
+      schedules.length === 0
+    ) {
+
+      message +=
+        "There are currently no active or upcoming deposit bonus schedules.";
+
+    } else {
+
+      for (
+        const campaign of schedules
+      ) {
+
+        const now =
+          Date.now();
+
+        const start =
+          new Date(
+            campaign.starts_at
+          ).getTime();
+
+        const end =
+          new Date(
+            campaign.ends_at
+          ).getTime();
+
+        let status =
+          "⏳ Upcoming";
+
+        if (
+          start <= now &&
+          end >= now
+        ) {
+          status =
+            "🟢 Active";
+        }
+
+        const bonusText =
+          campaign.bonus_mode ===
+          "match_deposit"
+
+            ? "💯 Match deposit"
+
+            : `💰 Fixed ${Number(
+                campaign.bonus_amount || 0
+              ).toFixed(2)} ETB`;
+
+        const frequencyText =
+          campaign.deposit_frequency ===
+          "one_time"
+
+            ? "1️⃣ One time"
+
+            : "🔄 Every deposit";
+
+        message +=
+          `🎁 *${campaign.name}*\\n` +
+          `${status}\\n` +
+          `⏰ Start: *${formatBonusDate(
+            campaign.starts_at
+          )}*\\n` +
+          `⏰ End: *${formatBonusDate(
+            campaign.ends_at
+          )}*\\n` +
+          `${bonusText}\\n` +
+          `📌 ${frequencyText}\\n\\n`;
+      }
+    }
+
+    await ctx.editMessageText(
+      message,
+      {
+        parse_mode:
+          "Markdown",
+
+        reply_markup: {
+          inline_keyboard: [
+
+            [
+              {
+                text:
+                  "➕ Add Deposit Time Bonus",
+
+                callback_data:
+                  "admin_bonus_time_add"
+              }
+            ],
+
+            [
+              {
+                text:
+                  "🔄 Refresh",
+
+                callback_data:
+                  "admin_bonus_time"
+              }
+            ],
+
+            [
+              {
+                text:
+                  "⬅️ Bonus Menu",
+
+                callback_data:
+                  "admin_bonus"
+              },
+
+              {
+                text:
+                  "🏠 Home",
+
+                callback_data:
+                  "admin_home"
+              }
+            ]
+
+          ]
+        }
+      }
+    );
+
+  } catch (err) {
+
+    console.error(
+      "Deposit bonus schedules error:",
+      err
+    );
+
+    await ctx.reply(
+      "❌ Could not load deposit bonus schedules."
+    );
+  }
+}
+// ============================================================
 // PHONE NORMALIZATION
 // ============================================================
 
@@ -1041,86 +1202,147 @@ else if (
 // TIME BONUS — MATCH DEPOSIT
 // ============================================================
 
+// ============================================================
+// TIME BONUS — MATCH DEPOSIT
+// ============================================================
+
 bot.callbackQuery(
   "admin_bonus_mode_match",
   async (ctx) => {
 
-    const admin =
-      await requireAdmin(ctx);
-
-    if (!admin) {
-      return;
-    }
-
-    await answerCallback(ctx);
-
-    const pending =
-      pendingAdminBonus.get(
-        admin.telegram_id
-      );
-
-    if (
-      !pending ||
-      pending.type !== "time_bonus"
-    ) {
-
-      return ctx.reply(
-        "❌ Bonus session expired. Please start again."
-      );
-    }
-
     try {
 
-      const campaign =
-        await db.createBonusCampaign(
-          pending.name,
-          pending.startsAt,
-          pending.endsAt,
-          "match_deposit",
-          null,
-          admin.telegram_id
+      await answerCallback(ctx);
+
+      const admin =
+        await requireAdmin(ctx);
+
+      if (!admin) {
+        return;
+      }
+
+      const telegramId =
+        admin.telegram_id;
+
+      const pending =
+        pendingAdminBonus.get(
+          telegramId
         );
 
-      pendingAdminBonus.delete(
-        admin.telegram_id
-      );
+      if (
+        !pending ||
+        pending.type !==
+          "time_bonus"
+      ) {
 
-      await ctx.editMessageText(
-        "✅ *DEPOSIT BONUS CREATED*\n\n" +
-        `🎁 Name: *${campaign.name}*\n` +
-        `⏰ Start: *${formatBonusDate(campaign.starts_at)}*\n` +
-        `⏰ End: *${formatBonusDate(campaign.ends_at)}*\n\n` +
-        "💯 Bonus: *100% of every deposit*\n\n" +
-        "Example:\n" +
-        "Deposit 500 ETB → Bonus 500 ETB",
-        {
-          parse_mode: "Markdown",
+        return ctx.reply(
+          "❌ Bonus creation session expired. Please start again."
+        );
+      }
 
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "🎁 Bonus Menu",
-                  callback_data:
-                    "admin_bonus"
-                }
-              ],
-              [
-                {
-                  text: "🏠 Home",
-                  callback_data:
-                    "admin_home"
-                }
+      if (
+        pending.depositFrequency !==
+          "one_time" &&
+        pending.depositFrequency !==
+          "every_deposit"
+      ) {
+
+        return ctx.reply(
+          "❌ Please select the bonus frequency first."
+        );
+      }
+
+      try {
+
+        const campaign =
+                  await db.createBonusCampaign(
+                  pending.name,
+                  pending.startsAt,
+                  pending.endsAt,
+                  "match_deposit",
+                  null,
+                  pending.depositFrequency,
+                  admin.telegram_id
+                  );
+
+        pendingAdminBonus.delete(
+          telegramId
+        );
+
+        const frequencyText =
+          campaign.deposit_frequency ===
+          "one_time"
+
+            ? "1️⃣ One time"
+
+            : "🔄 Every deposit";
+
+        await ctx.editMessageText(
+
+          "✅ *DEPOSIT BONUS CREATED*\\n\\n" +
+
+          `🎁 Name: *${campaign.name}*\\n` +
+
+          `⏰ Start: *${formatBonusDate(
+            campaign.starts_at
+          )}*\\n` +
+
+          `⏰ End: *${formatBonusDate(
+            campaign.ends_at
+          )}*\\n` +
+
+          `💯 Bonus: *Match deposit*\\n` +
+
+          `📌 Frequency: *${frequencyText}*`,
+
+          {
+            parse_mode:
+              "Markdown",
+
+            reply_markup: {
+              inline_keyboard: [
+
+                [
+                  {
+                    text:
+                      "🎁 Bonus Menu",
+
+                    callback_data:
+                      "admin_bonus"
+                  }
+                ],
+
+                [
+                  {
+                    text:
+                      "🏠 Home",
+
+                    callback_data:
+                      "admin_home"
+                  }
+                ]
+
               ]
-            ]
+            }
           }
-        }
-      );
+        );
+
+      } catch (err) {
+
+        console.error(
+          "Match deposit bonus creation error:",
+          err
+        );
+
+        await ctx.reply(
+          "❌ Could not create the deposit bonus."
+        );
+      }
 
     } catch (err) {
 
       console.error(
-        "Match deposit bonus creation error:",
+        "Match bonus callback error:",
         err
       );
 
@@ -1136,60 +1358,106 @@ bot.callbackQuery(
 // TIME BONUS — FIXED AMOUNT
 // ============================================================
 
+// ============================================================
+// TIME BONUS — SELECT FIXED AMOUNT
+// ============================================================
+
 bot.callbackQuery(
   "admin_bonus_mode_fixed",
   async (ctx) => {
 
-    const admin =
-      await requireAdmin(ctx);
+    try {
 
-    if (!admin) {
-      return;
-    }
+      await answerCallback(ctx);
 
-    await answerCallback(ctx);
+      const admin =
+        await requireAdmin(ctx);
 
-    const pending =
-      pendingAdminBonus.get(
-        admin.telegram_id
-      );
-
-    if (
-      !pending ||
-      pending.type !== "time_bonus"
-    ) {
-
-      return ctx.reply(
-        "❌ Bonus session expired."
-      );
-    }
-
-    pending.step =
-      "fixed_amount";
-
-    await ctx.editMessageText(
-      "💰 *FIXED DEPOSIT BONUS*\n\n" +
-      "Enter the bonus amount.\n\n" +
-      "Example:\n" +
-      "`100`\n\n" +
-      "A user depositing 500 ETB will receive:\n" +
-      "500 ETB deposit + 100 ETB bonus.",
-      {
-        parse_mode: "Markdown",
-
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "❌ Cancel",
-                callback_data:
-                  "admin_bonus_cancel"
-              }
-            ]
-          ]
-        }
+      if (!admin) {
+        return;
       }
-    );
+
+      const telegramId =
+        admin.telegram_id;
+
+      const pending =
+        pendingAdminBonus.get(
+          telegramId
+        );
+
+      if (
+        !pending ||
+        pending.type !==
+          "time_bonus"
+      ) {
+
+        return ctx.reply(
+          "❌ Bonus creation session expired. Please start again."
+        );
+      }
+
+      if (
+        pending.depositFrequency !==
+          "one_time" &&
+        pending.depositFrequency !==
+          "every_deposit"
+      ) {
+
+        return ctx.reply(
+          "❌ Please select the bonus frequency first."
+        );
+      }
+
+      pending.step =
+        "fixed_amount";
+
+      await ctx.editMessageText(
+
+        "💰 *FIXED BONUS AMOUNT*\\n\\n" +
+
+        "Enter the bonus amount in ETB.\\n\\n" +
+
+        "Example:\\n" +
+        "`100`\\n\\n" +
+
+        `📌 Frequency: *${
+          pending.depositFrequency ===
+          "one_time"
+            ? "One time"
+            : "Every deposit"
+        }*`,
+
+        {
+          parse_mode:
+            "Markdown",
+
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text:
+                    "❌ Cancel",
+
+                  callback_data:
+                    "admin_bonus_cancel"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Fixed bonus mode error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not select fixed bonus."
+      );
+    }
   }
 );
 // ============================================================
@@ -1366,60 +1634,137 @@ bot.callbackQuery(
   }
 );
 // ============================================================
-// BONUS — TIME BASED DEPOSIT BONUS
+// ADMIN — DEPOSIT TIME BONUS
+// ============================================================
+// Shows active + upcoming campaigns.
+// Expired campaigns are hidden.
 // ============================================================
 
 bot.callbackQuery(
   "admin_bonus_time",
   async (ctx) => {
 
-    const admin =
-      await requireAdmin(ctx);
+    try {
 
-    if (!admin) {
-      return;
+      await answerCallback(ctx);
+
+      const admin =
+        await requireAdmin(ctx);
+
+      if (!admin) {
+        return;
+      }
+
+      pendingAdminBonus.delete(
+        admin.telegram_id
+      );
+
+      await showDepositBonusSchedules(
+        ctx
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Admin deposit bonus menu error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not load deposit bonus schedules."
+      );
     }
+  }
+);
+// ============================================================
+// ADMIN — ADD DEPOSIT TIME BONUS
+// ============================================================
 
-    await answerCallback(ctx);
+bot.callbackQuery(
+  "admin_bonus_time_add",
+  async (ctx) => {
 
-    pendingAdminBonus.set(
-      admin.telegram_id,
-      {
-        type: "time_bonus",
-        step: "name"
+    try {
+
+      await answerCallback(ctx);
+
+      const admin =
+        await requireAdmin(ctx);
+
+      if (!admin) {
+        return;
       }
-    );
 
-    await ctx.editMessageText(
-      "⏰ *DEPOSIT TIME BONUS*\n\n" +
-      "First enter a name for this bonus campaign.\n\n" +
-      "Example:\n" +
-      "`Weekend Deposit Bonus`",
-      {
-        parse_mode: "Markdown",
+      clearPendingState(
+        admin.telegram_id
+      );
 
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "❌ Cancel",
-                callback_data:
-                  "admin_bonus_cancel"
-              }
-            ]
-          ]
+      pendingAdminBonus.set(
+        admin.telegram_id,
+        {
+          type:
+            "time_bonus",
+
+          step:
+            "name"
         }
-      }
-    );
+      );
+
+      await ctx.editMessageText(
+
+        "➕ *CREATE DEPOSIT TIME BONUS*\\n\\n" +
+
+        "Please enter the bonus campaign name.\\n\\n" +
+
+        "Example:\\n" +
+        "`Weekend Deposit Bonus`",
+
+        {
+          parse_mode:
+            "Markdown",
+
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text:
+                    "❌ Cancel",
+
+                  callback_data:
+                    "admin_bonus_cancel"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Add deposit time bonus error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not start bonus creation."
+      );
+    }
   }
 );
 // ============================================================
 // BONUS CANCEL
 // ============================================================
 
+// ============================================================
+// ADMIN BONUS — CANCEL
+// ============================================================
+
 bot.callbackQuery(
   "admin_bonus_cancel",
   async (ctx) => {
+
+    await answerCallback(ctx);
 
     const admin =
       await requireAdmin(ctx);
@@ -1428,35 +1773,47 @@ bot.callbackQuery(
       return;
     }
 
-    await answerCallback(ctx);
-
     pendingAdminBonus.delete(
       admin.telegram_id
     );
 
-    await ctx.editMessageText(
-      "🎁 Bonus operation cancelled.",
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "🎁 Bonus",
-                callback_data:
-                  "admin_bonus"
-              }
-            ],
-            [
-              {
-                text: "🏠 Home",
-                callback_data:
-                  "admin_home"
-              }
+    try {
+
+      await ctx.editMessageText(
+        "❌ Bonus operation cancelled.",
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text:
+                    "🎁 Bonus Menu",
+
+                  callback_data:
+                    "admin_bonus"
+                }
+              ],
+
+              [
+                {
+                  text:
+                    "🏠 Home",
+
+                  callback_data:
+                    "admin_home"
+                }
+              ]
             ]
-          ]
+          }
         }
-      }
-    );
+      );
+
+    } catch (err) {
+
+      await ctx.reply(
+        "❌ Bonus operation cancelled."
+      );
+    }
   }
 );
 
@@ -8124,44 +8481,171 @@ bot.on(
     // TIME BONUS — END
     // ========================================================
 
-    if (
-      pending.type ===
-        "time_bonus" &&
-      pending.step === "end"
-    ) {
+    // ========================================================
+// TIME BONUS — END
+// ========================================================
 
-      const end =
-        parseBonusDateTime(
-          text
-        );
+if (
+  pending.type ===
+    "time_bonus" &&
+  pending.step ===
+    "end"
+) {
 
-      if (!end) {
+  const end =
+    parseBonusDateTime(
+      text
+    );
 
-        return ctx.reply(
-          "❌ Invalid date/time."
-        );
+  if (!end) {
+
+    return ctx.reply(
+      "❌ Invalid date/time.\\n\\n" +
+      "Use:\\n" +
+      "`2026-09-13 18:00`",
+      {
+        parse_mode:
+          "Markdown"
+      }
+    );
+  }
+
+  if (
+    end <=
+    pending.startsAt
+  ) {
+
+    return ctx.reply(
+      "❌ End time must be after start time."
+    );
+  }
+
+  // --------------------------------------------------------
+  // Do not allow an already-expired campaign.
+  // --------------------------------------------------------
+
+  if (
+    end.getTime() <=
+    Date.now()
+  ) {
+
+    return ctx.reply(
+      "❌ End time must be in the future."
+    );
+  }
+
+  pending.endsAt =
+    end;
+
+  // --------------------------------------------------------
+  // NEW STEP:
+  // Ask whether the bonus is one-time or every deposit.
+  // --------------------------------------------------------
+
+  pending.step =
+    "frequency";
+
+  return ctx.reply(
+
+    "🔁 *BONUS FREQUENCY*\\n\\n" +
+
+    "How should this deposit bonus work?",
+
+    {
+      parse_mode:
+        "Markdown",
+
+      reply_markup: {
+        inline_keyboard: [
+
+          [
+            {
+              text:
+                "1️⃣ One time",
+
+              callback_data:
+                "admin_bonus_frequency_one_time"
+            }
+          ],
+
+          [
+            {
+              text:
+                "🔄 Every deposit",
+
+              callback_data:
+                "admin_bonus_frequency_every_deposit"
+            }
+          ],
+
+          [
+            {
+              text:
+                "❌ Cancel",
+
+              callback_data:
+                "admin_bonus_cancel"
+            }
+          ]
+
+        ]
+      }
+    }
+  );
+}
+    // ============================================================
+// TIME BONUS — ONE TIME
+// ============================================================
+
+bot.callbackQuery(
+  "admin_bonus_frequency_one_time",
+  async (ctx) => {
+
+    try {
+
+      await answerCallback(ctx);
+
+      const admin =
+        await requireAdmin(ctx);
+
+      if (!admin) {
+        return;
       }
 
+      const telegramId =
+        admin.telegram_id;
+
+      const pending =
+        pendingAdminBonus.get(
+          telegramId
+        );
+
       if (
-        end <= pending.startsAt
+        !pending ||
+        pending.type !==
+          "time_bonus"
       ) {
 
         return ctx.reply(
-          "❌ End time must be after start time."
+          "❌ Bonus creation session expired. Please start again."
         );
       }
 
-      pending.endsAt =
-        end;
+      pending.depositFrequency =
+        "one_time";
 
       pending.step =
         "mode";
 
-      return ctx.reply(
-        "🎁 *BONUS TYPE*\n\n" +
-        "Choose how the deposit bonus should work:",
+      await ctx.editMessageText(
+
+        "🎁 *BONUS TYPE*\\n\\n" +
+
+        "Choose how much bonus the user receives:",
+
         {
-          parse_mode: "Markdown",
+          parse_mode:
+            "Markdown",
 
           reply_markup: {
             inline_keyboard: [
@@ -8170,6 +8654,7 @@ bot.on(
                 {
                   text:
                     "💯 Match Deposit",
+
                   callback_data:
                     "admin_bonus_mode_match"
                 }
@@ -8179,6 +8664,7 @@ bot.on(
                 {
                   text:
                     "💰 Fixed Amount",
+
                   callback_data:
                     "admin_bonus_mode_fixed"
                 }
@@ -8188,6 +8674,7 @@ bot.on(
                 {
                   text:
                     "❌ Cancel",
+
                   callback_data:
                     "admin_bonus_cancel"
                 }
@@ -8197,21 +8684,150 @@ bot.on(
           }
         }
       );
+
+    } catch (err) {
+
+      console.error(
+        "One-time bonus frequency error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not set bonus frequency."
+      );
     }
+  }
+);
+
+
+// ============================================================
+// TIME BONUS — EVERY DEPOSIT
+// ============================================================
+
+bot.callbackQuery(
+  "admin_bonus_frequency_every_deposit",
+  async (ctx) => {
+
+    try {
+
+      await answerCallback(ctx);
+
+      const admin =
+        await requireAdmin(ctx);
+
+      if (!admin) {
+        return;
+      }
+
+      const telegramId =
+        admin.telegram_id;
+
+      const pending =
+        pendingAdminBonus.get(
+          telegramId
+        );
+
+      if (
+        !pending ||
+        pending.type !==
+          "time_bonus"
+      ) {
+
+        return ctx.reply(
+          "❌ Bonus creation session expired. Please start again."
+        );
+      }
+
+      pending.depositFrequency =
+        "every_deposit";
+
+      pending.step =
+        "mode";
+
+      await ctx.editMessageText(
+
+        "🎁 *BONUS TYPE*\\n\\n" +
+
+        "Choose how much bonus the user receives:",
+
+        {
+          parse_mode:
+            "Markdown",
+
+          reply_markup: {
+            inline_keyboard: [
+
+              [
+                {
+                  text:
+                    "💯 Match Deposit",
+
+                  callback_data:
+                    "admin_bonus_mode_match"
+                }
+              ],
+
+              [
+                {
+                  text:
+                    "💰 Fixed Amount",
+
+                  callback_data:
+                    "admin_bonus_mode_fixed"
+                }
+              ],
+
+              [
+                {
+                  text:
+                    "❌ Cancel",
+
+                  callback_data:
+                    "admin_bonus_cancel"
+                }
+              ]
+
+            ]
+          }
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Every-deposit bonus frequency error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not set bonus frequency."
+      );
+    }
+  }
+);
 
 
     // ========================================================
 // TIME BONUS — FIXED AMOUNT
 // ========================================================
 
+// ============================================================
+// TIME BONUS — FIXED AMOUNT
+// ============================================================
+
 if (
-  pending.type === "time_bonus" &&
-  pending.step === "fixed_amount"
+  pending.type ===
+    "time_bonus" &&
+  pending.step ===
+    "fixed_amount"
 ) {
 
   const amount =
     Number(
-      text.replace(/,/g, "")
+      text.replace(
+        /,/g,
+        ""
+      )
     );
 
   if (
@@ -8220,51 +8836,92 @@ if (
   ) {
 
     return ctx.reply(
-      "❌ Invalid fixed bonus amount."
+      "❌ Invalid fixed bonus amount.\\n\\n" +
+      "Please enter a positive amount."
+    );
+  }
+
+  if (
+    !pending.depositFrequency
+  ) {
+
+    return ctx.reply(
+      "❌ Bonus frequency was not selected. Please start again."
     );
   }
 
   try {
 
     const campaign =
-      await db.createBonusCampaign(
-        pending.name,
-        pending.startsAt,
-        pending.endsAt,
-        "fixed",
-        amount,
-        admin.telegram_id
-      );
+          await db.createBonusCampaign(
+            pending.name,
+            pending.startsAt,
+            pending.endsAt,
+            "fixed",
+            amount,
+            pending.depositFrequency,
+            admin.telegram_id
+          );
 
     pendingAdminBonus.delete(
       telegramId
     );
 
+    const frequencyText =
+      campaign.deposit_frequency ===
+      "one_time"
+
+        ? "1️⃣ One time"
+
+        : "🔄 Every deposit";
+
     await ctx.reply(
-      "✅ *DEPOSIT BONUS CREATED*\n\n" +
-      `🎁 Name: *${campaign.name}*\n` +
-      `⏰ Start: *${formatBonusDate(campaign.starts_at)}*\n` +
-      `⏰ End: *${formatBonusDate(campaign.ends_at)}*\n` +
-      `💰 Bonus: *${amount.toFixed(2)} ETB per deposit*`,
+
+      "✅ *DEPOSIT BONUS CREATED*\\n\\n" +
+
+      `🎁 Name: *${campaign.name}*\\n` +
+
+      `⏰ Start: *${formatBonusDate(
+        campaign.starts_at
+      )}*\\n` +
+
+      `⏰ End: *${formatBonusDate(
+        campaign.ends_at
+      )}*\\n` +
+
+      `💰 Bonus: *${amount.toFixed(
+        2
+      )} ETB*\\n` +
+
+      `📌 Frequency: *${frequencyText}*`,
+
       {
-        parse_mode: "Markdown",
+        parse_mode:
+          "Markdown",
 
         reply_markup: {
           inline_keyboard: [
+
             [
               {
-                text: "🎁 Bonus Menu",
+                text:
+                  "🎁 Bonus Menu",
+
                 callback_data:
                   "admin_bonus"
               }
             ],
+
             [
               {
-                text: "🏠 Home",
+                text:
+                  "🏠 Home",
+
                 callback_data:
                   "admin_home"
               }
             ]
+
           ]
         }
       }
