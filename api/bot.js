@@ -2149,6 +2149,11 @@ if (!admin) {
               ],
               [
                 {
+                   text: "⬅️ Statistics",
+                   callback_data:
+                   "admin_statistics_menu"
+                },
+                {
                   text: "🏠 Home",
                   callback_data: "admin_home"
                 }
