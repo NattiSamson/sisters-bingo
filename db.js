@@ -2372,7 +2372,7 @@ async getAllPaymentAccountsForAdmin() {
 
       WHERE        
 
-        AND pm.is_active = TRUE
+        pm.is_active = TRUE
 
         AND pt.is_active = TRUE
 
