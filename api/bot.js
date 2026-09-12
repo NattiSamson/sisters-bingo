@@ -1209,9 +1209,6 @@ if (
       "🚫 No Admin";
 
     if (user.is_admin) {
-      ctx.reply(
-        user.admin_role
-      );
       if (user.admin_role === "main") {
         currentRole = "👑 Main Admin";
       } else if (
@@ -1235,6 +1232,7 @@ if (
       `📱 Phone: \`${user.phone || "Not available"}\`\n` +
       `💰 Balance: *${user.balance || 0} ETB*\n\n` +
       `🔐 Current Role: *${currentRole}*`,
+      `🔐 Current Role: *${user.admin_role}*`,
       {
         parse_mode: "Markdown",
         reply_markup: {
