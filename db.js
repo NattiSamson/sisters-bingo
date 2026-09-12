@@ -99,17 +99,6 @@ function amountFromReceipt(receipt) {
   return amount;
 }
 
-async function safeRollback(client) {
-  try {
-    await client.query("ROLLBACK");
-  } catch (err) {
-    console.error(
-      "Rollback error:",
-      err
-    );
-  }
-}
-
 // ============================================================
 // INTERNAL BONUS HELPER
 // ============================================================
@@ -428,6 +417,19 @@ async function giveBonusToUserByPhone(
 
   }
 }
+
+async function safeRollback(client) {
+  try {
+    await client.query("ROLLBACK");
+  } catch (err) {
+    console.error(
+      "Rollback error:",
+      err
+    );
+  }
+}
+
+
 
 module.exports = {
 
