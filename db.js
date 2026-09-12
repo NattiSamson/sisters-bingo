@@ -83,7 +83,7 @@ async getUserByPhoneForAdmin(phone) {
   );
 
   return result.rows[0] || null;
-}
+},
 
 async setUserBlocked(userId, isBlocked) {
   const result = await pool.query(
