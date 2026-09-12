@@ -514,7 +514,7 @@ async function showHome(
   user
 ) {
   const telegramId =    ctx.from.id;
-const user = await db.getUserByTelegramId(telegramId);
+
   
 const canPlay =
   user &&
@@ -522,7 +522,7 @@ const canPlay =
   user.is_blocked !== true;
   
 
-const user = await db.getUserByTelegramId(telegramId);
+
 
 const keyboard = [];
 
