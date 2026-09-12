@@ -79,6 +79,8 @@ const pendingAdminUserSearch = new Map();
 
 const pendingAdminRoleSearch = new Map();
 
+const pendingAdminBonus = new Map();
+
 
 // ============================================================
 // CLEAR USER STATE
@@ -114,6 +116,7 @@ function clearPendingState(
   
   pendingAdminUserSearch.delete(telegramId);
   pendingAdminRoleSearch.delete(telegramId);
+  pendingAdminBonus.delete(telegramId);
 }
 
 // ============================================================
