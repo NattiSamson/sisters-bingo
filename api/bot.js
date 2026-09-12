@@ -1133,7 +1133,7 @@ bot.callbackQuery("admin_manage_user", async (ctx) => {
   }
 
 });
-```js
+
 bot.on("message:text", async (ctx, next) => {
   try {
     const telegramId = ctx.from.id;
