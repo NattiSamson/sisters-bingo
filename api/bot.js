@@ -1133,279 +1133,170 @@ bot.callbackQuery("admin_manage_user", async (ctx) => {
   }
 
 });
+```js
 bot.on("message:text", async (ctx, next) => {
   try {
-    const adminRoleState =
-  pendingAdminRoleSearch.get(ctx.from.id);
+    const telegramId = ctx.from.id;
 
-if (
-  adminRoleState &&
-  adminRoleState.step === "waiting_phone"
-) {
-  try {
-    const admin =
-      await db.getAdminByTelegramId(
-        ctx.from.id
-      );
+    // ============================================================
+    // MANAGE USER — WAITING FOR PHONE NUMBER
+    // ============================================================
+    const userSearchState =
+      pendingAdminUserSearch.get(telegramId);
 
     if (
-      !admin ||
-      admin.admin_role !== "main"
+      userSearchState &&
+      userSearchState.step === "waiting_phone"
     ) {
-      pendingAdminRoleSearch.delete(
-        ctx.from.id
-      );
+      const admin =
+        await db.getAdminByTelegramId(telegramId);
 
-      return ctx.reply(
-        "⛔ You are not authorized."
-      );
-    }
+      // Only main admin can manage users
+      if (
+        !admin ||
+        admin.admin_role !== "main"
+      ) {
+        pendingAdminUserSearch.delete(telegramId);
 
-    const phone =
-      ctx.message.text.trim();
+        return await ctx.reply(
+          "⛔ You are not authorized to manage users."
+        );
+      }
 
-    const user =
-      await db.getUserByPhoneForAdmin(
+      const phone =
+        ctx.message.text.trim();
+
+      console.log(
+        "Manage User phone search:",
         phone
       );
 
-    if (!user) {
-      return ctx.reply(
-        `❌ *User not found*\n\n` +
-        `Phone: \`${phone}\`\n\n` +
-        `Send another phone number or cancel.`,
+      // Search user
+      const user =
+        await db.getUserByPhoneForAdmin(phone);
+
+      if (!user) {
+        return await ctx.reply(
+          `❌ *User not found*\n\n` +
+          `📱 Phone: \`${phone}\`\n\n` +
+          `Please send another phone number or press Cancel.`,
+          {
+            parse_mode: "Markdown",
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: "❌ Cancel",
+                    callback_data:
+                      "admin_manage_user_cancel"
+                  }
+                ]
+              ]
+            }
+          }
+        );
+      }
+
+      // Prevent managing yourself
+      if (
+        String(user.telegram_id) ===
+        String(telegramId)
+      ) {
+        return await ctx.reply(
+          "⚠️ You cannot block or unblock your own admin account."
+        );
+      }
+
+      // Search completed
+      pendingAdminUserSearch.delete(telegramId);
+
+      const blockStatus =
+        user.is_blocked
+          ? "🚫 Blocked"
+          : "✅ Active";
+
+      const activeStatus =
+        user.is_active
+          ? "🟢 Active"
+          : "⚪ Inactive";
+
+      const keyboard = [];
+
+      // Block / unblock
+      if (user.is_blocked) {
+        keyboard.push([
+          {
+            text: "✅ Unblock User",
+            callback_data:
+              `admin_unblock_user_${user.id}`
+          }
+        ]);
+      } else {
+        keyboard.push([
+          {
+            text: "🚫 Block User",
+            callback_data:
+              `admin_block_user_${user.id}`
+          }
+        ]);
+      }
+
+      keyboard.push([
+        {
+          text: "👤 Manage Another User",
+          callback_data:
+            "admin_manage_user"
+        }
+      ]);
+
+      keyboard.push([
+        {
+          text: "❌ Close",
+          callback_data:
+            "admin_manage_user_cancel"
+        }
+      ]);
+
+      await ctx.reply(
+        `👤 *USER FOUND*\n\n` +
+        `👤 Name: *${user.name || "Unknown"}*\n` +
+        `📱 Phone: \`${user.phone || "Not available"}\`\n` +
+        `💰 Balance: *${user.balance || 0} ETB*\n` +
+        `📊 Account: ${activeStatus}\n` +
+        `🔒 Status: ${blockStatus}`,
         {
           parse_mode: "Markdown",
           reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "❌ Cancel",
-                  callback_data:
-                    "admin_manage_admins_cancel"
-                }
-              ]
-            ]
+            inline_keyboard: keyboard
           }
         }
       );
+
+      return;
     }
 
-    // Main admin cannot manage himself
-    if (
-      Number(user.id) ===
-       Number(ctx.from.id)
-    ) {
-      return ctx.reply(
-        "⚠️ You cannot change your own admin rights."
-      );
-    }
-
-    pendingAdminRoleSearch.delete(
-      ctx.from.id
-    );
-
-    let currentRole =
-      "🚫 No Admin";
-
-    if (user.is_admin) {
-      if (user.admin_role === "main") {
-        currentRole = "👑 Main Admin";
-      } else if (
-        user.admin_role === "statistics"
-      ) {
-        currentRole = "📊 Statistics Admin";
-      } else if (
-        user.admin_role === "withdrawal"
-      ) {
-        currentRole = "💸 Withdrawal Admin";
-      } else if (
-        user.admin_role === "broadcast"
-      ) {
-        currentRole = "📢 Broadcast Admin";
-      }
-    }
-
-    await ctx.reply(
-      `👤 *User Found*\n\n` +
-      `👤 Name: *${user.name || "Unknown"}*\n` +
-      `📱 Phone: \`${user.phone || "Not available"}\`\n` +
-      `💰 Balance: *${user.balance || 0} ETB*\n\n` +
-      `🔐 Current Role: *${currentRole}*\n`,
-      {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "👑 Main Admin",
-                callback_data:
-                  `set_admin_main_${user.id}`
-              }
-            ],
-            [
-              {
-                text: "📊 Statistics Admin",
-                callback_data:
-                  `set_admin_statistics_${user.id}`
-              }
-            ],
-            [
-              {
-                text: "💸 Withdrawal Admin",
-                callback_data:
-                  `set_admin_withdrawal_${user.id}`
-              }
-            ],
-            [
-              {
-                text: "📢 Broadcast Admin",
-                callback_data:
-                  `set_admin_broadcast_${user.id}`
-              }
-            ],
-            [
-              {
-                text: "🚫 Remove Admin Rights",
-                callback_data:
-                  `remove_admin_${user.id}`
-              }
-            ],
-            [
-              {
-                text: "❌ Cancel",
-                callback_data:
-                  "admin_manage_admins_cancel"
-              }
-            ]
-          ]
-        }
-      }
-    );
-
-  } catch (err) {
-    console.error(
-      "Admin role user search error:",
-      err
-    );
-
-    pendingAdminRoleSearch.delete(
-      ctx.from.id
-    );
-
-    await ctx.reply(
-      "❌ Could not find the user."
-    );
-  }
-
-  return;
-}
-
-    // Not currently searching for a user
-    if (!adminRoleState || adminRoleState.step !== "waiting_phone") {
-      return next();
-    }
-
-    const admin = await db.getAdminByTelegramId(ctx.from.id);
-
-    if (!admin) {
-      pendingAdminUserSearch.delete(ctx.from.id);
-
-      return ctx.reply("⛔ You are not authorized.");
-    }
-
-    const phone = ctx.message.text.trim();
-
-    const user = await db.getUserByPhoneForAdmin(phone);
-
-    if (!user) {
-      return ctx.reply(
-        `❌ *User not found*\n\n` +
-        `Phone: \`${phone}\`\n\n` +
-        `Please send another phone number or cancel.`,
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "❌ Cancel",
-                  callback_data: "admin_manage_user_cancel"
-                }
-              ]
-            ]
-          }
-        }
-      );
-    }
-
-    // Prevent an admin from blocking themselves
-    if (String(user.telegram_id) === String(ctx.from.id)) {
-      return ctx.reply(
-        "⚠️ You cannot block or unblock your own admin account."
-      );
-    }
-
-    pendingAdminUserSearch.delete(ctx.from.id);
-
-    const blockStatus = user.is_blocked
-      ? "🚫 Blocked"
-      : "✅ Active";
-
-    const activeStatus = user.is_active
-      ? "🟢 Active"
-      : "⚪ Inactive";
-
-    const keyboard = [];
-
-    if (user.is_blocked) {
-      keyboard.push([
-        {
-          text: "✅ Unblock User",
-          callback_data: `admin_unblock_user_${user.id}`
-        }
-      ]);
-    } else {
-      keyboard.push([
-        {
-          text: "🚫 Block User",
-          callback_data: `admin_block_user_${user.id}`
-        }
-      ]);
-    }
-
-    keyboard.push([
-      {
-        text: "❌ Cancel",
-        callback_data: "admin_manage_user_cancel"
-      }
-    ]);
-
-    await ctx.reply(
-      `👤 *User Found*\n\n` +
-      `👤 Name: *${user.name || "Unknown"}*\n` +
-      `📱 Phone: \`${user.phone || "Not available"}\`\n` +
-      `💰 Balance: *${user.balance || 0} ETB*\n` +
-      `📊 Account: ${activeStatus}\n` +
-      `🔒 Status: ${blockStatus}`,
-      {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: keyboard
-        }
-      }
-    );
+    // ============================================================
+    // NOT A MANAGE USER MESSAGE
+    // ============================================================
+    return next();
 
   } catch (error) {
-    console.error("Admin user phone search error:", error);
+    console.error(
+      "Admin user phone search error:",
+      error
+    );
 
-    pendingAdminUserSearch.delete(ctx.from.id);
+    pendingAdminUserSearch.delete(
+      ctx.from.id
+    );
 
     await ctx.reply(
       "❌ An error occurred while searching for the user."
     );
   }
 });
+
+
     
 bot.callbackQuery(
   /^admin_block_user_(\d+)$/,
