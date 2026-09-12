@@ -113,6 +113,7 @@ function clearPendingState(
   ];
   
   pendingAdminUserSearch.delete(telegramId);
+  pendingAdminRoleSearch.delete(telegramId);
 }
 
 // ============================================================
@@ -5606,15 +5607,9 @@ bot.callbackQuery(
 
   const telegramId = ctx.from.id;
 
-  // IMPORTANT:
-  // Forget any pending Manage User phone search
-  pendingAdminUserSearch.delete(telegramId);
-
-  // Also clear any pending admin role search
-  pendingAdminRoleSearch.delete(telegramId);
-
-  // Clear other pending states as well
+  // Forget everything the admin was in the middle of doing
   clearPendingState(telegramId);
+
 
     const admin =
       await requireAdmin(
