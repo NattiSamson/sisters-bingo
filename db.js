@@ -532,7 +532,7 @@ async getAdminStatistics() {
         SELECT COUNT(*)
         FROM users
         WHERE is_active = TRUE
-          AND is_banned = FALSE
+          AND is_blocked = FALSE
       ) AS active_users,
 
       (
@@ -540,6 +540,12 @@ async getAdminStatistics() {
         FROM users
         WHERE is_active = FALSE
       ) AS inactive_users,
+
+      (
+        SELECT COUNT(*)
+        FROM users
+        WHERE is_blocked = TRUE
+      ) AS blocked_users,
 
 
       -- ADMINISTRATORS
@@ -572,6 +578,9 @@ async getAdminStatistics() {
 
     inactiveUsers:
       Number(row.inactive_users || 0),
+
+    blockedUsers:
+      Number(row.blocked_users || 0),
 
     administrators:
       Number(row.administrators || 0)
