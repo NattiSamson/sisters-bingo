@@ -4174,7 +4174,7 @@ async addBonusToUser(
     balance: newBalance,
     telegramId: user.telegram_id
   };
-}
+},
 
 
 // ============================================================
@@ -4292,7 +4292,7 @@ async giveBonusToUserByPhone(
     client.release();
 
   }
-}
+},
 
 
 // ============================================================
@@ -4391,7 +4391,7 @@ async giveBonusToAllActiveUsers(
     client.release();
 
   }
-}
+},
 
 
 // ============================================================
@@ -4495,7 +4495,7 @@ async createBonusCampaign(
   );
 
   return rows[0];
-}
+},
 
 
 // ============================================================
@@ -4526,7 +4526,7 @@ async getActiveDepositBonus(
   );
 
   return rows[0] || null;
-}
+},
 
 
 // ============================================================
