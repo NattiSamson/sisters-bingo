@@ -57,7 +57,6 @@ const pendingWithdrawal = {};
 
 const pendingAdminWithdrawal  = {};
 
-const pendingDelete = {};
 // Admin payment-account creation state
 // telegramId -> {
 //   step,
