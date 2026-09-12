@@ -61,7 +61,7 @@ module.exports = {
 // ADMIN USER MANAGEMENT
 // =========================
 
-async function getUserByPhoneForAdmin(phone) {
+async getUserByPhoneForAdmin(phone) {
   const normalizedPhone = normalizeEthiopianPhone(phone);
 
   const result = await pool.query(
@@ -85,7 +85,7 @@ async function getUserByPhoneForAdmin(phone) {
   return result.rows[0] || null;
 }
 
-async function setUserBlocked(userId, isBlocked) {
+async setUserBlocked(userId, isBlocked) {
   const result = await pool.query(
     `
     UPDATE users
