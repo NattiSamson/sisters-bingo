@@ -1978,6 +1978,8 @@ async getPaymentAccountsByMethod(
 
         AND pt.is_active = TRUE
 
+        AND pt.permanently_removed = FALSE
+
       ORDER BY
         pa.account_number ASC
       `,
@@ -2044,6 +2046,8 @@ async getPaymentAccountById(
         AND pm.is_active = TRUE
 
         AND pt.is_active = TRUE
+
+        AND pt.permanently_removed = FALSE
 
       LIMIT 1
       `,
@@ -2197,6 +2201,8 @@ async getPaymentAccountById(
 
         INNER JOIN payment_types pt
           ON pm.type_id = pt.id
+
+        WHERE pa.permanently_removed = FALSE
 
         ORDER BY
           pm.order ASC,
