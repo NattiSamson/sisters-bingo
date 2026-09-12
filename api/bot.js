@@ -360,16 +360,11 @@ async function answerCallback(
 // ETHIOPIA DATE/TIME PARSER
 // ============================================================
 
-function parseEthiopianDateTime(
-  input
-) {
-  const value =
-    String(input || "")
-      .trim();
-
-  const match =
-    value.match(
-      /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/
+function parseBonusDateTime(text) {
+  const match = String(text || "")
+    .trim()
+    .match(
+      /^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/
     );
 
   if (!match) {
@@ -383,18 +378,26 @@ function parseEthiopianDateTime(
     day,
     hour,
     minute
-  ] = match;
+  ] = match.map(Number);
 
-  const iso =
-    `${year}-${month}-${day}T${hour}:${minute}:00+03:00`;
-
-  const date =
-    new Date(iso);
+  const date = new Date(
+    Date.UTC(
+      year,
+      month - 1,
+      day,
+      hour,
+      minute,
+      0,
+      0
+    )
+  );
 
   if (
-    Number.isNaN(
-      date.getTime()
-    )
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day ||
+    date.getUTCHours() !== hour ||
+    date.getUTCMinutes() !== minute
   ) {
     return null;
   }
@@ -8085,7 +8088,7 @@ bot.on(
     ) {
 
       const start =
-        parseEthiopianDateTime(
+        parseBonusDateTime(
           text
         );
 
@@ -8128,7 +8131,7 @@ bot.on(
     ) {
 
       const end =
-        parseEthiopianDateTime(
+        parseBonusDateTime(
           text
         );
 
