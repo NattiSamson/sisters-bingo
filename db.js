@@ -429,6 +429,36 @@ async function safeRollback(client) {
   }
 }
 
+// ============================================================
+// GET CURRENT ACTIVE DEPOSIT BONUS
+// ============================================================
+
+async function getActiveDepositBonus(
+  client,
+  depositTime = new Date()
+) {
+  const { rows } = await client.query(
+    `
+    SELECT
+      id,
+      name,
+      starts_at,
+      ends_at,
+      bonus_mode,
+      bonus_amount
+    FROM bonus_campaigns
+    WHERE is_active = TRUE
+      AND starts_at <= $1
+      AND ends_at >= $1
+    ORDER BY id DESC
+    LIMIT 1
+    `,
+    [depositTime]
+  );
+
+  return rows[0] || null;
+}
+
 
 
 module.exports = {
@@ -4534,35 +4564,6 @@ async createBonusCampaign(
 },
 
 
-// ============================================================
-// GET CURRENT ACTIVE DEPOSIT BONUS
-// ============================================================
-
-async getActiveDepositBonus(
-  client,
-  depositTime = new Date()
-) {
-  const { rows } = await client.query(
-    `
-    SELECT
-      id,
-      name,
-      starts_at,
-      ends_at,
-      bonus_mode,
-      bonus_amount
-    FROM bonus_campaigns
-    WHERE is_active = TRUE
-      AND starts_at <= $1
-      AND ends_at >= $1
-    ORDER BY id DESC
-    LIMIT 1
-    `,
-    [depositTime]
-  );
-
-  return rows[0] || null;
-},
 
 
 // ============================================================
