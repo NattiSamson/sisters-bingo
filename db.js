@@ -1978,7 +1978,7 @@ async getPaymentAccountsByMethod(
 
         AND pt.is_active = TRUE
 
-        AND pt.permanently_removed = FALSE
+        AND pa.permanently_removed = FALSE
 
       ORDER BY
         pa.account_number ASC
@@ -2047,7 +2047,7 @@ async getPaymentAccountById(
 
         AND pt.is_active = TRUE
 
-        AND pt.permanently_removed = FALSE
+        AND pa.permanently_removed = FALSE
 
       LIMIT 1
       `,
@@ -2222,7 +2222,7 @@ async getAllPaymentAccountsForAdmin() {
 
         AND pt.is_active = TRUE
 
-        AND pt.permanently_removed = FALSE
+        AND pa.permanently_removed = FALSE
 
       ORDER BY
         pm.order ASC,
