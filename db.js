@@ -56,6 +56,54 @@ function normalizeEthiopianPhone(phone) {
 }
 
 module.exports = {
+
+  // =========================
+// ADMIN USER MANAGEMENT
+// =========================
+
+async function getUserByPhoneForAdmin(phone) {
+  const normalizedPhone = normalizeEthiopianPhone(phone);
+
+  const result = await pool.query(
+    `
+    SELECT
+      id,
+      telegram_id,
+      name,
+      phone,
+      balance,
+      is_active,
+      is_blocked,
+      is_admin
+    FROM users
+    WHERE phone = $1
+    LIMIT 1
+    `,
+    [normalizedPhone]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function setUserBlocked(userId, isBlocked) {
+  const result = await pool.query(
+    `
+    UPDATE users
+    SET is_blocked = $1
+    WHERE id = $2
+    RETURNING
+      id,
+      name,
+      phone,
+      balance,
+      is_blocked,
+      is_active
+    `,
+    [isBlocked, userId]
+  );
+
+  return result.rows[0] || null;
+},
   async reactivateUserByTelegramId(telegramId) {
 
   const result = await pool.query(
