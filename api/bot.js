@@ -163,6 +163,40 @@ async function getCurrentAdmin(
 
 }
 
+async function requireAdminPermission(ctx, permission) {
+    const admin = await getCurrentAdmin(ctx);
+
+    if (!admin) {
+        try {
+            await ctx.answerCallbackQuery({
+                text: "❌ Unauthorized",
+                show_alert: true
+            });
+        } catch (err) {}
+
+        return null;
+    }
+
+    const role = admin.admin_role;
+
+    const allowed =
+        role === "main" ||
+        (role === "broadcast" && permission === "broadcast") ||
+        (role === "withdrawal" && permission === "withdrawals");
+
+    if (!allowed) {
+        try {
+            await ctx.answerCallbackQuery({
+                text: "❌ You do not have permission for this.",
+                show_alert: true
+            });
+        } catch (err) {}
+
+        return null;
+    }
+
+    return admin;
+}
 
 /**
  * Requires the current Telegram user
@@ -824,6 +858,10 @@ bot.callbackQuery(
   if (
     isAdmin
   ) {
+    if (
+        admin.admin_role === "main" ||
+        admin.admin_role === "withdrawal"
+    ){
 
     keyboard.push([
 
@@ -835,8 +873,13 @@ bot.callbackQuery(
         callback_data:
           "admin_withdrawals"
 
-      },
-
+      }
+      ]);
+    }
+ if (
+        admin.admin_role === "main" ||
+        admin.admin_role === "broadcast"
+    ) {
       {
 
         text:
@@ -848,6 +891,8 @@ bot.callbackQuery(
       }
 
     ]);
+ }
+    if (admin.admin_role === "main") {
     keyboard.push([
   {
     text:
@@ -867,7 +912,7 @@ bot.callbackQuery(
 ]);
 
   }
-
+  }
 
   await ctx.reply(
 
@@ -4112,8 +4157,10 @@ bot.callbackQuery(
   "admin_withdrawals",
   async (ctx) => {
 
-    const admin =
-      await requireAdmin(ctx);
+    const admin = await requireAdminPermission(
+    ctx,
+    "withdrawals"
+);
 
     if (!admin) {
       return;
@@ -5615,10 +5662,11 @@ bot.callbackQuery(
   "admin_broadcast",
   async (ctx) => {
 
-    const admin =
-      await requireAdmin(
-        ctx
-      );
+    const admin = await requireAdminPermission(
+    ctx,
+    "broadcast"
+);
+
 
 
     if (!admin) {
