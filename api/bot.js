@@ -939,11 +939,9 @@ else if (
 
   await ctx.reply(
 
-    `Welcome back, *${user.name}!* 🎱\n\n` +
+    `Welcome back, *${user.name}!* 🎱\n\n` +    
 
-    `💰 Balance: *${user.balance} ETB*\n\n` +
-
-    `Choose an option:`,
+    `👋 Welcome to Beteseb Bingo! Choose an Option below:`,
 
     {
 
