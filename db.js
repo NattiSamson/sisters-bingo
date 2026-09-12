@@ -2667,6 +2667,7 @@ async getAllPaymentAccountsForAdmin() {
         SELECT telegram_id
         FROM users
         WHERE is_active = TRUE
+        AND is_blocked = FALSE
         `
       );
 
