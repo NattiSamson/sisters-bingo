@@ -77,6 +77,8 @@ const pendingAdminReject = {};
 // Admin user search state
 const pendingAdminUserSearch = new Map();
 
+const pendingAdminRoleSearch = new Map();
+
 
 // ============================================================
 // CLEAR USER STATE
@@ -239,9 +241,13 @@ async function requireAdminPermission(ctx, permission) {
     const role = admin.admin_role;
 
     const allowed =
-        role === "main" ||
-        (role === "broadcast" && permission === "broadcast") ||
-        (role === "withdrawal" && permission === "withdrawals");
+  role === "main" ||
+  (role === "broadcast" &&
+    permission === "broadcast") ||
+  (role === "statistics" &&
+    permission === "statistics") ||
+  (role === "withdrawal" &&
+    permission === "withdrawals");
 
     if (!allowed) {
         try {
@@ -893,7 +899,11 @@ if (admin && admin.admin_role === "main") {
         {
             text: "👤 Manage User",
             callback_data: "admin_manage_user"
-        }
+        },
+        {
+            text: "👑 Manage Admins",
+            callback_data: "admin_manage_admins"
+          }
     ]);
 
     keyboard.push([
@@ -981,9 +991,70 @@ else if (
 }
 
 // ============================================================
-// ADMIN MANAGE USER
+// ADMIN ROLE MANAGEMENT
+// MAIN ADMIN ONLY
 // ============================================================
 
+bot.callbackQuery(
+  "admin_manage_admins",
+  async (ctx) => {
+    try {
+      await ctx.answerCallbackQuery();
+
+      const admin =
+        await db.getAdminByTelegramId(ctx.from.id);
+
+      if (
+        !admin ||
+        admin.admin_role !== "main"
+      ) {
+        return ctx.reply(
+          "⛔ You are not authorized to manage admins."
+        );
+      }
+
+      pendingAdminRoleSearch.set(
+        ctx.from.id,
+        {
+          step: "waiting_phone"
+        }
+      );
+
+      await ctx.editMessageText(
+        `👑 *Manage Admins*\n\n` +
+        `Send the user's phone number.\n\n` +
+        `Example:\n` +
+        `\`0912345678\`\n` +
+        `or\n` +
+        `\`+251912345678\``,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "❌ Cancel",
+                  callback_data:
+                    "admin_manage_admins_cancel"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (err) {
+      console.error(
+        "Admin role management error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Something went wrong."
+      );
+    }
+  }
+);
 // ============================================================
 // ADMIN MANAGE USER
 // ============================================================
@@ -1062,44 +1133,31 @@ bot.callbackQuery("admin_manage_user", async (ctx) => {
   }
 
 });
-bot.on("message:text", async (ctx, next) => {
 
+const adminRoleState =
+  pendingAdminRoleSearch.get(ctx.from.id);
+
+if (
+  adminRoleState &&
+  adminRoleState.step === "waiting_phone"
+) {
   try {
-
-    const state =
-      pendingAdminUserSearch.get(
-        ctx.from.id
-      );
-
-    // Not currently searching
-    if (
-      !state ||
-      state.step !== "waiting_phone"
-    ) {
-
-      return next();
-
-    }
-
     const admin =
       await db.getAdminByTelegramId(
         ctx.from.id
       );
 
-    // Only main admin
     if (
       !admin ||
       admin.admin_role !== "main"
     ) {
-
-      pendingAdminUserSearch.delete(
+      pendingAdminRoleSearch.delete(
         ctx.from.id
       );
 
       return ctx.reply(
         "⛔ You are not authorized."
       );
-
     }
 
     const phone =
@@ -1111,141 +1169,136 @@ bot.on("message:text", async (ctx, next) => {
       );
 
     if (!user) {
-
       return ctx.reply(
-
         `❌ *User not found*\n\n` +
         `Phone: \`${phone}\`\n\n` +
-        `Please send another phone number or cancel.`,
-
+        `Send another phone number or cancel.`,
         {
           parse_mode: "Markdown",
-
           reply_markup: {
-
             inline_keyboard: [
-
               [
                 {
                   text: "❌ Cancel",
                   callback_data:
-                    "admin_manage_user_cancel"
+                    "admin_manage_admins_cancel"
                 }
               ]
-
             ]
-
           }
-
         }
-
       );
-
     }
 
-    // Prevent admin from managing/blocking himself
+    // Main admin cannot manage himself
     if (
       String(user.telegram_id) ===
       String(ctx.from.id)
     ) {
-
       return ctx.reply(
-        "⚠️ You cannot block or unblock your own admin account."
+        "⚠️ You cannot change your own admin rights."
       );
-
     }
 
-    // Search completed
-    pendingAdminUserSearch.delete(
+    pendingAdminRoleSearch.delete(
       ctx.from.id
     );
 
-    const blockStatus =
-      user.is_blocked
-        ? "🚫 Blocked"
-        : "✅ Active";
+    let currentRole =
+      "🚫 No Admin";
 
-    const activeStatus =
-      user.is_active
-        ? "🟢 Active"
-        : "⚪ Inactive";
-
-    const keyboard = [];
-
-    // Show appropriate action
-    if (user.is_blocked) {
-
-      keyboard.push([
-        {
-          text: "✅ Unblock User",
-          callback_data:
-            `admin_unblock_user_${user.id}`
-        }
-      ]);
-
-    } else {
-
-      keyboard.push([
-        {
-          text: "🚫 Block User",
-          callback_data:
-            `admin_block_user_${user.id}`
-        }
-      ]);
-
+    if (user.is_admin) {
+      if (user.admin_role === "main") {
+        currentRole = "👑 Main Admin";
+      } else if (
+        user.admin_role === "statistics"
+      ) {
+        currentRole = "📊 Statistics Admin";
+      } else if (
+        user.admin_role === "withdrawal"
+      ) {
+        currentRole = "💸 Withdrawal Admin";
+      } else if (
+        user.admin_role === "broadcast"
+      ) {
+        currentRole = "📢 Broadcast Admin";
+      }
     }
 
-    keyboard.push([
-      {
-        text: "❌ Cancel",
-        callback_data:
-          "admin_manage_user_cancel"
-      }
-    ]);
-
     await ctx.reply(
-
       `👤 *User Found*\n\n` +
-
       `👤 Name: *${user.name || "Unknown"}*\n` +
-
       `📱 Phone: \`${user.phone || "Not available"}\`\n` +
-
-      `💰 Balance: *${user.balance || 0} ETB*\n` +
-
-      `📊 Account: ${activeStatus}\n` +
-
-      `🔒 Status: ${blockStatus}`,
-
+      `💰 Balance: *${user.balance || 0} ETB*\n\n` +
+      `🔐 Current Role: *${currentRole}*`,
       {
         parse_mode: "Markdown",
-
         reply_markup: {
-          inline_keyboard: keyboard
+          inline_keyboard: [
+            [
+              {
+                text: "👑 Main Admin",
+                callback_data:
+                  `set_admin_main_${user.id}`
+              }
+            ],
+            [
+              {
+                text: "📊 Statistics Admin",
+                callback_data:
+                  `set_admin_statistics_${user.id}`
+              }
+            ],
+            [
+              {
+                text: "💸 Withdrawal Admin",
+                callback_data:
+                  `set_admin_withdrawal_${user.id}`
+              }
+            ],
+            [
+              {
+                text: "📢 Broadcast Admin",
+                callback_data:
+                  `set_admin_broadcast_${user.id}`
+              }
+            ],
+            [
+              {
+                text: "🚫 Remove Admin Rights",
+                callback_data:
+                  `remove_admin_${user.id}`
+              }
+            ],
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "admin_manage_admins_cancel"
+              }
+            ]
+          ]
         }
       }
-
     );
 
-  } catch (error) {
-
+  } catch (err) {
     console.error(
-      "Admin user phone search error:",
-      error
+      "Admin role user search error:",
+      err
     );
 
-    pendingAdminUserSearch.delete(
+    pendingAdminRoleSearch.delete(
       ctx.from.id
     );
 
     await ctx.reply(
-      "❌ An error occurred while searching for the user."
+      "❌ Could not find the user."
     );
-
   }
 
-});
-bot.callbackQuery(
+  return;
+}bot.callbackQuery(
   /^admin_block_user_(\d+)$/,
   async (ctx) => {
 
@@ -1340,6 +1393,210 @@ bot.callbackQuery(
 
     }
 
+  }
+);
+
+bot.callbackQuery(
+  /^set_admin_(main|statistics|withdrawal|broadcast)_(\d+)$/,
+  async (ctx) => {
+    try {
+      const admin =
+        await db.getAdminByTelegramId(
+          ctx.from.id
+        );
+
+      if (
+        !admin ||
+        admin.admin_role !== "main"
+      ) {
+        return await ctx.answerCallbackQuery({
+          text: "❌ Unauthorized",
+          show_alert: true
+        });
+      }
+
+      const role =
+        ctx.match[1];
+
+      const userId =
+        Number(ctx.match[2]);
+
+      // Never allow changing yourself
+      if (
+        String(userId) ===
+        String(admin.id)
+      ) {
+        return await ctx.answerCallbackQuery({
+          text: "⚠️ You cannot change your own role.",
+          show_alert: true
+        });
+      }
+
+      const updatedUser =
+        await db.setUserAdminRole(
+          userId,
+          role
+        );
+
+      if (!updatedUser) {
+        return await ctx.answerCallbackQuery({
+          text: "❌ User not found.",
+          show_alert: true
+        });
+      }
+
+      await ctx.answerCallbackQuery({
+        text: "✅ Admin role updated."
+      });
+
+      const roleNames = {
+        main: "👑 Main Admin",
+        statistics: "📊 Statistics Admin",
+        withdrawal: "💸 Withdrawal Admin",
+        broadcast: "📢 Broadcast Admin"
+      };
+
+      await ctx.editMessageText(
+        `✅ *Admin Role Updated*\n\n` +
+        `👤 Name: *${updatedUser.name || "Unknown"}*\n` +
+        `📱 Phone: \`${updatedUser.phone || "Not available"}\`\n\n` +
+        `🔐 New Role: *${roleNames[role]}*`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "👑 Manage Another Admin",
+                  callback_data:
+                    "admin_manage_admins"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Home",
+                  callback_data:
+                    "admin_home"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (err) {
+      console.error(
+        "Set admin role error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Failed to update admin role."
+      );
+    }
+  }
+);
+bot.callbackQuery(
+  /^remove_admin_(\d+)$/,
+  async (ctx) => {
+    try {
+      const admin =
+        await db.getAdminByTelegramId(
+          ctx.from.id
+        );
+
+      if (
+        !admin ||
+        admin.admin_role !== "main"
+      ) {
+        return await ctx.answerCallbackQuery({
+          text: "❌ Unauthorized",
+          show_alert: true
+        });
+      }
+
+      const userId =
+        Number(ctx.match[1]);
+
+      if (
+        String(userId) ===
+        String(admin.id)
+      ) {
+        return await ctx.answerCallbackQuery({
+          text: "⚠️ You cannot remove your own admin rights.",
+          show_alert: true
+        });
+      }
+
+      const updatedUser =
+        await db.removeUserAdminRole(
+          userId
+        );
+
+      if (!updatedUser) {
+        return await ctx.answerCallbackQuery({
+          text: "❌ User not found.",
+          show_alert: true
+        });
+      }
+
+      await ctx.answerCallbackQuery({
+        text: "🚫 Admin rights removed."
+      });
+
+      await ctx.editMessageText(
+        `🚫 *Admin Rights Removed*\n\n` +
+        `👤 Name: *${updatedUser.name || "Unknown"}*\n` +
+        `📱 Phone: \`${updatedUser.phone || "Not available"}\`\n\n` +
+        `The user is now a normal user.`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "👑 Manage Another Admin",
+                  callback_data:
+                    "admin_manage_admins"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Home",
+                  callback_data:
+                    "admin_home"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (err) {
+      console.error(
+        "Remove admin role error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Failed to remove admin rights."
+      );
+    }
+  }
+);
+
+bot.callbackQuery(
+  "admin_manage_admins_cancel",
+  async (ctx) => {
+    await ctx.answerCallbackQuery();
+
+    pendingAdminRoleSearch.delete(
+      ctx.from.id
+    );
+
+    await ctx.editMessageText(
+      "❌ Admin management cancelled."
+    );
   }
 );
 
@@ -1485,17 +1742,14 @@ bot.callbackQuery(
       // ------------------------------------------
 
       const admin =
-        await db.getAdminByTelegramId(
-          ctx.from.id
-        );
+  await requireAdminPermission(
+    ctx,
+    "statistics"
+  );
 
-      if (!admin) {
-
-        return await ctx.reply(
-          "❌ You are not authorized to view statistics."
-        );
-
-      }
+if (!admin) {
+  return;
+}
 
 
       // ------------------------------------------
