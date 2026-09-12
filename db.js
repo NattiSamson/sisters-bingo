@@ -561,16 +561,16 @@ module.exports = {
       );
     }
 
-    const client =
+    const pool =
       await pool.connect();
 
     try {
 
-      await client.query("BEGIN");
+      await pool.query("BEGIN");
 
       // Check Telegram ID first
       const telegramResult =
-        await client.query(
+        await pool.query(
           `
           SELECT *
           FROM users
@@ -589,7 +589,7 @@ module.exports = {
           telegramUser.is_banned
         ) {
 
-          await client.query(
+          await pool.query(
             "ROLLBACK"
           );
 
@@ -603,7 +603,7 @@ module.exports = {
           telegramUser.is_blocked
         ) {
 
-          await client.query(
+          await pool.query(
             "ROLLBACK"
           );
 
@@ -614,7 +614,7 @@ module.exports = {
         }
 
         const updateResult =
-          await client.query(
+          await pool.query(
             `
             UPDATE users
             SET
@@ -631,7 +631,7 @@ module.exports = {
             ]
           );
 
-        await client.query(
+        await pool.query(
           "COMMIT"
         );
 
@@ -645,7 +645,7 @@ module.exports = {
       // Check whether phone already belongs to
       // another Telegram account.
       const phoneResult =
-        await client.query(
+        await pool.query(
           `
           SELECT *
           FROM users
@@ -664,7 +664,7 @@ module.exports = {
           phoneUser.is_banned
         ) {
 
-          await client.query(
+          await pool.query(
             "ROLLBACK"
           );
 
@@ -678,7 +678,7 @@ module.exports = {
           phoneUser.is_blocked
         ) {
 
-          await client.query(
+          await pool.query(
             "ROLLBACK"
           );
 
@@ -689,7 +689,7 @@ module.exports = {
         }
 
         const reconnectResult =
-          await client.query(
+          await pool.query(
             `
             UPDATE users
             SET
@@ -706,7 +706,7 @@ module.exports = {
             ]
           );
 
-        await client.query(
+        await pool.query(
           "COMMIT"
         );
 
@@ -719,7 +719,7 @@ module.exports = {
 
       // Create new user
       const insertResult =
-        await client.query(
+        await pool.query(
           `
           INSERT INTO users (
             telegram_id,
@@ -750,7 +750,7 @@ module.exports = {
           ]
         );
 
-      await client.query(
+      await pool.query(
         "COMMIT"
       );
 
@@ -763,7 +763,7 @@ module.exports = {
     } catch (err) {
 
       try {
-        await client.query(
+        await pool.query(
           "ROLLBACK"
         );
       } catch (_) {}
@@ -777,7 +777,7 @@ module.exports = {
 
     } finally {
 
-      client.release();
+      pool.release();
 
     }
   },
@@ -928,11 +928,11 @@ module.exports = {
 
     return result.rows;
   },
-      await client.query("ROLLBACK");
+      await pool.query("ROLLBACK");
       throw err;
 
     } finally {
-      client.release();
+      pool.release();
     }
   },
 
@@ -1534,12 +1534,12 @@ module.exports = {
       );
     }
 
-    const client =
+    const pool =
       await pool.connect();
 
     try {
 
-      await client.query(
+      await pool.query(
         "BEGIN"
       );
 
@@ -1548,7 +1548,7 @@ module.exports = {
       // ========================================================
 
       const userResult =
-        await client.query(
+        await pool.query(
           `
           SELECT
             id,
@@ -1569,7 +1569,7 @@ module.exports = {
         userResult.rows.length === 0
       ) {
 
-        await client.query(
+        await pool.query(
           "ROLLBACK"
         );
 
@@ -1585,7 +1585,7 @@ module.exports = {
         user.is_active !== true
       ) {
 
-        await client.query(
+        await pool.query(
           "ROLLBACK"
         );
 
@@ -1598,7 +1598,7 @@ module.exports = {
         user.is_banned === true
       ) {
 
-        await client.query(
+        await pool.query(
           "ROLLBACK"
         );
 
@@ -1611,7 +1611,7 @@ module.exports = {
         user.is_blocked === true
       ) {
 
-        await client.query(
+        await pool.query(
           "ROLLBACK"
         );
 
@@ -1638,7 +1638,7 @@ module.exports = {
         last4.length !== 4
       ) {
 
-        await client.query(
+        await pool.query(
           "ROLLBACK"
         );
 
@@ -1648,7 +1648,7 @@ module.exports = {
       }
 
       const accountResult =
-        await client.query(
+        await pool.query(
           `
           SELECT
             pa.id,
@@ -1706,7 +1706,7 @@ module.exports = {
         accountResult.rows.length === 0
       ) {
 
-        await client.query(
+        await pool.query(
           "ROLLBACK"
         );
 
@@ -1747,7 +1747,7 @@ module.exports = {
           receiptName !== accountName
         ) {
 
-          await client.query(
+          await pool.query(
             "ROLLBACK"
           );
 
@@ -1762,7 +1762,7 @@ module.exports = {
       // ========================================================
 
       const duplicateResult =
-        await client.query(
+        await pool.query(
           `
           SELECT
             id
@@ -1777,7 +1777,7 @@ module.exports = {
         duplicateResult.rows.length > 0
       ) {
 
-        await client.query(
+        await pool.query(
           "ROLLBACK"
         );
 
@@ -1816,7 +1816,7 @@ module.exports = {
       // ========================================================
 
       const userUpdate =
-        await client.query(
+        await pool.query(
           `
           UPDATE users
 
@@ -1848,7 +1848,7 @@ module.exports = {
       // ========================================================
 
       const depositResult =
-        await client.query(
+        await pool.query(
           `
           INSERT INTO deposits (
             user_id,
@@ -1898,7 +1898,7 @@ module.exports = {
         depositResult.rows.length === 0
       ) {
 
-        await client.query(
+        await pool.query(
           "ROLLBACK"
         );
 
@@ -1915,7 +1915,7 @@ module.exports = {
       // ========================================================
 
       const accountUpdate =
-        await client.query(
+        await pool.query(
           `
           UPDATE payment_accounts
 
@@ -1945,7 +1945,7 @@ module.exports = {
       // 9. COMMIT
       // ========================================================
 
-      await client.query(
+      await pool.query(
         "COMMIT"
       );
 
@@ -1994,7 +1994,7 @@ module.exports = {
     } catch (err) {
 
       try {
-        await client.query(
+        await pool.query(
           "ROLLBACK"
         );
       } catch (rollbackError) {
@@ -2013,7 +2013,7 @@ module.exports = {
 
     } finally {
 
-      client.release();
+      pool.release();
 
     }
   },
@@ -2026,7 +2026,7 @@ module.exports = {
 
       // Find admin through is_admin
       const adminResult =
-        await client.query(
+        await pool.query(
           `
           SELECT id
           FROM users
@@ -2045,7 +2045,7 @@ module.exports = {
         adminResult.rows.length === 0
       ) {
 
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
 
         return {
           success: false,
@@ -2059,7 +2059,7 @@ module.exports = {
 
       // Refund amount
       const balanceResult =
-        await client.query(
+        await pool.query(
           `
           UPDATE users
           SET balance = balance + $1
@@ -2086,7 +2086,7 @@ module.exports = {
 
       // Mark rejected
       const updateResult =
-        await client.query(
+        await pool.query(
           `
           UPDATE withdrawals
           SET
@@ -2116,7 +2116,7 @@ module.exports = {
         );
       }
 
-      await client.query("COMMIT");
+      await pool.query("COMMIT");
 
       return {
         success: true,
@@ -2146,7 +2146,7 @@ module.exports = {
     } catch (err) {
 
       try {
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
       } catch (rollbackError) {
         console.error(
           "Rollback error:",
@@ -2168,7 +2168,7 @@ module.exports = {
 
     } finally {
 
-      client.release();
+      pool.release();
 
     }
   },
@@ -2795,7 +2795,7 @@ async getAllPaymentAccountsForAdmin() {
   // ============================================================
 
   async approveDepositttttttttttt(receipt, telegramId) {
-    const client = await pool.connect();
+    
 
     try {
       const reference = String(receipt?.receiptNo || "").trim();
@@ -2810,10 +2810,10 @@ async getAllPaymentAccountsForAdmin() {
         return -2;
       }
 
-      await client.query("BEGIN");
+      await pool.query("BEGIN");
 
       // Lock the target user so concurrent deposits cannot overwrite balance.
-      const userResult = await client.query(
+      const userResult = await pool.query(
         `SELECT id, telegram_id, balance, is_active, is_banned, is_blocked
          FROM users WHERE telegram_id = $1 FOR UPDATE`,
         [telegramId]
@@ -2821,12 +2821,12 @@ async getAllPaymentAccountsForAdmin() {
       if (!userResult.rows.length) throw new Error("User not found");
       const user = userResult.rows[0];
       if (!user.is_active || user.is_banned || user.is_blocked) {
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
         return -3;
       }
 
       // Match an active Telebirr receiving account by the last 4 digits.
-      const accountResult = await client.query(
+      const accountResult = await pool.query(
         `
         SELECT
           pa.id, pa.payment_method_id, pa.account_number, pa.account_name, pa.balance,
@@ -2850,7 +2850,7 @@ async getAllPaymentAccountsForAdmin() {
       );
 
       if (!accountResult.rows.length) {
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
         return -4;
       }
 
@@ -2858,21 +2858,21 @@ async getAllPaymentAccountsForAdmin() {
 
       // If Telebirr supplied the credited name, require the configured account name to match.
       if (creditedName && account.account_name && creditedName.trim() !== account.account_name.trim()) {
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
         return -5;
       }
 
       // Database uniqueness is the final duplicate-protection layer.
-      const duplicate = await client.query(
+      const duplicate = await pool.query(
         `SELECT 1 FROM deposits WHERE reference = $1 LIMIT 1 FOR UPDATE`,
         [reference]
       );
       if (duplicate.rows.length) {
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
         return -1;
       }
 
-      const userBalanceResult = await client.query(
+      const userBalanceResult = await pool.query(
         `UPDATE users
          SET balance = balance + $1, last_seen = NOW()
          WHERE id = $2
@@ -2881,7 +2881,7 @@ async getAllPaymentAccountsForAdmin() {
       );
       const amountAfter = Number(userBalanceResult.rows[0].balance);
 
-      const depositResult = await client.query(
+      const depositResult = await pool.query(
         `INSERT INTO deposits (
           user_id, payment_account_id, deposit_method_id, depositor_name,
           depositor_account, amount, amount_after, reference, created_at
@@ -2898,22 +2898,22 @@ async getAllPaymentAccountsForAdmin() {
         throw new Error("Duplicate deposit reference");
       }
 
-      await client.query(
+      await pool.query(
         `UPDATE payment_accounts
          SET balance = COALESCE(balance, 0) + $1
          WHERE id = $2`,
         [depositAmount, account.id]
       );
 
-      await client.query("COMMIT");
+      await pool.query("COMMIT");
       return depositAmount;
     } catch (err) {
-      try { await client.query("ROLLBACK"); } catch (_) {}
+      try { await pool.query("ROLLBACK"); } catch (_) {}
       if (err.message === "Duplicate deposit reference") return -1;
       console.error("approveDeposit error:", err);
       throw err;
     } finally {
-      client.release();
+      pool.release();
     }
   },
 
@@ -2946,15 +2946,15 @@ async getAllPaymentAccountsForAdmin() {
     amount
   ) {
 
-    const client =
+    const pool =
       await pool.connect();
 
     try {
 
-      await client.query("BEGIN");
+      await pool.query("BEGIN");
 
       const { rows } =
-        await client.query(
+        await pool.query(
           `
           SELECT
             telegram_id,
@@ -2994,7 +2994,7 @@ async getAllPaymentAccountsForAdmin() {
 
       if (!sender) {
 
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
 
         return {
           success: false,
@@ -3005,7 +3005,7 @@ async getAllPaymentAccountsForAdmin() {
 
       if (!recipient) {
 
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
 
         return {
           success: false,
@@ -3020,7 +3020,7 @@ async getAllPaymentAccountsForAdmin() {
         sender.is_blocked
       ) {
 
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
 
         return {
           success: false,
@@ -3035,7 +3035,7 @@ async getAllPaymentAccountsForAdmin() {
         recipient.is_blocked
       ) {
 
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
 
         return {
           success: false,
@@ -3049,7 +3049,7 @@ async getAllPaymentAccountsForAdmin() {
         String(recipient.telegram_id)
       ) {
 
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
 
         return {
           success: false,
@@ -3066,7 +3066,7 @@ async getAllPaymentAccountsForAdmin() {
         transferAmount <= 0
       ) {
 
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
 
         return {
           success: false,
@@ -3086,7 +3086,7 @@ async getAllPaymentAccountsForAdmin() {
         transferAmount
       ) {
 
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
 
         return {
           success: false,
@@ -3103,7 +3103,7 @@ async getAllPaymentAccountsForAdmin() {
         recipientBefore +
         transferAmount;
 
-      await client.query(
+      await pool.query(
         `
         UPDATE users
         SET balance = $1
@@ -3115,7 +3115,7 @@ async getAllPaymentAccountsForAdmin() {
         ]
       );
 
-      await client.query(
+      await pool.query(
         `
         UPDATE users
         SET balance = $1
@@ -3128,7 +3128,7 @@ async getAllPaymentAccountsForAdmin() {
       );
 
       const transferResult =
-        await client.query(
+        await pool.query(
           `
           INSERT INTO transfers (
             sender_telegram_id,
@@ -3173,7 +3173,7 @@ async getAllPaymentAccountsForAdmin() {
           ]
         );
 
-      await client.query("COMMIT");
+      await pool.query("COMMIT");
 
       return {
         success: true,
@@ -3191,7 +3191,7 @@ async getAllPaymentAccountsForAdmin() {
     } catch (err) {
 
       try {
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
       } catch (rollbackError) {
         console.error(
           "Rollback error:",
@@ -3208,7 +3208,7 @@ async getAllPaymentAccountsForAdmin() {
 
     } finally {
 
-      client.release();
+      pool.release();
 
     }
   },
