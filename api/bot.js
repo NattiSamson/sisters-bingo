@@ -3558,10 +3558,10 @@ if (!admin) {
         `⚪ Inactive Users: *${stats.inactiveUsers}*\n` +
         `🔴 Blocked Users: *${stats.blockedUsers}*\n\n` +
 
-        `👑 Main Admin: *${stats.main_admin}*`;
-        `📊 Statistics Admin: *${stats.statistics_admin}*`;
-        `💸 Withdrawal Admin: *${stats.withdrawal_admin}*`;
-        `📢 Broadcast Admin: *${stats.broadcast_admin}*`;
+        `👑 Main Admin: *${stats.mainAdmin}*`;
+        `📊 Statistics Admin: *${stats.statisticsAdmin}*`;
+        `💸 Withdrawal Admin: *${stats.withdrawalAdmin}*`;
+        `📢 Broadcast Admin: *${stats.broadcastAdmin}*`;
 
 
       await ctx.reply(
