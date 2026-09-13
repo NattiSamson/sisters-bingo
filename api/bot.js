@@ -8858,7 +8858,7 @@ bot.on(
         return ctx.reply(
           "❌ Invalid date/time.\n\n" +
           "Use:\n" +
-          "`2026-09-13 10:00`",
+          "`2026-09-13 10:00 AM`",
           {
             parse_mode: "Markdown"
           }
@@ -8907,7 +8907,7 @@ if (
     return ctx.reply(
       "❌ Invalid date/time.\n\n" +
       "Use:\n" +
-      "`2026-09-13 18:00`",
+      "`2026-09-13 18:00 AM`",
       {
         parse_mode:
           "Markdown"
