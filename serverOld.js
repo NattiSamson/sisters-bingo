@@ -371,10 +371,10 @@ const CLAIM_COLLECT_MS = 700; // grace period to gather simultaneous BINGO claim
 const TOTAL_CARDS      = 400;
 
 const STAKES = [
-  { id:'st5',  amount:5,  maxPlayers:400, cardLimit:400 },
-  { id:'st10', amount:10, maxPlayers:400, cardLimit:400 },
-  { id:'st20', amount:20, maxPlayers:400, cardLimit:400 },
-  { id:'st50', amount:50, maxPlayers:50,  cardLimit:50  },
+  { id:'st10', amount:10, maxPlayers:400 },
+  
+  { id:'st50', amount:50, maxPlayers:50 },
+  { id:'st5', amount:5, maxPlayers:400 },
 ];
 
 // ─── FIXED CARDS ─────────────────────────────────────────────
@@ -395,7 +395,6 @@ function generateFixedCard(idx) {
 const CARD_POOL=[];
 for(let i=1;i<=TOTAL_CARDS;i++) CARD_POOL.push({id:i,numbers:generateFixedCard(i)});
 const getCard=id=>CARD_POOL.find(c=>c.id===id);
-const getCardPoolForRoom=room=>CARD_POOL.slice(0,Math.min(TOTAL_CARDS,Number(room?.cardLimit)||TOTAL_CARDS));
 
 // ─── WIN CHECK ───────────────────────────────────────────────
 function checkWin(nums, called, marked) {
@@ -506,7 +505,7 @@ function getOrCreateRoom(sid){
   let r=Object.values(rooms).find(r=>r.stakeId===sid&&(r.status==='waiting'||r.status==='countdown'));
   if(r) return r;
   const s=STAKES.find(s=>s.id===sid), roomId=uuidv4();
-  r={roomId,stakeId:sid,stake:s.amount,maxPlayers:s.maxPlayers,cardLimit:s.cardLimit,status:'waiting',players:[],calledNumbers:[],
+  r={roomId,stakeId:sid,stake:s.amount,status:'waiting',players:[],calledNumbers:[],
      availableNumbers:Array.from({length:75},(_,i)=>i+1),callTimer:null,countdownTimer:null,claimEvalTimer:null,
      countdownLeft:Math.ceil(LOBBY_WAIT_MS/1000),claimWindowOpen:false,claimedThisRound:[],resetCountdownTimer:null,resetTimer:null,
      takenCardIds:new Set(),pot:0,dbGameId:null};
@@ -530,7 +529,7 @@ function broadcastLobby(){
 }
 function broadcastCardPool(room){
   // Send only the FULL pool once when needed (e.g. on join); for live picks use broadcastCardDiff instead.
-  const base=getCardPoolForRoom(room).map(c=>({id:c.id,taken:room.takenCardIds.has(c.id)}));
+  const base=CARD_POOL.map(c=>({id:c.id,taken:room.takenCardIds.has(c.id)}));
   const cardCount=room.players.reduce((sum,p)=>(p.cardId?sum+1:sum)+(p.cardId2?1:0),0);
   room.players.forEach(p=>send(p.ws,{type:'cardPoolUpdate',pool:base.map(c=>({...c,takenByMe:p.cardId===c.id||p.cardId2===c.id})),playerCount:cardCount,stakeAmount:room.stake}));
 }
@@ -796,7 +795,7 @@ async function endGame(room, winners, customMsg, noWinner){
         status:'waiting',
         // Include the fresh pool in the reset response so the client can switch
         // to card selection and render the new pool without a page reload.
-        pool:getCardPoolForRoom(room).map(c=>({id:c.id,taken:false,takenByMe:false}))
+        pool:CARD_POOL.map(c=>({id:c.id,taken:false,takenByMe:false}))
       });
     });
 
@@ -1054,8 +1053,8 @@ wss.on('connection',(ws)=>{
               const liveRoom=Object.values(rooms).find(r=>r.stakeId===msg.stakeId&&r.status==='playing');
 
               if(liveRoom){
-                if(liveRoom.players.length>=liveRoom.maxPlayers) return send(ws,{type:'error',message:`ይህ ክፍል ሙሉ ነው። ከፍተኛው ተጫዋቾች: ${liveRoom.maxPlayers}`});
-                liveRoom.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,ws,cardId:null,cardId2:null,hasPaid:false,disqualified:false});
+
+                liveRoom.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,ws,cardId:null,hasPaid:false,disqualified:false});
 
                 client.roomId=liveRoom.roomId;
 
@@ -1103,7 +1102,7 @@ wss.on('connection',(ws)=>{
 
               const slot=msg.slot===2?2:1;
 
-              if(cardId<1||cardId>room.cardLimit) break;
+              if(cardId<1||cardId>TOTAL_CARDS) break;
 
               const p=room.players.find(p=>p.playerId===client.playerId);
 
