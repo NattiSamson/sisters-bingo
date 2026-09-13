@@ -741,6 +741,104 @@ async function getManualBonusHistory(limit = 30) {
 
   return rows;
 }
+// ============================================================
+// SPECIFIC USER BONUS REPORT
+// ============================================================
+//
+// Breakdown:
+//   manual_user_bonus = Direct bonus
+//   manual_all_bonus  = Broadcast / All Active Users bonus
+//   deposit_bonus     = Campaign bonus
+//
+// ============================================================
+
+async function getSpecificUserBonusReport(phone) {
+  const searchLast9 = last9(phone);
+
+  if (!searchLast9) {
+    throw new Error("Invalid Ethiopian phone number");
+  }
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      u.id,
+      u.telegram_id,
+      u.name,
+      u.phone,
+
+      COALESCE(
+        SUM(
+          CASE
+            WHEN bt.bonus_type = 'manual_user_bonus'
+            THEN bt.amount
+            ELSE 0
+          END
+        ),
+        0
+      )::numeric AS direct_bonus,
+
+      COALESCE(
+        SUM(
+          CASE
+            WHEN bt.bonus_type = 'manual_all_bonus'
+            THEN bt.amount
+            ELSE 0
+          END
+        ),
+        0
+      )::numeric AS broadcast_bonus,
+
+      COALESCE(
+        SUM(
+          CASE
+            WHEN bt.bonus_type = 'deposit_bonus'
+            THEN bt.amount
+            ELSE 0
+          END
+        ),
+        0
+      )::numeric AS campaign_bonus,
+
+      COALESCE(
+        SUM(bt.amount),
+        0
+      )::numeric AS total_bonus,
+
+      COUNT(bt.id)::integer AS bonus_transactions
+
+    FROM users u
+
+    LEFT JOIN bonus_transactions bt
+      ON bt.user_id = u.id
+
+    WHERE RIGHT(
+      REGEXP_REPLACE(
+        u.phone,
+        '[^0-9]',
+        '',
+        'g'
+      ),
+      9
+    ) = $1
+
+    GROUP BY
+      u.id,
+      u.telegram_id,
+      u.name,
+      u.phone
+
+    LIMIT 1
+    `,
+    [searchLast9]
+  );
+
+  if (!rows.length) {
+    return null;
+  }
+
+  return rows[0];
+}
 
 module.exports = {
 
@@ -5172,6 +5270,6 @@ async applyDepositBonus(
   getBonusesByUser,
   getBonusesByCampaign,
   getDepositBonusHistory,
-  getManualBonusHistory
-
+  getManualBonusHistory,
+  getSpecificUserBonusReport
 };
