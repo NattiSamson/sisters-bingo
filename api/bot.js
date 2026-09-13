@@ -679,37 +679,37 @@ keyboard.push(
   [
     {
       text: "💰 Balance",
-      callback_data: "balance"
+      callback_data: "user_balance"
     },
     {
       text: "🔄 Transfer",
-      callback_data: "transfer"
+      callback_data: "user_transfer"
     }
   ],
   [
     {
       text: "💎 Deposit",
-      callback_data: "deposit"
+      callback_data: "user_deposit"
     },
     {
       text: "🏧 Withdraw",
-      callback_data: "withdraw"
+      callback_data: "user_withdraw"
     }
   ],
   [
     {
       text: "📊 Statistics",
-      callback_data: "statistics"
+      callback_data: "user_statistics"
     },
     {
       text: "🆘 Support",
-      callback_data: "support"
+      callback_data: "user_support"
     }
   ],
   [
     {
       text: "🗑️ Delete",
-      callback_data: "delete"
+      callback_data: "user_delete"
     }
   ]
 );
@@ -764,7 +764,7 @@ async function showUserStatistics(ctx) {
             [
               {
                 text: "🔄 Refresh",
-                callback_data: "statistics"
+                callback_data: "user_statistics"
               }
             ],
             [
@@ -797,7 +797,7 @@ async function showUserStatistics(ctx) {
 // ============================================================
 
 bot.callbackQuery(
-  "statistics",
+  "user_statistics",
   async (ctx) => {
 
     await answerCallback(ctx);
@@ -843,7 +843,7 @@ bot.callbackQuery("user_home", async (ctx) => {
 // ============================================================
 
 bot.callbackQuery(
-  "delete",
+  "user_delete",
   async (ctx) => {
 
     await answerCallback(ctx);
@@ -888,7 +888,7 @@ bot.callbackQuery(
   }
 );
   bot.callbackQuery(
-  "delete_cancel",
+  "user_cancel_delete",
   async (ctx) => {
 
     await answerCallback(ctx);
@@ -920,7 +920,7 @@ bot.callbackQuery(
   }
 );
   bot.callbackQuery(
-  "delete_confirm",
+  "user_confirm_delete",
   async (ctx) => {
 
     await answerCallback(ctx);
@@ -5048,7 +5048,7 @@ bot.hears("📊 Leaderboard", showLeaderboard);
 bot.hears("🎮 Play", showPlay);
 
 bot.callbackQuery(
-  "balance",
+  "user_balance",
   async (ctx) => {
 
     await answerCallback(
@@ -5149,7 +5149,7 @@ bot.command(
 
 
 bot.callbackQuery(
-  "transfer",
+  "user_transfer",
   async (ctx) => {
 
     await answerCallback(
@@ -5686,7 +5686,7 @@ async function showDeposit(
         "❌ ሰርዝ",
 
       callback_data:
-        "canceldeposit"
+        "user_cancel_deposit"
 
     }
 
@@ -5722,7 +5722,7 @@ bot.command(
 
 
 bot.callbackQuery(
-  "deposit",
+  "user_deposit",
   async (ctx) => {
 
     await answerCallback(
@@ -6042,7 +6042,7 @@ return await ctx.reply(
 // ============================================================
 
 bot.callbackQuery(
-  "canceldeposit",
+  "user_cancel_deposit",
   async (ctx) => {
 
     await answerCallback(
@@ -6157,7 +6157,7 @@ async function showWithdrawal(
             `${pm.emoji || "💳"} ${pm.amharic_name}`,
 
           callback_data:
-            `withdraw_method_${pm.id}`
+            `user_withdraw_method_${pm.id}`
 
         }
 
@@ -6173,7 +6173,7 @@ async function showWithdrawal(
         "❌ ሰርዝ",
 
       callback_data:
-        "cancelwithdrawal"
+        "user_cancel_withdrawal"
 
     }
 
@@ -6214,7 +6214,7 @@ bot.command(
 
 
 bot.callbackQuery(
-  "withdraw",
+  "user_withdraw",
   async (ctx) => {
 
     await answerCallback(
@@ -6654,7 +6654,7 @@ bot.on(
 // ============================================================
 
 bot.callbackQuery(
-  "cancelwithdrawal",
+  "user_cancel_withdrawal",
   async (ctx) => {
 
     await answerCallback(
@@ -8051,7 +8051,7 @@ bot.command(
 
 
 bot.callbackQuery(
-  "support",
+  "user_support",
   async (ctx) => {
 
     await answerCallback(
