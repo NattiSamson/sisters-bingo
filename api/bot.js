@@ -755,7 +755,7 @@ async function showUserStatistics(ctx) {
 
       `🔄 Total Transfers: *${stats.totalTransfers}*`;
 
-    await ctx.reply(
+    await ctx.editMessageText(
       message,
       {
         parse_mode: "Markdown",
@@ -1076,10 +1076,11 @@ else if (
 bot.callbackQuery(
   "admin_bonus_frequency_one_time",
   async (ctx) => {
+  await answerCallback(ctx);
+  
 
     try {
 
-      await answerCallback(ctx);
 
       const admin =
         await getCurrentAdmin(ctx);
@@ -7343,9 +7344,7 @@ bot.callbackQuery(
 // ============================================================
 bot.callbackQuery("admin_home", async (ctx) => {
   await answerCallback(ctx);
-  const telegramId = ctx.from.id;
-  // Forget everything the admin was in the middle of doing
-  clearPendingState(telegramId);
+  clearPendingState(ctx.from.id);
   const admin = await getCurrentAdmin(ctx);
     if (!admin) 
     {
