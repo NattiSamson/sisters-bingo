@@ -2012,7 +2012,7 @@ bot.callbackQuery(
       "👥 *BONUS FOR ALL ACTIVE USERS*\n\n" +
       "This bonus will be given to every user who is:\n\n" +
       "✅ Active\n" +
-      "✅ Not blocked\n\" +
+      "✅ Not blocked\n\n" +
       "Please enter the bonus amount in ETB.\n\n" +
       "Example:\n" +
       "`50`\n" +
