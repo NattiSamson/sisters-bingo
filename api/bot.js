@@ -5757,15 +5757,7 @@ bot.callbackQuery(
 
           " አካውንት ብር ያስገቡ\n\n" +
 
-          "📞 *" +
-
-          paymentMethod.name +
-
-          ":* `" +
-
-          paymentaccount.account_number +
-
-          "`\n\n" +
+          paymentMethod.emoji + " *" + paymentMethod.name +  ":* `" + paymentaccount.account_number + "`\n\n" +
 
           "2. የከፈሉበትን አጭር የጹሁፍ መልዕክት (SMS) " +
 
