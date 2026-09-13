@@ -129,7 +129,7 @@ async function getCurrentAdmin(ctx)
   }
 }
 
-async function requireAdminPermission(ctx, permission) 
+async function getCurrentAdminPermission(ctx, permission) 
 {
     const admin = await getCurrentAdmin(ctx);
     if (!admin) 
@@ -157,29 +157,6 @@ async function requireAdminPermission(ctx, permission)
     return admin;
 }
 
-/**
- * Requires the current Telegram user
- * to be an active, non-banned admin.
- *
- * Returns the admin database row when authorized.
- * Returns null when unauthorized.
- */
-async function requireAdmin(ctx)
-{
-  const admin = await getCurrentAdmin(ctx);
-  if (!admin) 
-  {
-    try {
-          await ctx.answerCallbackQuery({text: "Unauthorized", show_alert: true });
-        } 
-    catch (err) 
-      {
-          console.log("Unauthorized callback response failed:", err.description || err.message );
-      }
-    return null;
-  }
-  return admin;
-}
 // ============================================================
 // CALLBACK HELPER
 // ============================================================
@@ -1134,7 +1111,7 @@ bot.callbackQuery(
       await answerCallback(ctx);
 
       const admin =
-        await requireAdmin(ctx);
+        await getCurrentAdmin(ctx);
 
       if (!admin) {
         return;
@@ -1240,7 +1217,7 @@ bot.callbackQuery(
       await answerCallback(ctx);
 
       const admin =
-        await requireAdmin(ctx);
+        await getCurrentAdmin(ctx);
 
       if (!admin) {
         return;
@@ -1346,7 +1323,7 @@ bot.callbackQuery(
       await answerCallback(ctx);
 
       const admin =
-        await requireAdmin(ctx);
+        await getCurrentAdmin(ctx);
 
       if (!admin) {
         return;
@@ -1431,7 +1408,7 @@ bot.callbackQuery(
       await answerCallback(ctx);
 
       const admin =
-        await requireAdmin(ctx);
+        await getCurrentAdmin(ctx);
 
       if (!admin) {
         return;
@@ -1587,7 +1564,7 @@ bot.callbackQuery(
       await answerCallback(ctx);
 
       const admin =
-        await requireAdmin(ctx);
+        await getCurrentAdmin(ctx);
 
       if (!admin) {
         return;
@@ -1682,7 +1659,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     const admin =
-      await requireAdmin(ctx);
+      await getCurrentAdmin(ctx);
 
     if (!admin) {
       return;
@@ -1938,7 +1915,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     const admin =
-      await requireAdmin(ctx);
+      await getCurrentAdmin(ctx);
 
     if (!admin) {
       return;
@@ -1988,7 +1965,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     const admin =
-      await requireAdmin(ctx);
+      await getCurrentAdmin(ctx);
 
     if (!admin) {
       return;
@@ -2048,7 +2025,7 @@ bot.callbackQuery(
       await answerCallback(ctx);
 
       const admin =
-        await requireAdmin(ctx);
+        await getCurrentAdmin(ctx);
 
       if (!admin) {
         return;
@@ -2088,7 +2065,7 @@ bot.callbackQuery(
       await answerCallback(ctx);
 
       const admin =
-        await requireAdmin(ctx);
+        await getCurrentAdmin(ctx);
 
       if (!admin) {
         return;
@@ -2166,7 +2143,7 @@ bot.callbackQuery(
     await answerCallback(ctx);
 
     const admin =
-      await requireAdmin(ctx);
+      await getCurrentAdmin(ctx);
 
     if (!admin) {
       return;
@@ -3329,7 +3306,7 @@ bot.callbackQuery(
       await answerCallback(ctx);
 
       const admin =
-        await requireAdminPermission(
+        await getCurrentAdminPermission(
           ctx,
           "statistics"
         );
@@ -3407,7 +3384,7 @@ bot.callbackQuery(
       await answerCallback(ctx);
 
       const admin =
-        await requireAdminPermission(
+        await getCurrentAdminPermission(
           ctx,
           "statistics"
         );
@@ -3491,7 +3468,7 @@ bot.callbackQuery(
       await answerCallback(ctx);
 
       const admin =
-        await requireAdminPermission(
+        await getCurrentAdminPermission(
           ctx,
           "statistics"
         );
@@ -3571,7 +3548,7 @@ bot.callbackQuery(
       // ------------------------------------------
 
       const admin =
-  await requireAdminPermission(
+  await getCurrentAdminPermission(
     ctx,
     "statistics"
   );
@@ -3685,7 +3662,7 @@ if (!admin) {
 async function showAdminAccounts(ctx) {
 
   const admin =
-    await requireAdmin(ctx);
+    await getCurrentAdmin(ctx);
 
   if (!admin) {
     return;
@@ -3889,7 +3866,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     const admin =
-      await requireAdmin(ctx);
+      await getCurrentAdmin(ctx);
 
     if (!admin) {
       return;
@@ -3919,7 +3896,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     const admin =
-      await requireAdmin(ctx);
+      await getCurrentAdmin(ctx);
 
     if (!admin) {
       return;
@@ -4011,7 +3988,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     const admin =
-      await requireAdmin(ctx);
+      await getCurrentAdmin(ctx);
 
     if (!admin) {
       return;
@@ -4132,7 +4109,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     const admin =
-      await requireAdmin(ctx);
+      await getCurrentAdmin(ctx);
 
     if (!admin) {
       return;
@@ -4161,7 +4138,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     const admin =
-      await requireAdmin(ctx);
+      await getCurrentAdmin(ctx);
 
     if (!admin) {
       return;
@@ -6715,7 +6692,7 @@ bot.callbackQuery(
 
 async function showAdminPaymentMethods(ctx) {
 
-  const admin = await requireAdmin(ctx);
+  const admin = await getCurrentAdmin(ctx);
 
   if (!admin) {
     return;
@@ -6793,7 +6770,7 @@ bot.callbackQuery(
   "admin_withdrawals",
   async (ctx) => {
 
-    const admin = await requireAdminPermission(
+    const admin = await getCurrentAdminPermission(
     ctx,
     "withdrawals"
 );
@@ -6839,7 +6816,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     const admin =
-      await requireAdmin(ctx);
+      await getCurrentAdmin(ctx);
 
     if (!admin) {
       return;
@@ -6963,7 +6940,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     const admin =
-      await requireAdmin(ctx);
+      await getCurrentAdmin(ctx);
 
     if (!admin) {
       return;
@@ -7043,7 +7020,7 @@ async function showPendingWithdrawals(
 ) {
 
   const admin =
-    await requireAdmin(ctx);
+    await getCurrentAdmin(ctx);
 
   if (!admin) {
     return;
@@ -7252,7 +7229,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     const admin =
-      await requireAdmin(ctx);
+      await getCurrentAdmin(ctx);
 
     if (!admin) {
       return;
@@ -7277,7 +7254,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     const admin =
-      await requireAdmin(
+      await getCurrentAdmin(
         ctx
       );
 
@@ -7453,7 +7430,7 @@ bot.callbackQuery("admin_home", async (ctx) => {
   const telegramId = ctx.from.id;
   // Forget everything the admin was in the middle of doing
   clearPendingState(telegramId);
-  const admin = await requireAdmin(ctx);
+  const admin = await getCurrentAdmin(ctx);
     if (!admin) 
     {
           return ctx.editMessageText("❌ Unauthorized.");
@@ -7483,7 +7460,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     const admin =
-      await requireAdmin(
+      await getCurrentAdmin(
         ctx
       );
 
@@ -7665,7 +7642,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     const admin =
-      await requireAdmin(
+      await getCurrentAdmin(
         ctx
       );
 
@@ -8249,7 +8226,7 @@ bot.callbackQuery(
   "admin_broadcast",
   async (ctx) => {
 
-    const admin = await requireAdminPermission(
+    const admin = await getCurrentAdminPermission(
     ctx,
     "broadcast"
 );
@@ -9555,7 +9532,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     const admin =
-      await requireAdmin(
+      await getCurrentAdmin(
         ctx
       );
 
@@ -9738,7 +9715,7 @@ bot.callbackQuery(
   async (ctx) => {
 
     const admin =
-      await requireAdmin(
+      await getCurrentAdmin(
         ctx
       );
 
