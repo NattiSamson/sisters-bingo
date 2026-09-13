@@ -1925,7 +1925,12 @@ bot.callbackQuery(
                   "admin_bonus_report"
               }
             ],
-
+            [
+              {
+                text: "👤 Specific User Report",
+                callback_data: "admin_bonus_user_report"
+              }
+            ],
             [
               {
                 text: "🏠 Home",
@@ -2066,7 +2071,83 @@ if (
   );
 
 }
+// ============================================================
+// ADMIN — SPECIFIC USER BONUS REPORT
+// ============================================================
 
+bot.callbackQuery(
+  "admin_bonus_user_report",
+  async (ctx) => {
+    try {
+      const admin = await getCurrentAdmin(ctx);
+
+      if (!admin) {
+        await answerCallback(ctx, "❌ Unauthorized.");
+        return;
+      }
+
+      // Keep bonus reports restricted to main admin
+      if (admin.admin_role !== "main") {
+        await answerCallback(
+          ctx,
+          "❌ Main admin only."
+        );
+        return;
+      }
+
+      await answerCallback(ctx);
+
+      pendingAdminBonus.set(
+        admin.telegram_id,
+        {
+          step: "specific_user_report_phone"
+        }
+      );
+
+      await ctx.editMessageText(
+        "👤 SPECIFIC USER BONUS REPORT\n\n" +
+        "Please enter the user's phone number.\n\n" +
+        "Example:\n" +
+        "0912345678\n\n" +
+        "or\n" +
+        "251912345678",
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "❌ Cancel",
+                  callback_data: "admin_bonus_cancel"
+                }
+              ],
+              [
+                {
+                  text: "⬅️ Bonus Menu",
+                  callback_data: "admin_bonus"
+                },
+                {
+                  text: "🏠 Home",
+                  callback_data: "admin_home"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+      console.error(
+        "Specific user bonus report start error:",
+        error
+      );
+
+      await answerCallback(
+        ctx,
+        "❌ Failed to start report."
+      );
+    }
+  }
+);
 
 // ======================================================
 // BY CAMPAIGN
@@ -9585,6 +9666,202 @@ if (
   }
 
   return;
+}
+
+    // ============================================================
+// SPECIFIC USER BONUS REPORT — PHONE INPUT
+// ============================================================
+
+if (
+  pending.step ===
+  "specific_user_report_phone"
+) {
+  const phone =
+    ctx.message?.text?.trim();
+
+  if (!phone) {
+    await ctx.reply(
+      "❌ Please enter a valid phone number."
+    );
+    return;
+  }
+
+  try {
+    const report =
+      await db.getSpecificUserBonusReport(
+        phone
+      );
+
+    if (!report) {
+      await ctx.reply(
+        "❌ User not found.\n\n" +
+        "Please check the phone number and try again.",
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🔄 Try Again",
+                  callback_data:
+                    "admin_bonus_user_report"
+                }
+              ],
+              [
+                {
+                  text: "⬅️ Bonus Menu",
+                  callback_data:
+                    "admin_bonus"
+                },
+                {
+                  text: "🏠 Home",
+                  callback_data:
+                    "admin_home"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+      pendingAdminBonus.delete(
+        admin.telegram_id
+      );
+
+      return;
+    }
+
+    pendingAdminBonus.delete(
+      admin.telegram_id
+    );
+
+    const directBonus =
+      Number(
+        report.direct_bonus || 0
+      );
+
+    const broadcastBonus =
+      Number(
+        report.broadcast_bonus || 0
+      );
+
+    const campaignBonus =
+      Number(
+        report.campaign_bonus || 0
+      );
+
+    const totalBonus =
+      Number(
+        report.total_bonus || 0
+      );
+
+    const transactions =
+      Number(
+        report.bonus_transactions || 0
+      );
+
+    const message =
+      "👤 SPECIFIC USER BONUS REPORT\n\n" +
+
+      "━━━━━━━━━━━━━━━━━━━━\n" +
+      `👤 Name: ${String(
+        report.name || "Unknown"
+      )}\n` +
+
+      `📱 Phone: ${String(
+        report.phone || phone
+      )}\n` +
+
+      "━━━━━━━━━━━━━━━━━━━━\n\n" +
+
+      "🎁 DIRECT BONUS\n" +
+      `💰 Total: ${directBonus.toFixed(2)} ETB\n\n` +
+
+      "📢 BROADCAST BONUS\n" +
+      `💰 Total: ${broadcastBonus.toFixed(2)} ETB\n\n` +
+
+      "🎯 CAMPAIGN BONUS\n" +
+      `💰 Total: ${campaignBonus.toFixed(2)} ETB\n\n` +
+
+      "━━━━━━━━━━━━━━━━━━━━\n" +
+
+      "💎 TOTAL BONUS RECEIVED\n" +
+      `💰 ${totalBonus.toFixed(2)} ETB\n\n` +
+
+      `🧾 Bonus Transactions: ${transactions}`;
+
+    await ctx.reply(
+      message,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🔄 Search Another User",
+                callback_data:
+                  "admin_bonus_user_report"
+              }
+            ],
+            [
+              {
+                text: "⬅️ Bonus Menu",
+                callback_data:
+                  "admin_bonus"
+              },
+              {
+                text: "🏠 Home",
+                callback_data:
+                  "admin_home"
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+    return;
+
+  } catch (error) {
+    console.error(
+      "Specific user bonus report error:",
+      error
+    );
+
+    pendingAdminBonus.delete(
+      admin.telegram_id
+    );
+
+    await ctx.reply(
+      "❌ Failed to load the user's bonus report.\n\n" +
+      "Please try again.",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🔄 Try Again",
+                callback_data:
+                  "admin_bonus_user_report"
+              }
+            ],
+            [
+              {
+                text: "⬅️ Bonus Menu",
+                callback_data:
+                  "admin_bonus"
+              },
+              {
+                text: "🏠 Home",
+                callback_data:
+                  "admin_home"
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+    return;
+  }
 }
     
     return next();
