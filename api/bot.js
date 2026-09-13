@@ -5755,7 +5755,7 @@ bot.callbackQuery(
 
           paymentMethod.amharic_name +
 
-          " አካውንት ብር ያስገቡ\n\n" +
+          " አካውንት እስከ 500.00 ብር ድረስ ብቻ ያስገቡ\n\n" +
 
           paymentMethod.emoji + " *" + paymentMethod.name +  ":* `" + paymentaccount.account_number + "`\n\n" +
 
