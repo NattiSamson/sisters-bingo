@@ -595,6 +595,112 @@ async function showDepositBonusSchedules(ctx) {
     }
   );
 }
+
+function parseEthiopianDateTime(text) {
+  const match = String(text || "")
+    .trim()
+    .match(
+      /^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i
+    );
+
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  let hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const ampm = match[6].toUpperCase();
+
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31 ||
+    hour < 1 ||
+    hour > 12 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return null;
+  }
+
+  // Convert 12-hour time to 24-hour time
+  if (ampm === "AM") {
+    if (hour === 12) {
+      hour = 0;
+    }
+  } else {
+    if (hour !== 12) {
+      hour += 12;
+    }
+  }
+
+  // Ethiopia = UTC+3
+  const date = new Date(
+    Date.UTC(
+      year,
+      month - 1,
+      day,
+      hour - 3,
+      minute,
+      0,
+      0
+    )
+  );
+
+  // Validate the calendar date
+  const check = new Date(
+    Date.UTC(year, month - 1, day)
+  );
+
+  if (
+    check.getUTCFullYear() !== year ||
+    check.getUTCMonth() !== month - 1 ||
+    check.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+function formatBonusDate(date) {
+  if (!date) {
+    return "-";
+  }
+
+  const d = new Date(date);
+
+  // Convert UTC → Ethiopia UTC+3
+  const ethiopiaTime = new Date(
+    d.getTime() + (3 * 60 * 60 * 1000)
+  );
+
+  const year = ethiopiaTime.getUTCFullYear();
+  const month = String(
+    ethiopiaTime.getUTCMonth() + 1
+  ).padStart(2, "0");
+  const day = String(
+    ethiopiaTime.getUTCDate()
+  ).padStart(2, "0");
+
+  let hour = ethiopiaTime.getUTCHours();
+  const minute = String(
+    ethiopiaTime.getUTCMinutes()
+  ).padStart(2, "0");
+
+  const ampm = hour >= 12 ? "PM" : "AM";
+
+  hour = hour % 12;
+
+  if (hour === 0) {
+    hour = 12;
+  }
+
+  return `${year}-${month}-${day} ${hour}:${minute} ${ampm}`;
+}
 // ============================================================
 // PHONE NORMALIZATION
 // ============================================================
@@ -8768,13 +8874,14 @@ bot.on(
         "end";
 
       return ctx.reply(
-        "⏰ Enter the *ending date and time*.\n\n" +
-        "Example:\n" +
-        "`2026-09-13 18:00`",
-        {
-          parse_mode: "Markdown"
-        }
-      );
+          "⏰ Enter the *ending date and time*.\n\n" +
+          "Example:\n" +
+          "`2026-09-13 7:00 PM`\n\n" +
+          "🇪🇹 Ethiopia time (UTC+3).",
+          {
+            parse_mode: "Markdown"
+          }
+        );
     }
 
     // ========================================================
