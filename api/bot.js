@@ -8829,8 +8829,8 @@ bot.on(
       return ctx.reply(
         "⏰ Enter the *starting date and time*.\n\n" +
         "Use this format:\n" +
-        "`2026-09-13 10:00`\n\n" +
-        "Ethiopia time (UTC+3).",
+        "`2026-09-13 10:00 AM`\n\n" +
+        "🇪🇹 Ethiopia time (UTC+3).",
         {
           parse_mode: "Markdown"
         }
