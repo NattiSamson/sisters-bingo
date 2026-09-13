@@ -8,111 +8,46 @@
  *   BOT_TOKEN=your_telegram_bot_token
  *   GAME_URL=https://sisters-bingo.vercel.app
  */
-
 const { Bot, webhookCallback } = require("grammy");
-
 const db = require("../db");
-
-const {
-  processDeposit
-} = require("../deposit");
-
-
+const {  processDeposit } = require("../deposit");
 // ============================================================
 // CONFIG
 // ============================================================
-
-const BOT_TOKEN =
-  process.env.BOT_TOKEN;
-
-const GAME_URL =
-  process.env.GAME_URL ||
-  "https://sisters-bingo.vercel.app";
-
-
-if (!BOT_TOKEN) {
-
-  throw new Error(
-    "BOT_TOKEN environment variable is missing"
-  );
-
+const BOT_TOKEN =  process.env.BOT_TOKEN;
+const GAME_URL = process.env.GAME_URL || "https://sisters-bingo.vercel.app";
+if (!BOT_TOKEN) 
+{
+  throw new Error("BOT_TOKEN environment variable is missing");
 }
-
-
-const bot =
-  new Bot(BOT_TOKEN);
-
-
+const bot = new Bot(BOT_TOKEN);
 // ============================================================
 // STATE
 // ============================================================
-
 const pendingPhone = {};
-
 const pendingDeposit = {};
-
 const pendingTransfer = {};
-
 const pendingWithdrawal = {};
-
 const pendingAdminWithdrawal  = {};
-
-// Admin payment-account creation state
-// telegramId -> {
-//   step,
-//   paymentMethodId,
-//   paymentMethod,
-//   paymentTypeName,
-//   paymentTypeAmharicName,
-//   accountName,
-//   accountNumber
-// }
 const pendingAdminAccount = {};
-
 const pendingDelete = {};
-
-// Admin rejection state
-// telegramId -> { withdrawalId, withdrawal }
 const pendingAdminReject = {};
-// Admin user search state
 const pendingAdminUserSearch = new Map();
-
 const pendingAdminRoleSearch = new Map();
-
 const pendingAdminBonus = new Map();
-
-
 // ============================================================
 // CLEAR USER STATE
 // ============================================================
-
-function clearPendingState(
-  telegramId
-) {
-
-  delete pendingDeposit[
-    telegramId
-  ];
-
-  delete pendingTransfer[
-    telegramId
-  ];
-
-  delete pendingWithdrawal[
-    telegramId
-  ];
-  
-  delete pendingAdminWithdrawal[
-    telegramId
-  ];
-
-  delete pendingDelete[
-    telegramId
-  ];
-
-  delete pendingAdminAccount[
-  telegramId
-  ];
+function clearPendingState(telegramId) 
+{
+  delete pendingPhone[telegramId];
+  delete pendingDeposit[telegramId];
+  delete pendingTransfer[telegramId];
+  delete pendingWithdrawal[telegramId];
+  delete pendingAdminWithdrawal[telegramId];
+  delete pendingAdminAccount[telegramId];
+  delete pendingDelete[telegramId];
+  delete pendingAdminReject[telegramId];
   
   pendingAdminUserSearch.delete(telegramId);
   pendingAdminRoleSearch.delete(telegramId);
@@ -128,22 +63,19 @@ function clearPendingState(
 bot.use(async (ctx, next) => {
   try {
     const telegramId = ctx.from?.id;
-
-    if (!telegramId) {
+    if (!telegramId)
+    {
       return next();
     }
-
     const text = ctx.message?.text?.trim() || "";
-
     // Allow /start so blocked users see the blocked message
-    if (text.startsWith("/start")) {
+    if (text.startsWith("/start"))
+    {
       return next();
     }
-
     const user = await db.getUserByTelegramId(telegramId);
-
-    if (user?.is_blocked === true) {
-
+    if (user?.is_blocked === true) 
+    {
       // Callback buttons
       if (ctx.callbackQuery) {
         try {
@@ -152,25 +84,15 @@ bot.use(async (ctx, next) => {
             show_alert: true
           });
         } catch (err) {}
-
         return;
       }
-
       // Normal messages / commands
-      return ctx.reply(
-        "🚫 Your account has been blocked. Please contact support."
-      );
+      return ctx.reply("🚫 Your account has been blocked. Please contact support.");
     }
-
     return next();
-
-  } catch (err) {
-
-    console.error(
-      "Blocked user guard error:",
-      err
-    );
-
+  } catch (err) 
+  {
+    console.error("Blocked user guard error:", err);
     // Do not break the bot if the database check fails
     return next();
   }
@@ -178,7 +100,6 @@ bot.use(async (ctx, next) => {
 // ============================================================
 // ADMIN AUTHORIZATION
 // ============================================================
-
 /**
  * Returns the currently logged-in admin from the database.
  *
@@ -190,80 +111,49 @@ bot.use(async (ctx, next) => {
  *
  * There is NO hard-coded ADMIN_ID.
  */
-async function getCurrentAdmin(
-  ctx
-) {
-
-  if (
-    !ctx ||
-    !ctx.from ||
-    !ctx.from.id
-  ) {
-
+async function getCurrentAdmin(ctx)
+{
+  if (!ctx || !ctx.from || !ctx.from.id) 
+  {
     return null;
-
   }
-
-
-  try {
-
-    const admin =
-      await db.getAdminByTelegramId(
-        ctx.from.id
-      );
-
-
+  try 
+  {
+    const admin = await db.getAdminByTelegramId(ctx.from.id);
     return admin || null;
-
-  } catch (err) {
-
-    console.error(
-      "Admin lookup error:",
-      err
-    );
-
+  } 
+  catch (err) 
+  {
+    console.error("Admin lookup error:", err);
     return null;
-
   }
-
 }
 
-async function requireAdminPermission(ctx, permission) {
+async function requireAdminPermission(ctx, permission) 
+{
     const admin = await getCurrentAdmin(ctx);
-
-    if (!admin) {
+    if (!admin) 
+    {
         try {
-            await ctx.answerCallbackQuery({
-                text: "❌ Unauthorized",
-                show_alert: true
-            });
-        } catch (err) {}
-
+              await ctx.answerCallbackQuery({text: "❌ Unauthorized", show_alert: true});
+            } 
+        catch (err) 
+        {          
+        }
         return null;
     }
-
     const role = admin.admin_role;
-
-    const allowed =
-  role === "main" ||
-  (role === "broadcast" &&
-    permission === "broadcast") ||
-  (role === "statistics" &&
-    permission === "statistics") ||
-  (role === "withdrawal" &&
-    permission === "withdrawals");
-
-    if (!allowed) {
+    const allowed =  role === "main" ||   (role === "broadcast" &&  permission === "broadcast") || (role === "statistics" && permission === "statistics") || (role === "withdrawal" &&    permission === "withdrawals");
+    if (!allowed) 
+    {
         try {
-            await ctx.answerCallbackQuery({
-                text: "❌ You do not have permission for this.",
-                show_alert: true
-            });
-        } catch (err) {}
-
+                await ctx.answerCallbackQuery({text: "❌ You do not have permission for this.", show_alert: true});
+            } 
+        catch (err) 
+        {          
+        }
         return null;
     }
-
     return admin;
 }
 
@@ -274,134 +164,59 @@ async function requireAdminPermission(ctx, permission) {
  * Returns the admin database row when authorized.
  * Returns null when unauthorized.
  */
-async function requireAdmin(
-  ctx
-) {
-
-  const admin =
-    await getCurrentAdmin(
-      ctx
-    );
-
-
-  if (!admin) {
-
+async function requireAdmin(ctx)
+{
+  const admin = await getCurrentAdmin(ctx);
+  if (!admin) 
+  {
     try {
-
-      await ctx.answerCallbackQuery({
-
-        text:
-          "Unauthorized",
-
-        show_alert:
-          true
-
-      });
-
-    } catch (err) {
-
-      console.log(
-        "Unauthorized callback response failed:",
-        err.description ||
-        err.message
-      );
-
-    }
-
-
+          await ctx.answerCallbackQuery({text: "Unauthorized", show_alert: true });
+        } 
+    catch (err) 
+      {
+          console.log("Unauthorized callback response failed:", err.description || err.message );
+      }
     return null;
-
   }
-
-
   return admin;
-
 }
-
-
 // ============================================================
 // CALLBACK HELPER
 // ============================================================
-
-async function answerCallback(
-  ctx,
-  text = undefined
-) {
-
-  try {
-
-    if (text) {
-
-      await ctx.answerCallbackQuery({
-
-        text
-
-      });
-
-    } else {
-
+async function answerCallback(ctx, text = undefined) 
+{
+  try 
+  {
+    if (text) 
+    {
+      await ctx.answerCallbackQuery({text });
+    } 
+    else 
+    {
       await ctx.answerCallbackQuery();
-
     }
-
-  } catch (err) {
-
-    console.log(
-      "Callback answer failed:",
-      err.description ||
-      err.message
-    );
-
+  } 
+  catch (err) 
+  {
+    console.log("Callback answer failed:", err.description || err.message);
   }
-
 }
-
 // ============================================================
 // ETHIOPIA DATE/TIME PARSER
 // ============================================================
-
-function parseBonusDateTime(text) {
-  const match = String(text || "")
-    .trim()
-    .match(
-      /^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/
-    );
-
-  if (!match) {
+function parseBonusDateTime(text) 
+{
+  const match = String(text || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/);
+  if (!match) 
+  {
     return null;
   }
-
-  const [
-    ,
-    year,
-    month,
-    day,
-    hour,
-    minute
-  ] = match.map(Number);
-
-  const date = new Date(
-    Date.UTC(
-      year,
-      month - 1,
-      day,
-      hour,
-      minute,
-      0,
-      0
-    )
-  );
-
-  if (
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() !== month - 1 ||
-    date.getUTCDate() !== day ||
-    date.getUTCHours() !== hour ||
-    date.getUTCMinutes() !== minute
-  ) {
+  const [, year, month, day, hour, minute] = match.map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day, hour, minute, 0, 0));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day || date.getUTCHours() !== hour || date.getUTCMinutes() !== minute) 
+  {
     return null;
   }
-
   return date;
 }
 
@@ -1101,12 +916,9 @@ bot.callbackQuery(
 
     await answerCallback(ctx);
 
-    const telegramId =
-      ctx.from.id;
+    const telegramId = ctx.from.id;
 
-    delete pendingDelete[
-      telegramId
-    ];
+    clearPendingState(telegramId);
 
     const user =
       await db.getUserByTelegramId(
@@ -1139,9 +951,7 @@ bot.callbackQuery(
     const telegramId =
       ctx.from.id;
 
-    delete pendingDelete[
-      telegramId
-    ];
+    clearPendingState(telegramId);
 
     try {
 
@@ -1786,10 +1596,7 @@ bot.callbackQuery(
       const telegramId =
         admin.telegram_id;
 
-      const pending =
-        pendingAdminBonus.get(
-          telegramId
-        );
+      const pending = pendingAdminBonus.get(telegramId);
 
       if (
         !pending ||
@@ -5252,16 +5059,16 @@ bot.command(
   showBalance
 );
 
-bot.hears(
-  "balance",
-  showBalance
-);
-
-bot.hears(
-  "💰 Balance",
-  showBalance
-);
-
+bot.hears("balance", showBalance);
+bot.hears("💰 Balance", showBalance);
+bot.hears("transfer", showTransfer);
+bot.hears("🔄 Transfer", showTransfer);
+bot.hears("deposit", showDeposit);
+bot.hears("withdraw", showWithdrawal);
+bot.hears("🏧 Withdraw", showWithdrawal);
+bot.hears("support", showSupport);
+bot.hears("📊 Leaderboard", showLeaderboard);
+bot.hears("🎮 Play", showPlay);
 
 bot.callbackQuery(
   "balance",
@@ -5361,15 +5168,7 @@ bot.command(
   showTransfer
 );
 
-bot.hears(
-  "transfer",
-  showTransfer
-);
 
-bot.hears(
-  "🔄 Transfer",
-  showTransfer
-);
 
 
 bot.callbackQuery(
@@ -5942,10 +5741,7 @@ bot.command(
   showDeposit
 );
 
-bot.hears(
-  "deposit",
-  showDeposit
-);
+
 
 
 bot.callbackQuery(
@@ -6437,15 +6233,7 @@ bot.command(
   showWithdrawal
 );
 
-bot.hears(
-  "withdraw",
-  showWithdrawal
-);
 
-bot.hears(
-  "🏧 Withdraw",
-  showWithdrawal
-);
 
 
 bot.callbackQuery(
@@ -7657,72 +7445,31 @@ bot.callbackQuery(
 
   }
 );
-
-
 // ============================================================
 // ADMIN HOME BUTTON
 // ============================================================
-
-bot.callbackQuery(
-  "admin_home",
-  async (ctx) => {
+bot.callbackQuery("admin_home", async (ctx) => {
   await answerCallback(ctx);
-
   const telegramId = ctx.from.id;
-
   // Forget everything the admin was in the middle of doing
   clearPendingState(telegramId);
-
-
-    const admin =
-      await requireAdmin(
-        ctx
-      );
-
-
-    if (!admin) {
-
-      return;
-
+  const admin = await requireAdmin(ctx);
+    if (!admin) 
+    {
+          return ctx.editMessageText("❌ Unauthorized.");
     }
-
-
-    try {
-
-      /*
-       * Use the currently logged-in admin's
-       * Telegram ID.
-       *
-       * There is no hard-coded ADMIN_ID.
-       */
-      const user =
-        await db.getUserByTelegramId(
-          admin.telegram_id
-        );
-
-
-      if (!user) {
-
-        return ctx.reply(
-          "❌ Admin account was not found."
-        );
-
+    try 
+    {
+      const user = await db.getUserByTelegramId(admin.telegram_id);
+      if (!user) 
+      {
+        return ctx.reply("❌ Admin account was not found.");
       }
-
-      await showHome(
-        ctx,
-        user
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Admin home error:",
-        err
-      );
-
+      await showHome(ctx, user);
+    } catch (err) 
+    {
+      console.error("Admin home error:", err);
     }
-
   }
 );
 
@@ -8323,10 +8070,7 @@ bot.command(
   showSupport
 );
 
-bot.hears(
-  "support",
-  showSupport
-);
+
 
 
 bot.callbackQuery(
@@ -8419,10 +8163,7 @@ bot.command(
   showLeaderboard
 );
 
-bot.hears(
-  "📊 Leaderboard",
-  showLeaderboard
-);
+
 
 
 // ============================================================
@@ -8497,10 +8238,7 @@ bot.command(
   showPlay
 );
 
-bot.hears(
-  "🎮 Play",
-  showPlay
-);
+
 
 
 // ============================================================
@@ -10028,30 +9766,11 @@ bot.callbackQuery(
 
   }
 );
-
-
 // ============================================================
 // ERROR HANDLER
 // ============================================================
-
-bot.catch(
-  (err) => {
-
-    console.error(
-      "Telegram bot error:",
-      err.error
-    );
-
-  }
-);
-
-
+bot.catch((err) => {console.error("Telegram bot error:", err.error); });
 // ============================================================
 // VERCEL WEBHOOK
 // ============================================================
-
-module.exports =
-  webhookCallback(
-    bot,
-    "http"
-  );
+module.exports =  webhookCallback(bot,"http");
