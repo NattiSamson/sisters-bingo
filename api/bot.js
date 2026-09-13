@@ -666,40 +666,38 @@ function parseEthiopianDateTime(text) {
 
   return date;
 }
-function formatBonusDate(date) {
-  if (!date) {
+// ============================================================
+// FORMAT BONUS DATE/TIME
+// ============================================================
+// Converts stored UTC timestamp back to Ethiopia time
+// and displays it using a 12-hour clock.
+// ============================================================
+
+function formatBonusDate(value) {
+
+  const date =
+    new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
     return "-";
   }
 
-  const d = new Date(date);
+  return date.toLocaleString(
+    "en-GB",
+    {
+      timeZone:
+        "Africa/Addis_Ababa",
 
-  // Convert UTC → Ethiopia UTC+3
-  const ethiopiaTime = new Date(
-    d.getTime() + (3 * 60 * 60 * 1000)
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+
+      hour: "numeric",
+      minute: "2-digit",
+
+      hour12: true
+    }
   );
-
-  const year = ethiopiaTime.getUTCFullYear();
-  const month = String(
-    ethiopiaTime.getUTCMonth() + 1
-  ).padStart(2, "0");
-  const day = String(
-    ethiopiaTime.getUTCDate()
-  ).padStart(2, "0");
-
-  let hour = ethiopiaTime.getUTCHours();
-  const minute = String(
-    ethiopiaTime.getUTCMinutes()
-  ).padStart(2, "0");
-
-  const ampm = hour >= 12 ? "PM" : "AM";
-
-  hour = hour % 12;
-
-  if (hour === 0) {
-    hour = 12;
-  }
-
-  return `${year}-${month}-${day} ${hour}:${minute} ${ampm}`;
 }
 // ============================================================
 // PHONE NORMALIZATION
@@ -8851,7 +8849,7 @@ bot.on(
     ) {
 
       const start =
-        parseBonusDateTime(
+        parseEthiopianDateTime(
           text
         );
 
@@ -8900,7 +8898,7 @@ if (
 ) {
 
   const end =
-    parseBonusDateTime(
+    parseEthiopianDateTime(
       text
     );
 
