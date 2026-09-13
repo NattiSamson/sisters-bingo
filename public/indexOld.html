@@ -239,6 +239,13 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .active-player-status{color:#16a34a;font-weight:700;font-size:9px}
 
 
+/* CARD SELECTION TOP CONTROLS */
+.card-selection-top{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 2px 10px;padding:4px 0;}
+.card-selection-players{flex:1;min-width:0;display:flex;align-items:center;gap:7px;color:#fff;font-size:10px;font-weight:800;white-space:nowrap;}
+.card-selection-players .player-count{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:24px;padding:0 8px;border-radius:12px;background:var(--green);color:#fff;font-size:11px;font-weight:900;}
+.card-selection-players .player-text{font-size:9px;color:#d8c9f4;overflow:hidden;text-overflow:ellipsis;}
+.card-selection-leave{flex-shrink:0;margin:0!important;padding:8px 11px!important;font-size:10px!important;white-space:nowrap;}
+
 /* MELA BINGO START PAGE */
 #screenLobby{max-width:500px;padding:0 18px 28px;min-height:calc(100vh - 128px);background:radial-gradient(circle at 8% 8%,rgba(124,58,237,.28),transparent 34%),linear-gradient(155deg,#3d176f 0%,#21134d 45%,#0d172d 100%)}
 #screenLobby .welcome-banner{display:block;background:transparent;border:0;border-radius:0;padding:48px 4px 26px;margin:0;text-align:center}
@@ -268,13 +275,91 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .bottom-nav .nav-center{height:54px;width:54px;flex:0 0 54px;justify-self:center;align-self:center;transform:translateY(-10px)}
 .bottom-nav .nav-center-label{font-size:10px;color:var(--gray);font-weight:600;margin-top:-8px}
 .bottom-nav .nav-game-label{color:var(--gray)}
+
+/* ── POLISHED CARD-SELECTION UI ───────────────────────────── */
+.navbar{min-height:78px;padding:13px 18px;background:linear-gradient(180deg,#21103e 0%,#1b0d35 100%);border-bottom:2px solid #351a59;box-shadow:0 5px 18px rgba(0,0,0,.22)}
+.navbar-left{display:flex;align-items:center;gap:14px;min-width:0}
+.navbar-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.menu-mark{width:34px;height:30px;display:flex;flex-direction:column;justify-content:center;gap:6px;flex-shrink:0}
+.menu-mark span{display:block;width:30px;height:3px;border-radius:4px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.brand{font-size:19px;letter-spacing:-.3px;white-space:nowrap}
+.brand .dot{width:10px;height:10px}
+.sound-btn{width:46px;height:46px;border-radius:50%;font-size:20px;background:rgba(255,255,255,.08);border:2px solid rgba(196,164,255,.35);box-shadow:inset 0 0 0 5px rgba(139,92,246,.05)}
+.balance-pill{padding:10px 18px;border-radius:24px;font-size:15px;min-width:108px;text-align:center;box-shadow:0 4px 12px rgba(250,204,21,.18)}
+
+#screenCards{max-width:760px;width:100%;padding:16px 18px 22px;background:radial-gradient(circle at 50% 0%,rgba(91,42,155,.10),transparent 42%)}
+.cards-page-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:3px 0 12px;padding:0 2px}
+.cards-page-title{font-size:20px;line-height:1.25;font-weight:900;color:#fff;letter-spacing:.1px;margin:0 0 5px}
+.cd-countdown{font-size:11px;color:#bba5e8;font-weight:700;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:330px}
+.selection-hint{flex:0 0 auto;border:1px solid rgba(139,92,246,.38);background:rgba(139,92,246,.08);color:#bba5e8;border-radius:12px;padding:7px 9px;font-size:9px;font-weight:800;white-space:nowrap}
+.card-selection-top{margin:0 0 12px;padding:10px 12px;border:1px solid rgba(139,92,246,.40);border-radius:16px;background:linear-gradient(135deg,rgba(16,8,45,.94),rgba(25,10,54,.84));box-shadow:0 8px 22px rgba(0,0,0,.20);gap:12px}
+.card-selection-players{gap:7px;font-size:11px;min-width:0}
+.card-selection-players .players-icon{font-size:22px;line-height:1;filter:saturate(1.05);flex:0 0 auto}
+.card-selection-players .player-count{min-width:32px;height:28px;padding:0 9px;border-radius:14px;font-size:12px;box-shadow:0 3px 8px rgba(34,197,94,.20)}
+.card-selection-players .player-text{font-size:10px;color:#d8c9f4;line-height:1.25}
+.card-selection-leave{width:auto!important;margin:0!important;padding:10px 12px!important;border:0!important;border-radius:12px!important;background:linear-gradient(135deg,#ef3340,#d91f45)!important;color:#fff!important;font-size:10px!important;font-weight:900!important;box-shadow:0 5px 14px rgba(239,68,68,.22);min-width:118px}
+.card-selection-leave:active{transform:scale(.97)}
+.card-prize-banner{display:flex;align-items:center;justify-content:center;gap:9px;min-height:60px;background:linear-gradient(135deg,rgba(250,204,21,.12),rgba(139,92,246,.13));border:1px solid rgba(250,204,21,.38);border-radius:16px;padding:11px 14px;text-align:center;font-weight:800;color:var(--gold);font-size:13px;line-height:1.35;margin-bottom:13px;box-shadow:0 7px 18px rgba(0,0,0,.15)}
+.card-prize-banner .prize-icon{font-size:24px;flex:0 0 auto}
+.card-prize-banner .prize-text{display:block}
+.pool-grid{grid-template-columns:repeat(10,minmax(0,1fr));gap:7px;height:calc(100vh - 365px);min-height:470px;max-height:760px;overflow-y:auto;padding:7px;border-radius:17px;background:linear-gradient(180deg,rgba(8,3,26,.54),rgba(22,8,43,.32));border:1px solid rgba(139,92,246,.13);box-shadow:inset 0 1px 0 rgba(255,255,255,.025)}
+.pool-grid::-webkit-scrollbar{width:5px}
+.pool-grid::-webkit-scrollbar-track{background:rgba(255,255,255,.035);border-radius:5px}
+.pool-grid::-webkit-scrollbar-thumb{background:rgba(139,92,246,.45);border-radius:5px}
+.pool-btn{min-width:0;height:46px;padding:0 2px;border-radius:9px;border:1px solid #ddd;background:linear-gradient(180deg,#fff 0%,#f7f7fa 100%);font-size:12px;font-weight:900;line-height:1;color:#190c32;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 4px rgba(0,0,0,.18);transition:transform .12s,box-shadow .12s,background .12s}
+.pool-btn:hover{border-color:#facc15;transform:translateY(-1px);box-shadow:0 4px 8px rgba(0,0,0,.20)}
+.pool-btn:active{transform:scale(.96)}
+.pool-btn.taken{background:linear-gradient(180deg,#9b2528,#7e1c20)!important;color:#ffd7d7!important;border-color:#bd4b4b!important;opacity:.9}
+.pool-btn.mine1,.pool-btn.mine2{background:linear-gradient(180deg,#22c55e,#149447)!important;color:#fff!important;border-color:#72ef9b!important;box-shadow:0 0 0 2px rgba(34,197,94,.16),0 4px 10px rgba(34,197,94,.18)}
+
+.bottom-nav{height:82px;background:linear-gradient(180deg,#21113d 0%,#1b0d34 100%);border-top:2px solid #321957;box-shadow:0 -7px 20px rgba(0,0,0,.20);padding-bottom:2px}
+.bottom-nav .nav-item{font-size:11px;font-weight:800;color:#ad9be0;padding:6px 0 5px;gap:2px}
+.bottom-nav .nav-item.active{color:var(--gold)}
+.nav-icon{font-size:25px;margin-bottom:1px;filter:drop-shadow(0 2px 2px rgba(0,0,0,.25))}
+.bottom-nav .nav-center-wrap{height:82px}
+.bottom-nav .nav-center{width:64px;height:64px;flex-basis:64px;border:4px solid #180b2f;transform:translateY(-12px);box-shadow:0 5px 14px rgba(0,0,0,.45),0 0 0 2px rgba(250,204,21,.12)}
+.bottom-nav .nav-center span{font-size:29px!important}
+.bottom-nav .nav-center-label{font-size:11px;font-weight:900;margin-top:-10px;color:#a995df}
+.bottom-nav .nav-game-label{color:var(--gold)}
+body{padding-bottom:96px}
+
+@media(max-width:520px){
+  #screenCards{padding-left:14px;padding-right:14px}
+  .navbar{padding-left:14px;padding-right:14px}
+  .brand{font-size:17px}
+  .menu-mark{width:30px}
+  .menu-mark span{width:27px}
+  .sound-btn{width:42px;height:42px;font-size:18px}
+  .balance-pill{min-width:99px;padding:9px 13px;font-size:14px}
+  .cards-page-title{font-size:18px}
+  .selection-hint{display:none}
+  .card-selection-top{padding:9px 10px;gap:8px}
+  .card-selection-players .players-icon{font-size:20px}
+  .card-selection-players .player-text{font-size:9px}
+  .card-selection-leave{min-width:112px;padding:10px 9px!important;font-size:9px!important}
+  .pool-grid{gap:5px;padding:5px;height:calc(100vh - 350px);min-height:430px}
+  .pool-btn{height:42px;font-size:11px;border-radius:8px}
+}
+@media(max-width:380px){
+  .brand{font-size:15px}
+  .navbar-left{gap:9px}
+  .navbar-actions{gap:6px}
+  .balance-pill{min-width:92px;padding:8px 10px;font-size:13px}
+  .card-selection-players .player-text{font-size:8px}
+  .card-selection-leave{min-width:105px;font-size:8px!important}
+  .pool-grid{gap:4px}
+  .pool-btn{height:39px;font-size:10px}
+}
 </style>
 </head>
 <body>
 
 <div class="navbar">
-  <div class="brand">MELA BINGO <span class="dot" id="connDot"></span></div>
-  <div style="display:flex;align-items:center;gap:10px">
+  <div class="navbar-left">
+    <div class="menu-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div class="brand">MELA BINGO <span class="dot" id="connDot"></span></div>
+  </div>
+  <div class="navbar-actions">
     <button class="sound-btn" id="soundBtn" onclick="toggleSound()" title="Toggle sound">🔊</button>
     <div class="balance-pill" id="balanceEl" onclick="goToWallet()">ETB 0.00</div>
   </div>
@@ -303,15 +388,28 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 </div>
 
 <div id="screenCards" class="screen">
- <div class="cd-header">
-    <h2 class="screen-title" style="margin:0">ካርዶችዎን ይምረጡ</h2>
-    <div class="cd-countdown" id="cdCountdown">ተጫዋቾችን በመጠባበቅ ላይ...</div>
+  <div class="cards-page-head">
+    <div>
+      <h2 class="cards-page-title">ካርዶችዎን ይምረጡ</h2>
+      <div class="cd-countdown" id="cdCountdown">ተጫዋቾችን በመጠባበቅ ላይ...</div>
+    </div>
+    <div class="selection-hint">2 ካርድ</div>
   </div>
-  <div id="cdPrizePot" style="background:linear-gradient(135deg,rgba(250,204,21,.15),rgba(139,92,246,.15));border:1px solid rgba(250,204,21,.4);border-radius:10px;padding:10px 14px;text-align:center;font-weight:700;color:var(--gold);font-size:14px;margin-bottom:10px">
-    🏆 ተጫዋቾች ሲቀላቀሉ የሽልማቱ ገንዘብ ይጨምራል
+
+  <div class="card-selection-top">
+    <div class="card-selection-players">
+      <span class="players-icon" aria-hidden="true">👥</span>
+      <span class="player-count" id="cardSelectionPlayerCount">0</span>
+      <span class="player-text" id="cardSelectionPlayerText">ተጫዋቾች ይጨምራሉ</span>
+    </div>
+    <button class="leave-btn card-selection-leave" onclick="leaveRoom()">↪ ጨዋታውን ይውጡ</button>
+  </div>
+
+  <div id="cdPrizePot" class="card-prize-banner">
+    <span class="prize-icon">🏆</span>
+    <span class="prize-text">ተጫዋቾች ሲቀላቀሉ የሽልማቱ ገንዘብ ይጨምራል</span>
   </div>
   <div id="poolGrid" class="pool-grid"></div>
-  <button class="leave-btn" onclick="leaveRoom()">← ጨዋታውን ይውጡ</button>
 </div>
 
 <div id="screenGame" class="screen">
@@ -1843,8 +1941,13 @@ function resetAutomaticGameState(){
 // ─── SLOT UI (card selection indicators) ──────────────────────
  function updatePrizePot(cardCount, stakeAmount){
   const el=document.getElementById('cdPrizePot');
+  const countEl=document.getElementById('cardSelectionPlayerCount');
+  const textEl=document.getElementById('cardSelectionPlayerText');
+  const count=Math.max(0,Number(cardCount)||0);
+  if(countEl) countEl.innerText=count;
+  if(textEl) textEl.innerText=count===1?'ተጫዋች ተገኝቷል':'ተጫዋቾች ይጨምራሉ';
   if(!el) return;
-  const pot=Math.floor(cardCount * stakeAmount * 0.8);
+  const pot=Math.floor(count * (Number(stakeAmount)||0) * 0.8);
   el.innerText = pot > 0 ? `🏆 የሽልማት ገንዘብ: ${pot} ETB` : '🏆 ተጫዋቾች ሲቀላቀሉ የሽልማቱ ገንዘብ ይጨምራል';
 }
 function updateSlotUI(){}
