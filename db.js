@@ -2116,9 +2116,9 @@ async createBonusCampaign(
           r.withdrawal_admin || 0
         ),
 
-        withdrawalAdmin:
+        broadcastAdmin:
         Number(
-          r.withdrawal_admin || 0
+          r.broadcast_admin || 0
         )
       
     };
