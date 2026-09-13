@@ -1920,6 +1920,14 @@ bot.callbackQuery(
 
             [
               {
+                text: "📊 Bonus Report",
+                callback_data:
+                  "admin_bonus_report"
+              }
+            ],
+
+            [
+              {
                 text: "🏠 Home",
                 callback_data:
                   "admin_home"
@@ -1933,6 +1941,386 @@ bot.callbackQuery(
   }
 );
 
+// ============================================================
+// ADMIN — BONUS REPORT
+// MAIN ADMIN ONLY
+// ============================================================
+
+bot.callbackQuery(
+  "admin_bonus_report",
+  async (ctx) => {
+
+    try {
+
+      await answerCallback(ctx);
+
+      const admin =
+        await getCurrentAdmin(ctx);
+
+      if (
+        !admin ||
+        admin.admin_role !== "main"
+      ) {
+
+        return ctx.reply(
+          "⛔ You are not authorized to view bonus reports."
+        );
+
+      }
+
+      pendingAdminBonus.delete(
+        admin.telegram_id
+      );
+
+      const [
+        summary,
+        byUser,
+        byCampaign,
+        depositHistory,
+        manualHistory
+      ] = await Promise.all([
+
+        db.getBonusReportSummary(),
+
+        db.getBonusesByUser(20),
+
+        db.getBonusesByCampaign(20),
+
+        db.getDepositBonusHistory(15),
+
+        db.getManualBonusHistory(15)
+
+      ]);
+
+      let message =
+        "📊 *BONUS REPORT*\n\n";
+
+      // ======================================================
+      // TOTAL
+      // ======================================================
+
+      message +=
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "💰 *TOTAL BONUSES GIVEN*\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n\n" +
+
+        `🎁 Total Bonus: *${Number(
+          summary.total_bonus || 0
+        ).toFixed(2)} ETB*\n` +
+
+        `🧾 Bonus Transactions: *${
+          summary.bonus_count || 0
+        }*\n` +
+
+        `👥 Users Rewarded: *${
+          summary.users_rewarded || 0
+        }*\n` +
+
+        `🎯 Campaigns Used: *${
+          summary.campaigns_used || 0
+        }*\n\n`;
+
+
+      // ======================================================
+      // BY USER
+      // ======================================================
+
+      message +=
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "👤 *BONUSES BY USER*\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n\n";
+
+      if (
+        !byUser ||
+        byUser.length === 0
+      ) {
+
+        message +=
+          "No bonus records found.\n\n";
+
+      } else {
+
+        byUser.forEach(
+          (user, index) => {
+
+            message +=
+              `${index + 1}. *${
+                user.name || "Unknown"
+              }*\n` +
+
+              `📱 ${
+                user.phone || "N/A"
+              }\n` +
+
+              `🧾 Bonuses: *${
+                user.bonus_count
+              }*\n` +
+
+              `💰 Total: *${
+                Number(
+                  user.total_bonus || 0
+                ).toFixed(2)
+              } ETB*\n\n`;
+
+          }
+        );
+
+      }
+
+
+      // ======================================================
+      // BY CAMPAIGN
+      // ======================================================
+
+      message +=
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "🎯 *BONUSES BY CAMPAIGN*\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n\n";
+
+      if (
+        !byCampaign ||
+        byCampaign.length === 0
+      ) {
+
+        message +=
+          "No campaign bonus records found.\n\n";
+
+      } else {
+
+        byCampaign.forEach(
+          (campaign, index) => {
+
+            message +=
+              `${index + 1}. *${
+                campaign.campaign_name
+              }*\n` +
+
+              `🧾 Bonuses: *${
+                campaign.bonus_count
+              }*\n` +
+
+              `💰 Total: *${
+                Number(
+                  campaign.total_bonus || 0
+                ).toFixed(2)
+              } ETB*\n\n`;
+
+          }
+        );
+
+      }
+
+
+      // ======================================================
+      // DEPOSIT BONUS HISTORY
+      // ======================================================
+
+      message +=
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "💎 *DEPOSIT BONUS HISTORY*\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n\n";
+
+      if (
+        !depositHistory ||
+        depositHistory.length === 0
+      ) {
+
+        message +=
+          "No deposit bonuses have been given.\n\n";
+
+      } else {
+
+        depositHistory.forEach(
+          (bonus, index) => {
+
+            const date =
+              bonus.created_at
+                ? new Date(
+                    bonus.created_at
+                  ).toLocaleString(
+                    "en-GB",
+                    {
+                      timeZone:
+                        "Africa/Addis_Ababa",
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: false
+                    }
+                  )
+                : "N/A";
+
+            message +=
+              `${index + 1}. *${
+                bonus.name || "Unknown"
+              }*\n` +
+
+              `📱 ${
+                bonus.phone || "N/A"
+              }\n` +
+
+              `🎯 ${
+                bonus.campaign_name ||
+                "Unknown Campaign"
+              }\n` +
+
+              `🎁 *${
+                Number(
+                  bonus.amount || 0
+                ).toFixed(2)
+              } ETB*\n` +
+
+              `🔖 ${
+                bonus.reference ||
+                "N/A"
+              }\n` +
+
+              `📅 ${date}\n\n`;
+
+          }
+        );
+
+      }
+
+
+      // ======================================================
+      // MANUAL BONUS HISTORY
+      // ======================================================
+
+      message +=
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "🎁 *MANUAL BONUS HISTORY*\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n\n";
+
+      if (
+        !manualHistory ||
+        manualHistory.length === 0
+      ) {
+
+        message +=
+          "No manual bonuses have been given.\n\n";
+
+      } else {
+
+        manualHistory.forEach(
+          (bonus, index) => {
+
+            const date =
+              bonus.created_at
+                ? new Date(
+                    bonus.created_at
+                  ).toLocaleString(
+                    "en-GB",
+                    {
+                      timeZone:
+                        "Africa/Addis_Ababa",
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: false
+                    }
+                  )
+                : "N/A";
+
+            message +=
+              `${index + 1}. *${
+                bonus.name || "Unknown"
+              }*\n` +
+
+              `📱 ${
+                bonus.phone || "N/A"
+              }\n` +
+
+              `🎁 *${
+                Number(
+                  bonus.amount || 0
+                ).toFixed(2)
+              } ETB*\n` +
+
+              `📝 ${
+                bonus.description ||
+                "Manual bonus"
+              }\n` +
+
+              `🔖 ${
+                bonus.reference ||
+                "N/A"
+              }\n` +
+
+              `📅 ${date}\n\n`;
+
+          }
+        );
+
+      }
+
+
+      // ======================================================
+      // BUTTONS
+      // ======================================================
+
+      await ctx.editMessageText(
+        message,
+        {
+          parse_mode:
+            "Markdown",
+
+          reply_markup: {
+            inline_keyboard: [
+
+              [
+                {
+                  text:
+                    "🔄 Refresh",
+                  callback_data:
+                    "admin_bonus_report"
+                }
+              ],
+
+              [
+                {
+                  text:
+                    "⬅️ Bonus Menu",
+                  callback_data:
+                    "admin_bonus"
+                },
+
+                {
+                  text:
+                    "🏠 Home",
+                  callback_data:
+                    "admin_home"
+                }
+              ]
+
+            ]
+          }
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Bonus report error:",
+        err
+      );
+
+      try {
+
+        await ctx.reply(
+          "❌ Could not load the bonus report."
+        );
+
+      } catch (_) {}
+
+    }
+
+  }
+);
 // ============================================================
 // BONUS — SPECIFIC USER
 // ============================================================
