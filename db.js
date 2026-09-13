@@ -2101,10 +2101,26 @@ async createBonusCampaign(
           r.blocked_users || 0
         ),
 
-      administrators:
+      mainAdmin:
         Number(
-          r.administrators || 0
+          r.main_admin || 0
+        ),
+
+        statisticsAdmin:
+        Number(
+          r.statistics_admin || 0
+        ),
+      
+        withdrawalAdmin:
+        Number(
+          r.withdrawal_admin || 0
+        ),
+
+        withdrawalAdmin:
+        Number(
+          r.withdrawal_admin || 0
         )
+      
     };
   },
 
