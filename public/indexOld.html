@@ -267,14 +267,13 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 #screenLobby .stake-unavailable{opacity:.45;cursor:not-allowed!important;filter:saturate(.55)}
 .lobby-players-card{margin:38px 0 10px;background:linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.07));border:1px solid rgba(255,255,255,.22);border-radius:17px;padding:32px 16px;text-align:center}.lobby-players-number{font-size:32px;font-weight:900}.lobby-players-label{margin-top:6px;color:#d8c9f4;font-size:16px}.lobby-players-sub{margin-top:5px;color:#9f8fc0;font-size:11px}
 @media(max-width:380px){.mela-welcome-title{font-size:30px}}
-/* Evenly spaced 4-item bottom navigation */
-.bottom-nav{display:grid;grid-template-columns:repeat(4,1fr);justify-content:initial;padding:0;gap:0}
-.bottom-nav .nav-item,.bottom-nav .nav-center-wrap{width:100%;min-width:0;justify-self:stretch}
-.bottom-nav .nav-item{padding:4px 0;justify-content:center}
-.bottom-nav .nav-center-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:64px;cursor:pointer}
-.bottom-nav .nav-center{height:54px;width:54px;flex:0 0 54px;justify-self:center;align-self:center;transform:translateY(-10px)}
-.bottom-nav .nav-center-label{font-size:10px;color:var(--gray);font-weight:600;margin-top:-8px}
-.bottom-nav .nav-game-label{color:var(--gray)}
+/* Flat, equally-spaced bottom navigation */
+.bottom-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));justify-content:initial;padding:0;gap:0;height:68px;align-items:stretch}
+.bottom-nav .nav-item{width:100%;min-width:0;min-height:68px;padding:5px 0;justify-content:center;gap:2px;border-radius:0;color:#94a3b8;font-size:10px;font-weight:700}
+.bottom-nav .nav-item.active{color:#a78bfa;background:rgba(37,99,235,.18);border-radius:12px;margin:5px 18px;padding:4px 0;min-height:58px;align-self:center;box-sizing:border-box}
+.bottom-nav .nav-icon{font-size:0;width:26px;height:26px;margin-bottom:1px;display:flex;align-items:center;justify-content:center}
+.bottom-nav .nav-svg svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.bottom-nav .nav-item.active .nav-svg svg{stroke:#60a5fa}
 
 /* ───────── CARD SELECTION: COMPACT NEON UI ───────── */
 html,body{min-height:100%;}
@@ -380,21 +379,13 @@ body{padding-bottom:72px;background:#0b061c;}
   box-shadow:0 0 0 1px rgba(134,239,172,.28),0 3px 9px rgba(34,197,94,.25);
 }
 
-/* Smaller, cleaner bottom navigation icons */
+/* Flat navigation finish */
 .bottom-nav{height:68px;border-top:1px solid rgba(139,92,246,.28);background:linear-gradient(90deg,#1a0c37,#24104b,#1a0c37);}
-.bottom-nav .nav-item{font-size:9px;font-weight:700;gap:1px;padding:3px 0;}
-.bottom-nav .nav-icon{font-size:0;width:25px;height:25px;margin-bottom:2px;display:flex;align-items:center;justify-content:center;}
-.nav-svg svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
-.bottom-nav .nav-center-wrap{height:68px;}
-.bottom-nav .nav-center{
-  width:52px;height:52px;flex:0 0 52px;border-width:2px;transform:translateY(-9px);
-  box-shadow:0 4px 12px rgba(0,0,0,.45),0 0 0 3px rgba(250,204,21,.06);
-}
-.crown-svg{width:31px;height:25px;fill:#facc15;stroke:#5a3b00;stroke-width:1.4;stroke-linejoin:round;}
-.bottom-nav .nav-center-label{font-size:9px;margin-top:-7px;font-weight:800;}
-.bottom-nav .nav-item.active{color:#bda9ee;}
-.bottom-nav .nav-item.active#navHome,.bottom-nav .nav-item.active#navHistory{color:#bda9ee;}
-.bottom-nav .nav-center-wrap .nav-game-label{color:var(--gold);}
+.bottom-nav .nav-item{font-size:10px;font-weight:700;gap:2px;padding:5px 0;}
+.bottom-nav .nav-icon{font-size:0;width:26px;height:26px;margin-bottom:1px;display:flex;align-items:center;justify-content:center;}
+.nav-svg svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.bottom-nav .nav-item.active{color:#a78bfa;}
+.bottom-nav .nav-item.active .nav-svg svg{stroke:#60a5fa;}
 
 @media(max-width:420px){
   .navbar{padding:0 11px;}
@@ -419,6 +410,7 @@ body{padding-bottom:72px;background:#0b061c;}
 
 /* ───────── PROFESSIONAL MELA BINGO LOBBY ───────── */
 #screenLobby{
+  margin-top:-7px;
   max-width:520px;
   padding:0 16px 24px;
   min-height:calc(100vh - 128px);
@@ -488,7 +480,6 @@ body{padding-bottom:72px;background:#0b061c;}
 #screenLobby .stake-card:nth-child(1){background:linear-gradient(105deg,#08d3a0,#00a99d);}
 #screenLobby .stake-card:nth-child(2){background:linear-gradient(105deg,#0ea5e9,#4f46e5);}
 #screenLobby .stake-card:nth-child(3){background:linear-gradient(105deg,#6366f1,#8b5cf6);}
-#screenLobby .stake-card:nth-child(4){background:linear-gradient(105deg,#f59e0b,#f97316);}
 #screenLobby .stake-play-icon{position:relative;z-index:1;width:48px;height:48px;flex:0 0 48px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.45);font-size:19px;padding-left:3px;box-shadow:inset 0 0 13px rgba(255,255,255,.12),0 4px 10px rgba(0,0,0,.16);}
 #screenLobby .stake-copy{position:relative;z-index:1;min-width:0;flex:1;text-align:left;margin-left:14px;}
 #screenLobby .stake-etb{font-family:'Inter',sans-serif;font-size:24px;font-weight:900;color:#fff;margin:0;line-height:1.1;}
@@ -1032,25 +1023,18 @@ body{padding-bottom:72px;background:#0b061c;}
 </div>
 
 <div class="bottom-nav">
-  <div class="nav-item active" id="navHome" onclick="navGo('screenLobby','navHome')">
-    <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10.8 12 3l9 7.8v9.2a1 1 0 0 1-1 1h-5.2v-6.2H9.2V21H4a1 1 0 0 1-1-1z"/><path d="M9.2 21v-6.2h5.6V21"/></svg></span><span>HOME</span>
-  </div>
-
-  <div class="nav-center-wrap" id="navGame" onclick="goToGame()">
-    <div class="nav-center"><svg class="crown-svg" viewBox="0 0 64 48" aria-hidden="true"><path d="M8 14 19 25 32 8l13 17 11-11-5 25H13z"/><path d="M13 43h38"/></svg></div>
-    <span class="nav-center-label nav-game-label">GAME</span>
-  </div>
-
   <div class="nav-item" id="navHistory" onclick="goToHistory()">
-    <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></span><span>HISTORY</span>
+    <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 5v5h5"/><path d="M12 7v5l3.5 2"/></svg></span>
+    <span>HISTORY</span>
   </div>
 
-  <div class="nav-item" id="navCards" onclick="navGo('screenRules','navCards')">
-    <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 4h10a2 2 0 0 1 2 2v14H5V6a2 2 0 0 1 2-2z"/><path d="M9 4V2h6v2M8.5 9h7M8.5 13h7M8.5 17h5"/></svg></span><span>RULES</span>
+  <div class="nav-item" id="navRules" onclick="navGo('screenRules','navRules')">
+    <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 3.5v-1h6v1"/><path d="M8.5 9h7M8.5 13h7M8.5 17h5"/></svg></span>
+    <span>RULES</span>
   </div>
 
   <div class="nav-item" id="navAdmin" onclick="navGo('screenAdmin','navAdmin')" style="display:none">
-    <span class="nav-icon">⚙️</span><span>ADMIN</span>
+    <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3.5a2.2 2.2 0 0 1 2.1 1.6l.3 1.1 1 .6 1.1-.2a2.2 2.2 0 0 1 2.5 1.3l.2.5a2.2 2.2 0 0 1-.7 2.7l-.9.7v1.2l.9.7a2.2 2.2 0 0 1 .7 2.7l-.2.5a2.2 2.2 0 0 1-2.5 1.3l-1.1-.2-1 .6-.3 1.1a2.2 2.2 0 0 1-2.1 1.6h-.6a2.2 2.2 0 0 1-2.1-1.6L9 19l-1-.6-1.1.2a2.2 2.2 0 0 1-2.5-1.3l-.2-.5a2.2 2.2 0 0 1 .7-2.7l.9-.7v-1.2l-.9-.7a2.2 2.2 0 0 1-.7-2.7l.2-.5a2.2 2.2 0 0 1 2.5-1.3l1.1.2 1-.6.3-1.1A2.2 2.2 0 0 1 11.4 3.5z"/><circle cx="12" cy="12" r="2.7"/></svg></span><span>ADMIN</span>
     <span class="nav-dot show" id="adminDot" style="display:none"></span>
   </div>
 </div>
@@ -1395,7 +1379,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
   document.getElementById('welcomeStatus').innerText=msg.isRegistered?'Welcome back! 👋':'Registered!';
   if(isAdmin){
     document.getElementById('navAdmin').style.display='flex';
-    document.getElementById('navCards').style.display='none';
+    document.getElementById('navRules').style.display='none';
     // Check if this is a root admin — if so, show the Settings tab
     if(telegramId){
       fetch(`${API_BASE}/api/user/${telegramId}`).then(r=>r.json()).then(u=>{
@@ -1606,7 +1590,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       if(telegramId) setTimeout(()=>refreshAccountProfile(3,300),100);
       break;
 
-    case 'leftRoom': localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; navGo('screenLobby','navHome'); break;
+    case 'leftRoom': localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; navGo('screenLobby'); break;
 
     case 'depositSubmitted':
       showWalletMsg('depositMsg', msg.message, 'success');
@@ -2213,7 +2197,7 @@ function renderStakes(arr){
     const total=stakes.reduce((sum,s)=>sum+(parseInt(s.playerCount,10)||0),0);
     activeEl.innerText=total.toLocaleString();
   }
-  [5,10,20,50].forEach((amount)=>{
+  [5,10,20].forEach((amount)=>{
     const s=stakes.find(x=>Number(x.amount)===amount);
     const d=document.createElement('div');
     d.className='stake-card';

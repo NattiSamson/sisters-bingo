@@ -268,7 +268,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .lobby-players-card{margin:38px 0 10px;background:linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.07));border:1px solid rgba(255,255,255,.22);border-radius:17px;padding:32px 16px;text-align:center}.lobby-players-number{font-size:32px;font-weight:900}.lobby-players-label{margin-top:6px;color:#d8c9f4;font-size:16px}.lobby-players-sub{margin-top:5px;color:#9f8fc0;font-size:11px}
 @media(max-width:380px){.mela-welcome-title{font-size:30px}}
 /* Flat, equally-spaced bottom navigation */
-.bottom-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));justify-content:initial;padding:0;gap:0;height:68px;align-items:stretch}
+.bottom-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));justify-content:initial;padding:0;gap:0;height:68px;align-items:stretch}
 .bottom-nav .nav-item{width:100%;min-width:0;min-height:68px;padding:5px 0;justify-content:center;gap:2px;border-radius:0;color:#94a3b8;font-size:10px;font-weight:700}
 .bottom-nav .nav-item.active{color:#a78bfa;background:rgba(37,99,235,.18);border-radius:12px;margin:5px 18px;padding:4px 0;min-height:58px;align-self:center;box-sizing:border-box}
 .bottom-nav .nav-icon{font-size:0;width:26px;height:26px;margin-bottom:1px;display:flex;align-items:center;justify-content:center}
@@ -1023,6 +1023,11 @@ body{padding-bottom:72px;background:#0b061c;}
 </div>
 
 <div class="bottom-nav">
+  <div class="nav-item" id="navGame" onclick="goToGame()">
+    <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 8h10c2.2 0 3.7 1.2 4.4 3.2l1 3.2c.5 1.7-.4 3.4-2.1 3.9-1.2.4-2.5 0-3.3-.9L15.5 16h-7l-3.5 3.4c-.8.9-2.1 1.3-3.3.9-1.7-.5-2.6-2.2-2.1-3.9l1-3.2C1.3 9.2 2.8 8 5 8h2z"/><path d="M7.5 11.5v4M5.5 13.5h4M16.5 12.5h.01M19 15h.01"/></svg></span>
+    <span>GAME</span>
+  </div>
+
   <div class="nav-item" id="navHistory" onclick="goToHistory()">
     <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 5v5h5"/><path d="M12 7v5l3.5 2"/></svg></span>
     <span>HISTORY</span>
