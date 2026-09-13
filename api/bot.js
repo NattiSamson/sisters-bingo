@@ -799,12 +799,8 @@ async function showUserStatistics(ctx) {
 bot.callbackQuery(
   "user_statistics",
   async (ctx) => {
-
-    await answerCallback(ctx);
-
-    clearPendingState(
-      ctx.from.id
-    );
+  await answerCallback(ctx);
+  clearPendingState(ctx.from.id);
 
     await showUserStatistics(ctx);
 
@@ -816,9 +812,8 @@ bot.callbackQuery(
 
 bot.callbackQuery("user_home", async (ctx) => {
   try {
-    await answerCallback(ctx);
-
-    clearPendingState(ctx.from.id);
+  await answerCallback(ctx);
+  clearPendingState(ctx.from.id);
 
     const user = await db.getUserByTelegramId(ctx.from.id);
 
@@ -845,19 +840,8 @@ bot.callbackQuery("user_home", async (ctx) => {
 bot.callbackQuery(
   "user_delete",
   async (ctx) => {
-
-    await answerCallback(ctx);
-
-    const telegramId =
-      ctx.from.id;
-
-    clearPendingState(
-      telegramId
-    );
-
-    pendingDelete[
-      telegramId
-    ] = true;
+  await answerCallback(ctx);
+  clearPendingState(ctx.from.id);
 
     await ctx.editMessageText(
       "⚠️ *አካውንትዎን ማጥፋት ይፈልጋሉ?*\n\n" +
@@ -890,17 +874,10 @@ bot.callbackQuery(
   bot.callbackQuery(
   "user_cancel_delete",
   async (ctx) => {
-
-    await answerCallback(ctx);
-
-    const telegramId = ctx.from.id;
-
-    clearPendingState(telegramId);
-
-    const user =
-      await db.getUserByTelegramId(
-        telegramId
-      );
+  await answerCallback(ctx);
+  clearPendingState(ctx.from.id);
+    
+  const user = await db.getUserByTelegramId(ctx.from.id);
 
     if (!user) {
       return ctx.editMessageText(
@@ -922,20 +899,14 @@ bot.callbackQuery(
   bot.callbackQuery(
   "user_confirm_delete",
   async (ctx) => {
-
-    await answerCallback(ctx);
-
-    const telegramId =
-      ctx.from.id;
-
-    clearPendingState(telegramId);
+  await answerCallback(ctx);
+  clearPendingState(ctx.from.id);
 
     try {
 
       const result =
-        await db.deactivateUser(
-          telegramId
-        );
+        await db.deactivateUser(ctx.from.id);
+
 
       if (!result) {
 
@@ -5050,19 +5021,10 @@ bot.hears("🎮 Play", showPlay);
 bot.callbackQuery(
   "user_balance",
   async (ctx) => {
+  await answerCallback(ctx);
+  clearPendingState(ctx.from.id);
 
-    await answerCallback(
-      ctx
-    );
-
-    clearPendingState(
-      ctx.from.id
-    );
-
-    await showBalance(
-      ctx
-    );
-
+    await showBalance(ctx);
   }
 );
 
@@ -5151,19 +5113,9 @@ bot.command(
 bot.callbackQuery(
   "user_transfer",
   async (ctx) => {
-
-    await answerCallback(
-      ctx
-    );
-
-    clearPendingState(
-      ctx.from.id
-    );
-
-    await showTransfer(
-      ctx
-    );
-
+  await answerCallback(ctx);
+  clearPendingState(ctx.from.id);
+  await showTransfer(ctx);
   }
 );
 
@@ -5724,19 +5676,9 @@ bot.command(
 bot.callbackQuery(
   "user_deposit",
   async (ctx) => {
-
-    await answerCallback(
-      ctx
-    );
-
-    clearPendingState(
-      ctx.from.id
-    );
-
-    await showDeposit(
-      ctx
-    );
-
+  await answerCallback(ctx);
+  clearPendingState(ctx.from.id);
+  await showDeposit(ctx);
   }
 );
 
@@ -6044,17 +5986,8 @@ return await ctx.reply(
 bot.callbackQuery(
   "user_cancel_deposit",
   async (ctx) => {
-
-    await answerCallback(
-      ctx
-    );
-
-
-    clearPendingState(
-      ctx.from.id
-    );
-
-
+  await answerCallback(ctx);
+  clearPendingState(ctx.from.id);
     try {
 
       await ctx.editMessageText(
@@ -6216,19 +6149,10 @@ bot.command(
 bot.callbackQuery(
   "user_withdraw",
   async (ctx) => {
+  await answerCallback(ctx);
+  clearPendingState(ctx.from.id);
 
-    await answerCallback(
-      ctx
-    );
-
-    clearPendingState(
-      ctx.from.id
-    );
-
-    await showWithdrawal(
-      ctx
-    );
-
+    await showWithdrawal(ctx);
   }
 );
 
@@ -6656,16 +6580,8 @@ bot.on(
 bot.callbackQuery(
   "user_cancel_withdrawal",
   async (ctx) => {
-
-    await answerCallback(
-      ctx
-    );
-
-
-    delete pendingWithdrawal[
-      ctx.from.id
-    ];
-
+  await answerCallback(ctx);
+  clearPendingState(ctx.from.id);
 
     try {
 
@@ -8053,14 +7969,8 @@ bot.command(
 bot.callbackQuery(
   "user_support",
   async (ctx) => {
-
-    await answerCallback(
-      ctx
-    );
-
-    clearPendingState(
-      ctx.from.id
-    );
+  await answerCallback(ctx);
+  clearPendingState(ctx.from.id);
 
     await showSupport(
       ctx
