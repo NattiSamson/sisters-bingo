@@ -520,6 +520,220 @@ body{padding-bottom:72px;background:#0b061c;}
   #screenLobby .stake-copy{margin-left:10px;}
   #screenLobby .stake-etb{font-size:22px;}
 }
+
+/* ───────── MELA BINGO BRIGHT BLUE/PURPLE DESIGN SYSTEM ─────────
+   Visual-only theme layer. Gameplay, balance, card charging and navigation logic remain unchanged. */
+:root{
+  --bg:#090b2a;
+  --panel:#151a4b;
+  --card:#20275f;
+  --gold:#ffd43b;
+  --purple:#7c5cff;
+  --green:#22d67a;
+  --red:#ff3f68;
+  --blue:#3478ff;
+  --cyan:#38d9ff;
+  --gray:#b8baf5;
+  --b:#3478ff;--i:#f59e0b;--n:#8b5cf6;--g:#22c55e;--o:#ef4444;
+}
+html,body{background:#090b2a;color:#fff;}
+body{
+  background:
+    radial-gradient(circle at 12% 8%,rgba(78,70,229,.28),transparent 28%),
+    radial-gradient(circle at 88% 24%,rgba(14,165,233,.18),transparent 25%),
+    linear-gradient(160deg,#0b0d31 0%,#10134a 48%,#080b24 100%);
+}
+.navbar{
+  background:linear-gradient(90deg,#111642 0%,#1d2370 50%,#111642 100%);
+  border-bottom:1px solid rgba(77,208,255,.28);
+  box-shadow:0 5px 22px rgba(0,0,0,.28),inset 0 -1px 0 rgba(139,92,246,.2);
+}
+.brand{color:#ffd43b;text-shadow:0 0 12px rgba(255,212,59,.12)}
+.sound-btn{
+  background:linear-gradient(145deg,rgba(124,92,255,.28),rgba(52,120,255,.16))!important;
+  border-color:rgba(152,145,255,.55)!important;
+  box-shadow:0 0 18px rgba(76,118,255,.18)!important;
+}
+.balance-pill{
+  background:linear-gradient(135deg,#ffe66b,#ffc928)!important;
+  border:1px solid rgba(255,255,255,.35);
+  box-shadow:0 5px 16px rgba(255,201,40,.22)!important;
+}
+.screen{background:transparent}
+.screen-title{
+  color:#fff;
+  text-shadow:0 3px 16px rgba(70,120,255,.2);
+}
+.loading-spinner{border-color:#222a65;border-top-color:#4dd8ff}
+.loading-text{color:#c1c5ff}
+
+/* Shared surfaces used by wallet/history/rules/admin/settings */
+.wallet-balance-card,
+.history-card,
+.history-empty,
+.telebirr-info,
+.request-card,
+.user-card,
+.user-detail-card,
+.admin-section,
+.result-card-wrap,
+.tracker-wrap,
+.card-container,
+.stat-box{
+  background:linear-gradient(145deg,rgba(31,39,103,.94),rgba(15,20,63,.96))!important;
+  border-color:rgba(91,146,255,.42)!important;
+  box-shadow:0 12px 28px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.06)!important;
+}
+.wallet-tabs,.admin-tabs{
+  background:rgba(17,22,70,.94)!important;
+  border:1px solid rgba(91,146,255,.3);
+}
+.wallet-tab,.admin-tab{color:#b9bcf2!important}
+.wallet-tab.active,.admin-tab.active{
+  background:linear-gradient(135deg,#536dff,#7c5cff)!important;
+  color:#fff!important;
+  box-shadow:0 5px 16px rgba(83,109,255,.28);
+}
+.form-input,.search-input{
+  background:rgba(10,15,52,.78)!important;
+  border-color:rgba(96,165,250,.42)!important;
+  color:#fff!important;
+}
+.form-input:focus,.search-input:focus{border-color:#4dd8ff!important;box-shadow:0 0 0 2px rgba(56,217,255,.12)!important}
+.form-label,.wallet-bal-label,.history-key,.history-date,.result-status,.user-card-meta{color:#bfc4f7!important}
+.btn-submit,.btn-search,.refresh-btn,.btn-approve,.btn-reject,.btn-done{
+  box-shadow:0 7px 18px rgba(0,0,0,.2);
+}
+.btn-submit{background:linear-gradient(135deg,#4f74ff,#7658ff)!important}
+.btn-search{background:linear-gradient(135deg,#3478ff,#7358ff)!important}
+.btn-green{background:linear-gradient(135deg,#13c978,#19a96d)!important}
+.btn-red,.btn-reject{background:linear-gradient(135deg,#ff3f68,#e51f58)!important}
+.refresh-btn{background:linear-gradient(135deg,#3478ff,#536dff)!important;color:#fff!important;border-color:transparent!important}
+.status-msg{background:rgba(31,39,103,.78)!important;border-color:rgba(91,146,255,.35)!important}
+
+/* LOBBY — same visual language as the card-selection page */
+#screenLobby{
+  background:
+    radial-gradient(circle at 12% 7%,rgba(124,92,255,.35),transparent 32%),
+    radial-gradient(circle at 92% 36%,rgba(56,217,255,.2),transparent 28%),
+    linear-gradient(155deg,#1c236d 0%,#17164f 48%,#0a1030 100%)!important;
+}
+#screenLobby .welcome-banner{
+  background:
+    radial-gradient(circle at 18% 62%,rgba(56,217,255,.28),transparent 25%),
+    radial-gradient(circle at 60% 42%,rgba(124,92,255,.3),transparent 38%),
+    linear-gradient(145deg,#252c87,#14184f)!important;
+  border-color:rgba(255,212,59,.82)!important;
+  box-shadow:0 18px 42px rgba(0,0,0,.32),inset 0 0 35px rgba(56,217,255,.08)!important;
+}
+#screenLobby .lobby-stake-panel,
+#screenLobby .lobby-players-card{
+  background:linear-gradient(145deg,rgba(31,39,103,.94),rgba(13,18,57,.96))!important;
+  border-color:rgba(91,146,255,.5)!important;
+}
+#screenLobby .stake-card:nth-child(1){background:linear-gradient(105deg,#3478ff,#2f5eea)!important}
+#screenLobby .stake-card:nth-child(2){background:linear-gradient(105deg,#0ea5e9,#5146e5)!important}
+#screenLobby .stake-card:nth-child(3){background:linear-gradient(105deg,#6258ff,#8b5cf6)!important}
+
+/* CARD SELECTION — brighter, spacious, blue/purple */
+#screenCards{
+  background:
+    radial-gradient(circle at 50% 0,rgba(56,217,255,.16),transparent 30%),
+    radial-gradient(circle at 8% 46%,rgba(124,92,255,.2),transparent 28%),
+    linear-gradient(160deg,#0e1240 0%,#121856 52%,#090d2d 100%)!important;
+}
+#screenCards .card-selection-top{
+  background:linear-gradient(105deg,rgba(30,42,112,.98),rgba(20,27,82,.98))!important;
+  border:1px solid rgba(82,180,255,.48)!important;
+  box-shadow:0 8px 22px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.07)!important;
+}
+#screenCards .player-people-icon{color:#53d7ff!important;filter:drop-shadow(0 0 8px rgba(83,215,255,.2))}
+#screenCards .card-selection-players .player-count{
+  background:linear-gradient(135deg,#22d67a,#0fb96d)!important;
+  border:1px solid rgba(255,255,255,.2);
+  box-shadow:0 5px 17px rgba(34,214,122,.25)!important;
+}
+#screenCards .card-selection-players .player-text{color:#ffd83d!important}
+#screenCards .card-selection-leave{
+  background:linear-gradient(135deg,#ff4c75,#e91f5d)!important;
+  box-shadow:0 7px 18px rgba(233,31,93,.24)!important;
+}
+#screenCards #cdPrizePot{
+  background:linear-gradient(100deg,rgba(58,54,132,.82),rgba(37,50,115,.9))!important;
+  border-color:rgba(255,212,59,.62)!important;
+  color:#ffe04d!important;
+  box-shadow:0 7px 18px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.06)!important;
+}
+#screenCards .pool-grid{
+  background:linear-gradient(180deg,rgba(25,34,93,.9),rgba(12,18,58,.9))!important;
+  border:1px solid rgba(83,165,255,.48);
+  box-shadow:0 13px 30px rgba(0,0,0,.28),inset 0 0 24px rgba(62,107,255,.07);
+  scrollbar-color:#4f72ff transparent;
+}
+#screenCards .pool-grid::-webkit-scrollbar-thumb{background:linear-gradient(#55dfff,#6258ff)!important}
+#screenCards .pool-btn{
+  background:linear-gradient(145deg,#3f62ca,#313d94)!important;
+  color:#fff!important;
+  border:1px solid rgba(112,211,255,.62)!important;
+  border-radius:9px!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.13),0 3px 7px rgba(0,0,0,.24)!important;
+  text-shadow:0 1px 4px rgba(0,0,0,.28);
+}
+#screenCards .pool-btn:hover{
+  border-color:#ffe04d!important;
+  filter:brightness(1.12);
+  box-shadow:0 0 12px rgba(56,217,255,.2),inset 0 1px 0 rgba(255,255,255,.16)!important;
+}
+#screenCards .pool-btn.taken{
+  background:linear-gradient(145deg,#6a3157,#4a294e)!important;
+  color:#ffd9e1!important;
+  border-color:rgba(255,91,122,.65)!important;
+}
+#screenCards .pool-btn.mine1,#screenCards .pool-btn.mine2{
+  background:linear-gradient(145deg,#19d27b,#0d9f69)!important;
+  color:#fff!important;
+  border-color:#72ffbf!important;
+  box-shadow:0 0 0 1px rgba(114,255,191,.24),0 0 13px rgba(34,214,122,.28)!important;
+}
+
+/* GAME — carry the same bright scheme without changing gameplay colors/meaning */
+#screenGame{
+  background:
+    radial-gradient(circle at 50% 0,rgba(56,217,255,.12),transparent 30%),
+    linear-gradient(160deg,#0e1240 0%,#11164d 52%,#090d2d 100%)!important;
+}
+#screenGame .stat-box{background:linear-gradient(145deg,#202969,#151b55)!important}
+#screenGame .card-container{background:linear-gradient(145deg,#202969,#12184c)!important}
+#screenGame .tracker-wrap{background:linear-gradient(145deg,#1c2563,#101642)!important}
+#screenGame .claim-bar-wrap{background:#242d72!important}
+#screenGame .claim-bar{background:linear-gradient(90deg,#22d67a,#3ee7b0)!important}
+#screenGame .bingo-btn{background:linear-gradient(135deg,#27348b,#3a2c87)!important;border-color:rgba(83,215,255,.38)!important;color:#d9ddff!important}
+
+/* Result/winner overlays and rule cards */
+.winner-overlay,.disq-overlay{background:rgba(5,8,32,.86)!important}
+.result-card-head,.result-card-title{color:#fff}
+.result-card-body{background:rgba(17,24,72,.72)!important;border-color:rgba(83,165,255,.3)!important}
+.winner-label{color:#ffe04d!important}
+.disq-title{color:#ff6a88!important}
+
+/* Bottom navigation: one consistent bright purple/blue system */
+.bottom-nav{
+  background:linear-gradient(90deg,#111642,#1d2370,#111642)!important;
+  border-top:1px solid rgba(83,215,255,.28)!important;
+  box-shadow:0 -5px 22px rgba(0,0,0,.22);
+}
+.bottom-nav .nav-item{color:#9da5e8!important}
+.bottom-nav .nav-item.active{
+  color:#ffe04d!important;
+  background:linear-gradient(180deg,rgba(78,101,255,.3),rgba(61,48,146,.2))!important;
+}
+.bottom-nav .nav-item.active .nav-svg svg{stroke:#55dcff!important;filter:drop-shadow(0 0 5px rgba(85,220,255,.3))}
+
+/* Responsive card grid remains 10 columns, but fills the wider panel naturally */
+@media(max-width:420px){
+  #screenCards .pool-btn{border-radius:8px!important}
+}
+
 </style>
 </head>
 <body>
