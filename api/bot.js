@@ -3558,9 +3558,9 @@ if (!admin) {
         `⚪ Inactive Users: *${stats.inactiveUsers}*\n` +
         `🔴 Blocked Users: *${stats.blockedUsers}*\n\n` +
 
-        `👑 Main Admin: *${stats.mainAdmin}*`;
-        `📊 Statistics Admin: *${stats.statisticsAdmin}*`;
-        `💸 Withdrawal Admin: *${stats.withdrawalAdmin}*`;
+        `👑 Main Admin: *${stats.mainAdmin}*\n` +
+        `📊 Statistics Admin: *${stats.statisticsAdmin}*\n` +
+        `💸 Withdrawal Admin: *${stats.withdrawalAdmin}*\n` +
         `📢 Broadcast Admin: *${stats.broadcastAdmin}*`;
 
 
