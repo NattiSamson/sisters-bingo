@@ -985,6 +985,8 @@ wss.on('connection',(ws)=>{
           // WAITING/COUNTDOWN room: show fresh card selection state.
           send(ws,{type:'joinedRoom',roomId:room.roomId,stakeId:room.stakeId,
             balance:client.balance,status:room.status,
+            countdownLeft:room.status==='countdown'?room.countdownLeft:0,
+            countdown:room.status==='countdown'?room.countdownLeft:0,
             playerCount:room.players.reduce((sum,p)=>(p.cardId?1:0)+(p.cardId2?1:0)+sum,0),
             stakeAmount:room.stake});
           broadcastCardPool(room);

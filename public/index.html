@@ -1051,6 +1051,9 @@ const API_BASE = 'https://api2.cockpitaviations.com';
   const ADMIN_PHONE_CLIENT = '251965666656';
   const ADMIN_PHONE_CLIENT2 = '251912649846';
 let ws, myPlayerId, myName='', myRoomId=localStorage.getItem('roomId')||null, myStakeId=null;
+let activeGamePhase=localStorage.getItem('activeGamePhase')||'none'; // none|countdown|playing
+let activeCountdownLeft=Number(localStorage.getItem('activeCountdownLeft')||0);
+let restoringActiveGame=false;
 let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0;
 let myCardId2=null, myCardNumbers2=[], markedIndices2=new Set();
 let claimWindowOpen=false, claimBarAnim=null, prevLastCalled=null;
@@ -1179,21 +1182,31 @@ function navGo(screen, navId){
 
   if(screen==='screenAdmin') adminLoadDeposits();
 }
-function saveActiveGameState(){
-  // Keep the active room/stake/card selection available to the GAME tab while
-  // the player moves between app screens. This does not change charging or
-  // server-side game logic; it only remembers the current UI state.
+function saveActiveGameState(phase){
   if(myRoomId) localStorage.setItem('roomId',myRoomId);
   if(myStakeId) localStorage.setItem('stakeId',myStakeId);
+  if(phase) activeGamePhase=phase;
   const state={
     roomId:myRoomId||localStorage.getItem('roomId')||null,
     stakeId:myStakeId||localStorage.getItem('stakeId')||null,
+    phase:activeGamePhase||'none',
+    countdownLeft:Number(activeCountdownLeft)||0,
     cardId:myCardId||null,
     cardNumbers:Array.isArray(myCardNumbers)?myCardNumbers:[],
     cardId2:myCardId2||null,
-    cardNumbers2:Array.isArray(myCardNumbers2)?myCardNumbers2:[]
+    cardNumbers2:Array.isArray(myCardNumbers2)?myCardNumbers2:[],
+    calledNumbers:Array.from(calledNumbersSet||[]).map(Number)
   };
   if(state.roomId) localStorage.setItem('activeGameState',JSON.stringify(state));
+  localStorage.setItem('activeGamePhase',state.phase);
+  localStorage.setItem('activeCountdownLeft',String(state.countdownLeft));
+}
+
+function clearActiveGameState(){
+  activeGamePhase='none'; activeCountdownLeft=0;
+  localStorage.removeItem('activeGameState');
+  localStorage.removeItem('activeGamePhase');
+  localStorage.removeItem('activeCountdownLeft');
 }
 
 function restoreActiveGameState(){
@@ -1204,49 +1217,38 @@ function restoreActiveGameState(){
     if(!state||!state.roomId) return;
     if(!myRoomId) myRoomId=state.roomId;
     if(!myStakeId&&state.stakeId) myStakeId=state.stakeId;
-    if(!myCardId&&state.cardId){
-      myCardId=state.cardId;
-      myCardNumbers=Array.isArray(state.cardNumbers)?state.cardNumbers:[];
-    }
-    if(!myCardId2&&state.cardId2){
-      myCardId2=state.cardId2;
-      myCardNumbers2=Array.isArray(state.cardNumbers2)?state.cardNumbers2:[];
-    }
+    activeGamePhase=state.phase||localStorage.getItem('activeGamePhase')||'none';
+    activeCountdownLeft=Number(state.countdownLeft||localStorage.getItem('activeCountdownLeft')||0);
+    if(!myCardId&&state.cardId){ myCardId=state.cardId; myCardNumbers=Array.isArray(state.cardNumbers)?state.cardNumbers:[]; }
+    if(!myCardId2&&state.cardId2){ myCardId2=state.cardId2; myCardNumbers2=Array.isArray(state.cardNumbers2)?state.cardNumbers2:[]; }
+    if(Array.isArray(state.calledNumbers)) calledNumbersSet=new Set(state.calledNumbers.map(Number));
   }catch(e){}
 }
 
-function goToGame(){
-  // GAME is the player's quick return to the currently active game.
-  // Restore the latest local state first so selecting a card is not lost when
-  // the player visits History and then comes back to GAME.
-  restoreActiveGameState();
+function showSavedCountdown(){
+  const sec=Math.max(0,Number(activeCountdownLeft)||0);
+  const countdownText=document.getElementById('cardSelectionPlayerText');
+  const hiddenCountdown=document.getElementById('cdCountdown');
+  if(countdownText) countdownText.innerText=sec>0?`${sec} ሰከንድ ውስጥ ይጀምራል`:'';
+  if(hiddenCountdown) hiddenCountdown.innerText=sec>0?`ጨዋታው በ ${sec} ሰከንድ ውስጥ ይጀምራል`:'';
+}
 
+function goToGame(){
+  restoreActiveGameState();
   const roomId=myRoomId||localStorage.getItem('roomId');
   if(!myStakeId) myStakeId=localStorage.getItem('stakeId');
-  if(!roomId){
-    showToast('አሁን ንቁ ጨዋታ የለም።','warn');
-    return;
-  }
+  if(!roomId){ showToast('አሁን ንቁ ጨዋታ የለም።','warn'); return; }
   myRoomId=roomId;
-
-  if(myCardId){
-    // Rebuild the game board immediately from the confirmed card selection
-    // instead of relying on the original WebSocket message still being present.
-    if(myCardNumbers.length) renderBothCards();
-    refreshCardCells();
+  // A selected card is NOT the same thing as a started game. During countdown
+  // always return to card selection; only the server's playing/reconnected state
+  // may open the real game board.
+  if(activeGamePhase==='playing'){
     navGo('screenGame','navGame');
-
-    // If card numbers are unavailable locally, ask the server to restore the
-    // authoritative active game/card state.
-    if(!myCardNumbers.length && telegramId){
-      wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
-    }
   }else{
     navGo('screenCards','navGame');
-    if(telegramId){
-      wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
-    }
+    if(activeGamePhase==='countdown') showSavedCountdown();
   }
+  if(telegramId) wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
 }
 function goToWallet(){navGo('screenWallet','navWallet');}
 async function goToHistory(){
@@ -1447,24 +1449,45 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       }).catch(()=>{});
     }
   }
-  // Try to reconnect to active game after auth
+  // Restore an active room first. The server decides whether it is still
+  // waiting/counting down or officially playing; do not assume a selected card
+  // means the game has started.
+  restoreActiveGameState();
   if(myRoomId && telegramId){
+    restoringActiveGame=true;
+    if(activeGamePhase==='countdown') navGo('screenCards','navGame');
+    else if(activeGamePhase==='playing') navGo('screenGame','navGame');
     wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
     setTimeout(()=>{
-      if(document.getElementById('screenLoading').classList.contains('active')){
+      if(restoringActiveGame && document.getElementById('screenLoading').classList.contains('active')){
+        restoringActiveGame=false;
+        clearActiveGameState();
+        myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null;
         goScreen('screenLobby');
       }
-    },2000);
+    },6000);
   } else {
     goScreen('screenLobby');
   }
   break;
 
-    case 'lobbyUpdate': renderStakes(msg.stakes); break;
+    case 'reconnectFailed':
+      restoringActiveGame=false; clearActiveGameState(); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardNumbers=[]; myCardNumbers2=[]; goScreen('screenLobby'); break;
+
+   case 'lobbyUpdate': renderStakes(msg.stakes); break;
 
    case 'joinedRoom':
       localStorage.setItem('roomId', msg.roomId);
-      myRoomId=msg.roomId; myStakeId=msg.stakeId; localStorage.setItem('roomId',msg.roomId); localStorage.setItem('stakeId',msg.stakeId); myCardId=null; myCardId2=null;
+      myRoomId=msg.roomId; myStakeId=msg.stakeId; localStorage.setItem('roomId',msg.roomId); localStorage.setItem('stakeId',msg.stakeId);
+      if(msg.status==='countdown'){
+        activeGamePhase='countdown'; activeCountdownLeft=Number(msg.countdown||msg.countdownLeft||activeCountdownLeft||0);
+      }else if(msg.status==='playing'){
+        activeGamePhase='playing';
+      }else if(!myCardId){
+        activeGamePhase='none'; activeCountdownLeft=0;
+      }
+      saveActiveGameState(activeGamePhase);
+      if(msg.status!=='countdown' && msg.status!=='playing') { myCardId=null; myCardId2=null; }
       resetAutomaticGameState();
       activePlayers=[]; updateActivePlayers(msg.players||msg.activePlayers||[]);
       if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
@@ -1474,10 +1497,13 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       refreshAccountProfile(4,300);
       resetSlotUI();
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
+      restoringActiveGame=false;
       if(msg.status==='playing'){
+        activeGamePhase='playing'; saveActiveGameState('playing');
         // Late join — spectating message follows
       } else {
         navGo('screenCards','navCards');
+        if(msg.status==='countdown') showSavedCountdown();
       }
       break;
 
@@ -1505,11 +1531,12 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
         myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
         updateSlotUI();
       }
-      saveActiveGameState();
+      if(activeGamePhase!=='playing') saveActiveGameState(activeGamePhase==='countdown'?'countdown':'countdown');
       break;
 
     case 'countdown': {
       const sec=Math.max(0,Number(msg.seconds)||0);
+      activeGamePhase='countdown'; activeCountdownLeft=sec; saveActiveGameState('countdown');
       const countdownText=document.getElementById('cardSelectionPlayerText');
       const hiddenCountdown=document.getElementById('cdCountdown');
       if(countdownText) countdownText.innerText=`${sec} ሰከንድ ውስጥ ይጀምራል`;
@@ -1528,7 +1555,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
     case 'yourCard':
       myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
       myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
-      saveActiveGameState();
+      activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
       document.getElementById('playerCountVal').innerText=msg.playerCount;
       resetAutomaticGameState();
@@ -1568,6 +1595,8 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       break;
 
     case 'gameStart':
+      activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
+      restoringActiveGame=false;
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
       document.getElementById('playerCountVal').innerText=Array.isArray(msg.players)?msg.players.length:(msg.playerCount||0);
       resetAutomaticGameState();
@@ -1579,7 +1608,8 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       myRoomId=msg.roomId; myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
       myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
       if(msg.stakeId) myStakeId=msg.stakeId;
-      saveActiveGameState();
+      activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
+      restoringActiveGame=false;
       resetAutomaticGameState();
       calledNumbersSet=new Set((msg.calledNumbers||[]).map(Number));
       autoClaimSent=false;
@@ -1611,6 +1641,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
         myStakeId=msg.stakeId;
         localStorage.setItem('stakeId',msg.stakeId);
       }
+      clearActiveGameState();
       claimWindowOpen=false;
       autoClaimSent=true;
       showWinnerOverlay(msg);
@@ -1651,7 +1682,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       if(telegramId) setTimeout(()=>refreshAccountProfile(3,300),100);
       break;
 
-    case 'leftRoom': localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; navGo('screenLobby'); break;
+    case 'leftRoom': clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; navGo('screenLobby'); break;
 
     case 'depositSubmitted':
       showWalletMsg('depositMsg', msg.message, 'success');

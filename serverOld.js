@@ -374,7 +374,6 @@ const STAKES = [
   { id:'st5',  amount:5,  maxPlayers:400, cardLimit:400 },
   { id:'st10', amount:10, maxPlayers:400, cardLimit:400 },
   { id:'st20', amount:20, maxPlayers:400, cardLimit:400 },
-  { id:'st50', amount:50, maxPlayers:50,  cardLimit:50  },
 ];
 
 // ─── FIXED CARDS ─────────────────────────────────────────────
