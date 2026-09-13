@@ -1179,21 +1179,73 @@ function navGo(screen, navId){
 
   if(screen==='screenAdmin') adminLoadDeposits();
 }
+function saveActiveGameState(){
+  // Keep the active room/stake/card selection available to the GAME tab while
+  // the player moves between app screens. This does not change charging or
+  // server-side game logic; it only remembers the current UI state.
+  if(myRoomId) localStorage.setItem('roomId',myRoomId);
+  if(myStakeId) localStorage.setItem('stakeId',myStakeId);
+  const state={
+    roomId:myRoomId||localStorage.getItem('roomId')||null,
+    stakeId:myStakeId||localStorage.getItem('stakeId')||null,
+    cardId:myCardId||null,
+    cardNumbers:Array.isArray(myCardNumbers)?myCardNumbers:[],
+    cardId2:myCardId2||null,
+    cardNumbers2:Array.isArray(myCardNumbers2)?myCardNumbers2:[]
+  };
+  if(state.roomId) localStorage.setItem('activeGameState',JSON.stringify(state));
+}
+
+function restoreActiveGameState(){
+  try{
+    const raw=localStorage.getItem('activeGameState');
+    if(!raw) return;
+    const state=JSON.parse(raw);
+    if(!state||!state.roomId) return;
+    if(!myRoomId) myRoomId=state.roomId;
+    if(!myStakeId&&state.stakeId) myStakeId=state.stakeId;
+    if(!myCardId&&state.cardId){
+      myCardId=state.cardId;
+      myCardNumbers=Array.isArray(state.cardNumbers)?state.cardNumbers:[];
+    }
+    if(!myCardId2&&state.cardId2){
+      myCardId2=state.cardId2;
+      myCardNumbers2=Array.isArray(state.cardNumbers2)?state.cardNumbers2:[];
+    }
+  }catch(e){}
+}
+
 function goToGame(){
-  // The crown button is the quick return to the active game.
-  // Keep the room id while navigating between screens so the player can always return.
-  const roomId = myRoomId || localStorage.getItem('roomId');
+  // GAME is the player's quick return to the currently active game.
+  // Restore the latest local state first so selecting a card is not lost when
+  // the player visits History and then comes back to GAME.
+  restoreActiveGameState();
+
+  const roomId=myRoomId||localStorage.getItem('roomId');
   if(!myStakeId) myStakeId=localStorage.getItem('stakeId');
   if(!roomId){
     showToast('አሁን ንቁ ጨዋታ የለም።','warn');
     return;
   }
-  myRoomId = roomId;
-  // If cards have not been selected yet, return to card selection; otherwise return to the game.
+  myRoomId=roomId;
+
   if(myCardId){
+    // Rebuild the game board immediately from the confirmed card selection
+    // instead of relying on the original WebSocket message still being present.
+    if(myCardNumbers.length) renderBothCards();
+    refreshCardCells();
     navGo('screenGame','navGame');
+
+    // If card numbers are unavailable locally, ask the server to restore the
+    // authoritative active game/card state.
+    if(!myCardNumbers.length && telegramId){
+      wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
+    }
   }else{
     navGo('screenCards','navGame');
+    if(telegramId){
+      wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
+    }
   }
 }
 function goToWallet(){navGo('screenWallet','navWallet');}
@@ -1453,6 +1505,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
         myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
         updateSlotUI();
       }
+      saveActiveGameState();
       break;
 
     case 'countdown': {
@@ -1475,6 +1528,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
     case 'yourCard':
       myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
       myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
+      saveActiveGameState();
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
       document.getElementById('playerCountVal').innerText=msg.playerCount;
       resetAutomaticGameState();
@@ -1524,6 +1578,8 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
     case 'reconnected':
       myRoomId=msg.roomId; myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
       myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
+      if(msg.stakeId) myStakeId=msg.stakeId;
+      saveActiveGameState();
       resetAutomaticGameState();
       calledNumbersSet=new Set((msg.calledNumbers||[]).map(Number));
       autoClaimSent=false;
@@ -2259,7 +2315,7 @@ function showToast(msg,type=''){
   toastT=setTimeout(()=>t.style.opacity='0',2800);
 }
 
-function leaveRoom(){wsSend({type:'leaveRoom'});myRoomId=null;myCardId=null;myCardId2=null;}
+function leaveRoom(){wsSend({type:'leaveRoom'});myRoomId=null;myStakeId=null;myCardId=null;myCardId2=null;myCardNumbers=[];myCardNumbers2=[];localStorage.removeItem('roomId');localStorage.removeItem('stakeId');localStorage.removeItem('activeGameState');}
 
 // ─── AUDIO SYSTEM ────────────────────────────────────────────
 let soundEnabled = true;
