@@ -416,6 +416,119 @@ body{padding-bottom:72px;background:#0b061c;}
   #screenCards .pool-grid{grid-template-columns:repeat(10,27px);grid-auto-rows:27px;gap:4px;height:calc(100dvh - 225px);max-height:none;}
   #screenCards .pool-btn{width:27px;height:27px;min-width:27px;line-height:27px;font-size:7px;}
 }
+
+/* ───────── PROFESSIONAL MELA BINGO LOBBY ───────── */
+#screenLobby{
+  max-width:520px;
+  padding:0 16px 24px;
+  min-height:calc(100vh - 128px);
+  background:
+    radial-gradient(circle at 18% 12%,rgba(124,58,237,.34),transparent 32%),
+    radial-gradient(circle at 88% 38%,rgba(37,99,235,.16),transparent 30%),
+    linear-gradient(155deg,#32106a 0%,#1b1045 48%,#0b1228 100%);
+}
+#screenLobby .welcome-banner{
+  position:relative;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-height:196px;
+  margin:16px 0 14px;
+  padding:20px 14px;
+  overflow:hidden;
+  text-align:left;
+  background:
+    radial-gradient(circle at 18% 62%,rgba(59,130,246,.28),transparent 24%),
+    radial-gradient(circle at 55% 45%,rgba(168,85,247,.22),transparent 35%),
+    linear-gradient(145deg,rgba(48,18,102,.98),rgba(20,10,55,.98));
+  border:2px solid rgba(250,204,21,.82);
+  border-radius:24px;
+  box-shadow:0 18px 42px rgba(0,0,0,.35),inset 0 0 35px rgba(139,92,246,.12);
+}
+#screenLobby .welcome-banner:after{
+  content:'';position:absolute;inset:auto -15% -55%;height:130px;
+  background:radial-gradient(ellipse,rgba(99,102,241,.26),transparent 68%);
+  pointer-events:none;
+}
+.lobby-hero-art{position:relative;width:43%;min-width:142px;height:150px;flex:0 0 43%;}
+.lobby-crown{position:absolute;left:12px;top:2px;font-size:72px;line-height:1;color:#facc15;filter:drop-shadow(0 0 13px rgba(250,204,21,.65));transform:rotate(-4deg);}
+.lobby-ball{position:absolute;width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Orbitron',sans-serif;font-size:25px;font-weight:900;color:#fff;border:3px solid rgba(255,255,255,.55);box-shadow:inset -8px -9px 14px rgba(0,0,0,.22),0 0 22px currentColor;}
+.lobby-ball:after{content:'';position:absolute;left:10px;top:8px;width:12px;height:7px;border-radius:50%;background:rgba(255,255,255,.65);transform:rotate(-25deg);}
+.lobby-ball-b{left:2px;bottom:9px;background:linear-gradient(145deg,#38bdf8,#2563eb);color:#dbeafe;}
+.lobby-ball-n{left:57px;bottom:-3px;background:linear-gradient(145deg,#c084fc,#7c3aed);color:#f5d0fe;}
+.lobby-ball-o{right:-2px;bottom:17px;background:linear-gradient(145deg,#fb7185,#db2777);color:#ffe4e6;}
+.lobby-hero-copy{position:relative;z-index:2;flex:1;text-align:center;}
+.lobby-kicker{display:flex;align-items:center;justify-content:center;gap:7px;color:#d8c9f4;font-size:9px;font-weight:800;letter-spacing:1.4px;margin-bottom:5px;}
+.lobby-kicker span{display:block;width:28px;height:2px;background:linear-gradient(90deg,transparent,var(--gold));}.lobby-kicker span:last-child{background:linear-gradient(90deg,var(--gold),transparent);}
+#screenLobby .mela-welcome-title{font-size:34px;font-weight:900;line-height:1.05;color:#fff;letter-spacing:-1px;text-shadow:0 4px 20px rgba(0,0,0,.3);}
+#screenLobby .mela-welcome-title span{display:inline;color:#fbbf24;}
+#screenLobby .mela-welcome-player{margin-top:13px;color:#fff;font-size:15px;}
+#screenLobby .mela-welcome-player span{color:var(--gold);font-weight:900;}
+#screenLobby #welcomeStatus{margin-top:8px;color:#b9a8e5!important;font-size:11px!important;opacity:1;white-space:nowrap;}
+#screenLobby .lobby-stake-panel{
+  background:linear-gradient(145deg,rgba(47,22,94,.88),rgba(19,12,52,.94));
+  border:1px solid rgba(139,92,246,.7);
+  border-radius:22px;
+  padding:20px 14px 16px;
+  box-shadow:0 16px 38px rgba(0,0,0,.3),inset 0 0 30px rgba(139,92,246,.07);
+}
+#screenLobby .lobby-stake-heading{display:flex;align-items:center;justify-content:center;gap:10px;text-align:center;font-size:20px;font-weight:900;color:#fff;margin:0 0 17px;}
+#screenLobby .lobby-stake-heading span{width:38px;height:2px;background:linear-gradient(90deg,transparent,var(--gold));margin:0;vertical-align:middle;}
+#screenLobby .lobby-stake-heading span:last-child{background:linear-gradient(90deg,var(--gold),transparent);}
+#screenLobby .stakes-grid{display:flex;flex-direction:column;gap:13px;}
+#screenLobby .stake-card{
+  min-height:72px;width:100%;border:2px solid rgba(255,255,255,.14);border-radius:19px;padding:10px 13px;
+  display:flex;align-items:center;justify-content:flex-start;position:relative;overflow:hidden;color:#fff;
+  cursor:pointer;box-shadow:0 9px 22px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.25);
+  transition:transform .18s ease,filter .18s ease,box-shadow .18s ease;
+}
+#screenLobby .stake-card:before{content:'';position:absolute;inset:0;background:linear-gradient(115deg,rgba(255,255,255,.18),transparent 42%,rgba(255,255,255,.05));pointer-events:none;}
+#screenLobby .stake-card:hover{transform:translateY(-2px);filter:brightness(1.06);box-shadow:0 13px 28px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.32);}
+#screenLobby .stake-card:active{transform:scale(.985);}
+#screenLobby .stake-card:nth-child(1){background:linear-gradient(105deg,#08d3a0,#00a99d);}
+#screenLobby .stake-card:nth-child(2){background:linear-gradient(105deg,#0ea5e9,#4f46e5);}
+#screenLobby .stake-card:nth-child(3){background:linear-gradient(105deg,#6366f1,#8b5cf6);}
+#screenLobby .stake-card:nth-child(4){background:linear-gradient(105deg,#f59e0b,#f97316);}
+#screenLobby .stake-play-icon{position:relative;z-index:1;width:48px;height:48px;flex:0 0 48px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.45);font-size:19px;padding-left:3px;box-shadow:inset 0 0 13px rgba(255,255,255,.12),0 4px 10px rgba(0,0,0,.16);}
+#screenLobby .stake-copy{position:relative;z-index:1;min-width:0;flex:1;text-align:left;margin-left:14px;}
+#screenLobby .stake-etb{font-family:'Inter',sans-serif;font-size:24px;font-weight:900;color:#fff;margin:0;line-height:1.1;}
+#screenLobby .stake-etb::before{content:'';}
+#screenLobby .stake-info{display:block;margin-top:4px;color:rgba(255,255,255,.76);font-size:9px;font-weight:700;}
+#screenLobby .stake-arrow{position:relative;z-index:1;font-size:42px;line-height:1;color:rgba(255,255,255,.72);font-weight:300;margin-right:3px;margin-top:-4px;}
+#screenLobby .stake-unavailable{opacity:.45;cursor:not-allowed!important;filter:saturate(.45);}
+#screenLobby .stake-unavailable:hover{transform:none;filter:saturate(.45);}
+#screenLobby .lobby-players-card{
+  margin:14px 0 10px;min-height:86px;display:flex;align-items:center;text-align:left;
+  background:linear-gradient(145deg,rgba(39,20,82,.9),rgba(15,11,43,.94));
+  border:1px solid rgba(139,92,246,.62);border-radius:20px;padding:13px 15px;
+  box-shadow:0 14px 30px rgba(0,0,0,.28);
+}
+#screenLobby .lobby-players-icon{position:relative;width:58px;height:52px;flex:0 0 58px;}
+#screenLobby .lobby-players-icon span{position:absolute;border-radius:50%;background:#a78bfa;box-shadow:0 0 16px rgba(167,139,250,.24);}
+#screenLobby .lobby-players-icon span:nth-child(1){width:22px;height:22px;left:9px;top:2px;}
+#screenLobby .lobby-players-icon span:nth-child(2){width:19px;height:19px;right:5px;top:5px;}
+#screenLobby .lobby-players-icon span:nth-child(3){width:43px;height:25px;left:3px;bottom:2px;border-radius:24px 24px 11px 11px;}
+#screenLobby .lobby-players-divider{width:2px;height:48px;background:var(--gold);opacity:.9;flex:0 0 2px;margin:0 13px 0 5px;}
+#screenLobby .lobby-players-copy{min-width:0;flex:1;}
+#screenLobby .lobby-players-label{margin:0;color:#bca9e7;font-size:12px;font-weight:800;}
+#screenLobby .lobby-players-number{margin-top:1px;font-size:28px;line-height:1;font-weight:900;color:var(--gold);text-shadow:0 0 16px rgba(250,204,21,.2);}
+#screenLobby .lobby-online{display:flex;align-items:center;gap:6px;color:#bca9e7;font-size:10px;white-space:nowrap;margin-left:8px;}
+#screenLobby .lobby-online span{width:9px;height:9px;border-radius:50%;background:#22c55e;box-shadow:0 0 12px rgba(34,197,94,.8);}
+#screenLobby .lobby-online strong{font-weight:800;}
+@media(max-width:390px){
+  #screenLobby{padding-left:10px;padding-right:10px;}
+  #screenLobby .welcome-banner{min-height:185px;padding:17px 8px;gap:5px;}
+  .lobby-hero-art{min-width:126px;height:140px;}
+  .lobby-crown{font-size:64px;left:7px;}
+  .lobby-ball{width:51px;height:51px;font-size:22px;}
+  .lobby-ball-n{left:48px;}
+  #screenLobby .mela-welcome-title{font-size:30px;}
+  #screenLobby .mela-welcome-player{font-size:13px;}
+  #screenLobby .lobby-stake-panel{padding-left:10px;padding-right:10px;}
+  #screenLobby .stake-play-icon{width:44px;height:44px;flex-basis:44px;font-size:17px;}
+  #screenLobby .stake-copy{margin-left:10px;}
+  #screenLobby .stake-etb{font-size:22px;}
+}
 </style>
 </head>
 <body>
@@ -437,18 +550,33 @@ body{padding-bottom:72px;background:#0b061c;}
 
 <div id="screenLobby" class="screen">
   <div class="welcome-banner">
-    <div class="mela-welcome-title">Welcome to <span>Mela Bingo</span></div>
-    <div class="mela-welcome-player">Welcome, <span id="welcomeName">Player</span>!</div>
-    <div id="welcomeStatus">Ready to play</div>
+    <div class="lobby-hero-art" aria-hidden="true">
+      <div class="lobby-crown">♛</div>
+      <div class="lobby-ball lobby-ball-b">B</div>
+      <div class="lobby-ball lobby-ball-n">N</div>
+      <div class="lobby-ball lobby-ball-o">O</div>
+    </div>
+    <div class="lobby-hero-copy">
+      <div class="lobby-kicker"><span></span> WELCOME TO <span></span></div>
+      <div class="mela-welcome-title">Mela Bingo</div>
+      <div class="mela-welcome-player">Welcome, <span id="welcomeName">Player</span>!</div>
+      <div id="welcomeStatus">Good luck and have fun! 🍀</div>
+    </div>
   </div>
   <div class="lobby-stake-panel">
-    <div class="lobby-stake-heading"><span>▷</span>Choose Your Stake</div>
+    <div class="lobby-stake-heading"><span></span>Choose Your Stake<span></span></div>
     <div id="stakesGrid" class="stakes-grid"></div>
   </div>
   <div class="lobby-players-card">
-    <div class="lobby-players-number" id="lobbyActivePlayers">0</div>
-    <div class="lobby-players-label">Active Players</div>
-    <div class="lobby-players-sub">Players currently in the game lobby</div>
+    <div class="lobby-players-icon" aria-hidden="true">
+      <span></span><span></span><span></span>
+    </div>
+    <div class="lobby-players-divider"></div>
+    <div class="lobby-players-copy">
+      <div class="lobby-players-label">Active Players</div>
+      <div class="lobby-players-number" id="lobbyActivePlayers">0</div>
+    </div>
+    <div class="lobby-online"><span></span><strong>Online Now</strong></div>
   </div>
 </div>
 
@@ -2085,11 +2213,17 @@ function renderStakes(arr){
     const total=stakes.reduce((sum,s)=>sum+(parseInt(s.playerCount,10)||0),0);
     activeEl.innerText=total.toLocaleString();
   }
-  [5,10,20,50].forEach((amount,index)=>{
+  [5,10,20,50].forEach((amount)=>{
     const s=stakes.find(x=>Number(x.amount)===amount);
     const d=document.createElement('div');
     d.className='stake-card';
-    d.innerHTML=`<div class="stake-etb">Play ${amount}</div>`;
+    d.innerHTML=`
+      <div class="stake-play-icon" aria-hidden="true">▶</div>
+      <div class="stake-copy">
+        <div class="stake-etb">Play ${amount}</div>
+        <div class="stake-info">${s ? `${Number(s.playerCount)||0} players · ${Number(s.maxPlayers)||0} max` : 'Currently unavailable'}</div>
+      </div>
+      <div class="stake-arrow" aria-hidden="true">›</div>`;
     if(s){
       d.onclick=()=>wsSend({type:'joinRoom',stakeId:s.stakeId,telegramId:telegramId||getTelegramId()});
     }else{
