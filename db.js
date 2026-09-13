@@ -525,6 +525,223 @@ async function deactivateBonusCampaign(
   return result.rows[0] || null;
 }
 
+// ============================================================
+// BONUS REPORTS
+// ============================================================
+
+async function getBonusReportSummary() {
+  const { rows } = await pool.query(`
+    SELECT
+      COUNT(*)::integer AS bonus_count,
+      COALESCE(SUM(amount), 0)::numeric AS total_bonus,
+      COUNT(DISTINCT user_id)::integer AS users_rewarded,
+      COUNT(DISTINCT bonus_campaign_id)
+        FILTER (WHERE bonus_campaign_id IS NOT NULL)::integer
+        AS campaigns_used
+    FROM bonus_transactions
+  `);
+
+  return rows[0] || {
+    bonus_count: 0,
+    total_bonus: 0,
+    users_rewarded: 0,
+    campaigns_used: 0
+  };
+}
+
+
+// ============================================================
+// BONUSES BY USER
+// ============================================================
+
+async function getBonusesByUser(limit = 50) {
+  const safeLimit = Math.min(
+    Math.max(Number(limit) || 50, 1),
+    100
+  );
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      u.id AS user_id,
+      u.name,
+      u.phone,
+      COUNT(bt.id)::integer AS bonus_count,
+      COALESCE(SUM(bt.amount), 0)::numeric AS total_bonus
+    FROM bonus_transactions bt
+    INNER JOIN users u
+      ON u.id = bt.user_id
+    GROUP BY
+      u.id,
+      u.name,
+      u.phone
+    ORDER BY
+      SUM(bt.amount) DESC,
+      COUNT(bt.id) DESC,
+      u.name ASC
+    LIMIT $1
+    `,
+    [safeLimit]
+  );
+
+  return rows;
+}
+
+
+// ============================================================
+// BONUSES BY CAMPAIGN
+// ============================================================
+
+async function getBonusesByCampaign(limit = 50) {
+  const safeLimit = Math.min(
+    Math.max(Number(limit) || 50, 1),
+    100
+  );
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      COALESCE(
+        bc.id,
+        0
+      ) AS campaign_id,
+
+      COALESCE(
+        bc.name,
+        'Manual / No Campaign'
+      ) AS campaign_name,
+
+      COUNT(bt.id)::integer AS bonus_count,
+
+      COALESCE(
+        SUM(bt.amount),
+        0
+      )::numeric AS total_bonus
+
+    FROM bonus_transactions bt
+
+    LEFT JOIN bonus_campaigns bc
+      ON bc.id = bt.bonus_campaign_id
+
+    GROUP BY
+      bc.id,
+      bc.name
+
+    ORDER BY
+      SUM(bt.amount) DESC,
+      COUNT(bt.id) DESC
+
+    LIMIT $1
+    `,
+    [safeLimit]
+  );
+
+  return rows;
+}
+
+
+// ============================================================
+// DEPOSIT BONUS HISTORY
+// ============================================================
+
+async function getDepositBonusHistory(limit = 30) {
+  const safeLimit = Math.min(
+    Math.max(Number(limit) || 30, 1),
+    100
+  );
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      bt.id,
+      bt.user_id,
+
+      u.name,
+      u.phone,
+
+      bt.bonus_campaign_id,
+
+      COALESCE(
+        bc.name,
+        'Deleted / Unknown Campaign'
+      ) AS campaign_name,
+
+      bt.bonus_type,
+      bt.amount,
+      bt.balance_after,
+      bt.reference,
+      bt.description,
+      bt.deposit_frequency,
+      bt.created_at
+
+    FROM bonus_transactions bt
+
+    INNER JOIN users u
+      ON u.id = bt.user_id
+
+    LEFT JOIN bonus_campaigns bc
+      ON bc.id = bt.bonus_campaign_id
+
+    WHERE bt.bonus_type = 'deposit_bonus'
+
+    ORDER BY
+      bt.created_at DESC,
+      bt.id DESC
+
+    LIMIT $1
+    `,
+    [safeLimit]
+  );
+
+  return rows;
+}
+
+
+// ============================================================
+// MANUAL BONUS HISTORY
+// ============================================================
+
+async function getManualBonusHistory(limit = 30) {
+  const safeLimit = Math.min(
+    Math.max(Number(limit) || 30, 1),
+    100
+  );
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      bt.id,
+      bt.user_id,
+
+      u.name,
+      u.phone,
+
+      bt.bonus_type,
+      bt.amount,
+      bt.balance_after,
+      bt.reference,
+      bt.description,
+      bt.created_at
+
+    FROM bonus_transactions bt
+
+    INNER JOIN users u
+      ON u.id = bt.user_id
+
+    WHERE bt.bonus_type LIKE 'manual%'
+
+    ORDER BY
+      bt.created_at DESC,
+      bt.id DESC
+
+    LIMIT $1
+    `,
+    [safeLimit]
+  );
+
+  return rows;
+}
+
 module.exports = {
 
   // ============================================================
@@ -4950,6 +5167,11 @@ async applyDepositBonus(
   },
   getDepositBonusSchedules,  
   giveBonusToUserByPhone,
-  deactivateBonusCampaign
+  deactivateBonusCampaign,
+  getBonusReportSummary,
+  getBonusesByUser,
+  getBonusesByCampaign,
+  getDepositBonusHistory,
+  getManualBonusHistory
 
 };
