@@ -2030,9 +2030,36 @@ async createBonusCampaign(
             FROM users
             WHERE is_admin = TRUE
               AND is_active = TRUE
-              AND is_banned = FALSE
               AND is_blocked = FALSE
-          ) AS administrators
+              AND admin_role = 'main'
+          ) AS main_admin,                
+                    
+          (
+            SELECT COUNT(*)
+            FROM users
+            WHERE is_admin = TRUE
+              AND is_active = TRUE
+              AND is_blocked = FALSE
+              AND admin_role = 'statistics'
+          ) AS statistics_admin,
+
+          (
+            SELECT COUNT(*)
+            FROM users
+            WHERE is_admin = TRUE
+              AND is_active = TRUE
+              AND is_blocked = FALSE
+              AND admin_role = 'withdrawal'
+          ) AS withdrawal_admin,
+
+          (
+            SELECT COUNT(*)
+            FROM users
+            WHERE is_admin = TRUE
+              AND is_active = TRUE
+              AND is_blocked = FALSE
+              AND admin_role = 'broadcast'
+          ) AS broadcast_admin
         `
       );
 
