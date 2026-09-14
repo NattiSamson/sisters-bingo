@@ -520,480 +520,6 @@ body{padding-bottom:72px;background:#0b061c;}
   #screenLobby .stake-copy{margin-left:10px;}
   #screenLobby .stake-etb{font-size:22px;}
 }
-
-/* ───────── MELA BINGO BRIGHT BLUE/PURPLE DESIGN SYSTEM ─────────
-   Visual-only theme layer. Gameplay, balance, card charging and navigation logic remain unchanged. */
-:root{
-  --bg:#090b2a;
-  --panel:#151a4b;
-  --card:#20275f;
-  --gold:#ffd43b;
-  --purple:#7c5cff;
-  --green:#22d67a;
-  --red:#ff3f68;
-  --blue:#3478ff;
-  --cyan:#38d9ff;
-  --gray:#b8baf5;
-  --b:#3478ff;--i:#f59e0b;--n:#8b5cf6;--g:#22c55e;--o:#ef4444;
-}
-html,body{background:#090b2a;color:#fff;}
-body{
-  background:
-    radial-gradient(circle at 12% 8%,rgba(78,70,229,.28),transparent 28%),
-    radial-gradient(circle at 88% 24%,rgba(14,165,233,.18),transparent 25%),
-    linear-gradient(160deg,#0b0d31 0%,#10134a 48%,#080b24 100%);
-}
-.navbar{
-  background:linear-gradient(90deg,#111642 0%,#1d2370 50%,#111642 100%);
-  border-bottom:1px solid rgba(77,208,255,.28);
-  box-shadow:0 5px 22px rgba(0,0,0,.28),inset 0 -1px 0 rgba(139,92,246,.2);
-}
-.brand{color:#ffd43b;text-shadow:0 0 12px rgba(255,212,59,.12)}
-.sound-btn{
-  background:linear-gradient(145deg,rgba(124,92,255,.28),rgba(52,120,255,.16))!important;
-  border-color:rgba(152,145,255,.55)!important;
-  box-shadow:0 0 18px rgba(76,118,255,.18)!important;
-}
-.balance-pill{
-  background:linear-gradient(135deg,#ffe66b,#ffc928)!important;
-  border:1px solid rgba(255,255,255,.35);
-  box-shadow:0 5px 16px rgba(255,201,40,.22)!important;
-}
-.screen{background:transparent}
-.screen-title{
-  color:#fff;
-  text-shadow:0 3px 16px rgba(70,120,255,.2);
-}
-.loading-spinner{border-color:#222a65;border-top-color:#4dd8ff}
-.loading-text{color:#c1c5ff}
-
-/* Shared surfaces used by wallet/history/rules/admin/settings */
-.wallet-balance-card,
-.history-card,
-.history-empty,
-.telebirr-info,
-.request-card,
-.user-card,
-.user-detail-card,
-.admin-section,
-.result-card-wrap,
-.tracker-wrap,
-.card-container,
-.stat-box{
-  background:linear-gradient(145deg,rgba(31,39,103,.94),rgba(15,20,63,.96))!important;
-  border-color:rgba(91,146,255,.42)!important;
-  box-shadow:0 12px 28px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.06)!important;
-}
-.wallet-tabs,.admin-tabs{
-  background:rgba(17,22,70,.94)!important;
-  border:1px solid rgba(91,146,255,.3);
-}
-.wallet-tab,.admin-tab{color:#b9bcf2!important}
-.wallet-tab.active,.admin-tab.active{
-  background:linear-gradient(135deg,#536dff,#7c5cff)!important;
-  color:#fff!important;
-  box-shadow:0 5px 16px rgba(83,109,255,.28);
-}
-.form-input,.search-input{
-  background:rgba(10,15,52,.78)!important;
-  border-color:rgba(96,165,250,.42)!important;
-  color:#fff!important;
-}
-.form-input:focus,.search-input:focus{border-color:#4dd8ff!important;box-shadow:0 0 0 2px rgba(56,217,255,.12)!important}
-.form-label,.wallet-bal-label,.history-key,.history-date,.result-status,.user-card-meta{color:#bfc4f7!important}
-.btn-submit,.btn-search,.refresh-btn,.btn-approve,.btn-reject,.btn-done{
-  box-shadow:0 7px 18px rgba(0,0,0,.2);
-}
-.btn-submit{background:linear-gradient(135deg,#4f74ff,#7658ff)!important}
-.btn-search{background:linear-gradient(135deg,#3478ff,#7358ff)!important}
-.btn-green{background:linear-gradient(135deg,#13c978,#19a96d)!important}
-.btn-red,.btn-reject{background:linear-gradient(135deg,#ff3f68,#e51f58)!important}
-.refresh-btn{background:linear-gradient(135deg,#3478ff,#536dff)!important;color:#fff!important;border-color:transparent!important}
-.status-msg{background:rgba(31,39,103,.78)!important;border-color:rgba(91,146,255,.35)!important}
-
-/* LOBBY — same visual language as the card-selection page */
-#screenLobby{
-  background:
-    radial-gradient(circle at 12% 7%,rgba(124,92,255,.35),transparent 32%),
-    radial-gradient(circle at 92% 36%,rgba(56,217,255,.2),transparent 28%),
-    linear-gradient(155deg,#1c236d 0%,#17164f 48%,#0a1030 100%)!important;
-}
-#screenLobby .welcome-banner{
-  background:
-    radial-gradient(circle at 18% 62%,rgba(56,217,255,.28),transparent 25%),
-    radial-gradient(circle at 60% 42%,rgba(124,92,255,.3),transparent 38%),
-    linear-gradient(145deg,#252c87,#14184f)!important;
-  border-color:rgba(255,212,59,.82)!important;
-  box-shadow:0 18px 42px rgba(0,0,0,.32),inset 0 0 35px rgba(56,217,255,.08)!important;
-}
-#screenLobby .lobby-stake-panel,
-#screenLobby .lobby-players-card{
-  background:linear-gradient(145deg,rgba(31,39,103,.94),rgba(13,18,57,.96))!important;
-  border-color:rgba(91,146,255,.5)!important;
-}
-#screenLobby .stake-card:nth-child(1){background:linear-gradient(105deg,#3478ff,#2f5eea)!important}
-#screenLobby .stake-card:nth-child(2){background:linear-gradient(105deg,#0ea5e9,#5146e5)!important}
-#screenLobby .stake-card:nth-child(3){background:linear-gradient(105deg,#6258ff,#8b5cf6)!important}
-
-/* CARD SELECTION — brighter, spacious, blue/purple */
-#screenCards{
-  background:
-    radial-gradient(circle at 50% 0,rgba(56,217,255,.16),transparent 30%),
-    radial-gradient(circle at 8% 46%,rgba(124,92,255,.2),transparent 28%),
-    linear-gradient(160deg,#0e1240 0%,#121856 52%,#090d2d 100%)!important;
-}
-#screenCards .card-selection-top{
-  background:linear-gradient(105deg,rgba(30,42,112,.98),rgba(20,27,82,.98))!important;
-  border:1px solid rgba(82,180,255,.48)!important;
-  box-shadow:0 8px 22px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.07)!important;
-}
-#screenCards .player-people-icon{color:#53d7ff!important;filter:drop-shadow(0 0 8px rgba(83,215,255,.2))}
-#screenCards .card-selection-players .player-count{
-  background:linear-gradient(135deg,#22d67a,#0fb96d)!important;
-  border:1px solid rgba(255,255,255,.2);
-  box-shadow:0 5px 17px rgba(34,214,122,.25)!important;
-}
-#screenCards .card-selection-players .player-text{color:#ffd83d!important}
-#screenCards .card-selection-leave{
-  background:linear-gradient(135deg,#ff4c75,#e91f5d)!important;
-  box-shadow:0 7px 18px rgba(233,31,93,.24)!important;
-}
-#screenCards #cdPrizePot{
-  background:linear-gradient(100deg,rgba(58,54,132,.82),rgba(37,50,115,.9))!important;
-  border-color:rgba(255,212,59,.62)!important;
-  color:#ffe04d!important;
-  box-shadow:0 7px 18px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.06)!important;
-}
-#screenCards .pool-grid{
-  background:linear-gradient(180deg,rgba(25,34,93,.9),rgba(12,18,58,.9))!important;
-  border:1px solid rgba(83,165,255,.48);
-  box-shadow:0 13px 30px rgba(0,0,0,.28),inset 0 0 24px rgba(62,107,255,.07);
-  scrollbar-color:#4f72ff transparent;
-}
-#screenCards .pool-grid::-webkit-scrollbar-thumb{background:linear-gradient(#55dfff,#6258ff)!important}
-#screenCards .pool-btn{
-  background:linear-gradient(145deg,#3f62ca,#313d94)!important;
-  color:#fff!important;
-  border:1px solid rgba(112,211,255,.62)!important;
-  border-radius:9px!important;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.13),0 3px 7px rgba(0,0,0,.24)!important;
-  text-shadow:0 1px 4px rgba(0,0,0,.28);
-}
-#screenCards .pool-btn:hover{
-  border-color:#ffe04d!important;
-  filter:brightness(1.12);
-  box-shadow:0 0 12px rgba(56,217,255,.2),inset 0 1px 0 rgba(255,255,255,.16)!important;
-}
-#screenCards .pool-btn.taken{
-  background:linear-gradient(145deg,#6a3157,#4a294e)!important;
-  color:#ffd9e1!important;
-  border-color:rgba(255,91,122,.65)!important;
-}
-#screenCards .pool-btn.mine1,#screenCards .pool-btn.mine2{
-  background:linear-gradient(145deg,#19d27b,#0d9f69)!important;
-  color:#fff!important;
-  border-color:#72ffbf!important;
-  box-shadow:0 0 0 1px rgba(114,255,191,.24),0 0 13px rgba(34,214,122,.28)!important;
-}
-
-/* GAME — carry the same bright scheme without changing gameplay colors/meaning */
-#screenGame{
-  background:
-    radial-gradient(circle at 50% 0,rgba(56,217,255,.12),transparent 30%),
-    linear-gradient(160deg,#0e1240 0%,#11164d 52%,#090d2d 100%)!important;
-}
-#screenGame .stat-box{background:linear-gradient(145deg,#202969,#151b55)!important}
-#screenGame .card-container{background:linear-gradient(145deg,#202969,#12184c)!important}
-#screenGame .tracker-wrap{background:linear-gradient(145deg,#1c2563,#101642)!important}
-#screenGame .claim-bar-wrap{background:#242d72!important}
-#screenGame .claim-bar{background:linear-gradient(90deg,#22d67a,#3ee7b0)!important}
-#screenGame .bingo-btn{background:linear-gradient(135deg,#27348b,#3a2c87)!important;border-color:rgba(83,215,255,.38)!important;color:#d9ddff!important}
-
-/* Result/winner overlays and rule cards */
-.winner-overlay,.disq-overlay{background:rgba(5,8,32,.86)!important}
-.result-card-head,.result-card-title{color:#fff}
-.result-card-body{background:rgba(17,24,72,.72)!important;border-color:rgba(83,165,255,.3)!important}
-.winner-label{color:#ffe04d!important}
-.disq-title{color:#ff6a88!important}
-
-/* Bottom navigation: one consistent bright purple/blue system */
-.bottom-nav{
-  background:linear-gradient(90deg,#111642,#1d2370,#111642)!important;
-  border-top:1px solid rgba(83,215,255,.28)!important;
-  box-shadow:0 -5px 22px rgba(0,0,0,.22);
-}
-.bottom-nav .nav-item{color:#9da5e8!important}
-.bottom-nav .nav-item.active{
-  color:#ffe04d!important;
-  background:linear-gradient(180deg,rgba(78,101,255,.3),rgba(61,48,146,.2))!important;
-}
-.bottom-nav .nav-item.active .nav-svg svg{stroke:#55dcff!important;filter:drop-shadow(0 0 5px rgba(85,220,255,.3))}
-
-/* Responsive card grid remains 10 columns, but fills the wider panel naturally */
-@media(max-width:420px){
-  #screenCards .pool-btn{border-radius:8px!important}
-}
-
-
-/* ───────── ACTIVE GAME PLAY AREA — BRIGHT COMPACT STYLE ─────────
-   Visual-only changes. Bottom navigation and gameplay logic are untouched. */
-#screenGame{
-  padding:10px 10px 12px!important;
-  max-width:520px!important;
-  background:
-    radial-gradient(circle at 50% 0,rgba(56,217,255,.20),transparent 27%),
-    radial-gradient(circle at 8% 34%,rgba(124,92,255,.16),transparent 30%),
-    linear-gradient(160deg,#111952 0%,#121a5c 48%,#080d31 100%)!important;
-}
-#screenGame .game-stats-row{
-  display:grid!important;
-  grid-template-columns:minmax(0,1fr) 104px minmax(0,1fr)!important;
-  align-items:center!important;
-  gap:8px!important;
-  margin:0 0 8px!important;
-  padding:10px 8px 7px!important;
-  background:linear-gradient(145deg,rgba(31,42,113,.98),rgba(15,22,70,.98))!important;
-  border:1px solid rgba(83,180,255,.42)!important;
-  border-radius:18px!important;
-  box-shadow:0 12px 28px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.07)!important;
-}
-#screenGame .stat-box{
-  min-width:0!important;
-  padding:8px 5px!important;
-  background:linear-gradient(145deg,rgba(44,57,139,.92),rgba(27,34,93,.92))!important;
-  border:1px solid rgba(104,186,255,.34)!important;
-  border-radius:13px!important;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.07)!important;
-}
-#screenGame .stat-box .lbl{
-  color:#aeb8ee!important;
-  font-size:8px!important;
-  letter-spacing:.35px!important;
-  margin-bottom:3px!important;
-}
-#screenGame .stat-box .val{
-  color:#ffe04d!important;
-  font-size:14px!important;
-  line-height:1.1!important;
-  text-shadow:0 0 9px rgba(255,224,77,.18)!important;
-}
-#screenGame .game-stats-row>div:nth-child(2){
-  display:flex!important;
-  flex-direction:column!important;
-  align-items:center!important;
-  justify-content:center!important;
-}
-#screenGame .ball-circle{
-  width:82px!important;
-  height:82px!important;
-  background:radial-gradient(circle at 34% 28%,#45edaa 0%,#20d47d 43%,#0fa965 100%)!important;
-  border:2px solid rgba(113,255,205,.72)!important;
-  box-shadow:0 0 0 4px rgba(56,217,255,.07),0 8px 22px rgba(0,0,0,.30),0 0 24px rgba(34,214,122,.20)!important;
-}
-#screenGame .ball-letter{font-size:10px!important;color:#eafff7!important;margin-top:1px!important}
-#screenGame .ball-number{font-size:31px!important;color:#fff!important;text-shadow:0 2px 10px rgba(0,0,0,.18)!important}
-#screenGame .ball-sub{
-  margin-top:4px!important;
-  color:#b9c5ff!important;
-  font-size:10px!important;
-  font-weight:700!important;
-}
-#screenGame .claim-bar-wrap{
-  height:5px!important;
-  margin:0 4px 8px!important;
-  background:#28347e!important;
-  border-radius:99px!important;
-  box-shadow:inset 0 1px 2px rgba(0,0,0,.25)!important;
-}
-#screenGame .claim-bar{
-  background:linear-gradient(90deg,#20d67b,#38e4b5)!important;
-  border-radius:99px!important;
-}
-#screenGame #cardsWrap{
-  margin:0!important;
-}
-#screenGame .dual-cards-wrap{
-  grid-template-columns:repeat(2,minmax(0,1fr))!important;
-  gap:7px!important;
-  margin-bottom:8px!important;
-}
-#screenGame .card-container{
-  padding:7px!important;
-  margin-bottom:8px!important;
-  border-radius:16px!important;
-  background:linear-gradient(145deg,#252f83,#151b58)!important;
-  border:1px solid rgba(91,165,255,.38)!important;
-  box-shadow:0 10px 22px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.06)!important;
-}
-#screenGame .card-id-tag{
-  color:#bfc8ff!important;
-  font-size:9px!important;
-  font-weight:700!important;
-  margin-bottom:5px!important;
-  padding-left:3px!important;
-}
-#screenGame #cardLabel2{color:#ffd43b!important}
-#screenGame .bingo-header{
-  margin-bottom:5px!important;
-  border-radius:7px!important;
-}
-#screenGame .bingo-col-head{
-  height:27px!important;
-  font-size:12px!important;
-}
-#screenGame .bingo-body{
-  gap:3px!important;
-}
-#screenGame .bingo-cell{
-  height:39px!important;
-  min-width:0!important;
-  border-radius:6px!important;
-  border:1px solid rgba(255,255,255,.60)!important;
-  background:#f8f9ff!important;
-  color:#14204c!important;
-  font-size:12px!important;
-  font-weight:800!important;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.75)!important;
-}
-/* Vivid orange is the ONLY called/automatically-marked color. */
-#screenGame .bingo-cell.marked{
-  background:#ff650f!important;
-  color:#fff!important;
-  border-color:#ff8b45!important;
-  box-shadow:0 0 10px rgba(255,101,15,.25),inset 0 1px 0 rgba(255,255,255,.22)!important;
-}
-#screenGame .bingo-cell.called-not-marked{
-  background:#f8f9ff!important;
-  color:#14204c!important;
-}
-/* FREE remains visually distinct but is not used to indicate a called number. */
-#screenGame .bingo-cell.free{
-  background:linear-gradient(145deg,#5268df,#4053bc)!important;
-  color:#fff!important;
-  border-color:rgba(112,211,255,.68)!important;
-}
-/* Compact called-number tracker. Every called number uses the same vivid orange. */
-#screenGame .tracker-wrap{
-  padding:7px!important;
-  margin:0 0 2px!important;
-  border-radius:13px!important;
-  background:linear-gradient(145deg,#1c2669,#101642)!important;
-  border:1px solid rgba(83,165,255,.34)!important;
-}
-#screenGame .tracker-grid{
-  grid-template-columns:repeat(15,minmax(0,1fr))!important;
-  gap:2px!important;
-}
-#screenGame .t-ball{
-  padding:3px 0!important;
-  min-width:0!important;
-  border-radius:4px!important;
-  background:#252f72!important;
-  color:#7783c3!important;
-  font-size:8px!important;
-  line-height:1.05!important;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.035)!important;
-}
-#screenGame .t-ball.cb,
-#screenGame .t-ball.ci,
-#screenGame .t-ball.cn,
-#screenGame .t-ball.cg,
-#screenGame .t-ball.co{
-  background:#ff650f!important;
-  color:#fff!important;
-  box-shadow:0 0 7px rgba(255,101,15,.22),inset 0 1px 0 rgba(255,255,255,.20)!important;
-}
-#screenGame .t-ball.latest{
-  outline:2px solid #ff650f!important;
-  box-shadow:0 0 10px rgba(255,101,15,.34)!important;
-  transform:scale(1.08)!important;
-  z-index:2;
-}
-#screenGame #bingoBtn{display:none!important}
-
-@media(max-width:420px){
-  #screenGame{padding-left:7px!important;padding-right:7px!important}
-  #screenGame .game-stats-row{grid-template-columns:minmax(0,1fr) 92px minmax(0,1fr)!important;padding:8px 6px 6px!important;gap:6px!important}
-  #screenGame .ball-circle{width:74px!important;height:74px!important}
-  #screenGame .ball-number{font-size:28px!important}
-  #screenGame .bingo-cell{height:37px!important;font-size:11px!important}
-  #screenGame .bingo-col-head{height:25px!important;font-size:11px!important}
-  #screenGame .tracker-wrap{padding:6px!important}
-}
-
-@media(max-width:360px){
-  #screenGame .game-stats-row{grid-template-columns:minmax(0,1fr) 84px minmax(0,1fr)!important}
-  #screenGame .stat-box .lbl{font-size:7px!important}
-  #screenGame .stat-box .val{font-size:12px!important}
-  #screenGame .ball-circle{width:68px!important;height:68px!important}
-  #screenGame .ball-number{font-size:25px!important}
-  #screenGame .bingo-cell{height:34px!important;font-size:10px!important}
-  #screenGame .tracker-grid{gap:1.5px!important}
-  #screenGame .t-ball{font-size:7px!important;padding:2.5px 0!important}
-}
-
-
-/* ───────── SPECTATOR VIEW — same bright Mela Bingo system ───────── */
-#screenGame.spectator-mode{padding:8px 7px 12px!important;}
-#screenGame.spectator-mode>#spectatorView{display:block!important;}
-#screenGame.spectator-mode>.game-stats-row,
-#screenGame.spectator-mode>.claim-bar-wrap,
-#screenGame.spectator-mode>#cardsWrap,
-#screenGame.spectator-mode>#bingoBtn,
-#screenGame.spectator-mode>.tracker-wrap{display:none!important;}
-#spectatorView{display:none;}
-.spectator-stats-row{display:grid;grid-template-columns:minmax(0,1fr) 92px minmax(0,1fr);align-items:center;gap:7px;padding:8px 7px 6px;border-radius:18px;background:linear-gradient(145deg,#202b78,#10164c);border:1px solid rgba(83,180,255,.5);box-shadow:0 10px 24px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.08);}
-.spectator-stat-box{min-width:0;min-height:57px;padding:7px 5px;display:flex;align-items:center;justify-content:center;gap:6px;background:linear-gradient(145deg,#29378e,#1b245f);border:1px solid rgba(104,186,255,.35);border-radius:13px;}
-.spectator-stat-right{flex-direction:row-reverse;}
-.spectator-stat-icon{font-size:18px;filter:drop-shadow(0 2px 5px rgba(0,0,0,.2));}
-.spectator-stat-label{font-size:7.5px;color:#b8c2f5;text-align:center;margin-bottom:2px;white-space:nowrap;}
-.spectator-stat-value{font-family:'Orbitron',sans-serif;color:#ffe04d;font-size:14px;font-weight:900;text-align:center;text-shadow:0 0 9px rgba(255,224,77,.16);white-space:nowrap;}
-.spectator-ball-wrap{text-align:center;display:flex;flex-direction:column;align-items:center;}
-.spectator-ball-circle{width:78px;height:78px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at 34% 27%,#4af0ae 0%,#20d57e 43%,#0eaa67 100%);border:2px solid rgba(113,255,205,.78);box-shadow:0 0 0 4px rgba(56,217,255,.07),0 7px 20px rgba(0,0,0,.3),0 0 22px rgba(34,214,122,.22);}
-.spectator-ball-letter{font-family:'Orbitron',sans-serif;font-size:9px;font-weight:900;color:#ecfff8;line-height:1;}
-.spectator-ball-number{font-family:'Orbitron',sans-serif;font-size:30px;font-weight:900;color:#fff;line-height:1.05;}
-.spectator-ball-sub{font-size:10px;color:#b9c5ff;font-weight:800;margin-top:3px;}
-.spectator-progress{height:5px;margin:8px 5px 9px;background:#28347e;border-radius:99px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.28);}
-.spectator-progress>div{height:100%;width:0;background:linear-gradient(90deg,#22d67a,#3ee7b0);border-radius:99px;transition:width .25s ease;}
-.spectator-bingo-header{display:grid;grid-template-columns:repeat(5,1fr);height:32px;overflow:hidden;border-radius:8px;margin:0 4px 8px;border:1px solid rgba(112,211,255,.32);box-shadow:0 5px 14px rgba(0,0,0,.2);}
-.spectator-bingo-header>div{display:flex;align-items:center;justify-content:center;font-family:'Orbitron',sans-serif;font-weight:900;font-size:13px;color:#fff;}
-.spectator-wait-card{min-height:260px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:22px 16px;border-radius:17px;background:linear-gradient(145deg,#252f83,#151b58);border:1px solid rgba(91,165,255,.48);box-shadow:0 12px 28px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.06);}
-.spectator-eyes{font-size:43px;line-height:1;margin-bottom:18px;filter:drop-shadow(0 5px 8px rgba(0,0,0,.22));}
-.spectator-wait-title{font-family:'Orbitron',sans-serif;font-size:13px;font-weight:900;color:#fff;text-shadow:0 0 10px rgba(83,215,255,.16);margin-bottom:12px;}
-.spectator-wait-text{font-size:12px;font-weight:700;color:#d9ddff;line-height:1.8;}
-.spectator-wait-sub{font-size:10px;color:#9ea9e2;margin-top:6px;}
-.spectator-leave-btn{margin-top:20px;min-width:175px;border:1px solid rgba(255,255,255,.2);border-radius:11px;padding:10px 18px;background:linear-gradient(135deg,#ff4d78,#ed1f5d);color:#fff;font-weight:900;font-size:12px;box-shadow:0 8px 18px rgba(237,31,93,.28);cursor:pointer;}
-.spectator-leave-btn:active{transform:scale(.97);}
-.spectator-tracker-wrap{margin-top:9px;padding:8px;border-radius:14px;background:linear-gradient(145deg,#1c2669,#101642);border:1px solid rgba(83,165,255,.36);box-shadow:0 10px 22px rgba(0,0,0,.24);}
-.spectator-tracker-title{display:flex;align-items:center;gap:6px;padding:0 2px 7px;color:#dfe5ff;font-size:10px;}
-.spectator-tracker-title strong{font-size:10px;}
-.spectator-live-dot{width:6px;height:6px;border-radius:50%;background:#22d67a;box-shadow:0 0 8px rgba(34,214,122,.7);margin-left:auto;}
-.spectator-live-text{font-size:8px;color:#6feab4;}
-.spectator-tracker-grid{grid-template-columns:repeat(15,minmax(0,1fr))!important;gap:2px!important;}
-.spectator-tracker-grid .t-ball{padding:3px 0!important;border-radius:4px!important;font-size:8px!important;background:#252f72!important;color:#7783c3!important;}
-.spectator-tracker-grid .t-ball.cb,
-.spectator-tracker-grid .t-ball.ci,
-.spectator-tracker-grid .t-ball.cn,
-.spectator-tracker-grid .t-ball.cg,
-.spectator-tracker-grid .t-ball.co{background:#ff650f!important;color:#fff!important;box-shadow:0 0 7px rgba(255,101,15,.22)!important;}
-.spectator-tracker-grid .t-ball.latest{outline:2px solid #ff650f!important;transform:scale(1.07)!important;}
-
-/* Selection-state meaning: MY cards are vivid orange, other players' cards are green. */
-#screenCards .pool-btn.taken{background:linear-gradient(145deg,#19b86d,#118b59)!important;color:#fff!important;border-color:#68f5ae!important;box-shadow:0 0 0 1px rgba(104,245,174,.18),0 0 10px rgba(34,197,94,.18)!important;opacity:1!important;}
-#screenCards .pool-btn.mine1,#screenCards .pool-btn.mine2{background:linear-gradient(145deg,#ff7a18,#f4510b)!important;color:#fff!important;border-color:#ffb05c!important;box-shadow:0 0 0 1px rgba(255,176,92,.3),0 0 13px rgba(255,101,15,.28)!important;}
-
-/* My active cards stay vivid orange across the playing area. */
-#screenGame .bingo-cell.marked{background:#ff650f!important;color:#fff!important;border-color:#ff9b58!important;}
-@media(max-width:420px){
-  .spectator-stats-row{grid-template-columns:minmax(0,1fr) 86px minmax(0,1fr);gap:5px;padding:7px 5px 5px;}
-  .spectator-stat-box{min-height:54px;padding:6px 3px;}
-  .spectator-stat-icon{font-size:15px;}
-  .spectator-stat-value{font-size:12px;}
-  .spectator-ball-circle{width:72px;height:72px;}
-  .spectator-ball-number{font-size:27px;}
-  .spectator-wait-card{min-height:245px;}
-}
-
 </style>
 </head>
 <body>
@@ -1062,47 +588,6 @@ body{
 </div>
 
 <div id="screenGame" class="screen">
-  <div id="spectatorView" aria-live="polite">
-    <div class="spectator-stats-row">
-      <div class="spectator-stat-box">
-        <div class="spectator-stat-icon">🏆</div>
-        <div>
-          <div class="spectator-stat-label">የውርርድ መጠን</div>
-          <div id="spectatorStakeVal" class="spectator-stat-value">0 ETB</div>
-        </div>
-      </div>
-      <div class="spectator-ball-wrap">
-        <div id="spectatorBallCircle" class="spectator-ball-circle">
-          <span id="spectatorBallLetter" class="spectator-ball-letter">-</span>
-          <span id="spectatorBallNumber" class="spectator-ball-number">--</span>
-        </div>
-        <div id="spectatorBallSub" class="spectator-ball-sub">0/75</div>
-      </div>
-      <div class="spectator-stat-box spectator-stat-right">
-        <div class="spectator-stat-icon">👥</div>
-        <div>
-          <div class="spectator-stat-label">ተጫዋቾች</div>
-          <div id="spectatorPlayersVal" class="spectator-stat-value">0</div>
-        </div>
-      </div>
-    </div>
-    <div class="spectator-progress"><div id="spectatorProgressBar"></div></div>
-    <div class="spectator-bingo-header">
-      <div class="bh-b">B</div><div class="bh-i">I</div><div class="bh-n">N</div><div class="bh-g">G</div><div class="bh-o">O</div>
-    </div>
-    <div class="spectator-wait-card">
-      <div class="spectator-eyes" aria-hidden="true">👀</div>
-      <div class="spectator-wait-title">የሚቀጥለውን ጨዋታ ይጠብቁ</div>
-      <div class="spectator-wait-text">እባክዎ የሚቀጥለው ጨዋታ እስኪጀምር ይጠብቁ</div>
-      <div class="spectator-wait-sub">ጨዋታው በአሁኑ ጊዜ በመካሄድ ላይ ነው።</div>
-      <button class="spectator-leave-btn" onclick="leaveRoom()">↪ ጨዋታውን ይውጡ</button>
-    </div>
-    <div class="spectator-tracker-wrap">
-      <div class="spectator-tracker-title"><span>⏱</span><strong>የተጠሩ ቁጥሮች</strong><span class="spectator-live-dot"></span><span class="spectator-live-text">በራስ-ሰር</span></div>
-      <div id="spectatorTrackerGrid" class="tracker-grid spectator-tracker-grid"></div>
-    </div>
-  </div>
-
   <div class="game-stats-row">
     <div class="stat-box"><div class="lbl">የሽልማት ገንዘብ</div><div id="potVal" class="val">0</div></div>
     <div>
@@ -1566,7 +1051,7 @@ const API_BASE = 'https://api2.cockpitaviations.com';
   const ADMIN_PHONE_CLIENT = '251965666656';
   const ADMIN_PHONE_CLIENT2 = '251912649846';
 let ws, myPlayerId, myName='', myRoomId=localStorage.getItem('roomId')||null, myStakeId=null;
-let activeGamePhase=localStorage.getItem('activeGamePhase')||'none'; // none|countdown|playing|spectating
+let activeGamePhase=localStorage.getItem('activeGamePhase')||'none'; // none|countdown|playing
 let activeCountdownLeft=Number(localStorage.getItem('activeCountdownLeft')||0);
 let restoringActiveGame=false;
 let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0;
@@ -1748,89 +1233,23 @@ function showSavedCountdown(){
   if(hiddenCountdown) hiddenCountdown.innerText=sec>0?`ጨዋታው በ ${sec} ሰከንድ ውስጥ ይጀምራል`:'';
 }
 
-
-function buildSpectatorTracker(){
-  const grid=document.getElementById('spectatorTrackerGrid');
-  if(!grid) return;
-  grid.innerHTML='';
-  for(let i=1;i<=75;i++){
-    const d=document.createElement('div');
-    d.className='t-ball'; d.id='stb'+i; d.innerText=i;
-    grid.appendChild(d);
-  }
-}
-function updateSpectatorTracker(numbers){
-  const set=new Set((numbers||[]).map(Number));
-  for(let i=1;i<=75;i++){
-    const el=document.getElementById('stb'+i);
-    if(el) el.className='t-ball'+(set.has(i)?' '+colClass(i):'');
-  }
-  const last=(numbers||[]).length?(numbers||[])[(numbers||[]).length-1]:null;
-  if(last){const el=document.getElementById('stb'+Number(last));if(el)el.classList.add('latest');}
-}
-function setSpectatorMode(on){
-  const screen=document.getElementById('screenGame');
-  if(!screen) return;
-  screen.classList.toggle('spectator-mode',!!on);
-  if(on){
-    buildSpectatorTracker();
-    updateSpectatorTracker(Array.from(calledNumbersSet||[]));
-  }
-}
-function renderSpectatorView(msg={}){
-  activeGamePhase='spectating';
-  activeCountdownLeft=0;
-  saveActiveGameState('spectating');
-  setSpectatorMode(true);
-  const stakeVal=document.getElementById('spectatorStakeVal');
-  const playersVal=document.getElementById('spectatorPlayersVal');
-  const ballCircle=document.getElementById('spectatorBallCircle');
-  const ballLetterEl=document.getElementById('spectatorBallLetter');
-  const ballNumberEl=document.getElementById('spectatorBallNumber');
-  const ballSubEl=document.getElementById('spectatorBallSub');
-  const progress=document.getElementById('spectatorProgressBar');
-  const nums=(msg.calledNumbers||Array.from(calledNumbersSet||[])).map(Number);
-  calledNumbersSet=new Set(nums);
-  const stake=Number(msg.stakeAmount||0);
-  if(stakeVal) stakeVal.innerText=stake?`${stake} ETB`:(myStakeId||'').replace(/^st/,'')+' ETB';
-  if(playersVal) playersVal.innerText=Number(msg.playerCount||0);
-  if(nums.length){
-    const last=nums[nums.length-1], cfg=numConfig(last);
-    if(ballCircle) ballCircle.style.background=cfg.color;
-    if(ballLetterEl) ballLetterEl.innerText=cfg.letter;
-    if(ballNumberEl) ballNumberEl.innerText=last;
-    if(ballSubEl) ballSubEl.innerText=`${nums.length}/75`;
-  }else{
-    if(ballCircle) ballCircle.style.background='radial-gradient(circle at 34% 27%,#4af0ae 0%,#20d57e 43%,#0eaa67 100%)';
-    if(ballLetterEl) ballLetterEl.innerText='-';
-    if(ballNumberEl) ballNumberEl.innerText='--';
-    if(ballSubEl) ballSubEl.innerText='0/75';
-  }
-  if(progress) progress.style.width=`${Math.min(100,(nums.length/75)*100)}%`;
-  updateSpectatorTracker(nums);
-}
-
 function goToGame(){
   restoreActiveGameState();
   const roomId=myRoomId||localStorage.getItem('roomId');
   if(!myStakeId) myStakeId=localStorage.getItem('stakeId');
   if(!roomId){ showToast('አሁን ንቁ ጨዋታ የለም።','warn'); return; }
   myRoomId=roomId;
-  if(activeGamePhase==='spectating'){
+  // A selected card is NOT the same thing as a started game. During countdown
+  // always return to card selection; only the server's playing/reconnected state
+  // may open the real game board.
+  if(activeGamePhase==='playing'){
     navGo('screenGame','navGame');
-    renderSpectatorView({calledNumbers:Array.from(calledNumbersSet||[])});
-  }else if(activeGamePhase==='playing'){
-    navGo('screenGame','navGame');
-    setSpectatorMode(false);
-    if(myCardId && myCardNumbers.length) renderBothCards();
-    refreshCardCells();
   }else{
     navGo('screenCards','navGame');
     if(activeGamePhase==='countdown') showSavedCountdown();
   }
   if(telegramId) wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
 }
-
 function goToWallet(){navGo('screenWallet','navWallet');}
 async function goToHistory(){
   navGo('screenHistory','navHistory');
@@ -2037,7 +1456,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
   if(myRoomId && telegramId){
     restoringActiveGame=true;
     if(activeGamePhase==='countdown') navGo('screenCards','navGame');
-    else if(activeGamePhase==='playing' || activeGamePhase==='spectating') navGo('screenGame','navGame');
+    else if(activeGamePhase==='playing') navGo('screenGame','navGame');
     wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
     setTimeout(()=>{
       if(restoringActiveGame && document.getElementById('screenLoading').classList.contains('active')){
@@ -2063,7 +1482,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       if(msg.status==='countdown'){
         activeGamePhase='countdown'; activeCountdownLeft=Number(msg.countdown||msg.countdownLeft||activeCountdownLeft||0);
       }else if(msg.status==='playing'){
-        activeGamePhase=(myCardId||myCardId2)?'playing':'spectating';
+        activeGamePhase='playing';
       }else if(!myCardId){
         activeGamePhase='none'; activeCountdownLeft=0;
       }
@@ -2080,13 +1499,8 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
       restoringActiveGame=false;
       if(msg.status==='playing'){
-        if(myCardId||myCardId2){
-          activeGamePhase='playing'; saveActiveGameState('playing');
-          navGo('screenGame','navGame'); setSpectatorMode(false);
-        }else{
-          renderSpectatorView({playerCount:msg.playerCount||0,stakeAmount:msg.stakeAmount||0});
-          navGo('screenGame','navGame');
-        }
+        activeGamePhase='playing'; saveActiveGameState('playing');
+        // Late join — spectating message follows
       } else {
         navGo('screenCards','navCards');
         if(msg.status==='countdown') showSavedCountdown();
@@ -2117,7 +1531,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
         myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
         updateSlotUI();
       }
-      if(activeGamePhase!=='playing' && activeGamePhase!=='spectating') { activeGamePhase='countdown'; saveActiveGameState('countdown'); }
+      if(activeGamePhase!=='playing') saveActiveGameState(activeGamePhase==='countdown'?'countdown':'countdown');
       break;
 
     case 'countdown': {
@@ -2142,7 +1556,6 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
       myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
       activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
-      setSpectatorMode(false);
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
       document.getElementById('playerCountVal').innerText=msg.playerCount;
       resetAutomaticGameState();
@@ -2154,16 +1567,36 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       myCardId=null; myCardNumbers=[]; myCardId2=null; myCardNumbers2=[];
       resetAutomaticGameState();
       updateActivePlayers(msg.players||msg.activePlayers||[]);
-      document.getElementById('potVal').innerText=`${msg.pot||0} ETB`;
-      document.getElementById('playerCountVal').innerText=msg.playerCount||0;
-      claimWindowOpen=false;
-      renderSpectatorView({playerCount:msg.playerCount||0,calledNumbers:msg.calledNumbers||[],stakeAmount:msg.stakeAmount||0});
+      document.getElementById('potVal').innerText=`${msg.pot} ETB`;
+      document.getElementById('playerCountVal').innerText=msg.playerCount;
+      document.getElementById('cardLabel').innerText='👀 በመመልከት ላይ';
+      document.getElementById('cardContainer2').style.display='none';
+      document.getElementById('cardsWrap').classList.remove('dual-cards-wrap');
+      document.getElementById('cardBody').innerHTML=`
+        <div style="grid-column:span 5;text-align:center;padding:30px 10px;color:var(--gray);font-size:13px;line-height:2">
+          <div style="font-size:36px;margin-bottom:8px">👀</div>
+          <div style="font-weight:700;color:#fff;margin-bottom:4px">የተመልካች ሁኔታ</div>
+          ካርድ አልመረጡም።<br>ጨዋታውን በቀጥታ ከታች ይመልከቱ።
+        </div>`;
+      document.getElementById('bingoBtn').style.display='none';
+      resetTrackerBoard(); claimWindowOpen=false;
+      if(msg.calledNumbers&&msg.calledNumbers.length){
+        msg.calledNumbers.forEach(n=>{const el=document.getElementById('tb'+n);if(el)el.className='t-ball '+colClass(n);});
+        prevLastCalled=msg.calledNumbers[msg.calledNumbers.length-1];
+        const tb=document.getElementById('tb'+prevLastCalled);
+        if(tb) tb.classList.add('latest');
+        const cfg=numConfig(prevLastCalled);
+        document.getElementById('ballCircle').style.background=cfg.color;
+        document.getElementById('ballLetter').innerText=cfg.letter;
+        document.getElementById('ballNumber').innerText=prevLastCalled;
+        document.getElementById('ballSub').innerText=`${msg.calledNumbers.length}/75`;
+      }
       navGo('screenGame','navGame');
       break;
+
     case 'gameStart':
       activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
       restoringActiveGame=false;
-      setSpectatorMode(false);
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
       document.getElementById('playerCountVal').innerText=Array.isArray(msg.players)?msg.players.length:(msg.playerCount||0);
       resetAutomaticGameState();
@@ -2172,20 +1605,14 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       navGo('screenGame','navGame'); break;
 
     case 'reconnected':
-      myRoomId=msg.roomId; myCardId=msg.cardId||null; myCardNumbers=msg.cardNumbers||[];
+      myRoomId=msg.roomId; myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
       myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
       if(msg.stakeId) myStakeId=msg.stakeId;
+      activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
       restoringActiveGame=false;
       resetAutomaticGameState();
       calledNumbersSet=new Set((msg.calledNumbers||[]).map(Number));
       autoClaimSent=false;
-      if(!myCardId&&!myCardId2){
-        renderSpectatorView({playerCount:msg.playerCount||0,calledNumbers:msg.calledNumbers||[],stakeAmount:msg.stakeAmount||0});
-        navGo('screenGame','navGame');
-        break;
-      }
-      activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
-      setSpectatorMode(false);
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
       document.getElementById('playerCountVal').innerText=msg.playerCount||0;
       updateActivePlayers(msg.players||msg.activePlayers||[]);
@@ -2542,7 +1969,6 @@ async function loadPaymentInfo(){
 function onNumberCalled(msg){
   const n=Number(msg.number), cfg=numConfig(n);
   calledNumbersSet.add(n);
-  if(activeGamePhase==='spectating') updateSpectatorTracker(Array.from(calledNumbersSet));
 
   const circle=document.getElementById('ballCircle');
   circle.style.background=cfg.color; circle.style.transform='scale(1.12)';
@@ -2920,14 +2346,7 @@ function showToast(msg,type=''){
   toastT=setTimeout(()=>t.style.opacity='0',2800);
 }
 
-function leaveRoom(){
-  wsSend({type:'leaveRoom'});
-  myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardNumbers=[]; myCardNumbers2=[];
-  clearActiveGameState();
-  localStorage.removeItem('roomId'); localStorage.removeItem('stakeId');
-  setSpectatorMode(false);
-  navGo('screenLobby','navHome');
-}
+function leaveRoom(){wsSend({type:'leaveRoom'});myRoomId=null;myStakeId=null;myCardId=null;myCardId2=null;myCardNumbers=[];myCardNumbers2=[];localStorage.removeItem('roomId');localStorage.removeItem('stakeId');localStorage.removeItem('activeGameState');}
 
 // ─── AUDIO SYSTEM ────────────────────────────────────────────
 let soundEnabled = true;
@@ -3254,7 +2673,6 @@ function renderAnalytics(d, from, to){
 
 // ─── INIT ────────────────────────────────────────────────────
 buildTracker();
-  buildSpectatorTracker();
 restoreCachedBalance();
 connect();
 loadPaymentInfo();

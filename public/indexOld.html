@@ -932,6 +932,68 @@ body{
   #screenGame .t-ball{font-size:7px!important;padding:2.5px 0!important}
 }
 
+
+/* ───────── SPECTATOR VIEW — same bright Mela Bingo system ───────── */
+#screenGame.spectator-mode{padding:8px 7px 12px!important;}
+#screenGame.spectator-mode>#spectatorView{display:block!important;}
+#screenGame.spectator-mode>.game-stats-row,
+#screenGame.spectator-mode>.claim-bar-wrap,
+#screenGame.spectator-mode>#cardsWrap,
+#screenGame.spectator-mode>#bingoBtn,
+#screenGame.spectator-mode>.tracker-wrap{display:none!important;}
+#spectatorView{display:none;}
+.spectator-stats-row{display:grid;grid-template-columns:minmax(0,1fr) 92px minmax(0,1fr);align-items:center;gap:7px;padding:8px 7px 6px;border-radius:18px;background:linear-gradient(145deg,#202b78,#10164c);border:1px solid rgba(83,180,255,.5);box-shadow:0 10px 24px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.08);}
+.spectator-stat-box{min-width:0;min-height:57px;padding:7px 5px;display:flex;align-items:center;justify-content:center;gap:6px;background:linear-gradient(145deg,#29378e,#1b245f);border:1px solid rgba(104,186,255,.35);border-radius:13px;}
+.spectator-stat-right{flex-direction:row-reverse;}
+.spectator-stat-icon{font-size:18px;filter:drop-shadow(0 2px 5px rgba(0,0,0,.2));}
+.spectator-stat-label{font-size:7.5px;color:#b8c2f5;text-align:center;margin-bottom:2px;white-space:nowrap;}
+.spectator-stat-value{font-family:'Orbitron',sans-serif;color:#ffe04d;font-size:14px;font-weight:900;text-align:center;text-shadow:0 0 9px rgba(255,224,77,.16);white-space:nowrap;}
+.spectator-ball-wrap{text-align:center;display:flex;flex-direction:column;align-items:center;}
+.spectator-ball-circle{width:78px;height:78px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at 34% 27%,#4af0ae 0%,#20d57e 43%,#0eaa67 100%);border:2px solid rgba(113,255,205,.78);box-shadow:0 0 0 4px rgba(56,217,255,.07),0 7px 20px rgba(0,0,0,.3),0 0 22px rgba(34,214,122,.22);}
+.spectator-ball-letter{font-family:'Orbitron',sans-serif;font-size:9px;font-weight:900;color:#ecfff8;line-height:1;}
+.spectator-ball-number{font-family:'Orbitron',sans-serif;font-size:30px;font-weight:900;color:#fff;line-height:1.05;}
+.spectator-ball-sub{font-size:10px;color:#b9c5ff;font-weight:800;margin-top:3px;}
+.spectator-progress{height:5px;margin:8px 5px 9px;background:#28347e;border-radius:99px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.28);}
+.spectator-progress>div{height:100%;width:0;background:linear-gradient(90deg,#22d67a,#3ee7b0);border-radius:99px;transition:width .25s ease;}
+.spectator-bingo-header{display:grid;grid-template-columns:repeat(5,1fr);height:32px;overflow:hidden;border-radius:8px;margin:0 4px 8px;border:1px solid rgba(112,211,255,.32);box-shadow:0 5px 14px rgba(0,0,0,.2);}
+.spectator-bingo-header>div{display:flex;align-items:center;justify-content:center;font-family:'Orbitron',sans-serif;font-weight:900;font-size:13px;color:#fff;}
+.spectator-wait-card{min-height:260px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:22px 16px;border-radius:17px;background:linear-gradient(145deg,#252f83,#151b58);border:1px solid rgba(91,165,255,.48);box-shadow:0 12px 28px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.06);}
+.spectator-eyes{font-size:43px;line-height:1;margin-bottom:18px;filter:drop-shadow(0 5px 8px rgba(0,0,0,.22));}
+.spectator-wait-title{font-family:'Orbitron',sans-serif;font-size:13px;font-weight:900;color:#fff;text-shadow:0 0 10px rgba(83,215,255,.16);margin-bottom:12px;}
+.spectator-wait-text{font-size:12px;font-weight:700;color:#d9ddff;line-height:1.8;}
+.spectator-wait-sub{font-size:10px;color:#9ea9e2;margin-top:6px;}
+.spectator-leave-btn{margin-top:20px;min-width:175px;border:1px solid rgba(255,255,255,.2);border-radius:11px;padding:10px 18px;background:linear-gradient(135deg,#ff4d78,#ed1f5d);color:#fff;font-weight:900;font-size:12px;box-shadow:0 8px 18px rgba(237,31,93,.28);cursor:pointer;}
+.spectator-leave-btn:active{transform:scale(.97);}
+.spectator-tracker-wrap{margin-top:9px;padding:8px;border-radius:14px;background:linear-gradient(145deg,#1c2669,#101642);border:1px solid rgba(83,165,255,.36);box-shadow:0 10px 22px rgba(0,0,0,.24);}
+.spectator-tracker-title{display:flex;align-items:center;gap:6px;padding:0 2px 7px;color:#dfe5ff;font-size:10px;}
+.spectator-tracker-title strong{font-size:10px;}
+.spectator-live-dot{width:6px;height:6px;border-radius:50%;background:#22d67a;box-shadow:0 0 8px rgba(34,214,122,.7);margin-left:auto;}
+.spectator-live-text{font-size:8px;color:#6feab4;}
+.spectator-tracker-grid{grid-template-columns:repeat(15,minmax(0,1fr))!important;gap:2px!important;}
+.spectator-tracker-grid .t-ball{padding:3px 0!important;border-radius:4px!important;font-size:8px!important;background:#252f72!important;color:#7783c3!important;}
+.spectator-tracker-grid .t-ball.cb,
+.spectator-tracker-grid .t-ball.ci,
+.spectator-tracker-grid .t-ball.cn,
+.spectator-tracker-grid .t-ball.cg,
+.spectator-tracker-grid .t-ball.co{background:#ff650f!important;color:#fff!important;box-shadow:0 0 7px rgba(255,101,15,.22)!important;}
+.spectator-tracker-grid .t-ball.latest{outline:2px solid #ff650f!important;transform:scale(1.07)!important;}
+
+/* Selection-state meaning: MY cards are vivid orange, other players' cards are green. */
+#screenCards .pool-btn.taken{background:linear-gradient(145deg,#19b86d,#118b59)!important;color:#fff!important;border-color:#68f5ae!important;box-shadow:0 0 0 1px rgba(104,245,174,.18),0 0 10px rgba(34,197,94,.18)!important;opacity:1!important;}
+#screenCards .pool-btn.mine1,#screenCards .pool-btn.mine2{background:linear-gradient(145deg,#ff7a18,#f4510b)!important;color:#fff!important;border-color:#ffb05c!important;box-shadow:0 0 0 1px rgba(255,176,92,.3),0 0 13px rgba(255,101,15,.28)!important;}
+
+/* My active cards stay vivid orange across the playing area. */
+#screenGame .bingo-cell.marked{background:#ff650f!important;color:#fff!important;border-color:#ff9b58!important;}
+@media(max-width:420px){
+  .spectator-stats-row{grid-template-columns:minmax(0,1fr) 86px minmax(0,1fr);gap:5px;padding:7px 5px 5px;}
+  .spectator-stat-box{min-height:54px;padding:6px 3px;}
+  .spectator-stat-icon{font-size:15px;}
+  .spectator-stat-value{font-size:12px;}
+  .spectator-ball-circle{width:72px;height:72px;}
+  .spectator-ball-number{font-size:27px;}
+  .spectator-wait-card{min-height:245px;}
+}
+
 </style>
 </head>
 <body>
@@ -1000,6 +1062,47 @@ body{
 </div>
 
 <div id="screenGame" class="screen">
+  <div id="spectatorView" aria-live="polite">
+    <div class="spectator-stats-row">
+      <div class="spectator-stat-box">
+        <div class="spectator-stat-icon">🏆</div>
+        <div>
+          <div class="spectator-stat-label">የውርርድ መጠን</div>
+          <div id="spectatorStakeVal" class="spectator-stat-value">0 ETB</div>
+        </div>
+      </div>
+      <div class="spectator-ball-wrap">
+        <div id="spectatorBallCircle" class="spectator-ball-circle">
+          <span id="spectatorBallLetter" class="spectator-ball-letter">-</span>
+          <span id="spectatorBallNumber" class="spectator-ball-number">--</span>
+        </div>
+        <div id="spectatorBallSub" class="spectator-ball-sub">0/75</div>
+      </div>
+      <div class="spectator-stat-box spectator-stat-right">
+        <div class="spectator-stat-icon">👥</div>
+        <div>
+          <div class="spectator-stat-label">ተጫዋቾች</div>
+          <div id="spectatorPlayersVal" class="spectator-stat-value">0</div>
+        </div>
+      </div>
+    </div>
+    <div class="spectator-progress"><div id="spectatorProgressBar"></div></div>
+    <div class="spectator-bingo-header">
+      <div class="bh-b">B</div><div class="bh-i">I</div><div class="bh-n">N</div><div class="bh-g">G</div><div class="bh-o">O</div>
+    </div>
+    <div class="spectator-wait-card">
+      <div class="spectator-eyes" aria-hidden="true">👀</div>
+      <div class="spectator-wait-title">የሚቀጥለውን ጨዋታ ይጠብቁ</div>
+      <div class="spectator-wait-text">እባክዎ የሚቀጥለው ጨዋታ እስኪጀምር ይጠብቁ</div>
+      <div class="spectator-wait-sub">ጨዋታው በአሁኑ ጊዜ በመካሄድ ላይ ነው።</div>
+      <button class="spectator-leave-btn" onclick="leaveRoom()">↪ ጨዋታውን ይውጡ</button>
+    </div>
+    <div class="spectator-tracker-wrap">
+      <div class="spectator-tracker-title"><span>⏱</span><strong>የተጠሩ ቁጥሮች</strong><span class="spectator-live-dot"></span><span class="spectator-live-text">በራስ-ሰር</span></div>
+      <div id="spectatorTrackerGrid" class="tracker-grid spectator-tracker-grid"></div>
+    </div>
+  </div>
+
   <div class="game-stats-row">
     <div class="stat-box"><div class="lbl">የሽልማት ገንዘብ</div><div id="potVal" class="val">0</div></div>
     <div>
@@ -1463,7 +1566,7 @@ const API_BASE = 'https://api2.cockpitaviations.com';
   const ADMIN_PHONE_CLIENT = '251965666656';
   const ADMIN_PHONE_CLIENT2 = '251912649846';
 let ws, myPlayerId, myName='', myRoomId=localStorage.getItem('roomId')||null, myStakeId=null;
-let activeGamePhase=localStorage.getItem('activeGamePhase')||'none'; // none|countdown|playing
+let activeGamePhase=localStorage.getItem('activeGamePhase')||'none'; // none|countdown|playing|spectating
 let activeCountdownLeft=Number(localStorage.getItem('activeCountdownLeft')||0);
 let restoringActiveGame=false;
 let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0;
@@ -1645,23 +1748,89 @@ function showSavedCountdown(){
   if(hiddenCountdown) hiddenCountdown.innerText=sec>0?`ጨዋታው በ ${sec} ሰከንድ ውስጥ ይጀምራል`:'';
 }
 
+
+function buildSpectatorTracker(){
+  const grid=document.getElementById('spectatorTrackerGrid');
+  if(!grid) return;
+  grid.innerHTML='';
+  for(let i=1;i<=75;i++){
+    const d=document.createElement('div');
+    d.className='t-ball'; d.id='stb'+i; d.innerText=i;
+    grid.appendChild(d);
+  }
+}
+function updateSpectatorTracker(numbers){
+  const set=new Set((numbers||[]).map(Number));
+  for(let i=1;i<=75;i++){
+    const el=document.getElementById('stb'+i);
+    if(el) el.className='t-ball'+(set.has(i)?' '+colClass(i):'');
+  }
+  const last=(numbers||[]).length?(numbers||[])[(numbers||[]).length-1]:null;
+  if(last){const el=document.getElementById('stb'+Number(last));if(el)el.classList.add('latest');}
+}
+function setSpectatorMode(on){
+  const screen=document.getElementById('screenGame');
+  if(!screen) return;
+  screen.classList.toggle('spectator-mode',!!on);
+  if(on){
+    buildSpectatorTracker();
+    updateSpectatorTracker(Array.from(calledNumbersSet||[]));
+  }
+}
+function renderSpectatorView(msg={}){
+  activeGamePhase='spectating';
+  activeCountdownLeft=0;
+  saveActiveGameState('spectating');
+  setSpectatorMode(true);
+  const stakeVal=document.getElementById('spectatorStakeVal');
+  const playersVal=document.getElementById('spectatorPlayersVal');
+  const ballCircle=document.getElementById('spectatorBallCircle');
+  const ballLetterEl=document.getElementById('spectatorBallLetter');
+  const ballNumberEl=document.getElementById('spectatorBallNumber');
+  const ballSubEl=document.getElementById('spectatorBallSub');
+  const progress=document.getElementById('spectatorProgressBar');
+  const nums=(msg.calledNumbers||Array.from(calledNumbersSet||[])).map(Number);
+  calledNumbersSet=new Set(nums);
+  const stake=Number(msg.stakeAmount||0);
+  if(stakeVal) stakeVal.innerText=stake?`${stake} ETB`:(myStakeId||'').replace(/^st/,'')+' ETB';
+  if(playersVal) playersVal.innerText=Number(msg.playerCount||0);
+  if(nums.length){
+    const last=nums[nums.length-1], cfg=numConfig(last);
+    if(ballCircle) ballCircle.style.background=cfg.color;
+    if(ballLetterEl) ballLetterEl.innerText=cfg.letter;
+    if(ballNumberEl) ballNumberEl.innerText=last;
+    if(ballSubEl) ballSubEl.innerText=`${nums.length}/75`;
+  }else{
+    if(ballCircle) ballCircle.style.background='radial-gradient(circle at 34% 27%,#4af0ae 0%,#20d57e 43%,#0eaa67 100%)';
+    if(ballLetterEl) ballLetterEl.innerText='-';
+    if(ballNumberEl) ballNumberEl.innerText='--';
+    if(ballSubEl) ballSubEl.innerText='0/75';
+  }
+  if(progress) progress.style.width=`${Math.min(100,(nums.length/75)*100)}%`;
+  updateSpectatorTracker(nums);
+}
+
 function goToGame(){
   restoreActiveGameState();
   const roomId=myRoomId||localStorage.getItem('roomId');
   if(!myStakeId) myStakeId=localStorage.getItem('stakeId');
   if(!roomId){ showToast('አሁን ንቁ ጨዋታ የለም።','warn'); return; }
   myRoomId=roomId;
-  // A selected card is NOT the same thing as a started game. During countdown
-  // always return to card selection; only the server's playing/reconnected state
-  // may open the real game board.
-  if(activeGamePhase==='playing'){
+  if(activeGamePhase==='spectating'){
     navGo('screenGame','navGame');
+    renderSpectatorView({calledNumbers:Array.from(calledNumbersSet||[])});
+  }else if(activeGamePhase==='playing'){
+    navGo('screenGame','navGame');
+    setSpectatorMode(false);
+    if(myCardId && myCardNumbers.length) renderBothCards();
+    refreshCardCells();
   }else{
     navGo('screenCards','navGame');
     if(activeGamePhase==='countdown') showSavedCountdown();
   }
   if(telegramId) wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
 }
+
 function goToWallet(){navGo('screenWallet','navWallet');}
 async function goToHistory(){
   navGo('screenHistory','navHistory');
@@ -1868,7 +2037,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
   if(myRoomId && telegramId){
     restoringActiveGame=true;
     if(activeGamePhase==='countdown') navGo('screenCards','navGame');
-    else if(activeGamePhase==='playing') navGo('screenGame','navGame');
+    else if(activeGamePhase==='playing' || activeGamePhase==='spectating') navGo('screenGame','navGame');
     wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
     setTimeout(()=>{
       if(restoringActiveGame && document.getElementById('screenLoading').classList.contains('active')){
@@ -1894,7 +2063,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       if(msg.status==='countdown'){
         activeGamePhase='countdown'; activeCountdownLeft=Number(msg.countdown||msg.countdownLeft||activeCountdownLeft||0);
       }else if(msg.status==='playing'){
-        activeGamePhase='playing';
+        activeGamePhase=(myCardId||myCardId2)?'playing':'spectating';
       }else if(!myCardId){
         activeGamePhase='none'; activeCountdownLeft=0;
       }
@@ -1911,8 +2080,13 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
       restoringActiveGame=false;
       if(msg.status==='playing'){
-        activeGamePhase='playing'; saveActiveGameState('playing');
-        // Late join — spectating message follows
+        if(myCardId||myCardId2){
+          activeGamePhase='playing'; saveActiveGameState('playing');
+          navGo('screenGame','navGame'); setSpectatorMode(false);
+        }else{
+          renderSpectatorView({playerCount:msg.playerCount||0,stakeAmount:msg.stakeAmount||0});
+          navGo('screenGame','navGame');
+        }
       } else {
         navGo('screenCards','navCards');
         if(msg.status==='countdown') showSavedCountdown();
@@ -1943,7 +2117,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
         myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
         updateSlotUI();
       }
-      if(activeGamePhase!=='playing') saveActiveGameState(activeGamePhase==='countdown'?'countdown':'countdown');
+      if(activeGamePhase!=='playing' && activeGamePhase!=='spectating') { activeGamePhase='countdown'; saveActiveGameState('countdown'); }
       break;
 
     case 'countdown': {
@@ -1968,6 +2142,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
       myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
       activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
+      setSpectatorMode(false);
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
       document.getElementById('playerCountVal').innerText=msg.playerCount;
       resetAutomaticGameState();
@@ -1979,36 +2154,16 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       myCardId=null; myCardNumbers=[]; myCardId2=null; myCardNumbers2=[];
       resetAutomaticGameState();
       updateActivePlayers(msg.players||msg.activePlayers||[]);
-      document.getElementById('potVal').innerText=`${msg.pot} ETB`;
-      document.getElementById('playerCountVal').innerText=msg.playerCount;
-      document.getElementById('cardLabel').innerText='👀 በመመልከት ላይ';
-      document.getElementById('cardContainer2').style.display='none';
-      document.getElementById('cardsWrap').classList.remove('dual-cards-wrap');
-      document.getElementById('cardBody').innerHTML=`
-        <div style="grid-column:span 5;text-align:center;padding:30px 10px;color:var(--gray);font-size:13px;line-height:2">
-          <div style="font-size:36px;margin-bottom:8px">👀</div>
-          <div style="font-weight:700;color:#fff;margin-bottom:4px">የተመልካች ሁኔታ</div>
-          ካርድ አልመረጡም።<br>ጨዋታውን በቀጥታ ከታች ይመልከቱ።
-        </div>`;
-      document.getElementById('bingoBtn').style.display='none';
-      resetTrackerBoard(); claimWindowOpen=false;
-      if(msg.calledNumbers&&msg.calledNumbers.length){
-        msg.calledNumbers.forEach(n=>{const el=document.getElementById('tb'+n);if(el)el.className='t-ball '+colClass(n);});
-        prevLastCalled=msg.calledNumbers[msg.calledNumbers.length-1];
-        const tb=document.getElementById('tb'+prevLastCalled);
-        if(tb) tb.classList.add('latest');
-        const cfg=numConfig(prevLastCalled);
-        document.getElementById('ballCircle').style.background=cfg.color;
-        document.getElementById('ballLetter').innerText=cfg.letter;
-        document.getElementById('ballNumber').innerText=prevLastCalled;
-        document.getElementById('ballSub').innerText=`${msg.calledNumbers.length}/75`;
-      }
+      document.getElementById('potVal').innerText=`${msg.pot||0} ETB`;
+      document.getElementById('playerCountVal').innerText=msg.playerCount||0;
+      claimWindowOpen=false;
+      renderSpectatorView({playerCount:msg.playerCount||0,calledNumbers:msg.calledNumbers||[],stakeAmount:msg.stakeAmount||0});
       navGo('screenGame','navGame');
       break;
-
     case 'gameStart':
       activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
       restoringActiveGame=false;
+      setSpectatorMode(false);
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
       document.getElementById('playerCountVal').innerText=Array.isArray(msg.players)?msg.players.length:(msg.playerCount||0);
       resetAutomaticGameState();
@@ -2017,14 +2172,20 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       navGo('screenGame','navGame'); break;
 
     case 'reconnected':
-      myRoomId=msg.roomId; myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
+      myRoomId=msg.roomId; myCardId=msg.cardId||null; myCardNumbers=msg.cardNumbers||[];
       myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
       if(msg.stakeId) myStakeId=msg.stakeId;
-      activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
       restoringActiveGame=false;
       resetAutomaticGameState();
       calledNumbersSet=new Set((msg.calledNumbers||[]).map(Number));
       autoClaimSent=false;
+      if(!myCardId&&!myCardId2){
+        renderSpectatorView({playerCount:msg.playerCount||0,calledNumbers:msg.calledNumbers||[],stakeAmount:msg.stakeAmount||0});
+        navGo('screenGame','navGame');
+        break;
+      }
+      activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
+      setSpectatorMode(false);
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
       document.getElementById('playerCountVal').innerText=msg.playerCount||0;
       updateActivePlayers(msg.players||msg.activePlayers||[]);
@@ -2381,6 +2542,7 @@ async function loadPaymentInfo(){
 function onNumberCalled(msg){
   const n=Number(msg.number), cfg=numConfig(n);
   calledNumbersSet.add(n);
+  if(activeGamePhase==='spectating') updateSpectatorTracker(Array.from(calledNumbersSet));
 
   const circle=document.getElementById('ballCircle');
   circle.style.background=cfg.color; circle.style.transform='scale(1.12)';
@@ -2758,7 +2920,14 @@ function showToast(msg,type=''){
   toastT=setTimeout(()=>t.style.opacity='0',2800);
 }
 
-function leaveRoom(){wsSend({type:'leaveRoom'});myRoomId=null;myStakeId=null;myCardId=null;myCardId2=null;myCardNumbers=[];myCardNumbers2=[];localStorage.removeItem('roomId');localStorage.removeItem('stakeId');localStorage.removeItem('activeGameState');}
+function leaveRoom(){
+  wsSend({type:'leaveRoom'});
+  myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardNumbers=[]; myCardNumbers2=[];
+  clearActiveGameState();
+  localStorage.removeItem('roomId'); localStorage.removeItem('stakeId');
+  setSpectatorMode(false);
+  navGo('screenLobby','navHome');
+}
 
 // ─── AUDIO SYSTEM ────────────────────────────────────────────
 let soundEnabled = true;
@@ -3085,6 +3254,7 @@ function renderAnalytics(d, from, to){
 
 // ─── INIT ────────────────────────────────────────────────────
 buildTracker();
+  buildSpectatorTracker();
 restoreCachedBalance();
 connect();
 loadPaymentInfo();
