@@ -1587,38 +1587,37 @@ let accountLoaded=false;
 let cardPool=[];
 
 // ─── HELPERS ─────────────────────────────────────────────────
+function normalizeTelegramId(value){
+  const id=String(value??'').trim();
+  return /^\d+$/.test(id) && Number(id)>0 ? id : null;
+}
 function getTelegramId(){
-  // Prefer the bot-provided ?tid value used by the existing integration.
+  // The bot-provided ?tid is the preferred identity for this app.
   const p=new URLSearchParams(location.search);
-  const paramId=String(p.get('tid')||'').trim();
-  if(/^\\d+$/.test(paramId) && Number(paramId)>0){
-    try{localStorage.setItem('melaBingoTelegramId',paramId);}catch(e){}
-    return paramId;
+  const urlId=normalizeTelegramId(p.get('tid'));
+  if(urlId){
+    try{localStorage.setItem('melaBingoTelegramId',urlId);}catch(e){}
+    return urlId;
   }
-
-  // Telegram WebApp may populate initDataUnsafe.user slightly after page load.
-  // Ask Telegram to initialize first, then read the verified WebApp user id.
+  // Telegram WebApp data can become available a little after the WebSocket connects.
   try{
     if(window.Telegram&&Telegram.WebApp){
       try{Telegram.WebApp.ready();}catch(e){}
-      const u=Telegram.WebApp.initDataUnsafe?.user;
-      const id=String(u?.id||'').trim();
-      if(/^\\d+$/.test(id) && Number(id)>0){
-        try{localStorage.setItem('melaBingoTelegramId',id);}catch(e){}
-        return id;
+      const webId=normalizeTelegramId(Telegram.WebApp.initDataUnsafe?.user?.id);
+      if(webId){
+        try{localStorage.setItem('melaBingoTelegramId',webId);}catch(e){}
+        return webId;
       }
     }
   }catch(e){}
-
-  // Last verified Telegram id is only a temporary reconnect fallback.
+  // Last verified ID survives a page reload while Telegram initializes.
   try{
-    const cached=String(localStorage.getItem('melaBingoTelegramId')||'').trim();
-    if(/^\\d+$/.test(cached) && Number(cached)>0) return cached;
+    const cached=normalizeTelegramId(localStorage.getItem('melaBingoTelegramId'));
+    if(cached) return cached;
   }catch(e){}
   return null;
 }
-
-async function waitForTelegramId(retries=24,delayMs=250){
+async function waitForTelegramId(retries=40,delayMs=250){
   for(let i=0;i<retries;i++){
     const id=getTelegramId();
     if(id) return id;
@@ -1626,10 +1625,9 @@ async function waitForTelegramId(retries=24,delayMs=250){
   }
   return getTelegramId();
 }
-
 function sendTelegramAuth(tid){
-  const id=String(tid||'').trim();
-  if(!/^\\d+$/.test(id) || Number(id)<=0) return false;
+  const id=normalizeTelegramId(tid);
+  if(!id) return false;
   telegramId=id;
   try{localStorage.setItem('melaBingoTelegramId',id);}catch(e){}
   wsSend({type:'telegramAuth',telegramId:id});
@@ -1668,35 +1666,33 @@ function restoreCachedBalance(){
 // Load the player's authoritative account record from the Telegram-linked database.
 // The HTML cannot access the database directly; the server exposes the account through
 // /api/user/:telegramId. Name and balance are both taken from that response.
-async function refreshAccountProfile(retries=6, delayMs=500){
+async function refreshAccountProfile(retries=10, delayMs=600){
   if(!telegramId) return false;
   if(balanceRefreshTimer) clearTimeout(balanceRefreshTimer);
+  const id=normalizeTelegramId(telegramId);
+  if(!id) return false;
+  telegramId=id;
   for(let i=0;i<retries;i++){
     try{
-      const res=await fetch(`${API_BASE}/api/user/${encodeURIComponent(telegramId)}?_=${Date.now()}`,{cache:'no-store'});
+      const res=await fetch(`${API_BASE}/api/user/${encodeURIComponent(id)}?_=${Date.now()}`,{cache:'no-store'});
       if(res.ok){
         const u=await res.json();
-        const balance=parseFloat(u?.balance);
+        const balance=Number(u?.balance);
         const name=String(u?.name || u?.playerName || '').trim();
+        // Only accept a balance that came back from the account endpoint.
         if(Number.isFinite(balance) && balance>=0){
           setBalance(balance);
+          accountLoaded=true;
         }
         if(name){
           myName=name;
           const welcome=document.getElementById('welcomeName');
           if(welcome) welcome.innerText=name;
         }
-        if(Number.isFinite(balance) && balance>=0 && name){
-          accountLoaded=true;
-          return true;
-        }
-        if(Number.isFinite(balance) && balance>=0){
-          accountLoaded=true;
-          return true;
-        }
+        if(Number.isFinite(balance) && balance>=0) return true;
       }
     }catch(e){}
-    if(i<retries-1) await new Promise(resolve=>setTimeout(resolve,delayMs));
+    if(i<retries-1) await new Promise(resolve=>setTimeout(resolve,delayMs*Math.min(i+1,3)));
   }
   return false;
 }
@@ -2027,41 +2023,45 @@ function handle(msg){
 
     case 'connected':
       myPlayerId=msg.playerId;
-      // Never replace a known balance with the server's initial connection balance (0).
+      // Never replace a known balance with the server's initial connection value (0).
       if(msg.stakes) renderStakes(msg.stakes);
       document.getElementById('loadingText').innerText='Loading your account...';
-
       const pageParam = new URLSearchParams(location.search).get('page');
       if(pageParam === 'deposit') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('deposit'); }, 1500);
       if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('withdraw'); }, 1500);
-
-      waitForTelegramId(24,250).then(tid=>{
-        if(tid){
-          sendTelegramAuth(tid);
-        }else{
-          // Do not create a guest/zero-balance session just because Telegram
-          // was not ready at the first WebSocket connection.
+      waitForTelegramId(40,250).then(async tid=>{
+        if(!tid){
           document.getElementById('loadingText').innerText='Waiting for Telegram account...';
-          setTimeout(()=>{
-            const retryId=getTelegramId();
-            if(retryId) sendTelegramAuth(retryId);
-            else goScreen('screenLobby');
-          },1000);
+          setTimeout(()=>{ const retryId=getTelegramId(); if(retryId) sendTelegramAuth(retryId); },1000);
+          return;
         }
+        telegramId=tid;
+        // First load the account directly over HTTPS. This breaks the old failure
+        // mode where a WebSocket lookup returned a fake zero/unregistered snapshot.
+        await refreshAccountProfile(6,500);
+        sendTelegramAuth(tid);
       });
       break;
 
+    case 'authRetry':
+      // A lookup failure is not an unregistered account. Keep the existing balance
+      // and retry with the same verified Telegram ID.
+      document.getElementById('loadingText').innerText='Loading your account...';
+      setTimeout(()=>{
+        const id=getTelegramId();
+        if(id) sendTelegramAuth(id);
+      },Math.max(300,Number(msg.retryAfter)||750));
+      break;
+
     case 'authSuccess':
-  // The existing Telegram bot/server already resolves the Telegram user's
-  // account and sends the real account balance in this message.
-  // Use that WebSocket balance as the PRIMARY initial wallet value.
-  myName=msg.playerName||'Player';
-  if(msg.balance!==undefined && msg.balance!==null && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
+  // Accept a WebSocket balance only for a confirmed registered account.
+  myName=msg.playerName||myName||'Player';
+  if(msg.isRegistered===true && msg.balance!==undefined && msg.balance!==null && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
     setBalance(msg.balance);
   }
   document.getElementById('welcomeName').innerText=myName||'Player';
-  // Immediately replace any websocket/auth snapshot with the Telegram/database account record.
-  refreshAccountProfile(6,300);
+  // Always reconcile from the HTTPS account endpoint as the final authority.
+  refreshAccountProfile(10,500);
 
   isAdmin=msg.isAdmin||false;
   adminToken=telegramId||'';
