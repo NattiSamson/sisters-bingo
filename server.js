@@ -409,21 +409,41 @@ function checkWin(nums, called, marked) {
 const clients={}, rooms={}, userCache={};
 
 // ─── USER HELPERS ────────────────────────────────────────────
-async function loadUser(tid) {
-  if(db){
-    try{
-      const u=await db.getUser(tid);
-      if(u){
-        userCache[tid] = {
-          name:u.name,
-          phone:u.phone,
-          balance:parseFloat(u.balance)||0,
-          isAdmin:u.is_admin===true
-        };
+async function loadUser(tid, retries=4, delayMs=350) {
+  const id=String(tid||'').trim();
+  if(!/^\\d+$/.test(id) || Number(id)<=0) return null;
+
+  let lastErr=null;
+  for(let i=0;i<retries;i++){
+    if(db){
+      try{
+        const u=await db.getUser(id);
+        if(u){
+          userCache[id] = {
+            name:u.name,
+            phone:u.phone,
+            balance:Number.isFinite(parseFloat(u.balance)) ? parseFloat(u.balance) : 0,
+            isAdmin:u.is_admin===true
+          };
+          return userCache[id];
+        }
+        // A successful DB lookup with no row is a genuine "not registered"
+        // result, so do not retry that case indefinitely.
+        return null;
+      }catch(e){
+        lastErr=e;
+        console.error(`loadUser attempt ${i+1}/${retries}:`,e.message);
+        if(i<retries-1) await new Promise(r=>setTimeout(r,delayMs*(i+1)));
       }
-    }catch(e){ console.error('loadUser:',e.message); }
+    }else{
+      break;
+    }
   }
-  return userCache[tid]||null;
+
+  // If Neon was temporarily unavailable, a previously verified cache entry
+  // is safer than manufacturing a zero-balance guest account.
+  if(userCache[id]) return userCache[id];
+  return null;
 }
 
 async function refreshClientBalance(client){
@@ -891,27 +911,34 @@ wss.on('connection',(ws)=>{
           switch(msg.type){
 
             case 'telegramAuth':{
-
-              const tid=String(msg.telegramId);
+              const tid=String(msg.telegramId||'').trim();
+              if(!/^\\d+$/.test(tid) || Number(tid)<=0){
+                send(ws,{type:'authRetry',retryAfter:750});
+                break;
+              }
 
               const user=await loadUser(tid);
 
               if(user){
-
-                client.telegramId=tid; client.playerName=user.name; client.balance=user.balance; client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
-
-              send(ws,{type:'authSuccess',playerName:user.name,balance:user.balance,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
-
-              } else {
-
                 client.telegramId=tid;
+                client.playerName=user.name||client.playerName||'Player';
+                client.balance=Number.isFinite(Number(user.balance))?Number(user.balance):0;
+                client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
 
-                send(ws,{type:'authSuccess',playerName:'',balance:0,isRegistered:false,isAdmin:false});
-
+                send(ws,{
+                  type:'authSuccess',
+                  playerName:client.playerName,
+                  balance:client.balance,
+                  isRegistered:true,
+                  isAdmin:client.isAdmin,
+                  adminToken:client.isAdmin?ADMIN_PHONE:undefined
+                });
+              }else{
+                // Do not tell the client "balance: 0 / unregistered" when a
+                // lookup may have failed transiently. Ask the frontend to retry.
+                send(ws,{type:'authRetry',retryAfter:750});
               }
-
               break;
-
             }
 
             case 'setName':{
