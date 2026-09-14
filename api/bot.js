@@ -3991,9 +3991,7 @@ bot.callbackQuery(
 // DEPOSIT SMS
 // ============================================================
 
-bot.on(
-  "message:text",
-  async (ctx, next) => {
+bot.on(  "message:text",  async (ctx, next) => {
 
     const telegramId =
       ctx.from.id;
@@ -4002,11 +4000,7 @@ bot.on(
       ctx.message.text;
 
 
-    if (
-      !pendingDeposit[
-        telegramId
-      ]
-    ) {
+    if (      !pendingDeposit[        telegramId      ]    ) {
 
       return next();
 
@@ -4108,7 +4102,7 @@ return await ctx.reply(
   }
 );
 
-}
+
 // ============================================================
 // CANCEL DEPOSIT
 // ============================================================
