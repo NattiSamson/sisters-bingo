@@ -2993,11 +2993,7 @@ let audioUnlocked = false;
 function preloadAudio(){
   for(let i=1;i<=76;i++)
   { 
-    const path=`/audio/${i}.mp3`;
-    if(i == 76)
-    {
-      path=`/audio/Bingo.mp3`;
-    }    
+    const path = i === 76 ? '/audio/Bingo.mp3' : `/audio/${i}.mp3`;  
     const a=new Audio(path);
     a.preload='auto';
     audioCache[i]=a;
