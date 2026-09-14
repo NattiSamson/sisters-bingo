@@ -2690,6 +2690,11 @@ function showWinnerOverlay(msg){
   }
   renderResultCard(winningCard,msg.calledNumbers||[]);
   ov.classList.add('show');
+  // Play Bingo sound when there is a winner
+  if(!noWinner) 
+  {
+    playBallAudio(76);
+  }
   if(iWon) startConfetti(); else stopConfetti();
 }
 function hideWinnerOverlay(){
