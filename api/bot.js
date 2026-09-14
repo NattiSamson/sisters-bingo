@@ -179,82 +179,6 @@ async function answerCallback(ctx, text = undefined)
   }
 }
 
-
-
-
-
-
-function parseEthiopianDateTime(text) {
-  const match = String(text || "")
-    .trim()
-    .match(
-      /^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i
-    );
-
-  if (!match) {
-    return null;
-  }
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  let hour = Number(match[4]);
-  const minute = Number(match[5]);
-  const ampm = match[6].toUpperCase();
-
-  if (
-    month < 1 ||
-    month > 12 ||
-    day < 1 ||
-    day > 31 ||
-    hour < 1 ||
-    hour > 12 ||
-    minute < 0 ||
-    minute > 59
-  ) {
-    return null;
-  }
-
-  // Convert 12-hour time to 24-hour time
-  if (ampm === "AM") {
-    if (hour === 12) {
-      hour = 0;
-    }
-  } else {
-    if (hour !== 12) {
-      hour += 12;
-    }
-  }
-
-  // Ethiopia = UTC+3
-  const date = new Date(
-    Date.UTC(
-      year,
-      month - 1,
-      day,
-      hour - 3,
-      minute,
-      0,
-      0
-    )
-  );
-
-  // Validate the calendar date
-  const check = new Date(
-    Date.UTC(year, month - 1, day)
-  );
-
-  if (
-    check.getUTCFullYear() !== year ||
-    check.getUTCMonth() !== month - 1 ||
-    check.getUTCDate() !== day
-  ) {
-    return null;
-  }
-
-  return date;
-}
-
 // ============================================================
 // PHONE NORMALIZATION
 // ============================================================
@@ -359,51 +283,33 @@ function normalizeEthiopianPhone(
 // exactly as entered, except for trimming surrounding spaces.
 // ============================================================
 
-function normalizePaymentAccountNumber(
-  accountNumber,
-  paymentTypeName,
-  paymentTypeAmharicName
-) {
-
-  const raw =
-    String(accountNumber || "").trim();
-
-  if (!raw) {
+function normalizePaymentAccountNumber(accountNumber, paymentTypeName, paymentTypeAmharicName)
+{
+  const raw = String(accountNumber || "").trim();
+  
+  if (!raw) 
+  {
     return null;
   }
-
-  const typeName =
-    String(paymentTypeName || "")
-      .trim()
-      .toLowerCase();
-
-  const amharicTypeName =
-    String(paymentTypeAmharicName || "")
-      .trim();
-
-  const isMobile =
-    typeName === "mobile" ||
-    amharicTypeName === "ሞባይል";
+  
+  const typeName = String(paymentTypeName || "").trim().toLowerCase();
+  const amharicTypeName = String(paymentTypeAmharicName || "").trim();
+  const isMobile = typeName === "mobile" || amharicTypeName === "ሞባይል";
 
   // ----------------------------------------------------------
   // MOBILE ONLY
   // ----------------------------------------------------------
 
-  if (isMobile) {
-
-    return normalizeEthiopianPhone(
-      raw
-    );
-
+  if (isMobile) 
+  {
+    return normalizeEthiopianPhone(raw);
   }
-
   // ----------------------------------------------------------
   // NON-MOBILE
   // ----------------------------------------------------------
   //
   // Do NOT modify bank/account numbers.
   //
-
   return raw;
 }
 
@@ -411,47 +317,18 @@ function normalizePaymentAccountNumber(
 // HOME MENU
 // ============================================================
 
-async function showHome(
-  ctx,
-  user
-) {
-  const telegramId =    ctx.from.id;
-
-  
-const canPlay =
-  user &&
-  user.is_active === true &&
-  user.is_blocked !== true;
-  
-
-
-
-const keyboard = [];
-
-if (user && user.is_active === true && user.is_blocked !== true) {
-  keyboard.push([
-    {
-      text: "🎮 Play",
-      web_app: {
-        url: `${GAME_URL}?tid=${telegramId}`
-      }
-    }
-  ]);
-}
-
-keyboard.push(
-  [
-    {
-      text: "💰 Balance",
-      callback_data: "user_balance"
-    },
-    {
-      text: "📊 Statistics",
-      callback_data: "user_statistics"
-    },
-  ],
-  [
-    {
+async function showHome(ctx, user) 
+{
+  const telegramId = ctx.from.id;  
+  const canPlay = user && user.is_active === true && user.is_blocked !== true;
+  const keyboard = [];
+  if (user && user.is_active === true && user.is_blocked !== true) 
+  {
+     keyboard.push([{ text: "🎮 Play", web_app: { url: `${GAME_URL}?tid=${telegramId}`}}]);
+  }
+  keyboard.push([{ text: "💰 Balance", callback_data: "user_balance"},
+                 { text: "📊 Statistics", callback_data: "user_statistics"},],
+                [{
       text: "💎 Deposit",
       callback_data: "user_deposit"
     },
