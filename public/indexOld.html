@@ -734,6 +734,204 @@ body{
   #screenCards .pool-btn{border-radius:8px!important}
 }
 
+
+/* ───────── ACTIVE GAME PLAY AREA — BRIGHT COMPACT STYLE ─────────
+   Visual-only changes. Bottom navigation and gameplay logic are untouched. */
+#screenGame{
+  padding:10px 10px 12px!important;
+  max-width:520px!important;
+  background:
+    radial-gradient(circle at 50% 0,rgba(56,217,255,.20),transparent 27%),
+    radial-gradient(circle at 8% 34%,rgba(124,92,255,.16),transparent 30%),
+    linear-gradient(160deg,#111952 0%,#121a5c 48%,#080d31 100%)!important;
+}
+#screenGame .game-stats-row{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) 104px minmax(0,1fr)!important;
+  align-items:center!important;
+  gap:8px!important;
+  margin:0 0 8px!important;
+  padding:10px 8px 7px!important;
+  background:linear-gradient(145deg,rgba(31,42,113,.98),rgba(15,22,70,.98))!important;
+  border:1px solid rgba(83,180,255,.42)!important;
+  border-radius:18px!important;
+  box-shadow:0 12px 28px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.07)!important;
+}
+#screenGame .stat-box{
+  min-width:0!important;
+  padding:8px 5px!important;
+  background:linear-gradient(145deg,rgba(44,57,139,.92),rgba(27,34,93,.92))!important;
+  border:1px solid rgba(104,186,255,.34)!important;
+  border-radius:13px!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07)!important;
+}
+#screenGame .stat-box .lbl{
+  color:#aeb8ee!important;
+  font-size:8px!important;
+  letter-spacing:.35px!important;
+  margin-bottom:3px!important;
+}
+#screenGame .stat-box .val{
+  color:#ffe04d!important;
+  font-size:14px!important;
+  line-height:1.1!important;
+  text-shadow:0 0 9px rgba(255,224,77,.18)!important;
+}
+#screenGame .game-stats-row>div:nth-child(2){
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  justify-content:center!important;
+}
+#screenGame .ball-circle{
+  width:82px!important;
+  height:82px!important;
+  background:radial-gradient(circle at 34% 28%,#45edaa 0%,#20d47d 43%,#0fa965 100%)!important;
+  border:2px solid rgba(113,255,205,.72)!important;
+  box-shadow:0 0 0 4px rgba(56,217,255,.07),0 8px 22px rgba(0,0,0,.30),0 0 24px rgba(34,214,122,.20)!important;
+}
+#screenGame .ball-letter{font-size:10px!important;color:#eafff7!important;margin-top:1px!important}
+#screenGame .ball-number{font-size:31px!important;color:#fff!important;text-shadow:0 2px 10px rgba(0,0,0,.18)!important}
+#screenGame .ball-sub{
+  margin-top:4px!important;
+  color:#b9c5ff!important;
+  font-size:10px!important;
+  font-weight:700!important;
+}
+#screenGame .claim-bar-wrap{
+  height:5px!important;
+  margin:0 4px 8px!important;
+  background:#28347e!important;
+  border-radius:99px!important;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.25)!important;
+}
+#screenGame .claim-bar{
+  background:linear-gradient(90deg,#20d67b,#38e4b5)!important;
+  border-radius:99px!important;
+}
+#screenGame #cardsWrap{
+  margin:0!important;
+}
+#screenGame .dual-cards-wrap{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:7px!important;
+  margin-bottom:8px!important;
+}
+#screenGame .card-container{
+  padding:7px!important;
+  margin-bottom:8px!important;
+  border-radius:16px!important;
+  background:linear-gradient(145deg,#252f83,#151b58)!important;
+  border:1px solid rgba(91,165,255,.38)!important;
+  box-shadow:0 10px 22px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.06)!important;
+}
+#screenGame .card-id-tag{
+  color:#bfc8ff!important;
+  font-size:9px!important;
+  font-weight:700!important;
+  margin-bottom:5px!important;
+  padding-left:3px!important;
+}
+#screenGame #cardLabel2{color:#ffd43b!important}
+#screenGame .bingo-header{
+  margin-bottom:5px!important;
+  border-radius:7px!important;
+}
+#screenGame .bingo-col-head{
+  height:27px!important;
+  font-size:12px!important;
+}
+#screenGame .bingo-body{
+  gap:3px!important;
+}
+#screenGame .bingo-cell{
+  height:39px!important;
+  min-width:0!important;
+  border-radius:6px!important;
+  border:1px solid rgba(255,255,255,.60)!important;
+  background:#f8f9ff!important;
+  color:#14204c!important;
+  font-size:12px!important;
+  font-weight:800!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.75)!important;
+}
+/* Vivid orange is the ONLY called/automatically-marked color. */
+#screenGame .bingo-cell.marked{
+  background:#ff650f!important;
+  color:#fff!important;
+  border-color:#ff8b45!important;
+  box-shadow:0 0 10px rgba(255,101,15,.25),inset 0 1px 0 rgba(255,255,255,.22)!important;
+}
+#screenGame .bingo-cell.called-not-marked{
+  background:#f8f9ff!important;
+  color:#14204c!important;
+}
+/* FREE remains visually distinct but is not used to indicate a called number. */
+#screenGame .bingo-cell.free{
+  background:linear-gradient(145deg,#5268df,#4053bc)!important;
+  color:#fff!important;
+  border-color:rgba(112,211,255,.68)!important;
+}
+/* Compact called-number tracker. Every called number uses the same vivid orange. */
+#screenGame .tracker-wrap{
+  padding:7px!important;
+  margin:0 0 2px!important;
+  border-radius:13px!important;
+  background:linear-gradient(145deg,#1c2669,#101642)!important;
+  border:1px solid rgba(83,165,255,.34)!important;
+}
+#screenGame .tracker-grid{
+  grid-template-columns:repeat(15,minmax(0,1fr))!important;
+  gap:2px!important;
+}
+#screenGame .t-ball{
+  padding:3px 0!important;
+  min-width:0!important;
+  border-radius:4px!important;
+  background:#252f72!important;
+  color:#7783c3!important;
+  font-size:8px!important;
+  line-height:1.05!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.035)!important;
+}
+#screenGame .t-ball.cb,
+#screenGame .t-ball.ci,
+#screenGame .t-ball.cn,
+#screenGame .t-ball.cg,
+#screenGame .t-ball.co{
+  background:#ff650f!important;
+  color:#fff!important;
+  box-shadow:0 0 7px rgba(255,101,15,.22),inset 0 1px 0 rgba(255,255,255,.20)!important;
+}
+#screenGame .t-ball.latest{
+  outline:2px solid #ff650f!important;
+  box-shadow:0 0 10px rgba(255,101,15,.34)!important;
+  transform:scale(1.08)!important;
+  z-index:2;
+}
+#screenGame #bingoBtn{display:none!important}
+
+@media(max-width:420px){
+  #screenGame{padding-left:7px!important;padding-right:7px!important}
+  #screenGame .game-stats-row{grid-template-columns:minmax(0,1fr) 92px minmax(0,1fr)!important;padding:8px 6px 6px!important;gap:6px!important}
+  #screenGame .ball-circle{width:74px!important;height:74px!important}
+  #screenGame .ball-number{font-size:28px!important}
+  #screenGame .bingo-cell{height:37px!important;font-size:11px!important}
+  #screenGame .bingo-col-head{height:25px!important;font-size:11px!important}
+  #screenGame .tracker-wrap{padding:6px!important}
+}
+
+@media(max-width:360px){
+  #screenGame .game-stats-row{grid-template-columns:minmax(0,1fr) 84px minmax(0,1fr)!important}
+  #screenGame .stat-box .lbl{font-size:7px!important}
+  #screenGame .stat-box .val{font-size:12px!important}
+  #screenGame .ball-circle{width:68px!important;height:68px!important}
+  #screenGame .ball-number{font-size:25px!important}
+  #screenGame .bingo-cell{height:34px!important;font-size:10px!important}
+  #screenGame .tracker-grid{gap:1.5px!important}
+  #screenGame .t-ball{font-size:7px!important;padding:2.5px 0!important}
+}
+
 </style>
 </head>
 <body>
