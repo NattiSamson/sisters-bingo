@@ -1,6 +1,6 @@
 const cheerio = require("cheerio");
 
-async function extractInvoiceNumber(sms) {
+async function extractInvoiceNumbertelebirr(sms) {
   const match = sms.match(
     /https:\/\/transactioninfo\.ethiotelecom\.et\/receipt\/([^.\s]+)/i
   );
@@ -12,6 +12,41 @@ async function extractInvoiceNumber(sms) {
   return invoiceNo;
 }
 
+async function extractInvoiceNumbercbebirr(sms) {
+  const match = sms.match(
+    /https:\/\/transactioninfo\.ethiotelecom\.et\/receipt\/([^.\s]+)/i
+  );
+
+  const invoiceNo = match ? match[1] : null;
+
+  console.log("Invoice No:", invoiceNo);
+
+  return invoiceNo;
+}
+
+async function extractInvoiceNumbermpessa(sms) {
+  const match = sms.match(
+    /https:\/\/transactioninfo\.ethiotelecom\.et\/receipt\/([^.\s]+)/i
+  );
+
+  const invoiceNo = match ? match[1] : null;
+
+  console.log("Invoice No:", invoiceNo);
+
+  return invoiceNo;
+}
+
+async function extractInvoiceNumbercbe(sms) {
+  const match = sms.match(
+    /https:\/\/transactioninfo\.ethiotelecom\.et\/receipt\/([^.\s]+)/i
+  );
+
+  const invoiceNo = match ? match[1] : null;
+
+  console.log("Invoice No:", invoiceNo);
+
+  return invoiceNo;
+}
 
 async function builURLfromInvoiceNo(invoiceNo) {
   const url = `https://transactioninfo.ethiotelecom.et/receipt/${invoiceNo}`;
@@ -193,9 +228,40 @@ async function extractTransactionInfofromThirdParty(url) {
 // MAIN DEPOSIT PROCESS
 // ─────────────────────────────────────────────
 
-async function processDeposit(sms) {
-
-  const invoiceNo = await extractInvoiceNumber(sms);
+async function processDeposit(sms,pmName,pmAmharicName,pmtName,pmtAmharicName) 
+{
+  let invoiceNo = ""
+  if(pmtName == "Mobile" || pmtAmharicName == "ሞባይል") //Mobilebanking
+  {
+    if(pmName == "telebirr" || pmAmharicName == "ቴሌብር")
+    {
+      invoiceNo = await extractInvoiceNumbertelebirr(sms);
+    }
+    else if(pmName == "M-PESA" || pmAmharicName == "ኤም-ፔሳ")
+    {
+      invoiceNo = await extractInvoiceNumbermpessa(sms);
+    }
+    else if(pmName == "M-PESA" || pmAmharicName == "ኤም-ፔሳ")
+    {
+      invoiceNo = await extractInvoiceNumbermpessa(sms);
+    }
+    else
+    {
+      return null;
+    }
+  }
+  else if(pmtName == "Bank" || pmtAmharicName == "ባንክ") //Bank
+  {    
+    else if(pmName == "CBE" || pmAmharicName == "ኢትዮጵያ ንግድ ባንክ")
+    {
+      invoiceNo = await extractInvoiceNumbercbe(sms);
+    }
+  }
+  else if(pmtName == "Mobile Agent" || pmtAmharicName == "ሞባይል ኤጀንት") //MobileAgent
+  {
+    return
+  }
+  
 
   if (invoiceNo == null) {
     console.log("No invoice number found.");
