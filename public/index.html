@@ -3110,20 +3110,11 @@ let soundEnabled = true;
 let audioCache = {};   // number -> Audio object (preloaded)
 let audioUnlocked = false;
 
-// Map number to B/I/N/G/O letter
-function ballLetter(n){
-  if(n<=15) return 'b';
-  if(n<=30) return 'i';
-  if(n<=45) return 'n';
-  if(n<=60) return 'g';
-  return 'o';
-}
-
 // Preload all 75 audio files in background after user first interacts
 function preloadAudio(){
-  for(let i=1;i<=75;i++){
+  for(let i=1;i<=76;i++){
     const letter=ballLetter(i);
-    const path=`/audio/${letter}${i}.mp3`;
+    const path=`/audio/${i}.mp3`;
     const a=new Audio(path);
     a.preload='auto';
     audioCache[i]=a;
@@ -3152,9 +3143,8 @@ function playBallAudio(n){
     if(a){
       a.currentTime=0;
       a.play().catch(()=>{});
-    } else {
-      const letter=ballLetter(n);
-      const fresh=new Audio(`/audio/${letter}${n}.mp3`);
+    } else {      
+      const fresh=new Audio(`/audio/${n}.mp3`);
       fresh.play().catch(()=>{});
       audioCache[n]=fresh;
     }
