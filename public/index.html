@@ -2116,15 +2116,6 @@ function handle(msg){
 
     case 'leftRoom': clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; navGo('screenLobby'); break;
 
-    case 'depositSubmitted':
-      showWalletMsg('depositMsg', msg.message, 'success');
-      document.getElementById('depositAmount').value='';
-      document.getElementById('depositTxRef').value=''; break;
-
-    case 'withdrawalSubmitted':
-      showWalletMsg('withdrawMsg', msg.message, 'success'); 
-      document.getElementById('withdrawAmount').value=''; break;
-
     case 'notification': showToast(msg.message, msg.message.startsWith('✅')?'':'error'); break;
 
     case 'error': showToast(msg.message,'error'); break;
@@ -2146,45 +2137,6 @@ function showWalletMsg(id, text, type){
   el.innerText=text; el.className='status-msg '+type; el.style.display='block';
   setTimeout(()=>el.style.display='none', 5000);
 }
-function extractTxnRef(text){
-  const patterns = [
-    /your transaction number is\s+([A-Z0-9]{6,20})/i,
-    /transaction number[:\s]+([A-Z0-9]{6,20})/i,
-    /\bref[:\s#]*([A-Z0-9]{6,20})\b/i,
-    /\b(TXN[A-Z0-9]{6,20})\b/i,
-    /\breference[:\s#]*([A-Z0-9]{6,20})\b/i,
-    /\bTransaction ID[:\s#]*([A-Z0-9]{6,20})\b/i,
-    // Amharic Telebirr SMS: "የግብይት ቁጥርዎ DFJ33I01A1 ነው"
-    /የግብይት\s*ቁጥርዎ\s+([A-Z0-9]{6,20})/i,
-    // Fallback: pull the code straight out of the receipt link
-    // e.g. https://transactioninfo.ethiotelecom.et/receipt/DFJ33I01A1
-    /transactioninfo\.ethiotelecom\.et\/receipt\/([A-Z0-9]{6,20})/i,
-  ];
-  for(const p of patterns){
-    const m=text.match(p);
-    if(m) return m[1]||m[0];
-  }
-  return null;
-}
-
-function submitDeposit(){
-  const amount=parseInt(document.getElementById('depositAmount').value);
-  const smsText=document.getElementById('depositTxRef').value.trim();
-  if(!amount||amount<10){showWalletMsg('depositMsg','Minimum deposit is 10 ETB.','error');return;}
-  if(!smsText){showWalletMsg('depositMsg','Please paste your Telebirr SMS message.','error');return;}
-  const txRef=extractTxnRef(smsText);
-  if(!txRef){showWalletMsg('depositMsg','Could not find reference number in your SMS. Please make sure you copied the full message.','error');return;}
-  wsSend({type:'depositRequest',amount,txRef});
-  showWalletMsg('depositMsg','Submitting...','info');
-}
-function submitWithdrawal(){
-  const amount=parseInt(document.getElementById('withdrawAmount').value);
-  if(!amount||amount<50){showWalletMsg('withdrawMsg','Minimum withdrawal is 50 ETB.','error');return;}
-  if(amount>currentBalance){showWalletMsg('withdrawMsg','Insufficient balance.','error');return;}
-  wsSend({type:'withdrawalRequest',amount});
-  showWalletMsg('withdrawMsg','Submitting...','info');
-}
-
 
 function esc(str){
   if(!str) return '';
@@ -2643,30 +2595,11 @@ function toggleSound(){
   showToast(soundEnabled?'🔊 Sound on':'🔇 Sound off');
 }
 
-
-document.getElementById('depositTxRef').addEventListener('input', function(){
-  const text=this.value.trim();
-  const preview=document.getElementById('txnPreview');
-  const notFound=document.getElementById('txnNotFound');
-  const found=document.getElementById('txnFound');
-  if(!text){preview.style.display='none';notFound.style.display='none';return;}
-  const ref=extractTxnRef(text);
-  if(ref){
-    found.innerText=ref;
-    preview.style.display='block';
-    notFound.style.display='none';
-  } else {
-    preview.style.display='none';
-    notFound.style.display='block';
-  }
-});
-
 // ─── INIT ────────────────────────────────────────────────────
 buildTracker();
 buildSpectatorTracker();
 restoreCachedBalance();
 connect();
-loadPaymentInfo();
 //--------------------------------------------------------------
 
 </script>
