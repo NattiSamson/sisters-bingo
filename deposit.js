@@ -292,12 +292,8 @@ async function processDeposit(sms,pmName,pmAmharicName,ptName,ptAmharicName)
   }
 
   // Build URL
-  //const url = await builURLfromInvoiceNo(invoiceNo);
+  const url = await builURLfromInvoiceNo(invoiceNo);
   
-  // Check URL
-  //const isValid = await checkUrl("https://links.et/");
-  
-  // since https://transactioninfo.ethiotelecom.et/ domain is blocked from outside ethiopia. we will only check and use https://links.et/
   const isValid = await checkUrl("https://links.et/");
 
   if (!isValid) {
