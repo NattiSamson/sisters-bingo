@@ -118,11 +118,6 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .history-key{color:var(--gray)}
 .history-value{font-weight:700}
 .history-empty{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:30px 16px;text-align:center;color:var(--gray);font-size:13px}
-.telebirr-info{background:var(--card);border:1px solid #4a2d7a;border-radius:12px;padding:14px;margin-bottom:16px;text-align:center}
-.telebirr-logo{display:flex;justify-content:center;align-items:center;margin-bottom:8px}
-.telebirr-label{font-size:11px;color:var(--gray);margin-bottom:3px}
-.telebirr-number{font-size:18px;font-weight:700;color:var(--gold);letter-spacing:1px}
-.telebirr-name{font-size:12px;color:var(--gray);margin-top:2px}
 .form-group{margin-bottom:14px}
 .form-label{font-size:12px;color:var(--gray);margin-bottom:5px;display:block}
 .form-input{width:100%;background:var(--card);border:1px solid #4a2d7a;color:#fff;padding:12px;border-radius:8px;font-size:15px;outline:none;transition:border-color .2s}
@@ -527,10 +522,8 @@ body{
 .history-card,
 .history-empty,
 .telebirr-info,
-.request-card,
 .user-card,
 .user-detail-card,
-.admin-section,
 .result-card-wrap,
 .tracker-wrap,
 .card-container,
@@ -1117,14 +1110,10 @@ body{
           <path d="M23 14V22.5C23 24.2 23.8 25 25.8 25H27.8V27H25.8C23.2 27 21.2 25.8 20.4 23.2V15.8H18V14H20.4V11.5H23V14H26.5V14H23Z" fill="#1e3a8a"/>
           <text x="44" y="26" fill="#fff" font-family="'Inter', sans-serif" font-weight="700" font-size="16" letter-spacing="0.5">telebirr</text>
         </svg>
-      </div>
-      <div class="telebirr-label">Send to this Telebirr number</div>
-      <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin:6px 0">
-        <div class="telebirr-number" id="telebirrNumber">0967423275</div>
-        <button onclick="copyPhone()" id="copyBtn" style="background:rgba(250,204,21,.15);border:1px solid var(--gold);color:var(--gold);padding:5px 12px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s">📋 Copy</button>
-      </div>
-      <div class="telebirr-name" id="telebirrName" style="font-size:13px;color:#fff;font-weight:600">Lidetua</div>
-      <div style="font-size:11px;color:var(--gray);margin-top:2px">Mela Bingo</div>
+      </div>    
+
+      
+      
     </div>
       <!-- Amharic Deposit Steps -->
 <div style="background:var(--panel);border:1px solid #3c2463;border-radius:14px;padding:16px;margin-bottom:16px">
@@ -1179,18 +1168,7 @@ body{
     <div id="depositMsg" style="display:none" class="status-msg"></div>
   </div>
 
-  <div id="walletWithdraw" class="wallet-section">
-    <div style="background:var(--card);border:1px solid #4a2d7a;border-radius:12px;padding:14px;margin-bottom:16px;font-size:13px;color:var(--gray);line-height:1.7">
-      ℹ️ Withdrawals are processed manually. Funds will be sent to your Telebirr number on file.<br>
-      <strong style="color:#fff">Minimum withdrawal: 50 ETB</strong>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Amount to Withdraw (ETB)</label>
-      <input class="form-input" type="number" id="withdrawAmount" placeholder="Enter amount..." min="50">
-    </div>
-    <button class="btn-submit btn-red" onclick="submitWithdrawal()">Request Withdrawal</button>
-    <div id="withdrawMsg" style="display:none" class="status-msg"></div>
-  </div>
+
 </div>
 
 <div id="screenHistory" class="screen">
@@ -1606,7 +1584,7 @@ function navGo(screen, navId){
     refreshAccountProfile(3,300);
   }
 
-  if(screen==='screenAdmin') adminLoadDeposits();
+  
 }
 function saveActiveGameState(phase){
   if(myRoomId) localStorage.setItem('roomId',myRoomId);
@@ -2264,206 +2242,19 @@ function switchAdminTab(tab){
   if(tab==='deposits') adminLoadDeposits();
   if(tab==='withdrawals') adminLoadWithdrawals();
   if(tab==='settings'){ adminLoadPaymentSettings(); adminLoadAdmins(); }
-  if(tab==='analytics') loadAnalytics();
+  
 }
 
 async function adminFetch(path, method='GET'){
   const res=await fetch(API_BASE+path,{method,headers:{'x-admin-token':adminToken,'Content-Type':'application/json'}});
   return res.json();
 }
-
-async function adminLoadDeposits(){
-  const list=document.getElementById('depositsList');
-  list.innerHTML='<div class="empty-state">Loading...</div>';
-  try{
-    const data=await adminFetch(`/api/admin/deposits?status=pending&token=${adminToken}`);
-    document.getElementById('depositCount').innerText=data.length||0;
-    if(!data.length){list.innerHTML='<div class="empty-state">✅ No pending deposits</div>';return;}
-    list.innerHTML=data.map(d=>`
-      <div class="request-card" id="dep-${d.id}">
-        <div class="req-row">
-          <div class="req-name">${esc(d.name)}</div>
-          <div class="req-amount">${d.amount} ETB</div>
-        </div>
-        <div class="req-meta">
-          📱 ${esc(d.phone||'—')}<br>
-          🔖 Ref: <strong style="color:#fff">${esc(d.tx_ref||'—')}</strong><br>
-          🕐 ${new Date(d.created_at).toLocaleString()}
-        </div>
-        <div class="req-actions">
-          <button class="btn-approve" onclick="adminApproveDeposit(${d.id})">✅ Approve</button>
-          <button class="btn-reject" onclick="adminRejectDeposit(${d.id})">❌ Reject</button>
-        </div>
-      </div>`).join('');
-  }catch(e){list.innerHTML='<div class="empty-state">Error loading deposits</div>';}
-}
-
-async function adminLoadWithdrawals(){
-  const list=document.getElementById('withdrawalsList');
-  list.innerHTML='<div class="empty-state">Loading...</div>';
-  try{
-    const data=await adminFetch(`/api/admin/withdrawals?status=pending&token=${adminToken}`);
-    document.getElementById('withdrawCount').innerText=data.length||0;
-    if(!data.length){list.innerHTML='<div class="empty-state">✅ No pending withdrawals</div>';return;}
-    list.innerHTML=data.map(w=>`
-      <div class="request-card" id="wd-${w.id}">
-        <div class="req-row">
-          <div class="req-name">${esc(w.name)}</div>
-          <div class="req-amount">${w.amount} ETB</div>
-        </div>
-        <div class="req-meta">
-          📱 ${esc(w.phone||'—')}<br>
-          🕐 ${new Date(w.created_at).toLocaleString()}
-        </div>
-        <div class="req-actions">
-          <button class="btn-approve" onclick="adminApproveWithdrawal(${w.id})">✅ Approve & Send</button>
-          <button class="btn-reject" onclick="adminRejectWithdrawal(${w.id})">❌ Reject & Refund</button>
-        </div>
-      </div>`).join('');
-  }catch(e){list.innerHTML='<div class="empty-state">Error loading withdrawals</div>';}
-}
-
-async function adminApproveDeposit(id){
-  if(!confirm('Approve this deposit?')) return;
-  const card=document.getElementById('dep-'+id);
-  if(card) card.style.opacity='.5';
-  try{
-    await adminFetch(`/api/admin/deposits/${id}/approve`,'POST');
-    showToast('✅ Deposit approved!');
-    adminLoadDeposits();
-  }catch(e){showToast('Error approving deposit','error');}
-}
-async function adminRejectDeposit(id){
-  if(!confirm('Reject this deposit?')) return;
-  const card=document.getElementById('dep-'+id);
-  if(card) card.style.opacity='.5';
-  try{
-    await adminFetch(`/api/admin/deposits/${id}/reject`,'POST');
-    showToast('Deposit rejected.','warn');
-    adminLoadDeposits();
-  }catch(e){showToast('Error rejecting deposit','error');}
-}
-async function adminApproveWithdrawal(id){
-  if(!confirm('Approve withdrawal and mark as sent?')) return;
-  const card=document.getElementById('wd-'+id);
-  if(card) card.style.opacity='.5';
-  try{
-    await adminFetch(`/api/admin/withdrawals/${id}/approve`,'POST');
-    showToast('✅ Withdrawal approved!');
-    adminLoadWithdrawals();
-  }catch(e){showToast('Error approving withdrawal','error');}
-}
-async function adminRejectWithdrawal(id){
-  if(!confirm('Reject withdrawal and refund the player?')) return;
-  const card=document.getElementById('wd-'+id);
-  if(card) card.style.opacity='.5';
-  try{
-    await adminFetch(`/api/admin/withdrawals/${id}/reject`,'POST');
-    showToast('Withdrawal rejected & refunded.','warn');
-    adminLoadWithdrawals();
-  }catch(e){showToast('Error rejecting withdrawal','error');}
-}
-
-async function adminSearchUser(){
-  const phone=document.getElementById('searchPhone').value.trim();
-  if(!phone){showToast('Enter a phone number','error');return;}
-  const results=document.getElementById('searchResults');
-  results.innerHTML='<div class="empty-state">Searching...</div>';
-  try{
-    const data=await adminFetch(`/api/admin/search?phone=${encodeURIComponent(phone)}&token=${adminToken}`);
-    if(!data.length){results.innerHTML='<div class="empty-state">No users found</div>';return;}
-    results.innerHTML=data.map(u=>`
-      <div class="user-card" onclick="showUserDetail(${JSON.stringify(u).replace(/"/g,'&quot;')})">
-        <div class="user-card-name">${esc(u.name)}</div>
-        <div class="user-card-meta">
-          📱 ${esc(u.phone||'—')} &nbsp;|&nbsp; 💰 Balance: <strong style="color:var(--gold)">${parseFloat(u.balance).toFixed(2)} ETB</strong><br>
-          🎮 Games: ${u.games_played||0} &nbsp;|&nbsp; 🏆 Wins: ${u.total_wins||0}
-        </div>
-      </div>`).join('');
-  }catch(e){results.innerHTML='<div class="empty-state">Search failed</div>';}
-}
-
-function showUserDetail(u){
-  const txs=(u.transactions||[]).slice(0,20);
-  const txHtml=txs.length?txs.map(t=>`
-    <div class="tx-row">
-      <span class="tx-type">${esc(t.type)}</span>
-      <span class="tx-${parseFloat(t.amount)>=0?'amt-pos':'amt-neg'}">${parseFloat(t.amount)>=0?'+':''}${parseFloat(t.amount).toFixed(2)} ETB</span>
-      <span style="font-size:10px;color:var(--gray)">${new Date(t.created_at).toLocaleDateString()}</span>
-    </div>`).join('')
-    :'<div class="empty-state" style="padding:10px">No transactions</div>';
-
-  const results=document.getElementById('searchResults');
-  results.innerHTML=`
-    <button onclick="adminSearchUser()" style="background:transparent;border:none;color:var(--gray);font-size:13px;cursor:pointer;margin-bottom:12px">← Back to results</button>
-    <div class="user-detail-card">
-      <div class="user-detail-title">Player Info</div>
-      <div class="user-detail-row"><span class="user-detail-key">Name</span><span class="user-detail-val">${esc(u.name)}</span></div>
-      <div class="user-detail-row"><span class="user-detail-key">Phone</span><span class="user-detail-val">${esc(u.phone||'—')}</span></div>
-      <div class="user-detail-row"><span class="user-detail-key">Balance</span><span class="user-detail-val" style="color:var(--gold)">${parseFloat(u.balance).toFixed(2)} ETB</span></div>
-      <div class="user-detail-row"><span class="user-detail-key">Games Played</span><span class="user-detail-val">${u.games_played||0}</span></div>
-      <div class="user-detail-row"><span class="user-detail-key">Total Wins</span><span class="user-detail-val">${u.total_wins||0}</span></div>
-      <div class="user-detail-row"><span class="user-detail-key">Total Winnings</span><span class="user-detail-val" style="color:var(--green)">${parseFloat(u.total_winnings||0).toFixed(2)} ETB</span></div>
-      <div class="user-detail-row"><span class="user-detail-key">Registered</span><span class="user-detail-val">${new Date(u.created_at).toLocaleDateString()}</span></div>
-    </div>
-    <div class="user-detail-card">
-      <div class="user-detail-title">Transaction History</div>
-      <div class="tx-list">${txHtml}</div>
-    </div>`;
-}
-
 function esc(str){
   if(!str) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ─── ADMIN: PAYMENT SETTINGS ───────────────────────────────────
-async function adminLoadPaymentSettings(){
-  try{
-    const data=await adminFetch(`/api/admin/payment-settings?token=${adminToken}`);
-    document.getElementById('settingsTelebirrNumber').value=data.telebirrNumber||'';
-    document.getElementById('settingsTelebirrName').value=data.telebirrName||'';
-  }catch(e){showToast('Failed to load settings','error');}
-}
-async function adminSavePaymentSettings(){
-  const telebirrNumber=document.getElementById('settingsTelebirrNumber').value.trim();
-  const telebirrName=document.getElementById('settingsTelebirrName').value.trim();
-  if(!telebirrNumber||!telebirrName){showWalletMsg('settingsMsg','Both fields are required.','error');return;}
-  try{
-    const res=await fetch(`${API_BASE}/api/admin/payment-settings?token=${adminToken}`,{
-      method:'POST',
-      headers:{'x-admin-token':adminToken,'Content-Type':'application/json'},
-      body:JSON.stringify({telebirrNumber,telebirrName})
-    });
-    const data=await res.json();
-    if(data.ok){
-      showWalletMsg('settingsMsg','✅ Payment info updated!','success');
-      applyPaymentInfo(data);
-    } else {
-      showWalletMsg('settingsMsg','Failed to save.','error');
-    }
-  }catch(e){showWalletMsg('settingsMsg','Failed to save.','error');}
-}
-
-// ─── PAYMENT INFO (deposit page) ───────────────────────────────
-function applyPaymentInfo(info){
-  if(!info) return;
-  const numEl=document.getElementById('telebirrNumber');
-  const nameEl=document.getElementById('telebirrName');
-  const stepNumEl=document.getElementById('depositStepNumber');
-  if(numEl) numEl.innerText=info.telebirrNumber;
-  if(nameEl) nameEl.innerText=info.telebirrName;
-  if(stepNumEl) stepNumEl.innerText=info.telebirrNumber;
-}
-async function loadPaymentInfo(){
-  try{
-    const res=await fetch(`${API_BASE}/api/payment-info`);
-    const data=await res.json();
-    applyPaymentInfo(data);
-  }catch(e){/* keep defaults */}
-}
-
-// ─── GAME: NUMBER CALLED ──────────────────────────────────────
+  // ─── GAME: NUMBER CALLED ──────────────────────────────────────
 function onNumberCalled(msg){
   const n=Number(msg.number), cfg=numConfig(n);
   calledNumbersSet.add(n);
@@ -2914,51 +2705,8 @@ function toggleSound(){
   if(soundEnabled&&!audioUnlocked) unlockAudio();
   showToast(soundEnabled?'🔊 Sound on':'🔇 Sound off');
 }
-  // ─── ADMIN MANAGEMENT ────────────────────────────────────────
-async function adminLoadAdmins(){
-  const list=document.getElementById('adminList');
-  list.innerHTML='<div style="color:var(--gray);font-size:13px">Loading...</div>';
-  try{
-    const r=await fetch(`${API_BASE}/api/admin/admins`,{headers:{'x-admin-token':adminToken}});
-    const data=await r.json();
-    if(!data.length){list.innerHTML='<div style="color:var(--gray);font-size:13px">No extra admins yet.</div>';return;}
-    list.innerHTML=data.map(a=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;background:var(--panel);border:1px solid #3c2463;border-radius:10px;padding:10px 14px;margin-bottom:8px">
-        <div>
-          <div style="font-weight:700;font-size:14px">${a.name||'Unknown'}</div>
-          <div style="font-size:11px;color:var(--gray)">📱 ${a.phone}</div>
-        </div>
-        ${(a.phone===ADMIN_PHONE_CLIENT||a.phone===ADMIN_PHONE_CLIENT2)?'<span style="color:var(--gold);font-size:12px;font-weight:700">ROOT</span>':`<button onclick="adminRemoveAdmin('${a.phone}')" style="background:var(--red);color:#fff;border:none;padding:7px 14px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">Remove</button>`}
-      </div>`).join('');
-  }catch(e){list.innerHTML='<div style="color:var(--red);font-size:13px">Failed to load.</div>';}
-}
-async function adminAddAdmin(){
-  const phone=document.getElementById('newAdminPhone').value.trim().replace(/^\+/,'');
-  const msg=document.getElementById('adminMgmtMsg');
-  if(!phone){showToast('Enter a phone number','error');return;}
-  const r=await fetch(`${API_BASE}/api/admin/admins`,{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':adminToken},body:JSON.stringify({phone})});
-  const data=await r.json();
-  if(data.ok){msg.className='status-msg success';msg.innerText='✅ Admin added!';msg.style.display='block';document.getElementById('newAdminPhone').value='';adminLoadAdmins();setTimeout(()=>msg.style.display='none',3000);}
-  else{msg.className='status-msg error';msg.innerText='❌ '+(data.error||'User not found');msg.style.display='block';}
-}
-async function adminRemoveAdmin(phone){
-  const msg=document.getElementById('adminMgmtMsg');
-  const r=await fetch(`${API_BASE}/api/admin/admins/${encodeURIComponent(phone)}`,{method:'DELETE',headers:{'x-admin-token':adminToken}});
-  const data=await r.json();
-  if(data.ok){msg.className='status-msg success';msg.innerText='✅ Removed.';msg.style.display='block';adminLoadAdmins();setTimeout(()=>msg.style.display='none',3000);}
-  else{msg.className='status-msg error';msg.innerText='❌ '+(data.error||'Failed');msg.style.display='block';}
-}
-  function copyPhone(){
-  const num=document.getElementById('telebirrNumber').innerText;
-  navigator.clipboard.writeText(num).then(()=>{
-    const btn=document.getElementById('copyBtn');
-    btn.innerText='✅ Copied!';
-    btn.style.background='rgba(34,197,94,.2)';
-    btn.style.borderColor='var(--green)';
-    btn.style.color='var(--green)';
-    setTimeout(()=>{btn.innerText='📋 Copy';btn.style.background='rgba(250,204,21,.15)';btn.style.borderColor='var(--gold)';btn.style.color='var(--gold)';},2000);
-  });
-}
+
+
 document.getElementById('depositTxRef').addEventListener('input', function(){
   const text=this.value.trim();
   const preview=document.getElementById('txnPreview');
@@ -2975,202 +2723,11 @@ document.getElementById('depositTxRef').addEventListener('input', function(){
     notFound.style.display='block';
   }
 });
-// ─── ANALYTICS ───────────────────────────────────────────────
-function analyticsSetRange(preset){
-  const now=new Date();
-  const fmt=d=>d.toISOString().slice(0,10);
-  const todayStr=fmt(now);
-  let from, to=todayStr;
-  if(preset==='today'){ from=todayStr; }
-  else if(preset==='7d'){ const d=new Date(now); d.setDate(d.getDate()-6); from=fmt(d); }
-  else if(preset==='30d'){ const d=new Date(now); d.setDate(d.getDate()-29); from=fmt(d); }
-  else if(preset==='month'){ from=fmt(new Date(now.getFullYear(),now.getMonth(),1)); }
-  else if(preset==='all'){ from='2020-01-01'; }
-  document.getElementById('analyticsFrom').value=from;
-  document.getElementById('analyticsTo').value=to;
-}
 
-async function loadAnalytics(){
-  const from=document.getElementById('analyticsFrom').value;
-  const to=document.getElementById('analyticsTo').value;
-  const content=document.getElementById('analyticsContent');
-  if(!from||!to){ showToast('Select a date range first','error'); return; }
-  content.innerHTML='<div class="empty-state" style="padding:30px 0">⏳ Loading report...</div>';
-  try{
-    const res=await fetch(`${API_BASE}/api/admin/analytics?from=${from}&to=${to}`,{headers:{'x-admin-token':adminToken}});
-    const d=await res.json();
-    if(d.error){ content.innerHTML=`<div class="empty-state" style="color:var(--red)">${esc(d.error)}</div>`; return; }
-    renderAnalytics(d, from, to);
-  }catch(e){
-    content.innerHTML='<div class="empty-state" style="color:var(--red)">Failed to load report</div>';
-  }
-}
 
-function renderAnalytics(d, from, to){
-  const g=d.games||{}, p=d.profit||{}, dep=d.deposits||{}, wd=d.withdrawals||{}, u=d.users||{};
-  const houseProfitNum=parseFloat(p.house_profit||0);
-  const depApproved=parseFloat(dep.approved_amount||0);
-  const wdApproved=parseFloat(wd.approved_amount||0);
-  const netCash=depApproved-wdApproved;
 
-  const statCard=(icon,label,value,sub,color)=>`
-    <div style="background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:14px;text-align:center">
-      <div style="font-size:22px;margin-bottom:4px">${icon}</div>
-      <div style="font-size:10px;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${label}</div>
-      <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;color:${color||'var(--gold)'};">${value}</div>
-      ${sub?`<div style="font-size:10px;color:var(--gray);margin-top:3px">${sub}</div>`:''}
-    </div>`;
 
-  // Daily revenue mini chart
-  const dailyRows=d.dailyRevenue||[];
-  let chartHtml='';
-  if(dailyRows.length>0){
-    const maxProfit=Math.max(...dailyRows.map(r=>parseFloat(r.profit||0)),1);
-    chartHtml=`
-      <div style="background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:14px;margin-bottom:12px;overflow-x:auto">
-        <div style="font-family:'Orbitron',sans-serif;font-size:12px;font-weight:900;color:var(--gold);margin-bottom:12px">📈 Daily House Profit</div>
-        <div style="display:flex;align-items:flex-end;gap:4px;height:80px;min-width:${Math.max(dailyRows.length*28,260)}px">
-          ${dailyRows.map(r=>{
-            const h=Math.max(4,Math.round((parseFloat(r.profit||0)/maxProfit)*72));
-            const pf=parseFloat(r.profit||0).toFixed(0);
-            return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;min-width:20px" title="${r.day}: ${pf} ETB profit, ${r.games} games">
-              <div style="width:100%;background:var(--green);border-radius:3px 3px 0 0;height:${h}px;opacity:.85"></div>
-              <div style="font-size:8px;color:var(--gray);margin-top:3px;transform:rotate(-45deg);white-space:nowrap">${r.day.slice(5)}</div>
-            </div>`;
-          }).join('')}
-        </div>
-      </div>`;
-  }
 
-  // Pending requests alert
-  const pendDep=d.pendingDeposits||[], pendWd=d.pendingWithdrawals||[];
-  let pendingHtml='';
-  if(pendDep.length||pendWd.length){
-    const pendDepAmt=pendDep.reduce((s,r)=>s+parseFloat(r.amount||0),0);
-    const pendWdAmt=pendWd.reduce((s,r)=>s+parseFloat(r.amount||0),0);
-    pendingHtml=`
-      <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.4);border-radius:12px;padding:14px;margin-bottom:12px">
-        <div style="font-family:'Orbitron',sans-serif;font-size:12px;font-weight:900;color:#f59e0b;margin-bottom:10px">⚠️ Pending Actions Required</div>
-        ${pendDep.length?`<div style="margin-bottom:8px">
-          <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:6px">💰 Deposits Awaiting Approval (${pendDep.length}) — ${pendDepAmt.toFixed(2)} ETB</div>
-          ${pendDep.map(r=>`
-            <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card);border-radius:8px;padding:8px 10px;margin-bottom:5px;font-size:12px">
-              <div><span style="font-weight:700">${esc(r.name)}</span> <span style="color:var(--gray)">📱${esc(r.phone)}</span></div>
-              <div style="display:flex;align-items:center;gap:6px">
-                <span style="color:var(--gold);font-weight:700">${parseFloat(r.amount).toFixed(0)} ETB</span>
-                <span style="font-size:10px;color:var(--gray)">${new Date(r.created_at).toLocaleDateString()}</span>
-                <button onclick="adminApproveDeposit(${r.id});loadAnalytics()" style="background:var(--green);color:#fff;border:none;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer">✅</button>
-                <button onclick="adminRejectDeposit(${r.id});loadAnalytics()" style="background:var(--red);color:#fff;border:none;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer">❌</button>
-              </div>
-            </div>`).join('')}
-        </div>`:''}
-        ${pendWd.length?`<div>
-          <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:6px">💸 Withdrawals Awaiting Approval (${pendWd.length}) — ${pendWdAmt.toFixed(2)} ETB</div>
-          ${pendWd.map(r=>`
-            <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card);border-radius:8px;padding:8px 10px;margin-bottom:5px;font-size:12px">
-              <div><span style="font-weight:700">${esc(r.name)}</span> <span style="color:var(--gray)">📱${esc(r.phone)}</span></div>
-              <div style="display:flex;align-items:center;gap:6px">
-                <span style="color:var(--red);font-weight:700">${parseFloat(r.amount).toFixed(0)} ETB</span>
-                <span style="font-size:10px;color:var(--gray)">${new Date(r.created_at).toLocaleDateString()}</span>
-                <button onclick="adminApproveWithdrawal(${r.id});loadAnalytics()" style="background:var(--green);color:#fff;border:none;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer">✅</button>
-                <button onclick="adminRejectWithdrawal(${r.id});loadAnalytics()" style="background:var(--red);color:#fff;border:none;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer">❌</button>
-              </div>
-            </div>`).join('')}
-        </div>`:''}
-      </div>`;
-  }
-
-  // Top winners table
-  let winnersHtml='';
-  if(d.topWinners&&d.topWinners.length){
-    winnersHtml=`
-      <div style="background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:14px;margin-bottom:12px">
-        <div style="font-family:'Orbitron',sans-serif;font-size:12px;font-weight:900;color:var(--gold);margin-bottom:10px">🏆 Top Winners</div>
-        ${d.topWinners.map((w,i)=>`
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #2d1b4e;font-size:12px">
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="color:var(--gold);font-weight:900;font-size:14px;min-width:20px">#${i+1}</span>
-              <div>
-                <div style="font-weight:700">${esc(w.name)}</div>
-                <div style="font-size:10px;color:var(--gray)">📱 ${esc(w.phone||'—')}</div>
-              </div>
-            </div>
-            <div style="text-align:right">
-              <div style="color:var(--green);font-weight:700">${parseFloat(w.total_won).toFixed(2)} ETB</div>
-              <div style="font-size:10px;color:var(--gray)">${w.wins} win${w.wins!==1?'s':''}</div>
-            </div>
-          </div>`).join('')}
-      </div>`;
-  }
-
-  // Recent transactions
-  let recentHtml='';
-  if(d.recentTx&&d.recentTx.length){
-    const txColor=t=>t==='win'||t==='deposit'?'var(--green)':'var(--red)';
-    const txSign=t=>t==='win'||t==='deposit'?'+':'−';
-    recentHtml=`
-      <div style="background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:14px;margin-bottom:12px">
-        <div style="font-family:'Orbitron',sans-serif;font-size:12px;font-weight:900;color:var(--gold);margin-bottom:10px">🕐 Recent Transactions (last 20)</div>
-        ${d.recentTx.map(t=>`
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #2d1b4e;font-size:12px">
-            <div>
-              <span style="font-weight:600">${esc(t.name)}</span>
-              <span style="color:var(--gray);margin-left:6px;font-size:10px;text-transform:capitalize">${esc(t.type)}</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="color:${txColor(t.type)};font-weight:700">${txSign(t.type)}${Math.abs(parseFloat(t.amount)).toFixed(2)} ETB</span>
-              <span style="font-size:10px;color:var(--gray)">${new Date(t.created_at).toLocaleString().slice(0,16)}</span>
-            </div>
-          </div>`).join('')}
-      </div>`;
-  }
-
-  document.getElementById('analyticsContent').innerHTML=`
-    <!-- Period header -->
-    <div style="text-align:center;margin-bottom:12px;font-size:11px;color:var(--gray)">
-      Report: <strong style="color:#fff">${from}</strong> → <strong style="color:#fff">${to}</strong>
-    </div>
-
-    <!-- KPI grid -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-      ${statCard('💎','House Profit',houseProfitNum.toFixed(2)+' ETB','From finished games','var(--green)')}
-      ${statCard('🎮','Games Played',g.total_games||0,`${g.finished_games||0} finished`,'')}
-      ${statCard('💰','Deposits In',depApproved.toFixed(2)+' ETB',`${dep.approved||0} approved / ${dep.pending||0} pending`,'')}
-      ${statCard('💸','Withdrawals Out',wdApproved.toFixed(2)+' ETB',`${wd.approved||0} approved / ${wd.pending||0} pending`,'var(--red)')}
-      ${statCard('📊','Net Cash Flow',(netCash>=0?'+':'')+netCash.toFixed(2)+' ETB','Deposits − Withdrawals',netCash>=0?'var(--green)':'var(--red)')}
-      ${statCard('👥','Total Users',u.total||0,`+${u.new_users||0} new this period`,'')}
-    </div>
-
-    <!-- Deposit / Withdrawal breakdown -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-      <div style="background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:12px">
-        <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:8px">💰 DEPOSITS</div>
-        ${[['Total',dep.total||0],['✅ Approved',dep.approved||0],['⏳ Pending',dep.pending||0],['❌ Rejected',dep.rejected||0]].map(([l,v])=>`
-          <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid #2d1b4e">
-            <span style="color:var(--gray)">${l}</span><span style="font-weight:700">${v}</span>
-          </div>`).join('')}
-        <div style="font-size:12px;font-weight:700;color:var(--green);margin-top:6px">${depApproved.toFixed(2)} ETB in</div>
-        ${dep.pending>0?`<div style="font-size:11px;color:#f59e0b">${parseFloat(dep.pending_amount||0).toFixed(2)} ETB pending</div>`:''}
-      </div>
-      <div style="background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:12px">
-        <div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:8px">💸 WITHDRAWALS</div>
-        ${[['Total',wd.total||0],['✅ Approved',wd.approved||0],['⏳ Pending',wd.pending||0],['❌ Rejected',wd.rejected||0]].map(([l,v])=>`
-          <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid #2d1b4e">
-            <span style="color:var(--gray)">${l}</span><span style="font-weight:700">${v}</span>
-          </div>`).join('')}
-        <div style="font-size:12px;font-weight:700;color:var(--red);margin-top:6px">${wdApproved.toFixed(2)} ETB out</div>
-        ${wd.pending>0?`<div style="font-size:11px;color:#f59e0b">${parseFloat(wd.pending_amount||0).toFixed(2)} ETB pending</div>`:''}
-      </div>
-    </div>
-
-    ${pendingHtml}
-    ${chartHtml}
-    ${winnersHtml}
-    ${recentHtml}
-
-    <button class="refresh-btn" onclick="loadAnalytics()" style="width:100%;justify-content:center">🔄 Refresh Report</button>
-  `;
-}
 
 // ─── INIT ────────────────────────────────────────────────────
 buildTracker();
