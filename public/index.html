@@ -517,7 +517,7 @@ body{
 .loading-spinner{border-color:#222a65;border-top-color:#4dd8ff}
 .loading-text{color:#c1c5ff}
 
-/* Shared surfaces used by wallet/history/rules/admin/settings */
+/* Shared surfaces used by wallet/history/rules/settings */
 .wallet-balance-card,
 .history-card,
 .history-empty,
@@ -1385,19 +1385,12 @@ body{
     <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 3.5v-1h6v1"/><path d="M8.5 9h7M8.5 13h7M8.5 17h5"/></svg></span>
     <span>RULES</span>
   </div>
-
-  <div class="nav-item" id="navAdmin" onclick="navGo('screenAdmin','navAdmin')" style="display:none">
-    <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3.5a2.2 2.2 0 0 1 2.1 1.6l.3 1.1 1 .6 1.1-.2a2.2 2.2 0 0 1 2.5 1.3l.2.5a2.2 2.2 0 0 1-.7 2.7l-.9.7v1.2l.9.7a2.2 2.2 0 0 1 .7 2.7l-.2.5a2.2 2.2 0 0 1-2.5 1.3l-1.1-.2-1 .6-.3 1.1a2.2 2.2 0 0 1-2.1 1.6h-.6a2.2 2.2 0 0 1-2.1-1.6L9 19l-1-.6-1.1.2a2.2 2.2 0 0 1-2.5-1.3l-.2-.5a2.2 2.2 0 0 1 .7-2.7l.9-.7v-1.2l-.9-.7a2.2 2.2 0 0 1-.7-2.7l.2-.5a2.2 2.2 0 0 1 2.5-1.3l1.1.2 1-.6.3-1.1A2.2 2.2 0 0 1 11.4 3.5z"/><circle cx="12" cy="12" r="2.7"/></svg></span><span>ADMIN</span>
-    <span class="nav-dot show" id="adminDot" style="display:none"></span>
-  </div>
 </div>
 
 <script>
 // Mela Bingo API server (Yegara temporary endpoint)
 const API_BASE = 'https://api2.cockpitaviations.com';
 // ─── STATE ────────────────────────────────────────────────────
-  const ADMIN_PHONE_CLIENT = '251965666656';
-  const ADMIN_PHONE_CLIENT2 = '251912649846';
 let ws, myPlayerId, myName='', myRoomId=localStorage.getItem('roomId')||null, myStakeId=null;
 let activeGamePhase=localStorage.getItem('activeGamePhase')||'none'; // none|countdown|playing|spectating
 let activeCountdownLeft=Number(localStorage.getItem('activeCountdownLeft')||0);
@@ -1405,7 +1398,7 @@ let restoringActiveGame=false;
 let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0;
 let myCardId2=null, myCardNumbers2=[], markedIndices2=new Set();
 let claimWindowOpen=false, claimBarAnim=null, prevLastCalled=null;
-let telegramId=null, isAdmin=false, adminToken='';
+let telegramId=null;
 let calledNumbersSet=new Set();
 let autoClaimSent=false;
 let activePlayers=[];
@@ -1896,23 +1889,10 @@ function handle(msg){
   // Always reconcile from the HTTPS account endpoint as the final authority.
   refreshAccountProfile(10,500);
 
-  isAdmin=msg.isAdmin||false;
-  adminToken=telegramId||'';
+
   document.getElementById('welcomeName').innerText=myName||'Player';
   document.getElementById('welcomeStatus').innerText=msg.isRegistered?'Welcome back! 👋':'Registered!';
-  if(isAdmin){
-    document.getElementById('navAdmin').style.display='flex';
-    document.getElementById('navRules').style.display='none';
-    // Check if this is a root admin — if so, show the Settings tab
-    if(telegramId){
-      fetch(`${API_BASE}/api/user/${telegramId}`).then(r=>r.json()).then(u=>{
-        if(u&&(u.phone===ADMIN_PHONE_CLIENT||u.phone===ADMIN_PHONE_CLIENT2)){
-          document.getElementById('settingsTab').style.display='';
-          document.getElementById('analyticsTab').style.display='';
-        }
-      }).catch(()=>{});
-    }
-  }
+
   // Restore an active room first. The server decides whether it is still
   // waiting/counting down or officially playing; do not assume a selected card
   // means the game has started.
@@ -2209,26 +2189,7 @@ function submitWithdrawal(){
   showWalletMsg('withdrawMsg','Submitting...','info');
 }
 
-// ─── ADMIN ────────────────────────────────────────────────────
-function switchAdminTab(tab){
-  document.querySelectorAll('.admin-tab').forEach((t,i)=>{
-    t.classList.toggle('active',['deposits','withdrawals','search','settings','analytics'][i]===tab);
-  });
-  document.getElementById('adminDeposits').classList.toggle('active',tab==='deposits');
-  document.getElementById('adminWithdrawals').classList.toggle('active',tab==='withdrawals');
-  document.getElementById('adminSearch').classList.toggle('active',tab==='search');
-  document.getElementById('adminSettings').classList.toggle('active',tab==='settings');
-  document.getElementById('adminAnalytics').classList.toggle('active',tab==='analytics');
-  if(tab==='deposits') adminLoadDeposits();
-  if(tab==='withdrawals') adminLoadWithdrawals();
-  if(tab==='settings'){ adminLoadPaymentSettings(); adminLoadAdmins(); }
-  
-}
 
-async function adminFetch(path, method='GET'){
-  const res=await fetch(API_BASE+path,{method,headers:{'x-admin-token':adminToken,'Content-Type':'application/json'}});
-  return res.json();
-}
 function esc(str){
   if(!str) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
