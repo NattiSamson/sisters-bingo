@@ -139,51 +139,6 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .status-msg.error{background:rgba(239,68,68,.12);color:var(--red);border:1px solid var(--red)}
 .status-msg.info{background:rgba(139,92,246,.12);color:var(--purple);border:1px solid var(--purple)}
 
-/* ── ADMIN SCREEN ──────────────────────────── */
-#screenAdmin{max-width:600px}
-.admin-header{display:flex;align-items:center;gap:10px;margin-bottom:18px}
-.admin-badge{background:var(--red);color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px}
-.admin-tabs{display:flex;background:var(--card);border-radius:10px;padding:4px;margin-bottom:16px;gap:4px}
-.admin-tab{flex:1;text-align:center;padding:8px;border-radius:7px;font-weight:600;font-size:12px;cursor:pointer;color:var(--gray);transition:all .2s}
-.admin-tab.active{background:var(--red);color:#fff}
-.admin-section{display:none}
-.admin-section.active{display:block}
-.search-row{display:flex;gap:8px;margin-bottom:14px}
-.search-input{flex:1;background:var(--card);border:1px solid #4a2d7a;color:#fff;padding:10px 12px;border-radius:8px;font-size:14px;outline:none}
-.search-input:focus{border-color:var(--gold)}
-.btn-search{background:var(--purple);color:#fff;border:none;padding:10px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px;white-space:nowrap}
-.request-card{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:14px;margin-bottom:10px}
-.req-row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
-.req-name{font-weight:700;font-size:15px}
-.req-amount{font-family:'Orbitron',sans-serif;color:var(--gold);font-size:16px;font-weight:900}
-.req-meta{font-size:11px;color:var(--gray);margin-bottom:10px;line-height:1.6}
-.req-actions{display:flex;gap:8px}
-.btn-approve{flex:1;background:var(--green);color:#fff;border:none;padding:9px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;transition:filter .15s}
-.btn-approve:hover{filter:brightness(1.1)}
-.btn-reject{flex:1;background:var(--red);color:#fff;border:none;padding:9px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;transition:filter .15s}
-.btn-reject:hover{filter:brightness(1.1)}
-.btn-done{background:#333;color:#888;border:none;padding:9px 14px;border-radius:8px;font-size:12px;cursor:default}
-.user-card{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:14px;margin-bottom:10px;cursor:pointer;transition:border-color .2s}
-.user-card:hover{border-color:var(--gold)}
-.user-card-name{font-weight:700;font-size:15px;margin-bottom:4px}
-.user-card-meta{font-size:12px;color:var(--gray);line-height:1.6}
-.user-detail-card{background:var(--card);border:1px solid #4a2d7a;border-radius:12px;padding:16px;margin-bottom:12px}
-.user-detail-title{font-size:11px;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
-.user-detail-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #2d1b4e;font-size:13px}
-.user-detail-row:last-child{border-bottom:none}
-.user-detail-key{color:var(--gray)}
-.user-detail-val{font-weight:600}
-.tx-list{max-height:220px;overflow-y:auto}
-.tx-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #2d1b4e;font-size:12px}
-.tx-row:last-child{border-bottom:none}
-.tx-type{color:var(--gray);text-transform:capitalize}
-.tx-amt-pos{color:var(--green);font-weight:700}
-.tx-amt-neg{color:var(--red);font-weight:700}
-.empty-state{text-align:center;padding:30px 0;color:var(--gray);font-size:14px}
-.badge-count{display:inline-flex;align-items:center;justify-content:center;background:var(--red);color:#fff;font-size:10px;font-weight:900;min-width:16px;height:16px;border-radius:8px;padding:0 4px;margin-left:4px}
-.refresh-btn{background:transparent;border:1px solid #4a2d7a;color:var(--gray);padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;gap:5px}
-.refresh-btn:hover{border-color:var(--gold);color:#fff}
-
 /* END-GAME RESULT OVERLAY */
 .winner-overlay{position:fixed;inset:0;background:rgba(5,10,22,.94);z-index:500;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:18px;overflow-y:auto}
 .winner-overlay.show{display:flex;animation:overlayIn .35s ease}
