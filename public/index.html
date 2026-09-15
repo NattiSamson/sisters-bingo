@@ -1624,13 +1624,13 @@ function handle(msg){
   if(msg.isRegistered===true && msg.balance!==undefined && msg.balance!==null && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
     setBalance(msg.balance);
   }
-  document.getElementById('welcomeName').innerText=myName||'Player';
+  //document.getElementById('welcomeName').innerText=myName||'Player';
   // Always reconcile from the HTTPS account endpoint as the final authority.
   refreshAccountProfile(10,500);
 
 
   document.getElementById('welcomeName').innerText=myName||'Player';
-  document.getElementById('welcomeStatus').innerText=msg.isRegistered?'Welcome back! 👋':'Registered!';
+  //document.getElementById('welcomeStatus').innerText=msg.isRegistered?'Welcome back! 👋':'Registered!';
 
   // Restore an active room first. The server decides whether it is still
   // waiting/counting down or officially playing; do not assume a selected card
