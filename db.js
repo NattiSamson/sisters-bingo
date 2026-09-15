@@ -2400,7 +2400,7 @@ module.exports = {
         [paymentTypeId]
       );
 
-    return rows;
+    return rows[0] || null;
   },
 
   async getPaymentMethods() {
@@ -2438,7 +2438,7 @@ module.exports = {
         `
       );
 
-    return rows;
+    return rows[0] || null;
   },
 
   async getPaymentMethodById(
