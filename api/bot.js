@@ -3798,11 +3798,11 @@ bot.callbackQuery(
 
         }
 
-        const paymentaccount = await getPaymentMethodTypesById(paymentMethod.type_id);
-        if (!paymentaccount) {
+        const paymentType = await getPaymentMethodTypesById(paymentMethod.type_id);
+        if (!paymentType) {
 
           return ctx.reply(
-            "❌ የየክፍያ አማራጭ አልተገኘም።"
+            "❌ የክፍያ አማራጭ አልተገኘም።"
           );
 
         ctx.session.paymentMethod = { id: paymentMethodId, name: paymentMethod.name, amharicName: paymentMethod.amharic_Name};
