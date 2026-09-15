@@ -107,17 +107,17 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .wallet-tab.active{background:var(--purple);color:#fff}
 .wallet-section{display:none}
 .wallet-section.active{display:block}
-.history-list{display:flex;flex-direction:column;gap:10px;margin-top:14px}
-.history-card{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:13px}
-.history-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:7px}
-.history-date{font-size:11px;color:var(--gray)}
-.history-result{font-size:12px;font-weight:900}
-.history-result.win{color:var(--green)}
-.history-result.loss{color:var(--red)}
-.history-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0}
-.history-key{color:var(--gray)}
-.history-value{font-weight:700}
-.history-empty{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:30px 16px;text-align:center;color:var(--gray);font-size:13px}
+.profile-list{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.profile-card{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:13px}
+.profile-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:7px}
+.profile-date{font-size:11px;color:var(--gray)}
+.profile-result{font-size:12px;font-weight:900}
+.profile-result.win{color:var(--green)}
+.profile-result.loss{color:var(--red)}
+.profile-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0}
+.profile-key{color:var(--gray)}
+.profile-value{font-weight:700}
+.profile-empty{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:30px 16px;text-align:center;color:var(--gray);font-size:13px}
 .form-group{margin-bottom:14px}
 .form-label{font-size:12px;color:var(--gray);margin-bottom:5px;display:block}
 .form-input{width:100%;background:var(--card);border:1px solid #4a2d7a;color:#fff;padding:12px;border-radius:8px;font-size:15px;outline:none;transition:border-color .2s}
@@ -519,8 +519,8 @@ body{
 
 /* Shared surfaces used by wallet/history/settings */
 .wallet-balance-card,
-.history-card,
-.history-empty,
+.profile-card,
+.profile-empty,
 .user-card,
 .user-detail-card,
 .result-card-wrap,
@@ -1450,10 +1450,10 @@ function loadUserProfile(){
   if(!list) return Promise.resolve();
   if(!telegramId) telegramId=getTelegramId();
   if(!telegramId){
-    list.innerHTML='<div class="history-empty">የTelegram ሂሳብ አልተገናኘም።</div>';
+    list.innerHTML='<div class="profile-empty">የTelegram ሂሳብ አልተገናኘም።</div>';
     return Promise.resolve();
   }
-  list.innerHTML='<div class="history-empty">ታሪክ በመጫን ላይ...</div>';
+  list.innerHTML='<div class="profile-empty">ታሪክ በመጫን ላይ...</div>';
   return fetch(`${API_BASE}/api/history/${encodeURIComponent(telegramId)}?limit=50`,{cache:'no-store'})
     .then(async r=>{
       const data=await r.json().catch(()=>[]);
@@ -1462,7 +1462,7 @@ function loadUserProfile(){
     })
     .then(rows=>{
       if(!Array.isArray(rows)||!rows.length){
-        list.innerHTML='<div class="history-empty">📜 እስካሁን የጨዋታ ታሪክ የለዎትም።</div>';
+        list.innerHTML='<div class="profile-empty">📜 እስካሁን የጨዋታ ታሪክ የለዎትም።</div>';
         return;
       }
       list.innerHTML=rows.map(g=>{
@@ -1471,7 +1471,7 @@ function loadUserProfile(){
         const wonAmount=Number(g.amount_won)||0;
         const net=wonAmount-played;
         const stake=Number(g.stake_amount)||0;
-        return `<div class="history-card">
+        return `<div class="profile-card">
           <div class="history-top">
             <div style="font-weight:900">🎱 ${esc(g.stake_id||('ST'+stake))}</div>
             <div class="history-result ${won?'win':'loss'}">${won?'🏆 አሸንፈዋል':'— አላሸነፉም'}</div>
@@ -1485,8 +1485,8 @@ function loadUserProfile(){
       }).join('');
     })
     .catch(e=>{
-      console.error('History:',e);
-      list.innerHTML='<div class="history-empty">የጨዋታ ታሪክን መጫን አልተቻለም።</div>';
+      console.error('Profile:',e);
+      list.innerHTML='<div class="profile-empty">የጨዋታ ታሪክን መጫን አልተቻለም።</div>';
     });
 }
 
