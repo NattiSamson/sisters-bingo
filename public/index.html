@@ -521,7 +521,6 @@ body{
 .wallet-balance-card,
 .history-card,
 .history-empty,
-.telebirr-info,
 .user-card,
 .user-detail-card,
 .result-card-wrap,
@@ -1090,85 +1089,14 @@ body{
 
 <div id="screenWallet" class="screen">
   <h2 class="screen-title">💰 MY WALLET</h2>
-
   <div class="wallet-balance-card">
     <div class="wallet-bal-label">Available Balance</div>
     <div class="wallet-bal-amount" id="walletBalAmt">ETB 0.00</div>
   </div>
-
   <div class="wallet-tabs">
     <div class="wallet-tab active" onclick="switchWalletTab('deposit')">⬇ Deposit</div>
     <div class="wallet-tab" onclick="switchWalletTab('withdraw')">⬆ Withdraw</div>
   </div>
-
-  <div id="walletDeposit" class="wallet-section active">
-    <div class="telebirr-info">
-      <div class="telebirr-logo">
-        <svg width="150" height="42" viewBox="0 0 150 42" fill="none" xmlns="http://www.w3.org/2000/svg" style="border-radius: 8px;">
-          <rect width="150" height="42" rx="8" fill="#1e3a8a"/>
-          <circle cx="24" cy="21" r="12" fill="#fff"/>
-          <path d="M23 14V22.5C23 24.2 23.8 25 25.8 25H27.8V27H25.8C23.2 27 21.2 25.8 20.4 23.2V15.8H18V14H20.4V11.5H23V14H26.5V14H23Z" fill="#1e3a8a"/>
-          <text x="44" y="26" fill="#fff" font-family="'Inter', sans-serif" font-weight="700" font-size="16" letter-spacing="0.5">telebirr</text>
-        </svg>
-      </div>    
-
-      
-      
-    </div>
-      <!-- Amharic Deposit Steps -->
-<div style="background:var(--panel);border:1px solid #3c2463;border-radius:14px;padding:16px;margin-bottom:16px">
-  <div style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:900;color:var(--gold);margin-bottom:14px;text-align:center">📋 እንዴት ገንዘብ ማስገባት ይቻላል?</div>
-  <div style="display:flex;flex-direction:column;gap:10px">
-
-    <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
-      <div style="width:30px;height:30px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">1</div>
-      <div style="font-size:12px;color:var(--gold);line-height:1.6">ከላይ ያለውን <strong style="color:#fff" id="depositStepNumber">0967423275</strong> የቴሌብር ቁጥር copy ያድርጉ ወይም ያስታውሱ</div>
-    </div>
-
-    <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
-      <div style="width:30px;height:30px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">2</div>
-      <div style="font-size:12px;color:var(--gold);line-height:1.6">የቴሌብር አፕልኬሽን ይክፈቱ፣ <strong style="color:#fff">Send Money</strong> ይምረጡ፣ ቁጥሩን ያስገቡ</div>
-    </div>
-
-    <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
-      <div style="width:30px;height:30px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">3</div>
-      <div style="font-size:12px;color:var(--gold);line-height:1.6">መላክ የሚፈልጉትን ብር ይጻፉ — <strong style="color:#fff">ዝቅተኛ 10 ብር</strong> — ከዚያ ይላኩ</div>
-    </div>
-
-    <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
-      <div style="width:30px;height:30px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">4</div>
-      <div style="font-size:12px;color:var(--gold);line-height:1.6">ቴሌብር ከላከ በኋላ ከ ቴሌ ብር የተላከሎትን ሙሉ መልእክት<strong style="color:#fff">(Message)</strong> copy ያድርጉ</div>
-    </div>
-
-    <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
-      <div style="width:30px;height:30px;background:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">5</div>
-      <div style="font-size:12px;color:var(--gold);line-height:1.6">ከታች ያለውን ቅጽ ይሙሉ — የላኩትን <strong style="color:#fff">ብር መጠን</strong> እና <strong style="color:#fff">ከ ቴሌ ብር የተላከሎትን ሙሉ መልእክት</strong> ያስገቡ፣ ከዚያ Submit ይጫኑ</div>
-    </div>
-
-  </div>
-  <div style="background:rgba(250,204,21,.08);border:1px solid rgba(250,204,21,.3);border-radius:10px;padding:11px;margin-top:12px;font-size:12px;color:var(--gray);line-height:1.8;text-align:center">
-    ⏱️ ገንዘቡ ከተላከ በኋላ አድሚን ሲያረጋግጥ ወዲያውኑ ወደ አካውንትዎ ገቢ ይደረጋል
-  </div>
-</div>
-    <div class="form-group">
-      <label class="form-label">Amount (ETB) — Minimum 10 ETB</label>
-      <input class="form-input" type="number" id="depositAmount" placeholder="Enter amount..." min="10">
-    </div>
-   <div class="form-group">
-  <label class="form-label">Paste your full Telebirr SMS message</label>
-  <textarea class="form-input" id="depositTxRef" placeholder="Paste the full SMS here e.g: Your transaction of ETB 50.00 to 0967423275 is confirmed. Ref: TXN123456789..." rows="4" style="resize:none;line-height:1.6"></textarea>
-  <div id="txnPreview" style="display:none;margin-top:8px;background:rgba(34,197,94,.1);border:1px solid var(--green);border-radius:8px;padding:10px;font-size:13px;color:var(--green)">
-    ✅ Reference found: <strong id="txnFound"></strong>
-  </div>
-  <div id="txnNotFound" style="display:none;margin-top:8px;background:rgba(239,68,68,.1);border:1px solid var(--red);border-radius:8px;padding:10px;font-size:13px;color:var(--red)">
-    ❌ No reference number found. Make sure you paste the full SMS.
-  </div>
-</div>
-    <button class="btn-submit btn-green" onclick="submitDeposit()">Submit Deposit Request</button>
-    <div id="depositMsg" style="display:none" class="status-msg"></div>
-  </div>
-
-
 </div>
 
 <div id="screenHistory" class="screen">
@@ -2665,27 +2593,14 @@ document.getElementById('depositTxRef').addEventListener('input', function(){
   }
 });
 
-
-
-
-
-
 // ─── INIT ────────────────────────────────────────────────────
 buildTracker();
-  buildSpectatorTracker();
+buildSpectatorTracker();
 restoreCachedBalance();
 connect();
 loadPaymentInfo();
-// Set default analytics range to last 30 days
-(()=>{
-  const fmt=d=>d.toISOString().slice(0,10);
-  const now=new Date();
-  const d30=new Date(now); d30.setDate(d30.getDate()-29);
-  const fromEl=document.getElementById('analyticsFrom');
-  const toEl=document.getElementById('analyticsTo');
-  if(fromEl) fromEl.value=fmt(d30);
-  if(toEl) toEl.value=fmt(now);
-})();
+//--------------------------------------------------------------
+  
 </script>
 </body>
 </html>
