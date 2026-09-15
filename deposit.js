@@ -1,4 +1,33 @@
 const cheerio = require("cheerio");
+/*{ok: true,
+providerKey: "telebirr",
+resolvedUrl: "https://transactioninfo.ethiotelecom.et/receipt/CJF7HITHQF",
+httpStatus: 200,
+fetchedAt: "2026-09-06T09:40:07.363Z",
+receipt: {
+source: "telebirr-html",
+payerName: "BEKELE GARED GEBRE HIWOT",
+receiptNo: "CJF7HITHQF",
+serviceFee: "7.83 Birr",
+paymentDate: "15-10-2025 15:26:23",
+paymentMode: "telebirr",
+paymentReason: "Customer Transfer from Mobile Money to Bank",
+serviceFeeVAT: "1.17 Birr",
+settledAmount: "2,500 Birr",
+paymentChannel: "API/App",
+payerTelebirrNo: "2519****7808",
+totalPaidAmount: "2,509 Birr",
+payerAccountType: "Individual Customer",
+bankAccountNumber: "1000277825078   BEMERI MISRAKE TSEHAY MEKANE KIDIST",
+creditedPartyName: "Commercial Bank of Ethiopia",
+transactionStatus: "Completed",
+creditedPartyAccountNo: "0003"
+},
+rawHtmlLength: 27445,
+egressSource: null,
+error: null,
+cached: true
+}*/
 
 async function extractInvoiceNumbertelebirr(sms) {
   const match = sms.match(
