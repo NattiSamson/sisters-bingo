@@ -2668,15 +2668,7 @@ restoreCachedBalance();
 connect();
 loadPaymentInfo();
 //--------------------------------------------------------------
-  (()=>{
-  const fmt=d=>d.toISOString().slice(0,10);
-  const now=new Date();
-  const d30=new Date(now); d30.setDate(d30.getDate()-29);
-  const fromEl=document.getElementById('analyticsFrom');
-  const toEl=document.getElementById('analyticsTo');
-  if(fromEl) fromEl.value=fmt(d30);
-  if(toEl) toEl.value=fmt(now);
-})();
+
 </script>
 </body>
 </html>
