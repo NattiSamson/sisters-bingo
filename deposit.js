@@ -249,15 +249,15 @@ async function processDeposit(sms,pmName,pmAmharicName,ptName,ptAmharicName)
   {
         if(ptName == "Mobile" || ptAmharicName == "ሞባይል")
         {
-          if(pmName == "telebirr" || pmName == "ሞባይል")
+          if(pmName == "telebirr" || pmAmharicName == "ሞባይል")
           {
              invoiceNo = extractInvoiceNumbertelebirr(sms);
           }
-          else if(pmName == "M-PESA" || pmName == "ኤም-ፔሳ")
+          else if(pmName == "M-PESA" || pmAmharicName == "ኤም-ፔሳ")
           {
             invoiceNo = extractInvoiceNumbermpessa(sms);
           }
-          else if(pmName == "CBEBirr" || pmName == "ሲቢኢ ብር")
+          else if(pmName == "CBEBirr" || pmAmharicName == "ሲቢኢ ብር")
           {
             invoiceNo = extractInvoiceNumbercbebirr(sms);
           }
@@ -267,7 +267,7 @@ async function processDeposit(sms,pmName,pmAmharicName,ptName,ptAmharicName)
         }
         else if(ptName == "Bank" || ptAmharicName == "ባንክ")
         {
-          if(pmName == "CBE" || pmName == "ኢትዮጵያ ንግድ ባንክ")
+          if(pmName == "CBE" || pmAmharicName == "ኢትዮጵያ ንግድ ባንክ")
           {
             invoiceNo = extractInvoiceNumbertelebirr(sms);
           }
