@@ -241,19 +241,58 @@ async function extractTransactionInfofromThirdParty(url) {
 // MAIN DEPOSIT PROCESS
 // ─────────────────────────────────────────────
 
-async function processDeposit(sms,pmName,pmAmharicName,pmtName,pmtAmharicName) {
+async function processDeposit(sms,pmName,pmAmharicName,ptName,ptAmharicName) 
+{
+  console.log("ProcessDeposit--------> sms , pm.name, pm.amharic_name, pt.name, pt.amharic_name",sms + ", " + pmName + ", " + pmAmharicName + ", " + ptName + ", " + ptAmharicName);      
+  let invoiceNo = "";
+  if(sms.length > 10)
+  {
+        if(ptName == "Mobile" || ptAmharicName == "ሞባይል")
+        {
+          if(pmName == "telebirr" || pmName == "ሞባይል")
+          {
+             invoiceNo = extractInvoiceNumbertelebirr(sms);
+          }
+          else if(pmName == "M-PESA" || pmName == "ኤም-ፔሳ")
+          {
+            invoiceNo = extractInvoiceNumbermpessa(sms);
+          }
+          else if(pmName == "CBEBirr" || pmName == "ሲቢኢ ብር")
+          {
+            invoiceNo = extractInvoiceNumbercbebirr(sms);
+          }
+          else
+          {
+          }
+        }
+        else if(ptName == "Bank" || ptAmharicName == "ባንክ")
+        {
+          if(pmName == "CBE" || pmName == "ኢትዮጵያ ንግድ ባንክ")
+          {
+            invoiceNo = extractInvoiceNumbertelebirr(sms);
+          }
+        }
+        else if(ptName == "Mobile Agent" || ptAmharicName == "ሞባይል ኤጀንት")
+        {
+        }
+        else
+        {
+        }
+  }
+  else
+  {
+    invoiceNo = sms;
+  }
 
-  if(pmtName == ""
+  
 
-  const invoiceNo = await extractInvoiceNumber(sms);
-
-  if (invoiceNo == null) {
+  if (invoiceNo == null || invoiceNo == "") {
     console.log("No invoice number found.");
     return 1;
   }
 
   // Build URL
-  const url = await builURLfromInvoiceNo(invoiceNo);
+  //const url = await builURLfromInvoiceNo(invoiceNo);
   
   // Check URL
   //const isValid = await checkUrl("https://links.et/");
