@@ -1732,10 +1732,12 @@ function handle(msg){
 
     case 'connected':
       myPlayerId=msg.playerId;
-      // Never replace a known balance with the server's initial connection value (0).
+      // Render the normal game menu immediately. Account authentication happens
+      // asynchronously and must never leave the app stuck on the loading screen.
       if(msg.stakes) renderStakes(msg.stakes);
-      document.getElementById('loadingText').innerText='Loading your account...';
       const pageParam = new URLSearchParams(location.search).get('page');
+      if(pageParam !== 'deposit' && pageParam !== 'withdraw') goScreen('screenLobby');
+      document.getElementById('loadingText').innerText='Loading your account...';
       if(pageParam === 'deposit') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('deposit'); }, 1500);
       if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('withdraw'); }, 1500);
       waitForTelegramId(40,250).then(async tid=>{
@@ -1780,7 +1782,9 @@ function handle(msg){
   // waiting/counting down or officially playing; do not assume a selected card
   // means the game has started.
   restoreActiveGameState();
-  if(myRoomId && telegramId){
+  const loadingWasActive=document.getElementById('screenLoading').classList.contains('active');
+  const hasRestorableGame=!!myRoomId && !!telegramId && ['countdown','playing','spectating'].includes(activeGamePhase);
+  if(hasRestorableGame){
     restoringActiveGame=true;
     if(activeGamePhase==='countdown') navGo('screenCards','navGame');
     else if(activeGamePhase==='playing' || activeGamePhase==='spectating') navGo('screenGame','navGame');
@@ -1793,7 +1797,10 @@ function handle(msg){
         goScreen('screenLobby');
       }
     },6000);
-  } else {
+  } else if(loadingWasActive){
+    // Only the initial loading screen should be replaced automatically.
+    // If the user is already on Profile or another screen, authentication must
+    // not unexpectedly navigate them away.
     goScreen('screenLobby');
   }
   break;

@@ -87,7 +87,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .bingo-cell.marked{background:var(--purple)!important;color:#fff!important}
 .bingo-cell.called-not-marked{background:#fff8dc!important;color:#8b6914!important}
 .bingo-cell.free{background:var(--purple)!important;color:#fff!important;cursor:default}
-.bingo-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:#271447;border:1px solid #3d226b;color:var(--gray);font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;padding:14px;border-radius:12px;cursor:pointer;margin-top:14px;transition:all .2s}
+.bingo-btn{display:none!important;align-items:center;justify-content:center;gap:8px;width:100%;background:#271447;border:1px solid #3d226b;color:var(--gray);font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;padding:14px;border-radius:12px;cursor:pointer;margin-top:14px;transition:all .2s}
 .bingo-btn.ready{animation:flashPulse .7s infinite alternate;background:var(--green)!important;color:#fff!important;border-color:#fff!important;box-shadow:0 0 22px var(--green)}
 .bingo-btn.locked{background:#1a0a0a!important;color:#666!important;cursor:not-allowed;border-color:#333!important}
 @keyframes flashPulse{0%{transform:scale(1);filter:brightness(1)}100%{transform:scale(1.02);filter:brightness(1.25)}}
@@ -107,17 +107,33 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .wallet-tab.active{background:var(--purple);color:#fff}
 .wallet-section{display:none}
 .wallet-section.active{display:block}
-.profile-list{display:flex;flex-direction:column;gap:10px;margin-top:14px}
-.profile-card{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:13px}
-.profile-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:7px}
-.profile-date{font-size:11px;color:var(--gray)}
-.profile-result{font-size:12px;font-weight:900}
-.profile-result.win{color:var(--green)}
-.profile-result.loss{color:var(--red)}
-.profile-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0}
-.profile-key{color:var(--gray)}
-.profile-value{font-weight:700}
-.profile-empty{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:30px 16px;text-align:center;color:var(--gray);font-size:13px}
+.profile-page{padding:10px 0 24px}
+.profile-hero{background:linear-gradient(145deg,#252d8d,#14194f 58%,#0d1239);border:1px solid rgba(255,212,59,.62);border-radius:20px;padding:24px 18px 22px;text-align:center;box-shadow:0 18px 42px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.08);position:relative;overflow:hidden}
+.profile-hero:before{content:'';position:absolute;width:170px;height:170px;right:-75px;top:-75px;border-radius:50%;background:rgba(56,217,255,.13);filter:blur(3px)}
+.profile-hero:after{content:'';position:absolute;width:150px;height:150px;left:-75px;bottom:-90px;border-radius:50%;background:rgba(124,92,255,.18)}
+.profile-avatar{width:74px;height:74px;margin:0 auto 11px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:linear-gradient(145deg,#5e75ff,#7b55ee);border:3px solid rgba(255,255,255,.65);box-shadow:0 0 28px rgba(83,109,255,.45),inset 0 0 18px rgba(255,255,255,.14);font-family:'Orbitron',sans-serif;font-size:28px;font-weight:900;color:#fff;position:relative;z-index:1}
+.profile-name{font-size:22px;font-weight:900;color:#fff;position:relative;z-index:1}
+.profile-sub{margin-top:4px;color:#c3c8f8;font-size:11px;position:relative;z-index:1}
+.profile-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:14px}
+.profile-stat{min-width:0;background:linear-gradient(145deg,rgba(31,39,103,.98),rgba(12,18,58,.98));border:1px solid rgba(91,146,255,.48);border-radius:15px;padding:15px 7px 13px;text-align:center;box-shadow:0 10px 22px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.06)}
+.profile-stat-icon{font-size:20px;line-height:1;margin-bottom:7px}
+.profile-stat-value{font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.profile-stat.games .profile-stat-value{color:#53d7ff}
+.profile-stat.wins .profile-stat-value{color:#7cffb2}
+.profile-stat.winnings .profile-stat-value{color:#ffd83d}
+.profile-stat-label{margin-top:5px;color:#b9bff0;font-size:9px;font-weight:800;line-height:1.2}
+.profile-wallet{margin-top:14px;background:linear-gradient(105deg,#3478ff,#5146e5 58%,#6952ee);border:1px solid rgba(255,255,255,.18);border-radius:17px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 12px 26px rgba(39,73,214,.22)}
+.profile-wallet-copy{text-align:left;min-width:0}
+.profile-wallet-label{font-size:10px;color:rgba(255,255,255,.78);font-weight:800;text-transform:uppercase;letter-spacing:.7px}
+.profile-wallet-value{margin-top:3px;font-family:'Orbitron',sans-serif;font-size:23px;font-weight:900;color:#fff}
+.profile-wallet-icon{width:47px;height:47px;flex:0 0 47px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.45);font-size:22px;box-shadow:inset 0 0 14px rgba(255,255,255,.1)}
+.profile-section-title{display:flex;align-items:center;justify-content:center;gap:9px;margin:20px 0 10px;color:#fff;font-size:14px;font-weight:900}
+.profile-section-title span{height:2px;width:32px;background:linear-gradient(90deg,transparent,var(--gold))}
+.profile-section-title span:last-child{background:linear-gradient(90deg,var(--gold),transparent)}
+.profile-refresh{width:100%;margin-top:12px;padding:11px;border-radius:11px;border:1px solid rgba(91,146,255,.4);background:rgba(21,28,83,.82);color:#cbd0ff;font-size:11px;font-weight:800;cursor:pointer}
+.profile-refresh:active{transform:scale(.985)}
+.profile-empty{background:linear-gradient(145deg,rgba(31,39,103,.94),rgba(15,20,63,.96));border:1px solid rgba(91,146,255,.42);border-radius:14px;padding:24px 16px;text-align:center;color:var(--gray);font-size:12px}
+@media(max-width:360px){.profile-stats{gap:6px}.profile-stat{padding-left:4px;padding-right:4px}.profile-stat-value{font-size:14px}.profile-stat-label{font-size:8px}.profile-wallet-value{font-size:20px}}
 .form-group{margin-bottom:14px}
 .form-label{font-size:12px;color:var(--gray);margin-bottom:5px;display:block}
 .form-input{width:100%;background:var(--card);border:1px solid #4a2d7a;color:#fff;padding:12px;border-radius:8px;font-size:15px;outline:none;transition:border-color .2s}
@@ -1165,6 +1181,46 @@ body{
 </div>
 
 
+<div id="screenProfile" class="screen">
+  <div class="profile-page">
+    <div class="profile-hero">
+      <div class="profile-avatar" id="profileAvatar">M</div>
+      <div class="profile-name" id="profileName">Player</div>
+      <div class="profile-sub">Mela Bingo Player</div>
+    </div>
+
+    <div class="profile-section-title"><span></span>Your Statistics<span></span></div>
+    <div class="profile-stats">
+      <div class="profile-stat games">
+        <div class="profile-stat-icon">🎮</div>
+        <div class="profile-stat-value" id="profileGames">0</div>
+        <div class="profile-stat-label">TOTAL GAMES<br>PLAYED</div>
+      </div>
+      <div class="profile-stat wins">
+        <div class="profile-stat-icon">🏆</div>
+        <div class="profile-stat-value" id="profileWins">0</div>
+        <div class="profile-stat-label">TOTAL<br>WINS</div>
+      </div>
+      <div class="profile-stat winnings">
+        <div class="profile-stat-icon">💰</div>
+        <div class="profile-stat-value" id="profileWinnings">0.00</div>
+        <div class="profile-stat-label">TOTAL<br>WINNINGS</div>
+      </div>
+    </div>
+
+    <div class="profile-wallet">
+      <div class="profile-wallet-copy">
+        <div class="profile-wallet-label">Wallet Balance</div>
+        <div class="profile-wallet-value" id="profileBalance">ETB 0.00</div>
+      </div>
+      <div class="profile-wallet-icon">💳</div>
+    </div>
+
+    <button class="profile-refresh" type="button" onclick="loadUserProfile(true)">↻ Refresh Profile</button>
+    <div id="profileStatus" class="profile-empty" style="margin-top:10px;display:none"></div>
+  </div>
+</div>
+
 <div class="winner-overlay" id="winnerOverlay">
   <div class="confetti-row" id="resultConfetti">🎊🎉🎊🎉🎊</div>
   <div class="winner-trophy" id="resultTrophy">🏆</div>
@@ -1488,10 +1544,21 @@ function renderSpectatorView(msg={}){
 
 function goToGame(){
   restoreActiveGameState();
+  // Only an explicitly saved countdown/playing/spectating state is an active game.
+  // A leftover roomId after a finished round must never block the normal stake menu.
+  if(activeGamePhase!=='countdown' && activeGamePhase!=='playing' && activeGamePhase!=='spectating'){
+    navGo('screenLobby','navGame');
+    return;
+  }
+
   const roomId=myRoomId||localStorage.getItem('roomId');
-  if(!myStakeId) myStakeId=localStorage.getItem('stakeId');
-  if(!roomId){ showToast('አሁን ንቁ ጨዋታ የለም።','warn'); return; }
+  if(!roomId){
+    clearActiveGameState();
+    navGo('screenLobby','navGame');
+    return;
+  }
   myRoomId=roomId;
+  if(!myStakeId) myStakeId=localStorage.getItem('stakeId');
   if(activeGamePhase==='spectating'){
     navGo('screenGame','navGame');
     renderSpectatorView({calledNumbers:Array.from(calledNumbersSet||[])});
@@ -1502,7 +1569,7 @@ function goToGame(){
     refreshCardCells();
   }else{
     navGo('screenCards','navGame');
-    if(activeGamePhase==='countdown') showSavedCountdown();
+    showSavedCountdown();
   }
   if(telegramId) wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
 }
@@ -1513,56 +1580,58 @@ async function gotoProfile(){
   await loadUserProfile();
 }
 
+function renderUserProfile(u){
+  const name=String(u?.name||u?.playerName||myName||'Player').trim()||'Player';
+  const balance=Number(u?.balance);
+  const games=Number(u?.total_games);
+  const wins=Number(u?.total_wins);
+  const winnings=Number(u?.total_winnings);
+  myName=name;
+  if(Number.isFinite(balance) && balance>=0) setBalance(balance);
+  const nameEl=document.getElementById('profileName');
+  const avatarEl=document.getElementById('profileAvatar');
+  const gamesEl=document.getElementById('profileGames');
+  const winsEl=document.getElementById('profileWins');
+  const winningsEl=document.getElementById('profileWinnings');
+  const profileBalEl=document.getElementById('profileBalance');
+  if(nameEl) nameEl.innerText=name;
+  if(avatarEl) avatarEl.innerText=name.charAt(0).toUpperCase();
+  if(gamesEl) gamesEl.innerText=Number.isFinite(games)?Math.max(0,Math.trunc(games)).toLocaleString():'0';
+  if(winsEl) winsEl.innerText=Number.isFinite(wins)?Math.max(0,Math.trunc(wins)).toLocaleString():'0';
+  if(winningsEl) winningsEl.innerText=Number.isFinite(winnings)?Math.max(0,winnings).toFixed(2):'0.00';
+  if(profileBalEl) profileBalEl.innerText=Number.isFinite(balance)&&balance>=0?`ETB ${balance.toFixed(2)}`:'ETB 0.00';
+}
+
+async function loadUserProfile(force=false){
+  if(!telegramId) telegramId=getTelegramId();
+  const status=document.getElementById('profileStatus');
+  if(!telegramId){
+    if(status){status.style.display='block';status.innerText='የTelegram ሂሳብ አልተገናኘም።';}
+    return false;
+  }
+  if(status){status.style.display='block';status.innerText=force?'Refreshing profile...':'Loading profile...';}
+  try{
+    const id=normalizeTelegramId(telegramId);
+    if(!id) throw new Error('Invalid Telegram ID');
+    telegramId=id;
+    const res=await fetch(`${API_BASE}/api/user/${encodeURIComponent(id)}?_=${Date.now()}`,{cache:'no-store'});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.error||'Profile request failed');
+    renderUserProfile(data);
+    if(status) status.style.display='none';
+    return true;
+  }catch(e){
+    console.error('Profile:',e);
+    if(status){status.style.display='block';status.innerText='Unable to load your profile. Please try again.';}
+    return false;
+  }
+}
+
 function formatHistoryDate(value){
   if(!value) return '—';
   const d=new Date(value);
   if(Number.isNaN(d.getTime())) return '—';
   return d.toLocaleString();
-}
-
-function loadUserProfile(){
-  const list=document.getElementById('historyList');
-  if(!list) return Promise.resolve();
-  if(!telegramId) telegramId=getTelegramId();
-  if(!telegramId){
-    list.innerHTML='<div class="profile-empty">የTelegram ሂሳብ አልተገናኘም።</div>';
-    return Promise.resolve();
-  }
-  list.innerHTML='<div class="profile-empty">ታሪክ በመጫን ላይ...</div>';
-  return fetch(`${API_BASE}/api/history/${encodeURIComponent(telegramId)}?limit=50`,{cache:'no-store'})
-    .then(async r=>{
-      const data=await r.json().catch(()=>[]);
-      if(!r.ok) throw new Error(data.error||'History request failed');
-      return data;
-    })
-    .then(rows=>{
-      if(!Array.isArray(rows)||!rows.length){
-        list.innerHTML='<div class="profile-empty">📜 እስካሁን የጨዋታ ታሪክ የለዎትም።</div>';
-        return;
-      }
-      list.innerHTML=rows.map(g=>{
-        const won=g.won===true || g.won==='true';
-        const played=Number(g.amount_played)||0;
-        const wonAmount=Number(g.amount_won)||0;
-        const net=wonAmount-played;
-        const stake=Number(g.stake_amount)||0;
-        return `<div class="profile-card">
-          <div class="history-top">
-            <div style="font-weight:900">🎱 ${esc(g.stake_id||('ST'+stake))}</div>
-            <div class="history-result ${won?'win':'loss'}">${won?'🏆 አሸንፈዋል':'— አላሸነፉም'}</div>
-          </div>
-          <div class="history-row"><span class="history-key">ቀን</span><span class="history-value history-date">${esc(formatHistoryDate(g.started_at))}</span></div>
-          <div class="history-row"><span class="history-key">የጨዋታ ዋጋ</span><span class="history-value">${stake.toFixed(2)} ብር</span></div>
-          <div class="history-row"><span class="history-key">የተጫወቱት</span><span class="history-value">-${played.toFixed(2)} ብር</span></div>
-          <div class="history-row"><span class="history-key">ያሸነፉት</span><span class="history-value">${wonAmount>0?'+':''}${wonAmount.toFixed(2)} ብር</span></div>
-          <div class="history-row" style="margin-top:5px;padding-top:7px;border-top:1px solid #2d1b4e"><span class="history-key">የዚህ ጨዋታ ልዩነት</span><span class="history-value" style="color:${net>=0?'var(--green)':'var(--red)'}">${net>=0?'+':''}${net.toFixed(2)} ብር</span></div>
-        </div>`;
-      }).join('');
-    })
-    .catch(e=>{
-      console.error('Profile:',e);
-      list.innerHTML='<div class="profile-empty">የጨዋታ ታሪክን መጫን አልተቻለም።</div>';
-    });
 }
 
 // ─── WEBSOCKET ────────────────────────────────────────────────
