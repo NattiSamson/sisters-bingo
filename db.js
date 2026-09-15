@@ -2367,6 +2367,42 @@ module.exports = {
     return rows;
   },
 
+    async getPaymentMethodTypesById(paymentTypeId) {
+
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+          pt.id,
+          pt.name,
+          pt.amharic_name,
+          pt.emoji,
+          pt.maximum_balance,
+          pt."order",
+          pt.is_active
+
+        FROM payment_types pt
+
+        WHERE pt.is_active = TRUE
+              AND pt.id = $1
+
+          AND EXISTS (
+            SELECT 1
+            FROM payment_methods pm
+            WHERE pm.type_id = pt.id
+              AND pm.is_active = TRUE
+          )
+
+        ORDER BY
+          pt."order" NULLS LAST,
+          pt.id
+        `,
+        [paymentTypeId]
+      );
+
+    return rows;
+  },
+
   async getPaymentMethods() {
 
     const { rows } =
