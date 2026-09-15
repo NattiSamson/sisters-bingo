@@ -229,12 +229,12 @@ async function extractTransactionInfofromThirdParty(url) {
     url: url
   })
 });
-  
+  const data = await response.json();
   if (!response.ok) {
       console.log("Verification API error:", data);
       return null;
     }
-  const data = await response.json();
+  
   return data;  
 }
 // ─────────────────────────────────────────────
