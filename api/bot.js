@@ -3804,7 +3804,7 @@ bot.callbackQuery(
           return ctx.reply(
             "❌ የክፍያ አማራጭ አልተገኘም።"
           );
-
+        }
         ctx.session.paymentMethod = { id: paymentMethodId, name: paymentMethod.name, amharicName: paymentMethod.amharic_Name};
         ctx.session.paymentType = { id: paymentTypeId, name: paymentType.name, amharicName: paymentType.amharic_Name};
 
@@ -3839,7 +3839,7 @@ bot.callbackQuery(
         } catch (err) {
           console.error("Could not delete message:", err);
         }
-      }, 5000);
+      }, 60000);
 
 
         return;
