@@ -87,7 +87,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .bingo-cell.marked{background:var(--purple)!important;color:#fff!important}
 .bingo-cell.called-not-marked{background:#fff8dc!important;color:#8b6914!important}
 .bingo-cell.free{background:var(--purple)!important;color:#fff!important;cursor:default}
-.bingo-btn{display:none!important;align-items:center;justify-content:center;gap:8px;width:100%;background:#271447;border:1px solid #3d226b;color:var(--gray);font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;padding:14px;border-radius:12px;cursor:pointer;margin-top:14px;transition:all .2s}
+.bingo-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:#271447;border:1px solid #3d226b;color:var(--gray);font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;padding:14px;border-radius:12px;cursor:pointer;margin-top:14px;transition:all .2s}
 .bingo-btn.ready{animation:flashPulse .7s infinite alternate;background:var(--green)!important;color:#fff!important;border-color:#fff!important;box-shadow:0 0 22px var(--green)}
 .bingo-btn.locked{background:#1a0a0a!important;color:#666!important;cursor:not-allowed;border-color:#333!important}
 @keyframes flashPulse{0%{transform:scale(1);filter:brightness(1)}100%{transform:scale(1.02);filter:brightness(1.25)}}
@@ -107,33 +107,22 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .wallet-tab.active{background:var(--purple);color:#fff}
 .wallet-section{display:none}
 .wallet-section.active{display:block}
-.profile-page{padding:10px 0 24px}
-.profile-hero{background:linear-gradient(145deg,#252d8d,#14194f 58%,#0d1239);border:1px solid rgba(255,212,59,.62);border-radius:20px;padding:24px 18px 22px;text-align:center;box-shadow:0 18px 42px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.08);position:relative;overflow:hidden}
-.profile-hero:before{content:'';position:absolute;width:170px;height:170px;right:-75px;top:-75px;border-radius:50%;background:rgba(56,217,255,.13);filter:blur(3px)}
-.profile-hero:after{content:'';position:absolute;width:150px;height:150px;left:-75px;bottom:-90px;border-radius:50%;background:rgba(124,92,255,.18)}
-.profile-avatar{width:74px;height:74px;margin:0 auto 11px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:linear-gradient(145deg,#5e75ff,#7b55ee);border:3px solid rgba(255,255,255,.65);box-shadow:0 0 28px rgba(83,109,255,.45),inset 0 0 18px rgba(255,255,255,.14);font-family:'Orbitron',sans-serif;font-size:28px;font-weight:900;color:#fff;position:relative;z-index:1}
-.profile-name{font-size:22px;font-weight:900;color:#fff;position:relative;z-index:1}
-.profile-sub{margin-top:4px;color:#c3c8f8;font-size:11px;position:relative;z-index:1}
-.profile-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:14px}
-.profile-stat{min-width:0;background:linear-gradient(145deg,rgba(31,39,103,.98),rgba(12,18,58,.98));border:1px solid rgba(91,146,255,.48);border-radius:15px;padding:15px 7px 13px;text-align:center;box-shadow:0 10px 22px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.06)}
-.profile-stat-icon{font-size:20px;line-height:1;margin-bottom:7px}
-.profile-stat-value{font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.profile-stat.games .profile-stat-value{color:#53d7ff}
-.profile-stat.wins .profile-stat-value{color:#7cffb2}
-.profile-stat.winnings .profile-stat-value{color:#ffd83d}
-.profile-stat-label{margin-top:5px;color:#b9bff0;font-size:9px;font-weight:800;line-height:1.2}
-.profile-wallet{margin-top:14px;background:linear-gradient(105deg,#3478ff,#5146e5 58%,#6952ee);border:1px solid rgba(255,255,255,.18);border-radius:17px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 12px 26px rgba(39,73,214,.22)}
-.profile-wallet-copy{text-align:left;min-width:0}
-.profile-wallet-label{font-size:10px;color:rgba(255,255,255,.78);font-weight:800;text-transform:uppercase;letter-spacing:.7px}
-.profile-wallet-value{margin-top:3px;font-family:'Orbitron',sans-serif;font-size:23px;font-weight:900;color:#fff}
-.profile-wallet-icon{width:47px;height:47px;flex:0 0 47px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.45);font-size:22px;box-shadow:inset 0 0 14px rgba(255,255,255,.1)}
-.profile-section-title{display:flex;align-items:center;justify-content:center;gap:9px;margin:20px 0 10px;color:#fff;font-size:14px;font-weight:900}
-.profile-section-title span{height:2px;width:32px;background:linear-gradient(90deg,transparent,var(--gold))}
-.profile-section-title span:last-child{background:linear-gradient(90deg,var(--gold),transparent)}
-.profile-refresh{width:100%;margin-top:12px;padding:11px;border-radius:11px;border:1px solid rgba(91,146,255,.4);background:rgba(21,28,83,.82);color:#cbd0ff;font-size:11px;font-weight:800;cursor:pointer}
-.profile-refresh:active{transform:scale(.985)}
-.profile-empty{background:linear-gradient(145deg,rgba(31,39,103,.94),rgba(15,20,63,.96));border:1px solid rgba(91,146,255,.42);border-radius:14px;padding:24px 16px;text-align:center;color:var(--gray);font-size:12px}
-@media(max-width:360px){.profile-stats{gap:6px}.profile-stat{padding-left:4px;padding-right:4px}.profile-stat-value{font-size:14px}.profile-stat-label{font-size:8px}.profile-wallet-value{font-size:20px}}
+.history-list{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.history-card{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:13px}
+.history-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:7px}
+.history-date{font-size:11px;color:var(--gray)}
+.history-result{font-size:12px;font-weight:900}
+.history-result.win{color:var(--green)}
+.history-result.loss{color:var(--red)}
+.history-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0}
+.history-key{color:var(--gray)}
+.history-value{font-weight:700}
+.history-empty{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:30px 16px;text-align:center;color:var(--gray);font-size:13px}
+.telebirr-info{background:var(--card);border:1px solid #4a2d7a;border-radius:12px;padding:14px;margin-bottom:16px;text-align:center}
+.telebirr-logo{display:flex;justify-content:center;align-items:center;margin-bottom:8px}
+.telebirr-label{font-size:11px;color:var(--gray);margin-bottom:3px}
+.telebirr-number{font-size:18px;font-weight:700;color:var(--gold);letter-spacing:1px}
+.telebirr-name{font-size:12px;color:var(--gray);margin-top:2px}
 .form-group{margin-bottom:14px}
 .form-label{font-size:12px;color:var(--gray);margin-bottom:5px;display:block}
 .form-input{width:100%;background:var(--card);border:1px solid #4a2d7a;color:#fff;padding:12px;border-radius:8px;font-size:15px;outline:none;transition:border-color .2s}
@@ -149,6 +138,51 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .status-msg.success{background:rgba(34,197,94,.12);color:var(--green);border:1px solid var(--green)}
 .status-msg.error{background:rgba(239,68,68,.12);color:var(--red);border:1px solid var(--red)}
 .status-msg.info{background:rgba(139,92,246,.12);color:var(--purple);border:1px solid var(--purple)}
+
+/* ── ADMIN SCREEN ──────────────────────────── */
+#screenAdmin{max-width:600px}
+.admin-header{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+.admin-badge{background:var(--red);color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px}
+.admin-tabs{display:flex;background:var(--card);border-radius:10px;padding:4px;margin-bottom:16px;gap:4px}
+.admin-tab{flex:1;text-align:center;padding:8px;border-radius:7px;font-weight:600;font-size:12px;cursor:pointer;color:var(--gray);transition:all .2s}
+.admin-tab.active{background:var(--red);color:#fff}
+.admin-section{display:none}
+.admin-section.active{display:block}
+.search-row{display:flex;gap:8px;margin-bottom:14px}
+.search-input{flex:1;background:var(--card);border:1px solid #4a2d7a;color:#fff;padding:10px 12px;border-radius:8px;font-size:14px;outline:none}
+.search-input:focus{border-color:var(--gold)}
+.btn-search{background:var(--purple);color:#fff;border:none;padding:10px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px;white-space:nowrap}
+.request-card{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:14px;margin-bottom:10px}
+.req-row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+.req-name{font-weight:700;font-size:15px}
+.req-amount{font-family:'Orbitron',sans-serif;color:var(--gold);font-size:16px;font-weight:900}
+.req-meta{font-size:11px;color:var(--gray);margin-bottom:10px;line-height:1.6}
+.req-actions{display:flex;gap:8px}
+.btn-approve{flex:1;background:var(--green);color:#fff;border:none;padding:9px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;transition:filter .15s}
+.btn-approve:hover{filter:brightness(1.1)}
+.btn-reject{flex:1;background:var(--red);color:#fff;border:none;padding:9px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;transition:filter .15s}
+.btn-reject:hover{filter:brightness(1.1)}
+.btn-done{background:#333;color:#888;border:none;padding:9px 14px;border-radius:8px;font-size:12px;cursor:default}
+.user-card{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:14px;margin-bottom:10px;cursor:pointer;transition:border-color .2s}
+.user-card:hover{border-color:var(--gold)}
+.user-card-name{font-weight:700;font-size:15px;margin-bottom:4px}
+.user-card-meta{font-size:12px;color:var(--gray);line-height:1.6}
+.user-detail-card{background:var(--card);border:1px solid #4a2d7a;border-radius:12px;padding:16px;margin-bottom:12px}
+.user-detail-title{font-size:11px;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+.user-detail-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #2d1b4e;font-size:13px}
+.user-detail-row:last-child{border-bottom:none}
+.user-detail-key{color:var(--gray)}
+.user-detail-val{font-weight:600}
+.tx-list{max-height:220px;overflow-y:auto}
+.tx-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #2d1b4e;font-size:12px}
+.tx-row:last-child{border-bottom:none}
+.tx-type{color:var(--gray);text-transform:capitalize}
+.tx-amt-pos{color:var(--green);font-weight:700}
+.tx-amt-neg{color:var(--red);font-weight:700}
+.empty-state{text-align:center;padding:30px 0;color:var(--gray);font-size:14px}
+.badge-count{display:inline-flex;align-items:center;justify-content:center;background:var(--red);color:#fff;font-size:10px;font-weight:900;min-width:16px;height:16px;border-radius:8px;padding:0 4px;margin-left:4px}
+.refresh-btn{background:transparent;border:1px solid #4a2d7a;color:var(--gray);padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;gap:5px}
+.refresh-btn:hover{border-color:var(--gold);color:#fff}
 
 /* END-GAME RESULT OVERLAY */
 .winner-overlay{position:fixed;inset:0;background:rgba(5,10,22,.94);z-index:500;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:18px;overflow-y:auto}
@@ -234,87 +268,12 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .lobby-players-card{margin:38px 0 10px;background:linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.07));border:1px solid rgba(255,255,255,.22);border-radius:17px;padding:32px 16px;text-align:center}.lobby-players-number{font-size:32px;font-weight:900}.lobby-players-label{margin-top:6px;color:#d8c9f4;font-size:16px}.lobby-players-sub{margin-top:5px;color:#9f8fc0;font-size:11px}
 @media(max-width:380px){.mela-welcome-title{font-size:30px}}
 /* Flat, equally-spaced bottom navigation */
-/* ───────── FULL-WIDTH BOTTOM NAV ───────── */
-
-.bottom-nav{
-  position:fixed;
-  left:0;
-  right:0;
-  bottom:0;
-  width:100%;
-  height:68px;
-  padding:0;
-  margin:0;
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:0;
-  align-items:stretch;
-  background:linear-gradient(90deg,#111642,#1d2370,#111642)!important;
-  border-top:1px solid rgba(83,215,255,.28)!important;
-  box-shadow:0 -5px 22px rgba(0,0,0,.22);
-  z-index:200;
-}
-
-.bottom-nav .nav-item{
-  width:100%;
-  height:68px;
-  min-width:0;
-  min-height:68px;
-  margin:0;
-  padding:5px 0;
-  box-sizing:border-box;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  gap:2px;
-  border-radius:0;
-  color:#9da5e8!important;
-  font-size:10px;
-  font-weight:700;
-  cursor:pointer;
-}
-
-.bottom-nav .nav-item.active{
-  width:100%;
-  height:68px;
-  min-height:68px;
-  margin:0;
-  padding:5px 0;
-  box-sizing:border-box;
-  border-radius:0;
-  color:#ffe04d!important;
-  background:linear-gradient(
-    180deg,
-    rgba(78,101,255,.3),
-    rgba(61,48,146,.2)
-  )!important;
-}
-
-.bottom-nav .nav-icon{
-  width:26px;
-  height:26px;
-  margin-bottom:1px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-size:0;
-}
-
-.bottom-nav .nav-svg svg{
-  width:23px;
-  height:23px;
-  fill:none;
-  stroke:currentColor;
-  stroke-width:1.8;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-}
-
-.bottom-nav .nav-item.active .nav-svg svg{
-  stroke:#55dcff!important;
-  filter:drop-shadow(0 0 5px rgba(85,220,255,.3));
-}
+.bottom-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));justify-content:initial;padding:0;gap:0;height:68px;align-items:stretch}
+.bottom-nav .nav-item{width:100%;min-width:0;min-height:68px;padding:5px 0;justify-content:center;gap:2px;border-radius:0;color:#94a3b8;font-size:10px;font-weight:700}
+.bottom-nav .nav-item.active{color:#a78bfa;background:rgba(37,99,235,.18);border-radius:12px;margin:5px 18px;padding:4px 0;min-height:58px;align-self:center;box-sizing:border-box}
+.bottom-nav .nav-icon{font-size:0;width:26px;height:26px;margin-bottom:1px;display:flex;align-items:center;justify-content:center}
+.bottom-nav .nav-svg svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.bottom-nav .nav-item.active .nav-svg svg{stroke:#60a5fa}
 
 /* ───────── CARD SELECTION: COMPACT NEON UI ───────── */
 html,body{min-height:100%;}
@@ -608,12 +567,15 @@ body{
 .loading-spinner{border-color:#222a65;border-top-color:#4dd8ff}
 .loading-text{color:#c1c5ff}
 
-/* Shared surfaces used by wallet/history/settings */
+/* Shared surfaces used by wallet/history/rules/admin/settings */
 .wallet-balance-card,
-.profile-card,
-.profile-empty,
+.history-card,
+.history-empty,
+.telebirr-info,
+.request-card,
 .user-card,
 .user-detail-card,
+.admin-section,
 .result-card-wrap,
 .tracker-wrap,
 .card-container,
@@ -622,12 +584,12 @@ body{
   border-color:rgba(91,146,255,.42)!important;
   box-shadow:0 12px 28px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.06)!important;
 }
-.wallet-tabs{
+.wallet-tabs,.admin-tabs{
   background:rgba(17,22,70,.94)!important;
   border:1px solid rgba(91,146,255,.3);
 }
-.wallet-tab{color:#b9bcf2!important}
-.wallet-tab.active{
+.wallet-tab,.admin-tab{color:#b9bcf2!important}
+.wallet-tab.active,.admin-tab.active{
   background:linear-gradient(135deg,#536dff,#7c5cff)!important;
   color:#fff!important;
   box-shadow:0 5px 16px rgba(83,109,255,.28);
@@ -1032,6 +994,31 @@ body{
   .spectator-wait-card{min-height:245px;}
 }
 
+
+/* ─── PROFILE UI (frontend-only) ───────────────────────────── */
+.profile-wrap{padding:8px 0 18px;}
+.profile-hero{background:linear-gradient(135deg,#202969,#33206f 55%,#173c78);border:1px solid rgba(85,220,255,.28);border-radius:18px;padding:22px 18px;margin-bottom:14px;box-shadow:0 12px 28px rgba(0,0,0,.22);text-align:center;}
+.profile-avatar{width:68px;height:68px;border-radius:50%;margin:0 auto 10px;display:flex;align-items:center;justify-content:center;background:linear-gradient(145deg,#55dcff,#6258ff);color:#fff;font-size:27px;font-weight:900;box-shadow:0 0 24px rgba(85,220,255,.22);}
+.profile-name{font-size:20px;font-weight:900;color:#fff;margin-bottom:4px;}
+.profile-id{font-size:10px;color:#b9c3f5;word-break:break-all;}
+.profile-balance{margin-top:15px;background:rgba(10,15,45,.34);border:1px solid rgba(250,204,21,.25);border-radius:12px;padding:12px;}
+.profile-balance-label{font-size:10px;color:#b9c3f5;text-transform:uppercase;letter-spacing:1px;}
+.profile-balance-value{font-size:25px;font-weight:900;color:#facc15;margin-top:3px;}
+.profile-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px;}
+.profile-stat{background:linear-gradient(145deg,#202969,#151b55);border:1px solid rgba(139,92,246,.25);border-radius:14px;padding:15px 12px;text-align:center;}
+.profile-stat-icon{font-size:20px;margin-bottom:5px;}
+.profile-stat-label{font-size:9px;color:#aeb8ed;text-transform:uppercase;letter-spacing:.6px;}
+.profile-stat-value{font-size:20px;font-weight:900;color:#fff;margin-top:3px;}
+.profile-info-card{background:linear-gradient(145deg,#1b245d,#11163f);border:1px solid rgba(85,220,255,.2);border-radius:14px;padding:15px;margin-bottom:12px;}
+.profile-info-title{font-size:11px;font-weight:900;color:#55dcff;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;}
+.profile-info-row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(139,92,246,.14);font-size:12px;}
+.profile-info-row:last-child{border-bottom:0;padding-bottom:0;}
+.profile-info-row span:first-child{color:#9da5e8;}
+.profile-info-row span:last-child{color:#fff;font-weight:700;text-align:right;word-break:break-word;}
+.profile-refresh{width:100%;background:linear-gradient(105deg,#3478ff,#6258ff);border:0;color:#fff;border-radius:12px;padding:12px;font-weight:800;cursor:pointer;}
+.profile-refresh:active{transform:scale(.985);}
+@media(max-width:420px){.profile-wrap{padding-left:2px;padding-right:2px}.profile-stats{gap:8px}.profile-stat{padding:13px 8px}.profile-stat-value{font-size:18px}}
+
 </style>
 </head>
 <body>
@@ -1177,47 +1164,247 @@ body{
   <button id="bingoBtn" class="bingo-btn" style="display:none" aria-hidden="true" tabindex="-1">🎉 BINGO!</button>
   <div class="tracker-wrap"><div id="trackerGrid" class="tracker-grid"></div></div>
 </div>
+
+<div id="screenWallet" class="screen">
+  <h2 class="screen-title">💰 MY WALLET</h2>
+
+  <div class="wallet-balance-card">
+    <div class="wallet-bal-label">Available Balance</div>
+    <div class="wallet-bal-amount" id="walletBalAmt">ETB 0.00</div>
+  </div>
+
+  <div class="wallet-tabs">
+    <div class="wallet-tab active" onclick="switchWalletTab('deposit')">⬇ Deposit</div>
+    <div class="wallet-tab" onclick="switchWalletTab('withdraw')">⬆ Withdraw</div>
+  </div>
+
+  <div id="walletDeposit" class="wallet-section active">
+    <div class="telebirr-info">
+      <div class="telebirr-logo">
+        <svg width="150" height="42" viewBox="0 0 150 42" fill="none" xmlns="http://www.w3.org/2000/svg" style="border-radius: 8px;">
+          <rect width="150" height="42" rx="8" fill="#1e3a8a"/>
+          <circle cx="24" cy="21" r="12" fill="#fff"/>
+          <path d="M23 14V22.5C23 24.2 23.8 25 25.8 25H27.8V27H25.8C23.2 27 21.2 25.8 20.4 23.2V15.8H18V14H20.4V11.5H23V14H26.5V14H23Z" fill="#1e3a8a"/>
+          <text x="44" y="26" fill="#fff" font-family="'Inter', sans-serif" font-weight="700" font-size="16" letter-spacing="0.5">telebirr</text>
+        </svg>
+      </div>
+      <div class="telebirr-label">Send to this Telebirr number</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin:6px 0">
+        <div class="telebirr-number" id="telebirrNumber">0967423275</div>
+        <button onclick="copyPhone()" id="copyBtn" style="background:rgba(250,204,21,.15);border:1px solid var(--gold);color:var(--gold);padding:5px 12px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s">📋 Copy</button>
+      </div>
+      <div class="telebirr-name" id="telebirrName" style="font-size:13px;color:#fff;font-weight:600">Lidetua</div>
+      <div style="font-size:11px;color:var(--gray);margin-top:2px">Mela Bingo</div>
+    </div>
+      <!-- Amharic Deposit Steps -->
+<div style="background:var(--panel);border:1px solid #3c2463;border-radius:14px;padding:16px;margin-bottom:16px">
+  <div style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:900;color:var(--gold);margin-bottom:14px;text-align:center">📋 እንዴት ገንዘብ ማስገባት ይቻላል?</div>
+  <div style="display:flex;flex-direction:column;gap:10px">
+
+    <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
+      <div style="width:30px;height:30px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">1</div>
+      <div style="font-size:12px;color:var(--gold);line-height:1.6">ከላይ ያለውን <strong style="color:#fff" id="depositStepNumber">0967423275</strong> የቴሌብር ቁጥር copy ያድርጉ ወይም ያስታውሱ</div>
+    </div>
+
+    <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
+      <div style="width:30px;height:30px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">2</div>
+      <div style="font-size:12px;color:var(--gold);line-height:1.6">የቴሌብር አፕልኬሽን ይክፈቱ፣ <strong style="color:#fff">Send Money</strong> ይምረጡ፣ ቁጥሩን ያስገቡ</div>
+    </div>
+
+    <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
+      <div style="width:30px;height:30px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">3</div>
+      <div style="font-size:12px;color:var(--gold);line-height:1.6">መላክ የሚፈልጉትን ብር ይጻፉ — <strong style="color:#fff">ዝቅተኛ 10 ብር</strong> — ከዚያ ይላኩ</div>
+    </div>
+
+    <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
+      <div style="width:30px;height:30px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">4</div>
+      <div style="font-size:12px;color:var(--gold);line-height:1.6">ቴሌብር ከላከ በኋላ ከ ቴሌ ብር የተላከሎትን ሙሉ መልእክት<strong style="color:#fff">(Message)</strong> copy ያድርጉ</div>
+    </div>
+
+    <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
+      <div style="width:30px;height:30px;background:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">5</div>
+      <div style="font-size:12px;color:var(--gold);line-height:1.6">ከታች ያለውን ቅጽ ይሙሉ — የላኩትን <strong style="color:#fff">ብር መጠን</strong> እና <strong style="color:#fff">ከ ቴሌ ብር የተላከሎትን ሙሉ መልእክት</strong> ያስገቡ፣ ከዚያ Submit ይጫኑ</div>
+    </div>
+
+  </div>
+  <div style="background:rgba(250,204,21,.08);border:1px solid rgba(250,204,21,.3);border-radius:10px;padding:11px;margin-top:12px;font-size:12px;color:var(--gray);line-height:1.8;text-align:center">
+    ⏱️ ገንዘቡ ከተላከ በኋላ አድሚን ሲያረጋግጥ ወዲያውኑ ወደ አካውንትዎ ገቢ ይደረጋል
+  </div>
 </div>
+    <div class="form-group">
+      <label class="form-label">Amount (ETB) — Minimum 10 ETB</label>
+      <input class="form-input" type="number" id="depositAmount" placeholder="Enter amount..." min="10">
+    </div>
+   <div class="form-group">
+  <label class="form-label">Paste your full Telebirr SMS message</label>
+  <textarea class="form-input" id="depositTxRef" placeholder="Paste the full SMS here e.g: Your transaction of ETB 50.00 to 0967423275 is confirmed. Ref: TXN123456789..." rows="4" style="resize:none;line-height:1.6"></textarea>
+  <div id="txnPreview" style="display:none;margin-top:8px;background:rgba(34,197,94,.1);border:1px solid var(--green);border-radius:8px;padding:10px;font-size:13px;color:var(--green)">
+    ✅ Reference found: <strong id="txnFound"></strong>
+  </div>
+  <div id="txnNotFound" style="display:none;margin-top:8px;background:rgba(239,68,68,.1);border:1px solid var(--red);border-radius:8px;padding:10px;font-size:13px;color:var(--red)">
+    ❌ No reference number found. Make sure you paste the full SMS.
+  </div>
+</div>
+    <button class="btn-submit btn-green" onclick="submitDeposit()">Submit Deposit Request</button>
+    <div id="depositMsg" style="display:none" class="status-msg"></div>
+  </div>
+
+  <div id="walletWithdraw" class="wallet-section">
+    <div style="background:var(--card);border:1px solid #4a2d7a;border-radius:12px;padding:14px;margin-bottom:16px;font-size:13px;color:var(--gray);line-height:1.7">
+      ℹ️ Withdrawals are processed manually. Funds will be sent to your Telebirr number on file.<br>
+      <strong style="color:#fff">Minimum withdrawal: 50 ETB</strong>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Amount to Withdraw (ETB)</label>
+      <input class="form-input" type="number" id="withdrawAmount" placeholder="Enter amount..." min="50">
+    </div>
+    <button class="btn-submit btn-red" onclick="submitWithdrawal()">Request Withdrawal</button>
+    <div id="withdrawMsg" style="display:none" class="status-msg"></div>
+  </div>
 </div>
 
 
 <div id="screenProfile" class="screen">
-  <div class="profile-page">
+  <div class="profile-wrap">
     <div class="profile-hero">
       <div class="profile-avatar" id="profileAvatar">M</div>
       <div class="profile-name" id="profileName">Player</div>
-      <div class="profile-sub">Mela Bingo Player</div>
+      <div class="profile-id" id="profileTelegramId">Telegram account</div>
+      <div class="profile-balance">
+        <div class="profile-balance-label">Wallet Balance</div>
+        <div class="profile-balance-value" id="profileBalance">ETB 0.00</div>
+      </div>
     </div>
 
-    <div class="profile-section-title"><span></span>Your Statistics<span></span></div>
     <div class="profile-stats">
-      <div class="profile-stat games">
-        <div class="profile-stat-icon">🎮</div>
-        <div class="profile-stat-value" id="profileGames">0</div>
-        <div class="profile-stat-label">TOTAL GAMES<br>PLAYED</div>
+      <div class="profile-stat">
+        <div class="profile-stat-icon">🎱</div>
+        <div class="profile-stat-label">Games Played</div>
+        <div class="profile-stat-value" id="profileGamesPlayed">0</div>
       </div>
-      <div class="profile-stat wins">
+      <div class="profile-stat">
         <div class="profile-stat-icon">🏆</div>
-        <div class="profile-stat-value" id="profileWins">0</div>
-        <div class="profile-stat-label">TOTAL<br>WINS</div>
-      </div>
-      <div class="profile-stat winnings">
-        <div class="profile-stat-icon">💰</div>
-        <div class="profile-stat-value" id="profileWinnings">0.00</div>
-        <div class="profile-stat-label">TOTAL<br>WINNINGS</div>
+        <div class="profile-stat-label">Total Winnings</div>
+        <div class="profile-stat-value" id="profileTotalWinnings">ETB 0.00</div>
       </div>
     </div>
 
-    <div class="profile-wallet">
-      <div class="profile-wallet-copy">
-        <div class="profile-wallet-label">Wallet Balance</div>
-        <div class="profile-wallet-value" id="profileBalance">ETB 0.00</div>
-      </div>
-      <div class="profile-wallet-icon">💳</div>
+    <div class="profile-info-card">
+      <div class="profile-info-title">Account</div>
+      <div class="profile-info-row"><span>Name</span><span id="profileInfoName">Player</span></div>
+      <div class="profile-info-row"><span>Phone</span><span id="profilePhone">—</span></div>
     </div>
 
-    <button class="profile-refresh" type="button" onclick="loadUserProfile(true)">↻ Refresh Profile</button>
-    <div id="profileStatus" class="profile-empty" style="margin-top:10px;display:none"></div>
+    <button class="profile-refresh" onclick="loadProfile(true)">↻ Refresh Profile</button>
+  </div>
+</div>
+
+<div id="screenHistory" class="screen">
+  <h2 class="screen-title">📜 የጨዋታ ታሪክ</h2>
+  <div style="font-size:12px;color:var(--gray);line-height:1.6">የተጫወቷቸው የቅርብ ጨዋታዎች</div>
+  <div id="historyList" class="history-list">
+    <div class="history-empty">ታሪክ በመጫን ላይ...</div>
+  </div>
+</div>
+
+<div id="screenAdmin" class="screen">
+  <div class="admin-header">
+    <h2 class="screen-title" style="margin:0">⚙️ ADMIN PANEL</h2>
+    <span class="admin-badge">ADMIN</span>
+  </div>
+
+  <div class="admin-tabs">
+    <div class="admin-tab active" onclick="switchAdminTab('deposits')">
+      Deposits <span class="badge-count" id="depositCount">0</span>
+    </div>
+    <div class="admin-tab" onclick="switchAdminTab('withdrawals')">
+      Withdrawals <span class="badge-count" id="withdrawCount">0</span>
+    </div>
+    <div class="admin-tab" onclick="switchAdminTab('search')">Search</div>
+    <div id="settingsTab" style="display:none" class="admin-tab" onclick="switchAdminTab('settings')">Settings</div>
+    <div id="analyticsTab" style="display:none" class="admin-tab" onclick="switchAdminTab('analytics')">📊 Stats</div>
+  </div>
+
+  <div id="adminDeposits" class="admin-section active">
+    <button class="refresh-btn" onclick="adminLoadDeposits()">🔄 Refresh</button>
+    <div id="depositsList"></div>
+  </div>
+
+  <div id="adminWithdrawals" class="admin-section">
+    <button class="refresh-btn" onclick="adminLoadWithdrawals()">🔄 Refresh</button>
+    <div id="withdrawalsList"></div>
+  </div>
+
+  <div id="adminSearch" class="admin-section">
+    <div class="search-row">
+      <input class="search-input" type="text" id="searchPhone" placeholder="Search by phone number...">
+      <button class="btn-search" onclick="adminSearchUser()">Search</button>
+    </div>
+    <div id="searchResults"></div>
+  </div>
+
+  <div id="adminSettings" class="admin-section">
+    <div style="background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:16px">
+      <div style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:900;color:var(--gold);margin-bottom:14px">💳 Telebirr Payment Account</div>
+      <div class="form-group">
+        <label class="form-label">Telebirr Number</label>
+        <input class="form-input" type="text" id="settingsTelebirrNumber" placeholder="e.g. 0967423275">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Account Holder Name</label>
+        <input class="form-input" type="text" id="settingsTelebirrName" placeholder="e.g. Lidetua">
+      </div>
+ <button class="btn-submit btn-green" onclick="adminSavePaymentSettings()">💾 Save Changes</button>
+      <div id="settingsMsg" style="display:none" class="status-msg"></div>
+    </div>
+
+    <!-- Admin Management -->
+    <div style="background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:16px;margin-top:14px">
+      <div style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:900;color:var(--red);margin-bottom:14px">👑 Admin Management</div>
+      <div class="form-group">
+        <label class="form-label">Add Admin by Phone Number</label>
+        <input class="form-input" type="text" id="newAdminPhone" placeholder="e.g. 251934255415">
+      </div>
+      <button class="btn-submit btn-green" onclick="adminAddAdmin()" style="margin-bottom:14px">➕ Add Admin</button>
+      <div style="font-size:12px;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Current Admins</div>
+      <div id="adminList"></div>
+      <button class="refresh-btn" onclick="adminLoadAdmins()" style="margin-top:8px">🔄 Refresh</button>
+      <div id="adminMgmtMsg" style="display:none" class="status-msg"></div>
+    </div>
+  </div>
+
+  <!-- ── ANALYTICS SECTION ─────────────────────────────── -->
+  <div id="adminAnalytics" class="admin-section">
+
+    <!-- Date range picker -->
+    <div style="background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:14px;margin-bottom:14px">
+      <div style="font-family:'Orbitron',sans-serif;font-size:12px;font-weight:900;color:var(--gold);margin-bottom:12px">📅 Date Range</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div>
+          <label style="font-size:11px;color:var(--gray);display:block;margin-bottom:4px">From</label>
+          <input type="date" id="analyticsFrom" class="form-input" style="font-size:13px;padding:8px 10px">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--gray);display:block;margin-bottom:4px">To</label>
+          <input type="date" id="analyticsTo" class="form-input" style="font-size:13px;padding:8px 10px">
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        <button onclick="analyticsSetRange('today')" class="refresh-btn" style="margin:0;font-size:11px;padding:5px 10px">Today</button>
+        <button onclick="analyticsSetRange('7d')" class="refresh-btn" style="margin:0;font-size:11px;padding:5px 10px">Last 7d</button>
+        <button onclick="analyticsSetRange('30d')" class="refresh-btn" style="margin:0;font-size:11px;padding:5px 10px">Last 30d</button>
+        <button onclick="analyticsSetRange('month')" class="refresh-btn" style="margin:0;font-size:11px;padding:5px 10px">This Month</button>
+        <button onclick="analyticsSetRange('all')" class="refresh-btn" style="margin:0;font-size:11px;padding:5px 10px">All Time</button>
+      </div>
+      <button class="btn-submit btn-green" onclick="loadAnalytics()" style="padding:10px">🔍 Load Report</button>
+    </div>
+
+    <div id="analyticsContent">
+      <div class="empty-state" style="padding:30px 0">Select a date range and click Load Report</div>
+    </div>
+  </div>
+
+</div>
   </div>
 </div>
 
@@ -1244,16 +1431,181 @@ body{
   <div class="disq-title">DISQUALIFIED</div>
   <div class="disq-msg">You claimed BINGO without a valid winning pattern. You are disqualified from this round.</div>
 </div>
-
-<div class="bottom-nav">
-  <div class="nav-item" id="navGame" onclick="goToGame()">
-    <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 8h10c2.2 0 3.7 1.2 4.4 3.2l1 3.2c.5 1.7-.4 3.4-2.1 3.9-1.2.4-2.5 0-3.3-.9L15.5 16h-7l-3.5 3.4c-.8.9-2.1 1.3-3.3.9-1.7-.5-2.6-2.2-2.1-3.9l1-3.2C1.3 9.2 2.8 8 5 8h2z"/><path d="M7.5 11.5v4M5.5 13.5h4M16.5 12.5h.01M19 15h.01"/></svg></span>
-    <span>Game</span>
+  <!-- RULES SCREEN -->
+<div id="screenRules" class="screen">
+  <div style="background:linear-gradient(135deg,#2d1b4e,#1a0a3e);border-radius:16px;padding:20px;text-align:center;margin-bottom:20px;border:1px solid #6d28d9">
+    <div style="font-size:36px;margin-bottom:8px">📋</div>
+    <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;color:var(--gold)">የቢንጎ ጨዋታ ሕጎች</div>
+    <div style="font-size:12px;color:var(--gray);margin-top:4px">Mela Bingo Rules</div>
   </div>
 
-  <div class="nav-item" id="navProfile" onclick="gotoProfile()">
-    <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 5v5h5"/><path d="M12 7v5l3.5 2"/></svg></span>
-    <span>Profile</span>
+  <!-- Section 1: Card Selection -->
+  <div style="background:var(--panel);border:1px solid #3c2463;border-radius:14px;padding:16px;margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div style="width:40px;height:40px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🃏</div>
+      <div style="font-family:'Orbitron',sans-serif;font-size:15px;font-weight:900;color:#fff">መጫወቻ ካርድ</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="background:var(--card);border-radius:10px;padding:13px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:28px;height:28px;background:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">1</div>
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">ካርድዎን ይምረጡ</div>
+            <div style="font-size:12px;color:var(--gold);line-height:1.5">ጨዋታውን ለመጀመር ከሚመጣልን ከ1-400 የመጫወቻ ካርድ ውስጥ አንዱን እንመርጣለን</div>
+          </div>
+        </div>
+      </div>
+      <div style="background:var(--card);border-radius:10px;padding:13px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:28px;height:28px;background:var(--red);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">2</div>
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">Card Status Indicator</div>
+            <div style="font-size:12px;color:var(--gold);line-height:1.5">የመጫወቻ ካርዱ ላይ በቀይ ቀለም የተመረጡ ቁጥሮች የሚያሳዩት መጫወቻ ካርዱ በሌላ ተጨዋቾች መመረጣቸውን ነው</div>
+          </div>
+        </div>
+      </div>
+      <div style="background:var(--card);border-radius:10px;padding:13px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:28px;height:28px;background:var(--blue);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">3</div>
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">Card Preview</div>
+            <div style="font-size:12px;color:var(--gold);line-height:1.5">የመጫወቻ ካርድ ስንነካው ከታች ካርድ ቁጥሩ የሚይዘዉን መጫወቻ ቁጥሮች ያሳየናል</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Tips box -->
+    <div style="background:rgba(250,204,21,.08);border:1px solid rgba(250,204,21,.3);border-radius:10px;padding:12px;margin-top:12px">
+      <div style="color:var(--gold);font-weight:700;font-size:13px;margin-bottom:8px">🎯 Card Selection Tips</div>
+      <div style="font-size:12px;color:#fff;line-height:1.8">✅ በቀይ ያልተመለከቱ ካርዶችን ይምረጡ<br>✅ ከማረጋገጥዎ በፊት ካርድዎን ይመልከቱ<br>✅ የምዝገባ ጊዜ ከማለቁ በፊት በፍጥነት ይምረጡ</div>
+    </div>
+  </div>
+
+  <!-- Section 2: Gameplay -->
+  <div style="background:var(--panel);border:1px solid #3c2463;border-radius:14px;padding:16px;margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div style="width:40px;height:40px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">▶️</div>
+      <div style="font-family:'Orbitron',sans-serif;font-size:15px;font-weight:900;color:#fff">ጨዋታ</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="background:var(--card);border-radius:10px;padding:13px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:28px;height:28px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">1</div>
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">Game Entry</div>
+            <div style="font-size:12px;color:var(--gold);line-height:1.5">ወደ ጨዋታው ስንገባ በመረጥነው የካርድ ቁጥር መሰረት የመጫወቻ ካርድ እናገኛለን</div>
+          </div>
+        </div>
+      </div>
+      <div style="background:var(--card);border-radius:10px;padding:13px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:28px;height:28px;background:var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#000;flex-shrink:0">2</div>
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">Game Timer</div>
+            <div style="font-size:12px;color:var(--gold);line-height:1.5">ከላይ በቀኝ በኩል ጨዋታው ለመጀምር ያለዉን ቀሪ ሴኮንድ መቆጠር ይጀምራል</div>
+          </div>
+        </div>
+      </div>
+      <div style="background:var(--card);border-radius:10px;padding:13px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:28px;height:28px;background:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">3</div>
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">Number Calling</div>
+            <div style="font-size:12px;color:var(--gold);line-height:1.5">ጨዋታው ሲጀምር የተለያዩ ቁጥሮች ከ1 እስከ 75 መጥራት ይጀምራሉ</div>
+          </div>
+        </div>
+      </div>
+      <div style="background:var(--card);border-radius:10px;padding:13px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:28px;height:28px;background:var(--blue);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">📌</div>
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">Marking Numbers</div>
+            <div style="font-size:12px;color:var(--gold);line-height:1.5">የሚጠራው ቁጥር የኛ መጫወቻ ካርዱ ዉስጥ ካለ የተጠራዉን ቁጥር ክሊክ በማርግ መምረጥ እንቻላለን</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Game mechanics box -->
+    <div style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.3);border-radius:10px;padding:12px;margin-top:12px">
+      <div style="color:var(--green);font-weight:700;font-size:13px;margin-bottom:8px">⚙️ Game Mechanics</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px">
+        <div><div style="color:#fff;font-weight:600;margin-bottom:2px">Number Range</div><div style="color:var(--gray)">Numbers 1 to 75</div></div>
+        <div><div style="color:#fff;font-weight:600;margin-bottom:2px">Card Layout</div><div style="color:var(--gray)">5×5 grid + FREE center</div></div>
+        <div><div style="color:#fff;font-weight:600;margin-bottom:2px">Marking</div><div style="color:var(--gray)">Tap to mark/unmark</div></div>
+        <div><div style="color:#fff;font-weight:600;margin-bottom:2px">Timer</div><div style="color:var(--gray)">Countdown to start</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 3: Winning -->
+  <div style="background:var(--panel);border:1px solid #3c2463;border-radius:14px;padding:16px;margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div style="width:40px;height:40px;background:#d97706;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🏆</div>
+      <div style="font-family:'Orbitron',sans-serif;font-size:15px;font-weight:900;color:#fff">አሸናፊ</div>
+    </div>
+    <div style="background:rgba(250,204,21,.08);border:1px solid rgba(250,204,21,.3);border-radius:10px;padding:12px;margin-bottom:10px">
+      <div style="color:var(--gold);font-weight:700;font-size:13px;margin-bottom:6px">✨ Main Winning Rule</div>
+      <div style="font-size:12px;color:var(--gold);line-height:1.7">ቁጥሮቹ ሲጠሩ ከመጫወቻ ካርዱችን ላይ አየመረጥን ወደን ወይም ወደታች ወይም ወደሁለቱም አግዳሚ ወይም አራቱን ማእዘናት ከምረጥን ወዲያዉን ከታች bingo የሚለዉን በመንካት ማሽነፍ እንችላለን</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
+        <div style="width:36px;height:36px;background:#d97706;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">→</div>
+        <div><div style="font-size:14px;font-weight:700;color:#d97706;margin-bottom:3px">ወደን</div><div style="font-size:12px;color:var(--gray)">ማንኛዉም አግድም ረድፍ ማጠናቀቅ (5 ቁጥሮች በመስመር)</div></div>
+      </div>
+      <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
+        <div style="width:36px;height:36px;background:#d97706;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">↓</div>
+        <div><div style="font-size:14px;font-weight:700;color:#d97706;margin-bottom:3px">ወደታች</div><div style="font-size:12px;color:var(--gray)">ማንኛዉም ቁጥር ያለ አምድ ማጠናቀቅ (5 ቁጥሮች በመስመር)</div></div>
+      </div>
+      <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
+        <div style="width:36px;height:36px;background:#d97706;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">↘</div>
+        <div><div style="font-size:14px;font-weight:700;color:#d97706;margin-bottom:3px">አግዳሚ</div><div style="font-size:12px;color:var(--gray)">ማንኛዉም አግዳሚ መስመር ማጠናቀቅ (5 ቁጥሮች በአግዳሚ)</div></div>
+      </div>
+      <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
+        <div style="width:36px;height:36px;background:#d97706;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">⛶</div>
+        <div><div style="font-size:14px;font-weight:700;color:#d97706;margin-bottom:3px">አራቱን ማእዘናት</div><div style="font-size:12px;color:var(--gray)">የካርዱን አራቱን ማእዘን ቁጥሮች ማምልከት</div></div>
+      </div>
+    </div>
+    <div style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.3);border-radius:10px;padding:12px;margin-top:10px">
+      <div style="color:var(--green);font-weight:700;font-size:13px;margin-bottom:6px">👥 Multiple Winners</div>
+      <div style="font-size:12px;color:var(--gold);line-height:1.6">ሁለት ወይም ከዚያ በላይ ተጫዋቾች እኩል ቢያሸንፉ ድርሻ ለቁጥሯቸው ይካፈላል።</div>
+    </div>
+  </div>
+
+  <!-- Section 4: Penalties -->
+  <div style="background:var(--panel);border:1px solid #3c2463;border-radius:14px;padding:16px;margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div style="width:40px;height:40px;background:var(--red);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🚫</div>
+      <div style="font-family:'Orbitron',sans-serif;font-size:15px;font-weight:900;color:#fff">ቅጣት</div>
+    </div>
+    <div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:12px;margin-bottom:10px">
+      <div style="color:var(--red);font-weight:700;font-size:13px;margin-bottom:6px">⚠️ False BINGO Penalty</div>
+      <div style="font-size:12px;color:var(--gold);line-height:1.7;margin-bottom:8px">ወደን ወይም ወደታች ወይም ወደሁለቱም አግዳሚ ወይም አራቱን ማእዘናት ሳይጠራ bingo የሚለዉን ክሊክ ካደርጉ ከጨዋታው ይታገዳሉ</div>
+      <div style="font-size:12px;color:#fff;font-weight:600;margin-bottom:6px">Consequences:</div>
+      <div style="font-size:12px;color:var(--gray);line-height:1.8">🚫 Immediate removal from current game<br>💸 Loss of entry fee/stake<br>⏸ Temporary suspension from playing</div>
+    </div>
+    <div style="background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.3);border-radius:10px;padding:12px;margin-bottom:10px">
+      <div style="color:var(--purple);font-weight:700;font-size:13px;margin-bottom:8px">✅ Valid BINGO Conditions</div>
+      <div style="font-size:12px;color:var(--gray);line-height:1.8">• Complete horizontal line (5 numbers)<br>• Complete vertical line (5 numbers)<br>• Complete diagonal line (5 numbers)<br>• All four corners marked</div>
+    </div>
+    <div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:10px;padding:12px;margin-bottom:10px">
+      <div style="color:var(--red);font-weight:700;font-size:13px;margin-bottom:8px">🚫 Invalid BINGO Attempts</div>
+      <div style="font-size:12px;color:var(--gray);line-height:1.8">• Incomplete lines or patterns<br>• Random marked numbers<br>• Premature BINGO calls<br>• False pattern claims</div>
+    </div>
+    <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.3);border-radius:10px;padding:12px">
+      <div style="color:var(--blue);font-weight:700;font-size:13px;margin-bottom:8px">✨ Pro Tips to Avoid Penalties</div>
+      <div style="font-size:12px;color:var(--gray);line-height:1.8">• Double-check your pattern before clicking BINGO<br>• Make sure you have exactly 5 numbers in a line<br>• Verify all four corners are marked for corner wins<br>• Take your time — there's no rush to call BINGO<br>• If unsure, wait for more numbers to be called</div>
+    </div>
+  </div>
+</div>
+
+<div class="bottom-nav">
+  <div class="nav-item active" id="navGame" onclick="goToGame()">
+    <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 8h10c2.2 0 3.7 1.2 4.4 3.2l1 3.2c.5 1.7-.4 3.4-2.1 3.9-1.2.4-2.5 0-3.3-.9L15.5 16h-7l-3.5 3.4c-.8.9-2.1 1.3-3.3.9-1.7-.5-2.6-2.2-2.1-3.9l1-3.2C1.3 9.2 2.8 8 5 8h2z"/><path d="M7.5 11.5v4M5.5 13.5h4M16.5 12.5h.01M19 15h.01"/></svg></span>
+    <span>GAME</span>
+  </div>
+  <div class="nav-item" id="navProfile" onclick="goToProfile()">
+    <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6"/></svg></span>
+    <span>PROFILE</span>
   </div>
 </div>
 
@@ -1261,6 +1613,8 @@ body{
 // Mela Bingo API server (Yegara temporary endpoint)
 const API_BASE = 'https://api2.cockpitaviations.com';
 // ─── STATE ────────────────────────────────────────────────────
+  const ADMIN_PHONE_CLIENT = '251965666656';
+  const ADMIN_PHONE_CLIENT2 = '251912649846';
 let ws, myPlayerId, myName='', myRoomId=localStorage.getItem('roomId')||null, myStakeId=null;
 let activeGamePhase=localStorage.getItem('activeGamePhase')||'none'; // none|countdown|playing|spectating
 let activeCountdownLeft=Number(localStorage.getItem('activeCountdownLeft')||0);
@@ -1268,7 +1622,7 @@ let restoringActiveGame=false;
 let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0;
 let myCardId2=null, myCardNumbers2=[], markedIndices2=new Set();
 let claimWindowOpen=false, claimBarAnim=null, prevLastCalled=null;
-let telegramId=null;
+let telegramId=null, isAdmin=false, adminToken='';
 let calledNumbersSet=new Set();
 let autoClaimSent=false;
 let activePlayers=[];
@@ -1427,7 +1781,7 @@ function navGo(screen, navId){
     refreshAccountProfile(3,300);
   }
 
-  
+  if(screen==='screenAdmin') adminLoadDeposits();
 }
 function saveActiveGameState(phase){
   if(myRoomId) localStorage.setItem('roomId',myRoomId);
@@ -1544,21 +1898,20 @@ function renderSpectatorView(msg={}){
 
 function goToGame(){
   restoreActiveGameState();
-  // Only an explicitly saved countdown/playing/spectating state is an active game.
-  // A leftover roomId after a finished round must never block the normal stake menu.
-  if(activeGamePhase!=='countdown' && activeGamePhase!=='playing' && activeGamePhase!=='spectating'){
+  const roomId=myRoomId||localStorage.getItem('roomId');
+  if(!myStakeId) myStakeId=localStorage.getItem('stakeId');
+
+  // No game has been entered: Game tab always returns to the normal lobby.
+  // Clear only stale room/session navigation state; do not touch balance logic.
+  if(!roomId){
+    clearActiveGameState();
+    myRoomId=null;
+    myStakeId=null;
     navGo('screenLobby','navGame');
     return;
   }
 
-  const roomId=myRoomId||localStorage.getItem('roomId');
-  if(!roomId){
-    clearActiveGameState();
-    navGo('screenLobby','navGame');
-    return;
-  }
   myRoomId=roomId;
-  if(!myStakeId) myStakeId=localStorage.getItem('stakeId');
   if(activeGamePhase==='spectating'){
     navGo('screenGame','navGame');
     renderSpectatorView({calledNumbers:Array.from(calledNumbersSet||[])});
@@ -1569,62 +1922,81 @@ function goToGame(){
     refreshCardCells();
   }else{
     navGo('screenCards','navGame');
-    showSavedCountdown();
+    if(activeGamePhase==='countdown') showSavedCountdown();
   }
   if(telegramId) wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
 }
 
-function goToWallet(){navGo('screenWallet','navWallet');}
-async function gotoProfile(){
+function goToProfile(){
   navGo('screenProfile','navProfile');
-  await loadUserProfile();
+  loadProfile(false);
 }
 
-function renderUserProfile(u){
-  const name=String(u?.name||u?.playerName||myName||'Player').trim()||'Player';
-  const balance=Number(u?.balance);
-  const games=Number(u?.total_games);
-  const wins=Number(u?.total_wins);
-  const winnings=Number(u?.total_winnings);
-  myName=name;
-  if(Number.isFinite(balance) && balance>=0) setBalance(balance);
+function profileMoney(value){
+  const n=Number(value);
+  return Number.isFinite(n) ? `ETB ${n.toFixed(2)}` : 'ETB 0.00';
+}
+
+async function loadProfile(forceRefresh=false){
+  const tid=normalizeTelegramId(telegramId||getTelegramId());
+  if(tid) telegramId=tid;
+
+  const name=String(myName||'Player').trim()||'Player';
   const nameEl=document.getElementById('profileName');
-  const avatarEl=document.getElementById('profileAvatar');
-  const gamesEl=document.getElementById('profileGames');
-  const winsEl=document.getElementById('profileWins');
-  const winningsEl=document.getElementById('profileWinnings');
-  const profileBalEl=document.getElementById('profileBalance');
+  const infoName=document.getElementById('profileInfoName');
+  const idEl=document.getElementById('profileTelegramId');
+  const phoneEl=document.getElementById('profilePhone');
+  const avatar=document.getElementById('profileAvatar');
+  const balEl=document.getElementById('profileBalance');
   if(nameEl) nameEl.innerText=name;
-  if(avatarEl) avatarEl.innerText=name.charAt(0).toUpperCase();
-  if(gamesEl) gamesEl.innerText=Number.isFinite(games)?Math.max(0,Math.trunc(games)).toLocaleString():'0';
-  if(winsEl) winsEl.innerText=Number.isFinite(wins)?Math.max(0,Math.trunc(wins)).toLocaleString():'0';
-  if(winningsEl) winningsEl.innerText=Number.isFinite(winnings)?Math.max(0,winnings).toFixed(2):'0.00';
-  if(profileBalEl) profileBalEl.innerText=Number.isFinite(balance)&&balance>=0?`ETB ${balance.toFixed(2)}`:'ETB 0.00';
+  if(infoName) infoName.innerText=name;
+  if(idEl) idEl.innerText=tid ? `Telegram ID: ${tid}` : 'Telegram account';
+  if(avatar) avatar.innerText=name.charAt(0).toUpperCase();
+  if(balEl) balEl.innerText=profileMoney(currentBalance);
+
+  if(!tid){
+    if(phoneEl) phoneEl.innerText='—';
+    return;
+  }
+
+  try{
+    const userRes=await fetch(`${API_BASE}/api/user/${encodeURIComponent(tid)}?_=${Date.now()}`,{cache:'no-store'});
+    if(userRes.ok){
+      const u=await userRes.json();
+      if(u.name){
+        myName=String(u.name);
+        if(nameEl) nameEl.innerText=myName;
+        if(infoName) infoName.innerText=myName;
+        if(avatar) avatar.innerText=myName.charAt(0).toUpperCase();
+      }
+      if(phoneEl) phoneEl.innerText=String(u.phone||'—');
+      const b=Number(u.balance);
+      if(Number.isFinite(b) && b>=0){ setBalance(b); if(balEl) balEl.innerText=profileMoney(b); }
+    }
+  }catch(e){}
+
+  try{
+    const histRes=await fetch(`${API_BASE}/api/history/${encodeURIComponent(tid)}?limit=100&_=${Date.now()}`,{cache:'no-store'});
+    if(histRes.ok){
+      const rows=await histRes.json();
+      const list=Array.isArray(rows)?rows:[];
+      const gamesEl=document.getElementById('profileGamesPlayed');
+      const winningsEl=document.getElementById('profileTotalWinnings');
+      const games=list.length;
+      const winnings=list.reduce((sum,row)=>{
+        const amount=Number(row.amount_won ?? row.win_amount ?? 0);
+        return sum+(Number.isFinite(amount)?Math.max(0,amount):0);
+      },0);
+      if(gamesEl) gamesEl.innerText=String(games);
+      if(winningsEl) winningsEl.innerText=profileMoney(winnings);
+    }
+  }catch(e){}
 }
 
-async function loadUserProfile(force=false){
-  if(!telegramId) telegramId=getTelegramId();
-  const status=document.getElementById('profileStatus');
-  if(!telegramId){
-    if(status){status.style.display='block';status.innerText='የTelegram ሂሳብ አልተገናኘም።';}
-    return false;
-  }
-  if(status){status.style.display='block';status.innerText=force?'Refreshing profile...':'Loading profile...';}
-  try{
-    const id=normalizeTelegramId(telegramId);
-    if(!id) throw new Error('Invalid Telegram ID');
-    telegramId=id;
-    const res=await fetch(`${API_BASE}/api/user/${encodeURIComponent(id)}?_=${Date.now()}`,{cache:'no-store'});
-    const data=await res.json().catch(()=>({}));
-    if(!res.ok) throw new Error(data.error||'Profile request failed');
-    renderUserProfile(data);
-    if(status) status.style.display='none';
-    return true;
-  }catch(e){
-    console.error('Profile:',e);
-    if(status){status.style.display='block';status.innerText='Unable to load your profile. Please try again.';}
-    return false;
-  }
+function goToWallet(){navGo('screenWallet','navGame');}
+async function goToHistory(){
+  navGo('screenHistory','navHistory');
+  await loadGameHistory();
 }
 
 function formatHistoryDate(value){
@@ -1632,6 +2004,51 @@ function formatHistoryDate(value){
   const d=new Date(value);
   if(Number.isNaN(d.getTime())) return '—';
   return d.toLocaleString();
+}
+
+function loadGameHistory(){
+  const list=document.getElementById('historyList');
+  if(!list) return Promise.resolve();
+  if(!telegramId) telegramId=getTelegramId();
+  if(!telegramId){
+    list.innerHTML='<div class="history-empty">የTelegram ሂሳብ አልተገናኘም።</div>';
+    return Promise.resolve();
+  }
+  list.innerHTML='<div class="history-empty">ታሪክ በመጫን ላይ...</div>';
+  return fetch(`${API_BASE}/api/history/${encodeURIComponent(telegramId)}?limit=50`,{cache:'no-store'})
+    .then(async r=>{
+      const data=await r.json().catch(()=>[]);
+      if(!r.ok) throw new Error(data.error||'History request failed');
+      return data;
+    })
+    .then(rows=>{
+      if(!Array.isArray(rows)||!rows.length){
+        list.innerHTML='<div class="history-empty">📜 እስካሁን የጨዋታ ታሪክ የለዎትም።</div>';
+        return;
+      }
+      list.innerHTML=rows.map(g=>{
+        const won=g.won===true || g.won==='true';
+        const played=Number(g.amount_played)||0;
+        const wonAmount=Number(g.amount_won)||0;
+        const net=wonAmount-played;
+        const stake=Number(g.stake_amount)||0;
+        return `<div class="history-card">
+          <div class="history-top">
+            <div style="font-weight:900">🎱 ${esc(g.stake_id||('ST'+stake))}</div>
+            <div class="history-result ${won?'win':'loss'}">${won?'🏆 አሸንፈዋል':'— አላሸነፉም'}</div>
+          </div>
+          <div class="history-row"><span class="history-key">ቀን</span><span class="history-value history-date">${esc(formatHistoryDate(g.started_at))}</span></div>
+          <div class="history-row"><span class="history-key">የጨዋታ ዋጋ</span><span class="history-value">${stake.toFixed(2)} ብር</span></div>
+          <div class="history-row"><span class="history-key">የተጫወቱት</span><span class="history-value">-${played.toFixed(2)} ብር</span></div>
+          <div class="history-row"><span class="history-key">ያሸነፉት</span><span class="history-value">${wonAmount>0?'+':''}${wonAmount.toFixed(2)} ብር</span></div>
+          <div class="history-row" style="margin-top:5px;padding-top:7px;border-top:1px solid #2d1b4e"><span class="history-key">የዚህ ጨዋታ ልዩነት</span><span class="history-value" style="color:${net>=0?'var(--green)':'var(--red)'}">${net>=0?'+':''}${net.toFixed(2)} ብር</span></div>
+        </div>`;
+      }).join('');
+    })
+    .catch(e=>{
+      console.error('History:',e);
+      list.innerHTML='<div class="history-empty">የጨዋታ ታሪክን መጫን አልተቻለም።</div>';
+    });
 }
 
 // ─── WEBSOCKET ────────────────────────────────────────────────
@@ -1732,33 +2149,24 @@ function handle(msg){
 
     case 'connected':
       myPlayerId=msg.playerId;
-      // Render the normal game menu immediately. Account authentication happens
-      // asynchronously and must never leave the app stuck on the loading screen.
+      // Never replace a known balance with the server's initial connection value (0).
       if(msg.stakes) renderStakes(msg.stakes);
-      const pageParam = new URLSearchParams(location.search).get('page');
-      if(pageParam !== 'deposit' && pageParam !== 'withdraw') goScreen('screenLobby');
       document.getElementById('loadingText').innerText='Loading your account...';
+      const pageParam = new URLSearchParams(location.search).get('page');
       if(pageParam === 'deposit') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('deposit'); }, 1500);
       if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('withdraw'); }, 1500);
-      // Authenticate as soon as the Telegram ID is available. If it was resolved
-      // before connect(), use it immediately; otherwise wait briefly for Telegram.
-      const existingTid=normalizeTelegramId(telegramId)||getTelegramId();
-      if(existingTid){
-        telegramId=existingTid;
-        refreshAccountProfile(6,400).catch(()=>{});
-        sendTelegramAuth(existingTid);
-      }else{
-        waitForTelegramId(40,250).then(async tid=>{
-          if(!tid){
-            // Do not block the lobby waiting for Telegram initialization.
-            setTimeout(()=>{ const retryId=getTelegramId(); if(retryId) sendTelegramAuth(retryId); },1000);
-            return;
-          }
-          telegramId=tid;
-          refreshAccountProfile(6,400).catch(()=>{});
-          sendTelegramAuth(tid);
-        });
-      }
+      waitForTelegramId(40,250).then(async tid=>{
+        if(!tid){
+          document.getElementById('loadingText').innerText='Waiting for Telegram account...';
+          setTimeout(()=>{ const retryId=getTelegramId(); if(retryId) sendTelegramAuth(retryId); },1000);
+          return;
+        }
+        telegramId=tid;
+        // First load the account directly over HTTPS. This breaks the old failure
+        // mode where a WebSocket lookup returned a fake zero/unregistered snapshot.
+        await refreshAccountProfile(6,500);
+        sendTelegramAuth(tid);
+      });
       break;
 
     case 'authRetry':
@@ -1777,21 +2185,32 @@ function handle(msg){
   if(msg.isRegistered===true && msg.balance!==undefined && msg.balance!==null && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
     setBalance(msg.balance);
   }
-  //document.getElementById('welcomeName').innerText=myName||'Player';
+  document.getElementById('welcomeName').innerText=myName||'Player';
   // Always reconcile from the HTTPS account endpoint as the final authority.
   refreshAccountProfile(10,500);
 
-
+  isAdmin=msg.isAdmin||false;
+  adminToken=telegramId||'';
   document.getElementById('welcomeName').innerText=myName||'Player';
-  //document.getElementById('welcomeStatus').innerText=msg.isRegistered?'Welcome back! 👋':'Registered!';
-
+  document.getElementById('welcomeStatus').innerText=msg.isRegistered?'Welcome back! 👋':'Registered!';
+  if(isAdmin){
+    document.getElementById('navAdmin').style.display='flex';
+    document.getElementById('navRules').style.display='none';
+    // Check if this is a root admin — if so, show the Settings tab
+    if(telegramId){
+      fetch(`${API_BASE}/api/user/${telegramId}`).then(r=>r.json()).then(u=>{
+        if(u&&(u.phone===ADMIN_PHONE_CLIENT||u.phone===ADMIN_PHONE_CLIENT2)){
+          document.getElementById('settingsTab').style.display='';
+          document.getElementById('analyticsTab').style.display='';
+        }
+      }).catch(()=>{});
+    }
+  }
   // Restore an active room first. The server decides whether it is still
   // waiting/counting down or officially playing; do not assume a selected card
   // means the game has started.
   restoreActiveGameState();
-  const loadingWasActive=document.getElementById('screenLoading').classList.contains('active');
-  const hasRestorableGame=!!myRoomId && !!telegramId && ['countdown','playing','spectating'].includes(activeGamePhase);
-  if(hasRestorableGame){
+  if(myRoomId && telegramId){
     restoringActiveGame=true;
     if(activeGamePhase==='countdown') navGo('screenCards','navGame');
     else if(activeGamePhase==='playing' || activeGamePhase==='spectating') navGo('screenGame','navGame');
@@ -1804,10 +2223,7 @@ function handle(msg){
         goScreen('screenLobby');
       }
     },6000);
-  } else if(loadingWasActive){
-    // Only the initial loading screen should be replaced automatically.
-    // If the user is already on Profile or another screen, authentication must
-    // not unexpectedly navigate them away.
+  } else {
     goScreen('screenLobby');
   }
   break;
@@ -2017,6 +2433,15 @@ function handle(msg){
 
     case 'leftRoom': clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; navGo('screenLobby'); break;
 
+    case 'depositSubmitted':
+      showWalletMsg('depositMsg', msg.message, 'success');
+      document.getElementById('depositAmount').value='';
+      document.getElementById('depositTxRef').value=''; break;
+
+    case 'withdrawalSubmitted':
+      showWalletMsg('withdrawMsg', msg.message, 'success'); 
+      document.getElementById('withdrawAmount').value=''; break;
+
     case 'notification': showToast(msg.message, msg.message.startsWith('✅')?'':'error'); break;
 
     case 'error': showToast(msg.message,'error'); break;
@@ -2038,13 +2463,258 @@ function showWalletMsg(id, text, type){
   el.innerText=text; el.className='status-msg '+type; el.style.display='block';
   setTimeout(()=>el.style.display='none', 5000);
 }
+function extractTxnRef(text){
+  const patterns = [
+    /your transaction number is\s+([A-Z0-9]{6,20})/i,
+    /transaction number[:\s]+([A-Z0-9]{6,20})/i,
+    /\bref[:\s#]*([A-Z0-9]{6,20})\b/i,
+    /\b(TXN[A-Z0-9]{6,20})\b/i,
+    /\breference[:\s#]*([A-Z0-9]{6,20})\b/i,
+    /\bTransaction ID[:\s#]*([A-Z0-9]{6,20})\b/i,
+    // Amharic Telebirr SMS: "የግብይት ቁጥርዎ DFJ33I01A1 ነው"
+    /የግብይት\s*ቁጥርዎ\s+([A-Z0-9]{6,20})/i,
+    // Fallback: pull the code straight out of the receipt link
+    // e.g. https://transactioninfo.ethiotelecom.et/receipt/DFJ33I01A1
+    /transactioninfo\.ethiotelecom\.et\/receipt\/([A-Z0-9]{6,20})/i,
+  ];
+  for(const p of patterns){
+    const m=text.match(p);
+    if(m) return m[1]||m[0];
+  }
+  return null;
+}
+
+function submitDeposit(){
+  const amount=parseInt(document.getElementById('depositAmount').value);
+  const smsText=document.getElementById('depositTxRef').value.trim();
+  if(!amount||amount<10){showWalletMsg('depositMsg','Minimum deposit is 10 ETB.','error');return;}
+  if(!smsText){showWalletMsg('depositMsg','Please paste your Telebirr SMS message.','error');return;}
+  const txRef=extractTxnRef(smsText);
+  if(!txRef){showWalletMsg('depositMsg','Could not find reference number in your SMS. Please make sure you copied the full message.','error');return;}
+  wsSend({type:'depositRequest',amount,txRef});
+  showWalletMsg('depositMsg','Submitting...','info');
+}
+function submitWithdrawal(){
+  const amount=parseInt(document.getElementById('withdrawAmount').value);
+  if(!amount||amount<50){showWalletMsg('withdrawMsg','Minimum withdrawal is 50 ETB.','error');return;}
+  if(amount>currentBalance){showWalletMsg('withdrawMsg','Insufficient balance.','error');return;}
+  wsSend({type:'withdrawalRequest',amount});
+  showWalletMsg('withdrawMsg','Submitting...','info');
+}
+
+// ─── ADMIN ────────────────────────────────────────────────────
+function switchAdminTab(tab){
+  document.querySelectorAll('.admin-tab').forEach((t,i)=>{
+    t.classList.toggle('active',['deposits','withdrawals','search','settings','analytics'][i]===tab);
+  });
+  document.getElementById('adminDeposits').classList.toggle('active',tab==='deposits');
+  document.getElementById('adminWithdrawals').classList.toggle('active',tab==='withdrawals');
+  document.getElementById('adminSearch').classList.toggle('active',tab==='search');
+  document.getElementById('adminSettings').classList.toggle('active',tab==='settings');
+  document.getElementById('adminAnalytics').classList.toggle('active',tab==='analytics');
+  if(tab==='deposits') adminLoadDeposits();
+  if(tab==='withdrawals') adminLoadWithdrawals();
+  if(tab==='settings'){ adminLoadPaymentSettings(); adminLoadAdmins(); }
+  if(tab==='analytics') loadAnalytics();
+}
+
+async function adminFetch(path, method='GET'){
+  const res=await fetch(API_BASE+path,{method,headers:{'x-admin-token':adminToken,'Content-Type':'application/json'}});
+  return res.json();
+}
+
+async function adminLoadDeposits(){
+  const list=document.getElementById('depositsList');
+  list.innerHTML='<div class="empty-state">Loading...</div>';
+  try{
+    const data=await adminFetch(`/api/admin/deposits?status=pending&token=${adminToken}`);
+    document.getElementById('depositCount').innerText=data.length||0;
+    if(!data.length){list.innerHTML='<div class="empty-state">✅ No pending deposits</div>';return;}
+    list.innerHTML=data.map(d=>`
+      <div class="request-card" id="dep-${d.id}">
+        <div class="req-row">
+          <div class="req-name">${esc(d.name)}</div>
+          <div class="req-amount">${d.amount} ETB</div>
+        </div>
+        <div class="req-meta">
+          📱 ${esc(d.phone||'—')}<br>
+          🔖 Ref: <strong style="color:#fff">${esc(d.tx_ref||'—')}</strong><br>
+          🕐 ${new Date(d.created_at).toLocaleString()}
+        </div>
+        <div class="req-actions">
+          <button class="btn-approve" onclick="adminApproveDeposit(${d.id})">✅ Approve</button>
+          <button class="btn-reject" onclick="adminRejectDeposit(${d.id})">❌ Reject</button>
+        </div>
+      </div>`).join('');
+  }catch(e){list.innerHTML='<div class="empty-state">Error loading deposits</div>';}
+}
+
+async function adminLoadWithdrawals(){
+  const list=document.getElementById('withdrawalsList');
+  list.innerHTML='<div class="empty-state">Loading...</div>';
+  try{
+    const data=await adminFetch(`/api/admin/withdrawals?status=pending&token=${adminToken}`);
+    document.getElementById('withdrawCount').innerText=data.length||0;
+    if(!data.length){list.innerHTML='<div class="empty-state">✅ No pending withdrawals</div>';return;}
+    list.innerHTML=data.map(w=>`
+      <div class="request-card" id="wd-${w.id}">
+        <div class="req-row">
+          <div class="req-name">${esc(w.name)}</div>
+          <div class="req-amount">${w.amount} ETB</div>
+        </div>
+        <div class="req-meta">
+          📱 ${esc(w.phone||'—')}<br>
+          🕐 ${new Date(w.created_at).toLocaleString()}
+        </div>
+        <div class="req-actions">
+          <button class="btn-approve" onclick="adminApproveWithdrawal(${w.id})">✅ Approve & Send</button>
+          <button class="btn-reject" onclick="adminRejectWithdrawal(${w.id})">❌ Reject & Refund</button>
+        </div>
+      </div>`).join('');
+  }catch(e){list.innerHTML='<div class="empty-state">Error loading withdrawals</div>';}
+}
+
+async function adminApproveDeposit(id){
+  if(!confirm('Approve this deposit?')) return;
+  const card=document.getElementById('dep-'+id);
+  if(card) card.style.opacity='.5';
+  try{
+    await adminFetch(`/api/admin/deposits/${id}/approve`,'POST');
+    showToast('✅ Deposit approved!');
+    adminLoadDeposits();
+  }catch(e){showToast('Error approving deposit','error');}
+}
+async function adminRejectDeposit(id){
+  if(!confirm('Reject this deposit?')) return;
+  const card=document.getElementById('dep-'+id);
+  if(card) card.style.opacity='.5';
+  try{
+    await adminFetch(`/api/admin/deposits/${id}/reject`,'POST');
+    showToast('Deposit rejected.','warn');
+    adminLoadDeposits();
+  }catch(e){showToast('Error rejecting deposit','error');}
+}
+async function adminApproveWithdrawal(id){
+  if(!confirm('Approve withdrawal and mark as sent?')) return;
+  const card=document.getElementById('wd-'+id);
+  if(card) card.style.opacity='.5';
+  try{
+    await adminFetch(`/api/admin/withdrawals/${id}/approve`,'POST');
+    showToast('✅ Withdrawal approved!');
+    adminLoadWithdrawals();
+  }catch(e){showToast('Error approving withdrawal','error');}
+}
+async function adminRejectWithdrawal(id){
+  if(!confirm('Reject withdrawal and refund the player?')) return;
+  const card=document.getElementById('wd-'+id);
+  if(card) card.style.opacity='.5';
+  try{
+    await adminFetch(`/api/admin/withdrawals/${id}/reject`,'POST');
+    showToast('Withdrawal rejected & refunded.','warn');
+    adminLoadWithdrawals();
+  }catch(e){showToast('Error rejecting withdrawal','error');}
+}
+
+async function adminSearchUser(){
+  const phone=document.getElementById('searchPhone').value.trim();
+  if(!phone){showToast('Enter a phone number','error');return;}
+  const results=document.getElementById('searchResults');
+  results.innerHTML='<div class="empty-state">Searching...</div>';
+  try{
+    const data=await adminFetch(`/api/admin/search?phone=${encodeURIComponent(phone)}&token=${adminToken}`);
+    if(!data.length){results.innerHTML='<div class="empty-state">No users found</div>';return;}
+    results.innerHTML=data.map(u=>`
+      <div class="user-card" onclick="showUserDetail(${JSON.stringify(u).replace(/"/g,'&quot;')})">
+        <div class="user-card-name">${esc(u.name)}</div>
+        <div class="user-card-meta">
+          📱 ${esc(u.phone||'—')} &nbsp;|&nbsp; 💰 Balance: <strong style="color:var(--gold)">${parseFloat(u.balance).toFixed(2)} ETB</strong><br>
+          🎮 Games: ${u.games_played||0} &nbsp;|&nbsp; 🏆 Wins: ${u.total_wins||0}
+        </div>
+      </div>`).join('');
+  }catch(e){results.innerHTML='<div class="empty-state">Search failed</div>';}
+}
+
+function showUserDetail(u){
+  const txs=(u.transactions||[]).slice(0,20);
+  const txHtml=txs.length?txs.map(t=>`
+    <div class="tx-row">
+      <span class="tx-type">${esc(t.type)}</span>
+      <span class="tx-${parseFloat(t.amount)>=0?'amt-pos':'amt-neg'}">${parseFloat(t.amount)>=0?'+':''}${parseFloat(t.amount).toFixed(2)} ETB</span>
+      <span style="font-size:10px;color:var(--gray)">${new Date(t.created_at).toLocaleDateString()}</span>
+    </div>`).join('')
+    :'<div class="empty-state" style="padding:10px">No transactions</div>';
+
+  const results=document.getElementById('searchResults');
+  results.innerHTML=`
+    <button onclick="adminSearchUser()" style="background:transparent;border:none;color:var(--gray);font-size:13px;cursor:pointer;margin-bottom:12px">← Back to results</button>
+    <div class="user-detail-card">
+      <div class="user-detail-title">Player Info</div>
+      <div class="user-detail-row"><span class="user-detail-key">Name</span><span class="user-detail-val">${esc(u.name)}</span></div>
+      <div class="user-detail-row"><span class="user-detail-key">Phone</span><span class="user-detail-val">${esc(u.phone||'—')}</span></div>
+      <div class="user-detail-row"><span class="user-detail-key">Balance</span><span class="user-detail-val" style="color:var(--gold)">${parseFloat(u.balance).toFixed(2)} ETB</span></div>
+      <div class="user-detail-row"><span class="user-detail-key">Games Played</span><span class="user-detail-val">${u.games_played||0}</span></div>
+      <div class="user-detail-row"><span class="user-detail-key">Total Wins</span><span class="user-detail-val">${u.total_wins||0}</span></div>
+      <div class="user-detail-row"><span class="user-detail-key">Total Winnings</span><span class="user-detail-val" style="color:var(--green)">${parseFloat(u.total_winnings||0).toFixed(2)} ETB</span></div>
+      <div class="user-detail-row"><span class="user-detail-key">Registered</span><span class="user-detail-val">${new Date(u.created_at).toLocaleDateString()}</span></div>
+    </div>
+    <div class="user-detail-card">
+      <div class="user-detail-title">Transaction History</div>
+      <div class="tx-list">${txHtml}</div>
+    </div>`;
+}
 
 function esc(str){
   if(!str) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-  // ─── GAME: NUMBER CALLED ──────────────────────────────────────
+// ─── ADMIN: PAYMENT SETTINGS ───────────────────────────────────
+async function adminLoadPaymentSettings(){
+  try{
+    const data=await adminFetch(`/api/admin/payment-settings?token=${adminToken}`);
+    document.getElementById('settingsTelebirrNumber').value=data.telebirrNumber||'';
+    document.getElementById('settingsTelebirrName').value=data.telebirrName||'';
+  }catch(e){showToast('Failed to load settings','error');}
+}
+async function adminSavePaymentSettings(){
+  const telebirrNumber=document.getElementById('settingsTelebirrNumber').value.trim();
+  const telebirrName=document.getElementById('settingsTelebirrName').value.trim();
+  if(!telebirrNumber||!telebirrName){showWalletMsg('settingsMsg','Both fields are required.','error');return;}
+  try{
+    const res=await fetch(`${API_BASE}/api/admin/payment-settings?token=${adminToken}`,{
+      method:'POST',
+      headers:{'x-admin-token':adminToken,'Content-Type':'application/json'},
+      body:JSON.stringify({telebirrNumber,telebirrName})
+    });
+    const data=await res.json();
+    if(data.ok){
+      showWalletMsg('settingsMsg','✅ Payment info updated!','success');
+      applyPaymentInfo(data);
+    } else {
+      showWalletMsg('settingsMsg','Failed to save.','error');
+    }
+  }catch(e){showWalletMsg('settingsMsg','Failed to save.','error');}
+}
+
+// ─── PAYMENT INFO (deposit page) ───────────────────────────────
+function applyPaymentInfo(info){
+  if(!info) return;
+  const numEl=document.getElementById('telebirrNumber');
+  const nameEl=document.getElementById('telebirrName');
+  const stepNumEl=document.getElementById('depositStepNumber');
+  if(numEl) numEl.innerText=info.telebirrNumber;
+  if(nameEl) nameEl.innerText=info.telebirrName;
+  if(stepNumEl) stepNumEl.innerText=info.telebirrNumber;
+}
+async function loadPaymentInfo(){
+  try{
+    const res=await fetch(`${API_BASE}/api/payment-info`);
+    const data=await res.json();
+    applyPaymentInfo(data);
+  }catch(e){/* keep defaults */}
+}
+
+// ─── GAME: NUMBER CALLED ──────────────────────────────────────
 function onNumberCalled(msg){
   const n=Number(msg.number), cfg=numConfig(n);
   calledNumbersSet.add(n);
@@ -2146,11 +2816,6 @@ function showWinnerOverlay(msg){
   }
   renderResultCard(winningCard,msg.calledNumbers||[]);
   ov.classList.add('show');
-  // Play Bingo sound when there is a winner
-  if(!noWinner) 
-  {
-    playBallAudio(76);
-  }
   if(iWon) startConfetti(); else stopConfetti();
 }
 function hideWinnerOverlay(){
@@ -2445,11 +3110,20 @@ let soundEnabled = true;
 let audioCache = {};   // number -> Audio object (preloaded)
 let audioUnlocked = false;
 
+// Map number to B/I/N/G/O letter
+function ballLetter(n){
+  if(n<=15) return 'b';
+  if(n<=30) return 'i';
+  if(n<=45) return 'n';
+  if(n<=60) return 'g';
+  return 'o';
+}
+
 // Preload all 75 audio files in background after user first interacts
 function preloadAudio(){
-  for(let i=1;i<=76;i++)
-  { 
-    const path = i === 76 ? '/audio/Bingo.mp3' : `/audio/${i}.mp3`;  
+  for(let i=1;i<=75;i++){
+    const letter=ballLetter(i);
+    const path=`/audio/${letter}${i}.mp3`;
     const a=new Audio(path);
     a.preload='auto';
     audioCache[i]=a;
@@ -2478,8 +3152,9 @@ function playBallAudio(n){
     if(a){
       a.currentTime=0;
       a.play().catch(()=>{});
-    } else {      
-      const fresh=new Audio(`/audio/${n}.mp3`);
+    } else {
+      const letter=ballLetter(n);
+      const fresh=new Audio(`/audio/${letter}${n}.mp3`);
       fresh.play().catch(()=>{});
       audioCache[n]=fresh;
     }
@@ -2495,20 +3170,280 @@ function toggleSound(){
   if(soundEnabled&&!audioUnlocked) unlockAudio();
   showToast(soundEnabled?'🔊 Sound on':'🔇 Sound off');
 }
+  // ─── ADMIN MANAGEMENT ────────────────────────────────────────
+async function adminLoadAdmins(){
+  const list=document.getElementById('adminList');
+  list.innerHTML='<div style="color:var(--gray);font-size:13px">Loading...</div>';
+  try{
+    const r=await fetch(`${API_BASE}/api/admin/admins`,{headers:{'x-admin-token':adminToken}});
+    const data=await r.json();
+    if(!data.length){list.innerHTML='<div style="color:var(--gray);font-size:13px">No extra admins yet.</div>';return;}
+    list.innerHTML=data.map(a=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;background:var(--panel);border:1px solid #3c2463;border-radius:10px;padding:10px 14px;margin-bottom:8px">
+        <div>
+          <div style="font-weight:700;font-size:14px">${a.name||'Unknown'}</div>
+          <div style="font-size:11px;color:var(--gray)">📱 ${a.phone}</div>
+        </div>
+        ${(a.phone===ADMIN_PHONE_CLIENT||a.phone===ADMIN_PHONE_CLIENT2)?'<span style="color:var(--gold);font-size:12px;font-weight:700">ROOT</span>':`<button onclick="adminRemoveAdmin('${a.phone}')" style="background:var(--red);color:#fff;border:none;padding:7px 14px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">Remove</button>`}
+      </div>`).join('');
+  }catch(e){list.innerHTML='<div style="color:var(--red);font-size:13px">Failed to load.</div>';}
+}
+async function adminAddAdmin(){
+  const phone=document.getElementById('newAdminPhone').value.trim().replace(/^\+/,'');
+  const msg=document.getElementById('adminMgmtMsg');
+  if(!phone){showToast('Enter a phone number','error');return;}
+  const r=await fetch(`${API_BASE}/api/admin/admins`,{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':adminToken},body:JSON.stringify({phone})});
+  const data=await r.json();
+  if(data.ok){msg.className='status-msg success';msg.innerText='✅ Admin added!';msg.style.display='block';document.getElementById('newAdminPhone').value='';adminLoadAdmins();setTimeout(()=>msg.style.display='none',3000);}
+  else{msg.className='status-msg error';msg.innerText='❌ '+(data.error||'User not found');msg.style.display='block';}
+}
+async function adminRemoveAdmin(phone){
+  const msg=document.getElementById('adminMgmtMsg');
+  const r=await fetch(`${API_BASE}/api/admin/admins/${encodeURIComponent(phone)}`,{method:'DELETE',headers:{'x-admin-token':adminToken}});
+  const data=await r.json();
+  if(data.ok){msg.className='status-msg success';msg.innerText='✅ Removed.';msg.style.display='block';adminLoadAdmins();setTimeout(()=>msg.style.display='none',3000);}
+  else{msg.className='status-msg error';msg.innerText='❌ '+(data.error||'Failed');msg.style.display='block';}
+}
+  function copyPhone(){
+  const num=document.getElementById('telebirrNumber').innerText;
+  navigator.clipboard.writeText(num).then(()=>{
+    const btn=document.getElementById('copyBtn');
+    btn.innerText='✅ Copied!';
+    btn.style.background='rgba(34,197,94,.2)';
+    btn.style.borderColor='var(--green)';
+    btn.style.color='var(--green)';
+    setTimeout(()=>{btn.innerText='📋 Copy';btn.style.background='rgba(250,204,21,.15)';btn.style.borderColor='var(--gold)';btn.style.color='var(--gold)';},2000);
+  });
+}
+document.getElementById('depositTxRef').addEventListener('input', function(){
+  const text=this.value.trim();
+  const preview=document.getElementById('txnPreview');
+  const notFound=document.getElementById('txnNotFound');
+  const found=document.getElementById('txnFound');
+  if(!text){preview.style.display='none';notFound.style.display='none';return;}
+  const ref=extractTxnRef(text);
+  if(ref){
+    found.innerText=ref;
+    preview.style.display='block';
+    notFound.style.display='none';
+  } else {
+    preview.style.display='none';
+    notFound.style.display='block';
+  }
+});
+// ─── ANALYTICS ───────────────────────────────────────────────
+function analyticsSetRange(preset){
+  const now=new Date();
+  const fmt=d=>d.toISOString().slice(0,10);
+  const todayStr=fmt(now);
+  let from, to=todayStr;
+  if(preset==='today'){ from=todayStr; }
+  else if(preset==='7d'){ const d=new Date(now); d.setDate(d.getDate()-6); from=fmt(d); }
+  else if(preset==='30d'){ const d=new Date(now); d.setDate(d.getDate()-29); from=fmt(d); }
+  else if(preset==='month'){ from=fmt(new Date(now.getFullYear(),now.getMonth(),1)); }
+  else if(preset==='all'){ from='2020-01-01'; }
+  document.getElementById('analyticsFrom').value=from;
+  document.getElementById('analyticsTo').value=to;
+}
+
+async function loadAnalytics(){
+  const from=document.getElementById('analyticsFrom').value;
+  const to=document.getElementById('analyticsTo').value;
+  const content=document.getElementById('analyticsContent');
+  if(!from||!to){ showToast('Select a date range first','error'); return; }
+  content.innerHTML='<div class="empty-state" style="padding:30px 0">⏳ Loading report...</div>';
+  try{
+    const res=await fetch(`${API_BASE}/api/admin/analytics?from=${from}&to=${to}`,{headers:{'x-admin-token':adminToken}});
+    const d=await res.json();
+    if(d.error){ content.innerHTML=`<div class="empty-state" style="color:var(--red)">${esc(d.error)}</div>`; return; }
+    renderAnalytics(d, from, to);
+  }catch(e){
+    content.innerHTML='<div class="empty-state" style="color:var(--red)">Failed to load report</div>';
+  }
+}
+
+function renderAnalytics(d, from, to){
+  const g=d.games||{}, p=d.profit||{}, dep=d.deposits||{}, wd=d.withdrawals||{}, u=d.users||{};
+  const houseProfitNum=parseFloat(p.house_profit||0);
+  const depApproved=parseFloat(dep.approved_amount||0);
+  const wdApproved=parseFloat(wd.approved_amount||0);
+  const netCash=depApproved-wdApproved;
+
+  const statCard=(icon,label,value,sub,color)=>`
+    <div style="background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:14px;text-align:center">
+      <div style="font-size:22px;margin-bottom:4px">${icon}</div>
+      <div style="font-size:10px;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${label}</div>
+      <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;color:${color||'var(--gold)'};">${value}</div>
+      ${sub?`<div style="font-size:10px;color:var(--gray);margin-top:3px">${sub}</div>`:''}
+    </div>`;
+
+  // Daily revenue mini chart
+  const dailyRows=d.dailyRevenue||[];
+  let chartHtml='';
+  if(dailyRows.length>0){
+    const maxProfit=Math.max(...dailyRows.map(r=>parseFloat(r.profit||0)),1);
+    chartHtml=`
+      <div style="background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:14px;margin-bottom:12px;overflow-x:auto">
+        <div style="font-family:'Orbitron',sans-serif;font-size:12px;font-weight:900;color:var(--gold);margin-bottom:12px">📈 Daily House Profit</div>
+        <div style="display:flex;align-items:flex-end;gap:4px;height:80px;min-width:${Math.max(dailyRows.length*28,260)}px">
+          ${dailyRows.map(r=>{
+            const h=Math.max(4,Math.round((parseFloat(r.profit||0)/maxProfit)*72));
+            const pf=parseFloat(r.profit||0).toFixed(0);
+            return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;min-width:20px" title="${r.day}: ${pf} ETB profit, ${r.games} games">
+              <div style="width:100%;background:var(--green);border-radius:3px 3px 0 0;height:${h}px;opacity:.85"></div>
+              <div style="font-size:8px;color:var(--gray);margin-top:3px;transform:rotate(-45deg);white-space:nowrap">${r.day.slice(5)}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }
+
+  // Pending requests alert
+  const pendDep=d.pendingDeposits||[], pendWd=d.pendingWithdrawals||[];
+  let pendingHtml='';
+  if(pendDep.length||pendWd.length){
+    const pendDepAmt=pendDep.reduce((s,r)=>s+parseFloat(r.amount||0),0);
+    const pendWdAmt=pendWd.reduce((s,r)=>s+parseFloat(r.amount||0),0);
+    pendingHtml=`
+      <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.4);border-radius:12px;padding:14px;margin-bottom:12px">
+        <div style="font-family:'Orbitron',sans-serif;font-size:12px;font-weight:900;color:#f59e0b;margin-bottom:10px">⚠️ Pending Actions Required</div>
+        ${pendDep.length?`<div style="margin-bottom:8px">
+          <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:6px">💰 Deposits Awaiting Approval (${pendDep.length}) — ${pendDepAmt.toFixed(2)} ETB</div>
+          ${pendDep.map(r=>`
+            <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card);border-radius:8px;padding:8px 10px;margin-bottom:5px;font-size:12px">
+              <div><span style="font-weight:700">${esc(r.name)}</span> <span style="color:var(--gray)">📱${esc(r.phone)}</span></div>
+              <div style="display:flex;align-items:center;gap:6px">
+                <span style="color:var(--gold);font-weight:700">${parseFloat(r.amount).toFixed(0)} ETB</span>
+                <span style="font-size:10px;color:var(--gray)">${new Date(r.created_at).toLocaleDateString()}</span>
+                <button onclick="adminApproveDeposit(${r.id});loadAnalytics()" style="background:var(--green);color:#fff;border:none;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer">✅</button>
+                <button onclick="adminRejectDeposit(${r.id});loadAnalytics()" style="background:var(--red);color:#fff;border:none;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer">❌</button>
+              </div>
+            </div>`).join('')}
+        </div>`:''}
+        ${pendWd.length?`<div>
+          <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:6px">💸 Withdrawals Awaiting Approval (${pendWd.length}) — ${pendWdAmt.toFixed(2)} ETB</div>
+          ${pendWd.map(r=>`
+            <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card);border-radius:8px;padding:8px 10px;margin-bottom:5px;font-size:12px">
+              <div><span style="font-weight:700">${esc(r.name)}</span> <span style="color:var(--gray)">📱${esc(r.phone)}</span></div>
+              <div style="display:flex;align-items:center;gap:6px">
+                <span style="color:var(--red);font-weight:700">${parseFloat(r.amount).toFixed(0)} ETB</span>
+                <span style="font-size:10px;color:var(--gray)">${new Date(r.created_at).toLocaleDateString()}</span>
+                <button onclick="adminApproveWithdrawal(${r.id});loadAnalytics()" style="background:var(--green);color:#fff;border:none;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer">✅</button>
+                <button onclick="adminRejectWithdrawal(${r.id});loadAnalytics()" style="background:var(--red);color:#fff;border:none;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer">❌</button>
+              </div>
+            </div>`).join('')}
+        </div>`:''}
+      </div>`;
+  }
+
+  // Top winners table
+  let winnersHtml='';
+  if(d.topWinners&&d.topWinners.length){
+    winnersHtml=`
+      <div style="background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:14px;margin-bottom:12px">
+        <div style="font-family:'Orbitron',sans-serif;font-size:12px;font-weight:900;color:var(--gold);margin-bottom:10px">🏆 Top Winners</div>
+        ${d.topWinners.map((w,i)=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #2d1b4e;font-size:12px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="color:var(--gold);font-weight:900;font-size:14px;min-width:20px">#${i+1}</span>
+              <div>
+                <div style="font-weight:700">${esc(w.name)}</div>
+                <div style="font-size:10px;color:var(--gray)">📱 ${esc(w.phone||'—')}</div>
+              </div>
+            </div>
+            <div style="text-align:right">
+              <div style="color:var(--green);font-weight:700">${parseFloat(w.total_won).toFixed(2)} ETB</div>
+              <div style="font-size:10px;color:var(--gray)">${w.wins} win${w.wins!==1?'s':''}</div>
+            </div>
+          </div>`).join('')}
+      </div>`;
+  }
+
+  // Recent transactions
+  let recentHtml='';
+  if(d.recentTx&&d.recentTx.length){
+    const txColor=t=>t==='win'||t==='deposit'?'var(--green)':'var(--red)';
+    const txSign=t=>t==='win'||t==='deposit'?'+':'−';
+    recentHtml=`
+      <div style="background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:14px;margin-bottom:12px">
+        <div style="font-family:'Orbitron',sans-serif;font-size:12px;font-weight:900;color:var(--gold);margin-bottom:10px">🕐 Recent Transactions (last 20)</div>
+        ${d.recentTx.map(t=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #2d1b4e;font-size:12px">
+            <div>
+              <span style="font-weight:600">${esc(t.name)}</span>
+              <span style="color:var(--gray);margin-left:6px;font-size:10px;text-transform:capitalize">${esc(t.type)}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="color:${txColor(t.type)};font-weight:700">${txSign(t.type)}${Math.abs(parseFloat(t.amount)).toFixed(2)} ETB</span>
+              <span style="font-size:10px;color:var(--gray)">${new Date(t.created_at).toLocaleString().slice(0,16)}</span>
+            </div>
+          </div>`).join('')}
+      </div>`;
+  }
+
+  document.getElementById('analyticsContent').innerHTML=`
+    <!-- Period header -->
+    <div style="text-align:center;margin-bottom:12px;font-size:11px;color:var(--gray)">
+      Report: <strong style="color:#fff">${from}</strong> → <strong style="color:#fff">${to}</strong>
+    </div>
+
+    <!-- KPI grid -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+      ${statCard('💎','House Profit',houseProfitNum.toFixed(2)+' ETB','From finished games','var(--green)')}
+      ${statCard('🎮','Games Played',g.total_games||0,`${g.finished_games||0} finished`,'')}
+      ${statCard('💰','Deposits In',depApproved.toFixed(2)+' ETB',`${dep.approved||0} approved / ${dep.pending||0} pending`,'')}
+      ${statCard('💸','Withdrawals Out',wdApproved.toFixed(2)+' ETB',`${wd.approved||0} approved / ${wd.pending||0} pending`,'var(--red)')}
+      ${statCard('📊','Net Cash Flow',(netCash>=0?'+':'')+netCash.toFixed(2)+' ETB','Deposits − Withdrawals',netCash>=0?'var(--green)':'var(--red)')}
+      ${statCard('👥','Total Users',u.total||0,`+${u.new_users||0} new this period`,'')}
+    </div>
+
+    <!-- Deposit / Withdrawal breakdown -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+      <div style="background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:12px">
+        <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:8px">💰 DEPOSITS</div>
+        ${[['Total',dep.total||0],['✅ Approved',dep.approved||0],['⏳ Pending',dep.pending||0],['❌ Rejected',dep.rejected||0]].map(([l,v])=>`
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid #2d1b4e">
+            <span style="color:var(--gray)">${l}</span><span style="font-weight:700">${v}</span>
+          </div>`).join('')}
+        <div style="font-size:12px;font-weight:700;color:var(--green);margin-top:6px">${depApproved.toFixed(2)} ETB in</div>
+        ${dep.pending>0?`<div style="font-size:11px;color:#f59e0b">${parseFloat(dep.pending_amount||0).toFixed(2)} ETB pending</div>`:''}
+      </div>
+      <div style="background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:12px">
+        <div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:8px">💸 WITHDRAWALS</div>
+        ${[['Total',wd.total||0],['✅ Approved',wd.approved||0],['⏳ Pending',wd.pending||0],['❌ Rejected',wd.rejected||0]].map(([l,v])=>`
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid #2d1b4e">
+            <span style="color:var(--gray)">${l}</span><span style="font-weight:700">${v}</span>
+          </div>`).join('')}
+        <div style="font-size:12px;font-weight:700;color:var(--red);margin-top:6px">${wdApproved.toFixed(2)} ETB out</div>
+        ${wd.pending>0?`<div style="font-size:11px;color:#f59e0b">${parseFloat(wd.pending_amount||0).toFixed(2)} ETB pending</div>`:''}
+      </div>
+    </div>
+
+    ${pendingHtml}
+    ${chartHtml}
+    ${winnersHtml}
+    ${recentHtml}
+
+    <button class="refresh-btn" onclick="loadAnalytics()" style="width:100%;justify-content:center">🔄 Refresh Report</button>
+  `;
+}
 
 // ─── INIT ────────────────────────────────────────────────────
 buildTracker();
-buildSpectatorTracker();
+  buildSpectatorTracker();
 restoreCachedBalance();
-// Resolve the Telegram identity before opening the WebSocket when possible.
-// This lets the account balance load immediately instead of starting from ETB 0.00.
-telegramId=getTelegramId();
-if(telegramId){
-  refreshAccountProfile(6,400).catch(()=>{});
-}
 connect();
-//--------------------------------------------------------------
-
+loadPaymentInfo();
+// Set default analytics range to last 30 days
+(()=>{
+  const fmt=d=>d.toISOString().slice(0,10);
+  const now=new Date();
+  const d30=new Date(now); d30.setDate(d30.getDate()-29);
+  const fromEl=document.getElementById('analyticsFrom');
+  const toEl=document.getElementById('analyticsTo');
+  if(fromEl) fromEl.value=fmt(d30);
+  if(toEl) toEl.value=fmt(now);
+})();
 </script>
 </body>
 </html>

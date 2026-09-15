@@ -35,7 +35,7 @@ app.use((req, res, next) => {
   next();
 });
 
-const ADMIN_PHONE = '251934255415';
+const ADMIN_PHONE = '251965666656';
 function isAdminPhone(phone) {
   if (!phone) return false;
   const normalized = String(phone).replace(/^\+/, '');
@@ -178,16 +178,6 @@ if (process.env.DATABASE_URL) {
           [roomId, stakeId, amount, pot]
         );
         return r[0].id;
-      },
-      async addParticipant(gameId, telegramId, cardId) {
-        const r = await this.q(
-          `INSERT INTO game_participants(game_id,user_id,card_id)
-           SELECT $1,id,$3 FROM users WHERE telegram_id=$2
-           ON CONFLICT (game_id,user_id) DO NOTHING
-           RETURNING *`,
-          [gameId, String(telegramId), cardId]
-        );
-        return r[0] || null;
       },
       async endGame(gameId, tids, winAmount, isSplit, called) {
         await this.q(
@@ -419,41 +409,32 @@ function checkWin(nums, called, marked) {
 const clients={}, rooms={}, userCache={};
 
 // ─── USER HELPERS ────────────────────────────────────────────
-async function loadUser(tid, retries=4, delayMs=350) {
+async function loadUser(tid,retries=6,delayMs=500) {
   const id=String(tid||'').trim();
-  if(!/^\\d+$/.test(id) || Number(id)<=0) return null;
-
-  let lastErr=null;
-  for(let i=0;i<retries;i++){
-    if(db){
-      try{
-        const u=await db.getUser(id);
-        if(u){
-          userCache[id] = {
-            name:u.name,
-            phone:u.phone,
-            balance:Number.isFinite(parseFloat(u.balance)) ? parseFloat(u.balance) : 0,
-            isAdmin:u.is_admin===true
-          };
-          return userCache[id];
-        }
-        // A successful DB lookup with no row is a genuine "not registered"
-        // result, so do not retry that case indefinitely.
-        return null;
-      }catch(e){
-        lastErr=e;
-        console.error(`loadUser attempt ${i+1}/${retries}:`,e.message);
-        if(i<retries-1) await new Promise(r=>setTimeout(r,delayMs*(i+1)));
+  if(!/^\d+$/.test(id) || Number(id)<=0) return null;
+  if(!db) return null;
+  for(let attempt=1;attempt<=retries;attempt++){
+    try{
+      const u=await db.getUser(id);
+      if(u){
+        const balance=Number.parseFloat(u.balance);
+        userCache[id] = {
+          name:u.name||'',
+          phone:u.phone||'',
+          balance:Number.isFinite(balance)?balance:0,
+          isAdmin:u.is_admin===true
+        };
+        return userCache[id];
       }
-    }else{
-      break;
+      // Query succeeded and there is genuinely no matching account.
+      return null;
+    }catch(e){
+      console.error(`loadUser attempt ${attempt}/${retries}:`,e.message);
+      if(attempt<retries) await new Promise(r=>setTimeout(r,delayMs*Math.min(attempt,3)));
     }
   }
-
-  // If Neon was temporarily unavailable, a previously verified cache entry
-  // is safer than manufacturing a zero-balance guest account.
-  if(userCache[id]) return userCache[id];
-  return null;
+  // Never manufacture a zero-balance account after a transient DB failure.
+  return userCache[id]||null;
 }
 
 async function refreshClientBalance(client){
@@ -625,19 +606,7 @@ async function startGame(room){
   room.pot=Math.floor(grossPot*(1-HOUSE_CUT));
   room.calledNumbers=[]; room.availableNumbers=Array.from({length:75},(_,i)=>i+1);
   room.claimedThisRound=[]; room.claimWindowOpen=false;
-  if(db){
-    try{
-      room.dbGameId=await db.saveGame(room.roomId,room.stakeId,room.stake,grossPot);
-      // Record one participant per user per game. If a player has two cards,
-      // the ON CONFLICT rule still counts that player as one game played.
-      for(const p of room.players){
-        if(!p.hasPaid || (!p.cardId && !p.cardId2)) continue;
-        const tid=String(p.telegramId||clients[p.playerId]?.telegramId||'').trim();
-        if(!tid) continue;
-        await db.addParticipant(room.dbGameId,tid,p.cardId||p.cardId2);
-      }
-    }catch(e){console.error('saveGame/participants:',e.message);}
-  }
+  if(db){try{room.dbGameId=await db.saveGame(room.roomId,room.stakeId,room.stake,grossPot);}catch(e){console.error('saveGame:',e.message);}}
 
   room.players.forEach(p=>{
     if(p.cardId||p.cardId2){
@@ -934,31 +903,20 @@ wss.on('connection',(ws)=>{
 
             case 'telegramAuth':{
               const tid=String(msg.telegramId||'').trim();
-              if(!/^\\d+$/.test(tid) || Number(tid)<=0){
-                send(ws,{type:'authRetry',retryAfter:750});
+              if(!/^\d+$/.test(tid) || Number(tid)<=0){
+                send(ws,{type:'authRetry',retryAfter:1000});
                 break;
               }
-
-              const user=await loadUser(tid);
-
+              const user=await loadUser(tid,6,500);
               if(user){
                 client.telegramId=tid;
                 client.playerName=user.name||client.playerName||'Player';
                 client.balance=Number.isFinite(Number(user.balance))?Number(user.balance):0;
                 client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
-
-                send(ws,{
-                  type:'authSuccess',
-                  playerName:client.playerName,
-                  balance:client.balance,
-                  isRegistered:true,
-                  isAdmin:client.isAdmin,
-                  adminToken:client.isAdmin?ADMIN_PHONE:undefined
-                });
-              }else{
-                // Do not tell the client "balance: 0 / unregistered" when a
-                // lookup may have failed transiently. Ask the frontend to retry.
-                send(ws,{type:'authRetry',retryAfter:750});
+                send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
+              } else {
+                // Never convert a failed/late database lookup into a fake zero wallet.
+                send(ws,{type:'authRetry',retryAfter:1000});
               }
               break;
             }
@@ -1029,7 +987,7 @@ wss.on('connection',(ws)=>{
 
             cardId2:ep.cardId2||null,cardNumbers2:card2?card2.numbers:[],
 
-            calledNumbers:room.calledNumbers,pot:room.pot,playerCount:room.players.length});
+            calledNumbers:room.calledNumbers,pot:room.pot,playerCount:room.players.length,balance:client.balance});
         }else{
           // WAITING/COUNTDOWN room: show fresh card selection state.
           send(ws,{type:'joinedRoom',roomId:room.roomId,stakeId:room.stakeId,
@@ -1752,49 +1710,17 @@ app.get('/api/user/:tid', async(req,res)=>{
   if(!tid) return res.status(400).json({error:'Missing Telegram ID'});
   if(!db) return res.status(503).json({error:'Database unavailable'});
   try{
-    const rows=await db.q(`
-      SELECT u.*,
-        COALESCE((
-          SELECT COUNT(DISTINCT g.id)
-          FROM games g
-          WHERE g.status='finished'
-            AND (
-              EXISTS (
-                SELECT 1 FROM game_participants gp
-                WHERE gp.game_id=g.id AND gp.user_id=u.id
-              )
-              OR EXISTS (
-                SELECT 1 FROM transactions t
-                WHERE t.user_id=u.id
-                  AND t.reference=g.room_id
-                  AND t.type='stake'
-              )
-            )
-        ),0)::int AS computed_total_games
-      FROM users u
-      WHERE u.telegram_id=$1
-      LIMIT 1
-    `,[tid]);
+    const rows=await db.q('SELECT * FROM users WHERE telegram_id=$1',[tid]);
     const u=rows[0]||null;
     if(!u) return res.status(404).json({error:'Not found'});
-    const storedGames=Math.max(0,Number(u.total_games)||0);
-    const computedGames=Math.max(0,Number(u.computed_total_games)||0);
-    const totalGames=Math.max(storedGames,computedGames);
-    if(totalGames!==storedGames){
-      try{ await db.q('UPDATE users SET total_games=$1 WHERE id=$2',[totalGames,u.id]); }
-      catch(e){ console.error('Profile total_games sync:',e.message); }
-    }
     const user={
       telegramId:String(u.telegram_id),
       name:u.name||'',
       phone:u.phone||'',
       balance:Number.parseFloat(u.balance)||0,
-      total_games:totalGames,
-      total_wins:Math.max(0,Number(u.total_wins)||0),
-      total_winnings:Math.max(0,Number(u.total_winnings)||0),
       isAdmin:u.is_admin===true || isAdminPhone(u.phone)
     };
-    userCache[tid]={...(userCache[tid]||{}),...user};
+    userCache[tid]=user;
     res.json(user);
   }catch(e){
     console.error('GET /api/user error:',e.message);
