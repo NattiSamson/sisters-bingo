@@ -3816,7 +3816,7 @@ bot.callbackQuery(
 
         await ctx.editMessageText(
 
-          "1. ከታች ባለው የ" +paymentType.amharic_name+
+          "1. ከታች ባለው የ" +
 
           paymentMethod.amharic_name +
 
