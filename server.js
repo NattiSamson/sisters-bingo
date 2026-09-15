@@ -377,43 +377,24 @@ const STAKES = [
 ];
 
 // ─── FIXED CARDS ─────────────────────────────────────────────
-function secureRandom() {
-  const array = new Uint32Array(1);
-  crypto.getRandomValues(array);
-  return array[0] / 4294967296;
+function seededRandom(seed) {
+  let s = seed;
+  return () => { s|=0; s=s+0x6D2B79F5|0; let t=Math.imul(s^s>>>15,1|s); t=t+Math.imul(t^t>>>7,61|t)^t; return((t^t>>>14)>>>0)/4294967296; };
 }
-
-function generateCard() {
-  const ranges = [[1, 15],[16, 30],[31, 45],[46, 60],[61, 75] ];
-
-  const nums = Array(25).fill(0);
-
-  for (let col = 0; col < 5; col++) {
-    const [lo, hi] = ranges[col];
-    const pool = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i );
-    const picked = [];
-    for (let i = 0; i < 5; i++) {
-      const array = new Uint32Array(1);
-      crypto.getRandomValues(array);
-      const j = array[0] % pool.length;
-      picked.push(pool.splice(j, 1)[0]);
-    }
-    picked.sort((a, b) => a - b);
-    for (let row = 0; row < 5; row++) {
-      const ci = row * 5 + col;
-      nums[ci] = ci === 12 ? 0 : picked[row];
-    }
+function generateFixedCard(idx) {
+  const rng=seededRandom(idx*7919), ranges=[[1,15],[16,30],[31,45],[46,60],[61,75]], nums=Array(25).fill(0);
+  for(let col=0;col<5;col++){
+    const[lo,hi]=ranges[col], pool=Array.from({length:hi-lo+1},(_,i)=>lo+i), picked=[];
+    for(let i=0;i<5;i++){const j=Math.floor(rng()*pool.length);picked.push(pool.splice(j,1)[0]);}
+    picked.sort((a,b)=>a-b);
+    for(let row=0;row<5;row++){const ci=row*5+col; nums[ci]=ci===12?0:picked[row];}
   }
   return nums;
 }
-const CARD_POOL = [];
-for (let i = 1; i <= TOTAL_CARDS; i++) {
-  CARD_POOL.push({    id: i,  numbers: generateCard()  });
-}
-
-const getCard = id => CARD_POOL.find(c => c.id === id);
-const getCardPoolForRoom = room =>
-CARD_POOL.slice(    0,    Math.min(TOTAL_CARDS, Number(room?.cardLimit) || TOTAL_CARDS)  );
+const CARD_POOL=[];
+for(let i=1;i<=TOTAL_CARDS;i++) CARD_POOL.push({id:i,numbers:generateFixedCard(i)});
+const getCard=id=>CARD_POOL.find(c=>c.id===id);
+const getCardPoolForRoom=room=>CARD_POOL.slice(0,Math.min(TOTAL_CARDS,Number(room?.cardLimit)||TOTAL_CARDS));
 
 // ─── WIN CHECK ───────────────────────────────────────────────
 function checkWin(nums, called, marked) {
