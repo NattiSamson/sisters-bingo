@@ -2817,6 +2817,7 @@ function showWinnerOverlay(msg){
   renderResultCard(winningCard,msg.calledNumbers||[]);
   ov.classList.add('show');
   if(iWon) startConfetti(); else stopConfetti();
+  playBallAudio(76);
 }
 function hideWinnerOverlay(){
   const ov=document.getElementById('winnerOverlay');
