@@ -3906,15 +3906,15 @@ bot.on(  "message:text",  async (ctx, next) => {
       const paymentMethod = ctx.session.paymentMethod;
       const paymentType = ctx.session.paymentType;
       await ctx.reply(
-        "✅⏳ የክፍያ መልዕክትዎ ደርሶናል። ክፍያዎ እየተረጋገጠ ነው። እባክዎ ትንሽ ይጠብቁ።" + paymentMethod.name + " " + paymentMethod.amharic_name + " " +  paymentType.name +  " " +  paymentType.amharic_name
+        "✅⏳ የክፍያ መልዕክትዎ ደርሶናል። ክፍያዎ እየተረጋገጠ ነው። እባክዎ ትንሽ ይጠብቁ።"
       );
       const result =
         await processDeposit(
           text,
           paymentMethod.name,
-          paymentMethod.amharic_name,
+          paymentMethod.amharicName,
           paymentType.name,
-          paymentType.amharic_name
+          paymentType.amharicName
         );
 
 
