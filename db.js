@@ -2438,7 +2438,7 @@ module.exports = {
         `
       );
 
-    return rows[0] || null;
+    return rows;
   },
 
   async getPaymentMethodById(
