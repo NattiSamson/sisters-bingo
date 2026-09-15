@@ -249,7 +249,7 @@ async function processDeposit(sms,pmName,pmAmharicName,ptName,ptAmharicName)
   {
         if(ptName == "Mobile" || ptAmharicName == "ሞባይል")
         {
-          if(pmName == "telebirr" || pmAmharicName == "ሞባይል")
+          if(pmName == "telebirr" || pmAmharicName == "ቴሌብር")
           {
              invoiceNo = extractInvoiceNumbertelebirr(sms);
           }
