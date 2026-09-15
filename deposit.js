@@ -270,15 +270,15 @@ async function processDeposit(sms,pmName,pmAmharicName,ptName,ptAmharicName)
         {
           if(pmName == "telebirr" || pmAmharicName == "ቴሌብር")
           {
-             invoiceNo = extractInvoiceNumbertelebirr(sms);
+             invoiceNo = await extractInvoiceNumbertelebirr(sms);
           }
           else if(pmName == "M-PESA" || pmAmharicName == "ኤም-ፔሳ")
           {
-            invoiceNo = extractInvoiceNumbermpessa(sms);
+            invoiceNo = await extractInvoiceNumbermpessa(sms);
           }
           else if(pmName == "CBEBirr" || pmAmharicName == "ሲቢኢ ብር")
           {
-            invoiceNo = extractInvoiceNumbercbebirr(sms);
+            invoiceNo = await extractInvoiceNumbercbebirr(sms);
           }
           else
           {
@@ -288,7 +288,7 @@ async function processDeposit(sms,pmName,pmAmharicName,ptName,ptAmharicName)
         {
           if(pmName == "CBE" || pmAmharicName == "ኢትዮጵያ ንግድ ባንክ")
           {
-            invoiceNo = extractInvoiceNumbertelebirr(sms);
+            invoiceNo = await extractInvoiceNumbertelebirr(sms);
           }
         }
         else if(ptName == "Mobile Agent" || ptAmharicName == "ሞባይል ኤጀንት")
@@ -303,7 +303,7 @@ async function processDeposit(sms,pmName,pmAmharicName,ptName,ptAmharicName)
     invoiceNo = sms;
   }
 
-  console.log("invoice number:->",invoiceNo);
+  
 
   if (invoiceNo == null || invoiceNo == "") {
     console.log("No invoice number found.");
