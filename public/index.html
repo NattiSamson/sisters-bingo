@@ -2810,7 +2810,7 @@ function showWinnerOverlay(msg){
   document.getElementById('winnerName').innerText=winnerList.length?winnerList.join(' & '):'አሸናፊ የለም';
   document.getElementById('winnerAmount').innerText=noWinner?'—':(iWon?`+${msg.winAmount} ETB`:`የሽልማት ገንዘብ: ${msg.winAmount} ETB`);
   document.getElementById('splitTag').style.display=msg.isSplit?'inline-block':'none';
-  document.getElementById('winnerMsg').innerText=iWon?'🎉 እንኳን ደስ አላችሁ! ይህን ዙር አሸንፈዋል።':(noWinner?'በዚህ ዙር ትክክለኛ BINGO አልተገኘም።':'');
+  document.getElementById('winnerMsg').innerText=iWon?'🎉 እንኳን ደስ አሎት! ይህን ዙር አሸንፈዋል።':(noWinner?'በዚህ ዙር ትክክለኛ BINGO አልተገኘም።':'');
   document.getElementById('resultStatus').innerText=iWon?'የሽልማት ገንዘብዎ ወደ ሂሳብዎ ተጨምሯል።':(noWinner?'ሽልማት አልተሰጠም።':'');
 
   const cards=Array.isArray(msg.winningCards)?msg.winningCards:[];
