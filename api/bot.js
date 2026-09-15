@@ -3810,7 +3810,7 @@ bot.callbackQuery(
             "❌ የክፍያ አማራጭ አልተገኘም።"
           );
         }
-        ctx.session.paymentMethod = { id: paymentMethodId, name: paymentMethod.name, amharicName: paymentMethod.amharic_Name};
+        ctx.session.paymentMethod = { id: paymentMethodId, name: paymentMethod.name, amharicName: paymentMethod.amharic_name};
         ctx.session.paymentType = { id: paymentMethod.type_id, name: paymentType.name, amharicName: paymentType.amharic_Name};
 
 
