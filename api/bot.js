@@ -3798,7 +3798,7 @@ bot.callbackQuery(
 
         }
 
-        const paymentType = await getPaymentMethodTypesById(paymentMethod.type_id);
+        const paymentType = await db.getPaymentMethodTypesById(paymentMethod.type_id);
         if (!paymentType) {
 
           return ctx.reply(
