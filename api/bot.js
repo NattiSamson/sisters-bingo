@@ -8,7 +8,7 @@
  *   BOT_TOKEN=your_telegram_bot_token
  *   GAME_URL=https://sisters-bingo.vercel.app
  */
-const { Bot, webhookCallback } = require("grammy");
+const { Bot, webhookCallback,session } = require("grammy");
 const db = require("../db");
 const {  processDeposit } = require("../deposit");
 // ============================================================
