@@ -60,6 +60,11 @@ function clearPendingState(telegramId)
 // Blocked users cannot use bot features.
 // /start is allowed through so the user receives the
 // blocked-account message from the /start handler.
+bot.use(session({  initial: () => (
+  {
+    paymentMethod: null,
+    paymentType: null
+  })}));
 bot.use(async (ctx, next) => {
   try {
     const telegramId = ctx.from?.id;
