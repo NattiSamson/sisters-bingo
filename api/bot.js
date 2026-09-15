@@ -3793,10 +3793,20 @@ bot.callbackQuery(
         if (!paymentaccount) {
 
           return ctx.reply(
-            "❌ የቴሌብር አካውንት አማራጭ አልተገኘም።"
+            "❌ የ" + paymentMethod.amharic_Name + " አካውንት አማራጭ አልተገኘም።"
           );
 
         }
+
+        const paymentaccount = await getPaymentMethodTypesById(paymentMethod.type_id);
+        if (!paymentaccount) {
+
+          return ctx.reply(
+            "❌ የየክፍያ አማራጭ አልተገኘም።"
+          );
+
+        ctx.session.paymentMethod = { id: paymentMethodId, name: paymentMethod.name, amharicName: paymentMethod.amharic_Name};
+        ctx.session.paymentType = { id: paymentTypeId, name: paymentType.name, amharicName: paymentType.amharic_Name};
 
 
         await ctx.editMessageText(
@@ -3890,10 +3900,15 @@ bot.on(  "message:text",  async (ctx, next) => {
         "✅⏳ የክፍያ መልዕክትዎ ደርሶናል። ክፍያዎ እየተረጋገጠ ነው። እባክዎ ትንሽ ይጠብቁ።"
       );
 
-
+      const paymentMethod = ctx.session.paymentMethod;
+      const paymentType = ctx.session.paymentType;
       const result =
         await processDeposit(
-          text
+          text,
+          paymentMethod.name,
+          paymentMethod.amharic_name,
+          paymentType.name,
+          paymentType.amharic_name
         );
 
 
