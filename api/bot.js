@@ -3811,7 +3811,7 @@ bot.callbackQuery(
           );
         }
         ctx.session.paymentMethod = { id: paymentMethodId, name: paymentMethod.name, amharicName: paymentMethod.amharic_Name};
-        ctx.session.paymentType = { id: paymentTypeId, name: paymentType.name, amharicName: paymentType.amharic_Name};
+        ctx.session.paymentType = { id: paymentMethod.type_id, name: paymentType.name, amharicName: paymentType.amharic_Name};
 
 
         await ctx.editMessageText(
