@@ -3756,7 +3756,7 @@ module.exports = {
     winAmount = 0,
     isSplit = false
   ) {
-
+console.error("Inside db.endGame");
     const winners =
       Array.isArray(
         winnerUserIds
