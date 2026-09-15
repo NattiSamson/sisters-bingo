@@ -48,6 +48,19 @@ async function extractInvoiceNumbercbe(sms) {
   return invoiceNo;
 }
 
+async function extractInvoiceNumber(sms) {
+  const match = sms.match(
+    /https:\/\/transactioninfo\.ethiotelecom\.et\/receipt\/([^.\s]+)/i
+  );
+
+  const invoiceNo = match ? match[1] : null;
+
+  console.log("Invoice No:", invoiceNo);
+
+  return invoiceNo;
+}
+
+
 async function builURLfromInvoiceNo(invoiceNo) {
   const url = `https://transactioninfo.ethiotelecom.et/receipt/${invoiceNo}`;
 
@@ -228,40 +241,11 @@ async function extractTransactionInfofromThirdParty(url) {
 // MAIN DEPOSIT PROCESS
 // ─────────────────────────────────────────────
 
-async function processDeposit(sms,pmName,pmAmharicName,pmtName,pmtAmharicName) 
-{
-  let invoiceNo = ""
-  if(pmtName == "Mobile" || pmtAmharicName == "ሞባይል") //Mobilebanking
-  {
-    if(pmName == "telebirr" || pmAmharicName == "ቴሌብር")
-    {
-      invoiceNo = await extractInvoiceNumbertelebirr(sms);
-    }
-    else if(pmName == "M-PESA" || pmAmharicName == "ኤም-ፔሳ")
-    {
-      invoiceNo = await extractInvoiceNumbermpessa(sms);
-    }
-    else if(pmName == "M-PESA" || pmAmharicName == "ኤም-ፔሳ")
-    {
-      invoiceNo = await extractInvoiceNumbermpessa(sms);
-    }
-    else
-    {
-      return null;
-    }
-  }
-  else if(pmtName == "Bank" || pmtAmharicName == "ባንክ") //Bank
-  {    
-    else if(pmName == "CBE" || pmAmharicName == "ኢትዮጵያ ንግድ ባንክ")
-    {
-      invoiceNo = await extractInvoiceNumbercbe(sms);
-    }
-  }
-  else if(pmtName == "Mobile Agent" || pmtAmharicName == "ሞባይል ኤጀንት") //MobileAgent
-  {
-    return
-  }
-  
+async function processDeposit(sms,pmName,pmAmharicName,pmtName,pmtAmharicName) {
+
+  if(pmtName == ""
+
+  const invoiceNo = await extractInvoiceNumber(sms);
 
   if (invoiceNo == null) {
     console.log("No invoice number found.");
