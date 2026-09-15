@@ -179,16 +179,6 @@ if (process.env.DATABASE_URL) {
         );
         return r[0].id;
       },
-      async addParticipant(gameId, telegramId, cardId) {
-        const r = await this.q(
-          `INSERT INTO game_participants(game_id,user_id,card_id)
-           SELECT $1,id,$3 FROM users WHERE telegram_id=$2
-           ON CONFLICT (game_id,user_id) DO NOTHING
-           RETURNING *`,
-          [gameId, String(telegramId), cardId]
-        );
-        return r[0] || null;
-      },
       async endGame(gameId, tids, winAmount, isSplit, called) {
         await this.q(
           `UPDATE games SET status='finished',winner_ids=$1,win_amount=$2,is_split=$3,called_numbers=$4,ended_at=NOW() WHERE id=$5`,
@@ -625,19 +615,7 @@ async function startGame(room){
   room.pot=Math.floor(grossPot*(1-HOUSE_CUT));
   room.calledNumbers=[]; room.availableNumbers=Array.from({length:75},(_,i)=>i+1);
   room.claimedThisRound=[]; room.claimWindowOpen=false;
-  if(db){
-    try{
-      room.dbGameId=await db.saveGame(room.roomId,room.stakeId,room.stake,grossPot);
-      // Record one participant per user per game. If a player has two cards,
-      // the ON CONFLICT rule still counts that player as one game played.
-      for(const p of room.players){
-        if(!p.hasPaid || (!p.cardId && !p.cardId2)) continue;
-        const tid=String(p.telegramId||clients[p.playerId]?.telegramId||'').trim();
-        if(!tid) continue;
-        await db.addParticipant(room.dbGameId,tid,p.cardId||p.cardId2);
-      }
-    }catch(e){console.error('saveGame/participants:',e.message);}
-  }
+  if(db){try{room.dbGameId=await db.saveGame(room.roomId,room.stakeId,room.stake,grossPot);}catch(e){console.error('saveGame:',e.message);}}
 
   room.players.forEach(p=>{
     if(p.cardId||p.cardId2){
@@ -1752,49 +1730,17 @@ app.get('/api/user/:tid', async(req,res)=>{
   if(!tid) return res.status(400).json({error:'Missing Telegram ID'});
   if(!db) return res.status(503).json({error:'Database unavailable'});
   try{
-    const rows=await db.q(`
-      SELECT u.*,
-        COALESCE((
-          SELECT COUNT(DISTINCT g.id)
-          FROM games g
-          WHERE g.status='finished'
-            AND (
-              EXISTS (
-                SELECT 1 FROM game_participants gp
-                WHERE gp.game_id=g.id AND gp.user_id=u.id
-              )
-              OR EXISTS (
-                SELECT 1 FROM transactions t
-                WHERE t.user_id=u.id
-                  AND t.reference=g.room_id
-                  AND t.type='stake'
-              )
-            )
-        ),0)::int AS computed_total_games
-      FROM users u
-      WHERE u.telegram_id=$1
-      LIMIT 1
-    `,[tid]);
+    const rows=await db.q('SELECT * FROM users WHERE telegram_id=$1',[tid]);
     const u=rows[0]||null;
     if(!u) return res.status(404).json({error:'Not found'});
-    const storedGames=Math.max(0,Number(u.total_games)||0);
-    const computedGames=Math.max(0,Number(u.computed_total_games)||0);
-    const totalGames=Math.max(storedGames,computedGames);
-    if(totalGames!==storedGames){
-      try{ await db.q('UPDATE users SET total_games=$1 WHERE id=$2',[totalGames,u.id]); }
-      catch(e){ console.error('Profile total_games sync:',e.message); }
-    }
     const user={
       telegramId:String(u.telegram_id),
       name:u.name||'',
       phone:u.phone||'',
       balance:Number.parseFloat(u.balance)||0,
-      total_games:totalGames,
-      total_wins:Math.max(0,Number(u.total_wins)||0),
-      total_winnings:Math.max(0,Number(u.total_winnings)||0),
       isAdmin:u.is_admin===true || isAdminPhone(u.phone)
     };
-    userCache[tid]={...(userCache[tid]||{}),...user};
+    userCache[tid]=user;
     res.json(user);
   }catch(e){
     console.error('GET /api/user error:',e.message);

@@ -1740,25 +1740,18 @@ function handle(msg){
       document.getElementById('loadingText').innerText='Loading your account...';
       if(pageParam === 'deposit') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('deposit'); }, 1500);
       if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('withdraw'); }, 1500);
-      // Authenticate as soon as the Telegram ID is available. If it was resolved
-      // before connect(), use it immediately; otherwise wait briefly for Telegram.
-      const existingTid=normalizeTelegramId(telegramId)||getTelegramId();
-      if(existingTid){
-        telegramId=existingTid;
-        refreshAccountProfile(6,400).catch(()=>{});
-        sendTelegramAuth(existingTid);
-      }else{
-        waitForTelegramId(40,250).then(async tid=>{
-          if(!tid){
-            // Do not block the lobby waiting for Telegram initialization.
-            setTimeout(()=>{ const retryId=getTelegramId(); if(retryId) sendTelegramAuth(retryId); },1000);
-            return;
-          }
-          telegramId=tid;
-          refreshAccountProfile(6,400).catch(()=>{});
-          sendTelegramAuth(tid);
-        });
-      }
+      waitForTelegramId(40,250).then(async tid=>{
+        if(!tid){
+          document.getElementById('loadingText').innerText='Waiting for Telegram account...';
+          setTimeout(()=>{ const retryId=getTelegramId(); if(retryId) sendTelegramAuth(retryId); },1000);
+          return;
+        }
+        telegramId=tid;
+        // First load the account directly over HTTPS. This breaks the old failure
+        // mode where a WebSocket lookup returned a fake zero/unregistered snapshot.
+        await refreshAccountProfile(6,500);
+        sendTelegramAuth(tid);
+      });
       break;
 
     case 'authRetry':
@@ -2500,12 +2493,6 @@ function toggleSound(){
 buildTracker();
 buildSpectatorTracker();
 restoreCachedBalance();
-// Resolve the Telegram identity before opening the WebSocket when possible.
-// This lets the account balance load immediately instead of starting from ETB 0.00.
-telegramId=getTelegramId();
-if(telegramId){
-  refreshAccountProfile(6,400).catch(()=>{});
-}
 connect();
 //--------------------------------------------------------------
 
