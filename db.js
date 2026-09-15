@@ -2373,7 +2373,7 @@ module.exports = {
       await pool.query(
         `
         SELECT
-          pt.id,
+          pt.id,          
           pt.name,
           pt.amharic_name,
           pt.emoji,
@@ -2410,6 +2410,7 @@ module.exports = {
         `
         SELECT
           pm.id,
+          pm.type_id,
           pm.name,
           pm.amharic_name,
           pm.emoji,
@@ -2449,6 +2450,7 @@ module.exports = {
         `
         SELECT
           pm.id,
+          pm.type_id,
           pm.name,
           pm.amharic_name,
           pm.emoji,
