@@ -13,11 +13,8 @@ async function extractInvoiceNumbertelebirr(sms) {
 }
 
 async function extractInvoiceNumbercbebirr(sms) {
-  const match = sms.match(
-    /https:\/\/transactioninfo\.ethiotelecom\.et\/receipt\/([^.\s]+)/i
-  );
 
-  const invoiceNo = match ? match[1] : null;
+  const invoiceNo = null;
 
   console.log("Invoice No:", invoiceNo);
 
@@ -25,23 +22,17 @@ async function extractInvoiceNumbercbebirr(sms) {
 }
 
 async function extractInvoiceNumbermpessa(sms) {
-  const match = sms.match(
-    /https:\/\/transactioninfo\.ethiotelecom\.et\/receipt\/([^.\s]+)/i
-  );
-
-  const invoiceNo = match ? match[1] : null;
+  
+  const invoiceNo = null;
 
   console.log("Invoice No:", invoiceNo);
 
   return invoiceNo;
 }
 
-async function extractInvoiceNumbercbe(sms) {
-  const match = sms.match(
-    /https:\/\/transactioninfo\.ethiotelecom\.et\/receipt\/([^.\s]+)/i
-  );
+async function extractInvoiceNumbercbe(sms) {  
 
-  const invoiceNo = match ? match[1] : null;
+  const invoiceNo = null;
 
   console.log("Invoice No:", invoiceNo);
 
@@ -242,8 +233,7 @@ async function extractTransactionInfofromThirdParty(url) {
 // ─────────────────────────────────────────────
 
 async function processDeposit(sms,pmName,pmAmharicName,ptName,ptAmharicName) 
-{
-  console.log("ProcessDeposit--------> sms , pm.name, pm.amharic_name, pt.name, pt.amharic_name",sms + ", " + pmName + ", " + pmAmharicName + ", " + ptName + ", " + ptAmharicName);      
+{  
   let invoiceNo = "";
   if(sms.length > 10)
   {
@@ -284,7 +274,7 @@ async function processDeposit(sms,pmName,pmAmharicName,ptName,ptAmharicName)
     invoiceNo = sms;
   }
 
-  
+  console.log("invoice number:->",invoiceNo);
 
   if (invoiceNo == null || invoiceNo == "") {
     console.log("No invoice number found.");
