@@ -3901,12 +3901,13 @@ bot.on(  "message:text",  async (ctx, next) => {
 
     try {
 
-      await ctx.reply(
-        "✅⏳ የክፍያ መልዕክትዎ ደርሶናል። ክፍያዎ እየተረጋገጠ ነው። እባክዎ ትንሽ ይጠብቁ።" + paymentMethod.name + " " + paymentMethod.amharic_name + " " +  paymentType.name +  " " +  paymentType.amharic_name
-      );
+      
 
       const paymentMethod = ctx.session.paymentMethod;
       const paymentType = ctx.session.paymentType;
+      await ctx.reply(
+        "✅⏳ የክፍያ መልዕክትዎ ደርሶናል። ክፍያዎ እየተረጋገጠ ነው። እባክዎ ትንሽ ይጠብቁ።" + paymentMethod.name + " " + paymentMethod.amharic_name + " " +  paymentType.name +  " " +  paymentType.amharic_name
+      );
       const result =
         await processDeposit(
           text,
