@@ -3811,12 +3811,12 @@ bot.callbackQuery(
           );
         }
         ctx.session.paymentMethod = { id: paymentMethod.id , name: paymentMethod.name, amharicName: paymentMethod.amharic_name};
-        ctx.session.paymentType = { id: paymentType.id, name: paymentType.name, amharicName: "wow"};
+        ctx.session.paymentType = { id: paymentType.id, name: paymentType.name, amharicName: paymentType.amharic_name};
 
 
         await ctx.editMessageText(
 
-          "1. ከታች ባለው የ" +
+          "1. ከታች ባለው የ" +paymentType.amharic_name+
 
           paymentMethod.amharic_name +
 
