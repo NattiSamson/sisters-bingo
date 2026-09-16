@@ -1378,43 +1378,81 @@ wss.on('connection',(ws)=>{
 
             }
 
-            case 'claimBingo':{
+case 'claimBingo': {
+    if (!client.roomId) return;
 
-              if(!client.roomId) return;
+    const room = rooms[client.roomId];
 
-              const room=rooms[client.roomId];
+    if (!room || room.status !== 'playing') {
+        return send(ws, {
+            type: 'claimRejected',
+            reason: 'GAME_NOT_PLAYING'
+        });
+    }
 
-              if(!room||room.status!=='playing') return;
+    const p = room.players.find(
+        p => p.playerId === client.playerId
+    );
 
-              const p=room.players.find(p=>p.playerId===client.playerId);
+    if (!p || p.disqualified || (!p.cardId && !p.cardId2)) {
+        return send(ws, {
+            type: 'claimRejected',
+            reason: 'INVALID_PLAYER'
+        });
+    }
 
-              if(!p||p.disqualified||(!p.cardId&&!p.cardId2)) return;
+    if (!room.claimWindowOpen) {
+        return send(ws, {
+            type: 'claimRejected',
+            reason: 'CLAIM_WINDOW_CLOSED'
+        });
+    }
 
-              if(!room.claimWindowOpen) return send(ws,{type:'claimTooLate',message:'ጊዜው አልፏል!'});
+    if (!room.claimedThisRound.some(
+        c => c.playerId === client.playerId
+    )) {
+        room.claimedThisRound.push({
+            playerId: client.playerId,
+            markedIndices: Array.isArray(msg.markedIndices)
+                ? msg.markedIndices
+                : [],
+            markedIndices2: Array.isArray(msg.markedIndices2)
+                ? msg.markedIndices2
+                : []
+        });
+    }
 
-              if(!room.claimedThisRound.find(c=>c.playerId===client.playerId))
+    send(ws, {
+        type: 'claimAccepted'
+    });
 
-                room.claimedThisRound.push({
+    if (room.callTimer) {
+        clearTimeout(room.callTimer);
+        room.callTimer = null;
+    }
 
-                  playerId:client.playerId,
+    if (room.claimEvalTimer) {
+        clearTimeout(room.claimEvalTimer);
+    }
 
-                  markedIndices:msg.markedIndices||[],
+    room.claimEvalTimer = setTimeout(
+        () => evaluateClaims(room),
+        CLAIM_COLLECT_MS
+    );
 
-                  cardId2:msg.cardId2||null,
-
-                  markedIndices2:msg.markedIndices2||[]
-
-                });
-
-              if(room.callTimer) clearTimeout(room.callTimer);
-
-              if(room.claimEvalTimer) clearTimeout(room.claimEvalTimer);
-
-              room.claimEvalTimer=setTimeout(()=>evaluateClaims(room), CLAIM_COLLECT_MS);
-
-              break;
-
-            }
+    break;
+}
+            case 'claimAccepted':
+           autoClaimSent = true;
+           break;
+       
+       case 'claimRejected':
+           autoClaimSent = false;
+           break;
+       
+       case 'claimTooLate':
+           autoClaimSent = false;
+           break;
 
             case 'leaveRoom':
 
