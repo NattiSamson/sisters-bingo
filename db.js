@@ -1563,47 +1563,49 @@ async createWithdrawal(
      */
     const result = await client.query(
       `
-      WITH candidates AS (
-          SELECT
-              w.id,
-              w.user_id,
-              u.name,
-              w.amount,
-              w.payment_method_id,
-              w.created_at,
-              w.status,
-              w.claimed_at
-          FROM withdrawals w
-          JOIN users u
-              ON u.id = w.user_id
-        WHERE
-          (
-            w.status = 'pending'
-            OR (
-              w.status = 'processing'
-              AND w.claimed_at IS NOT NULL
-              AND w.claimed_at < NOW() - INTERVAL '5 minutes'
-            )
-          )
-          AND (
-            $1::bigint IS NULL
-            OR w.payment_method_id = $1
-          )
+              WITH candidates AS (
+            SELECT
+                w.id
+            FROM withdrawals w
+            WHERE
+                (
+                    w.status = 'pending'
+                    OR (
+                        w.status = 'processing'
+                        AND w.claimed_at IS NOT NULL
+                        AND w.claimed_at < NOW() - INTERVAL '5 minutes'
+                    )
+                )
+                AND (
+                    $1::bigint IS NULL
+                    OR w.payment_method_id = $1
+                )
+            ORDER BY
+                w.created_at ASC,
+                w.id ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT $2
+        ),
+        claimed AS (
+            UPDATE withdrawals w
+            SET
+                status = 'processing',
+                claimed_by_id = $3,
+                claimed_at = NOW(),
+                updated_at = NOW()
+            FROM candidates c
+            WHERE w.id = c.id
+            RETURNING w.*
+        )
+        SELECT
+            c.*,
+            u.name
+        FROM claimed c
+        JOIN users u
+            ON u.id = c.user_id
         ORDER BY
-          w.created_at ASC,
-          w.id ASC
-        FOR UPDATE SKIP LOCKED
-        LIMIT $2
-      )
-      UPDATE withdrawals w
-      SET
-        status = 'processing',
-        claimed_by_id = $3,
-        claimed_at = NOW(),
-        updated_at = NOW()
-      FROM candidates c
-      WHERE w.id = c.id
-      RETURNING w.*
+            c.created_at ASC,
+            c.id ASC
       `,
       [
         methodId,
