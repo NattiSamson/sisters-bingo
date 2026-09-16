@@ -5990,30 +5990,6 @@ bot.on(
 
         }
         
-const isMobile = paymentMethodName === "mobile" || paymentMethodAmharic === "ሞባይል";
-
-if (isMobile) {
-  accountNumber = normalizeEthiopianPhone(accountNumber);
-
-  if (!accountNumber) {
-    return ctx.reply(
-      "❌ እባክዎ ትክክለኛ የኢትዮጵያ ሞባይል ቁጥር ያስገቡ።\n\n" +
-      "ምሳሌ፦ `0912345678`"
-    );
-  }
-} else {
-  accountNumber =
-    text.replace(
-      /[\s\-()]/g,
-      ""
-    );
-
-  if (!accountNumber) {
-    return ctx.reply(
-      "❌ እባክዎ ትክክለኛ የአካውንት ቁጥር ያስገቡ።"
-    );
-  }
-}
 
 await db.setBotUserState(
   telegramId,
@@ -6029,7 +6005,7 @@ await db.setBotUserState(
 
           "✅ *የአካውንት ቁጥር ተቀብለናል።*\n\n" +
 
-          `📱 አካውንት፦ *${accountNumber}*\n\n` +
+          `📱 አካውንት፦ *${normalizeEthiopianPhone(accountNumber)}*\n\n` +
 
           "💰 አሁን ማውጣት የሚፈልጉትን የብር መጠን ያስገቡ።\n\n" +
 
