@@ -2156,6 +2156,7 @@ function handle(msg){
       // Never replace a known balance with the server's initial connection value (0).
       if(msg.stakes) renderStakes(msg.stakes);
       document.getElementById('loadingText').innerText='Loading your account...';
+      document.getElementById('loadingText').innerText=myPlayerId;
       const pageParam = new URLSearchParams(location.search).get('page');
       if(pageParam === 'deposit') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('deposit'); }, 1500);
       if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('withdraw'); }, 1500);
