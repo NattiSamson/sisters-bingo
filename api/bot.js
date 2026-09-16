@@ -5054,20 +5054,7 @@ await cleanupExpiredAdminWithdrawalUI(
         true
       );
 
-    } catch (err) {
-
-      console.error(
-        "Approve withdrawal error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Withdrawal approval failed."
-      );
-      return;
-    }
-
-pendingAdminWithdrawal[admin.telegram_id]
+ pendingAdminWithdrawal[admin.telegram_id]
 await ctx.reply(
 
   "✅ *WITHDRAWAL APPROVED*\n\n" +
@@ -5152,7 +5139,6 @@ await ctx.reply(
       );
 
     }
-
   }
 );
 
