@@ -940,11 +940,18 @@ wss.on('connection',(ws)=>{
                 send(ws,{type:'authInactiveUser',retryAfter:1000});
                 return;
                }
+               else
+               {
                 client.telegramId=tid;
                 client.playerName=user.name||client.playerName||'Player';
                 client.balance=Number.isFinite(Number(user.balance))?Number(user.balance):0;
                 client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
                 send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
+               }
+               else
+              {
+               send(ws,{type:'authRetry',retryAfter:1000});
+              }
               } else {
                 // Never convert a failed/late database lookup into a fake zero wallet.
                 send(ws,{type:'authRetry',retryAfter:1000});
