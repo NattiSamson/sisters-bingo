@@ -56,16 +56,6 @@ function clearPendingState(telegramId)
   pendingAdminUserSearch.delete(telegramId);
   pendingAdminRoleSearch.delete(telegramId);
   pendingBroadcastRecipient.delete(telegramId);  
-    try {
-    db.clearBotUserState(
-      telegramId
-    );
-  } catch (err) {
-    console.error(
-      "Failed to clear persistent bot state:",
-      err
-    );
-  }
 }
 
 // ============================================================
@@ -3995,7 +3985,7 @@ bot.callbackQuery(
       }
 
 
-     await db.setBotUserState(telegramId,"withdrawal", { step: "account", paymentMethodId: methodId ,paymentMethod: paymentMethod});
+     pendingWithdrawal[telegramId] = { step: "account", paymentMethodId: methodId ,paymentMethod};
 
 
       await ctx.editMessageText(
@@ -5939,15 +5929,9 @@ bot.on(
       // 8. WITHDRAWAL — ACCOUNT NUMBER
       // ========================================================
 
-      const withdrawalState =
-  await db.getBotUserState(
-    telegramId
-  );
-      const withdrawal =
-  withdrawalState &&
-  withdrawalState.stateType === "withdrawal"
-    ? withdrawalState.stateData
-    : null;
+    const withdrawalState =  pendingWithdrawal[telegramId];
+      
+      const withdrawal =  withdrawalState &&  withdrawalState.stateType === "withdrawal"  ? withdrawalState.stateData  : null;
 
       if (
         withdrawal &&
@@ -5991,15 +5975,11 @@ bot.on(
         }
         
 
-await db.setBotUserState(
-  telegramId,
-  "withdrawal",
-  {
-    ...withdrawal,
-    step: "amount",
-    accountNumber
-  }
-);
+pendingWithdrawal[telegramId] = {
+  ...withdrawal,
+  step: "amount",
+  accountNumber
+};
 
         return ctx.reply(
 
@@ -6129,7 +6109,7 @@ await db.setBotUserState(
 
           }
 
-          await db.clearBotUserState(telegramId);
+          delete pendingWithdrawal[telegramId];
 
           return ctx.reply(
 
