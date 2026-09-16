@@ -5994,51 +5994,7 @@ bot.on(
     withdrawal.paymentMethodId
   );
 
-if (!paymentMethod) {
-  return ctx.reply(
-    "❌ የክፍያ መንገዱ አልተገኘም።"
-  );
-}
 
-const paymentMethodName =
-  String(
-    paymentMethod.name || ""
-  )
-    .trim()
-    .toLowerCase();
-
-const paymentMethodAmharic =
-  String(
-    paymentMethod.amharic_name || ""
-  ).trim();
-
-const isMobile =
-  paymentMethodName === "mobile" ||
-  paymentMethodAmharic === "ሞባይል";
-
-if (isMobile) {
-  accountNumber =
-    normalizeEthiopianPhone(text);
-
-  if (!accountNumber) {
-    return ctx.reply(
-      "❌ እባክዎ ትክክለኛ የኢትዮጵያ ሞባይል ቁጥር ያስገቡ።\n\n" +
-      "ምሳሌ፦ `0912345678`"
-    );
-  }
-} else {
-  accountNumber =
-    text.replace(
-      /[\s\-()]/g,
-      ""
-    );
-
-  if (!accountNumber) {
-    return ctx.reply(
-      "❌ እባክዎ ትክክለኛ የአካውንት ቁጥር ያስገቡ።"
-    );
-  }
-}
 
 await db.setBotUserState(
   telegramId,
