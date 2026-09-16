@@ -2159,7 +2159,7 @@ function handle(msg){
       const pageParam = new URLSearchParams(location.search).get('page');
       if(pageParam === 'deposit') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('deposit'); }, 1500);
       if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('withdraw'); }, 1500);
-      document.getElementById('loadingText').innerText='1';      
+     // document.getElementById('loadingText').innerText='1';      
       waitForTelegramId(40,250).then(async tid=>{
         if(!tid){
           document.getElementById('loadingText').innerText='Waiting for Telegram account...';
