@@ -3994,7 +3994,7 @@ bot.callbackQuery(
 
       }
 
-const paymentMethod =  await db.getPaymentMethodById(    methodId  );
+
      await db.setBotUserState(telegramId,"withdrawal", { step: "account", paymentMethodId: methodId ,paymentMethod: paymentMethod});
 
 
