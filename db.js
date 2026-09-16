@@ -1260,921 +1260,1261 @@ module.exports = {
   // WITHDRAWALS
   // ============================================================
 
-  async createWithdrawal(
-    telegramId,
+async createWithdrawal(
+  telegramId,
+  paymentMethodId,
+  accountNumber,
+  amount
+) {
+  const methodId = toPositiveInteger(
     paymentMethodId,
-    accountNumber,
-    amount
-  ) {
+    "paymentMethodId"
+  );
 
-    const methodId =
-      toPositiveInteger(
+  const withdrawalAmount = toPositiveAmount(amount);
+
+  if (!Number.isFinite(withdrawalAmount) || withdrawalAmount < 10) {
+    return {
+      success: false,
+      message: "Withdrawal amount must be at least 10 ETB."
+    };
+  }
+
+  const cleanAccount = String(accountNumber ?? "")
+    .trim()
+    .replace(/[\s\-()]/g, "");
+
+  if (!/^\d{1,50}$/.test(cleanAccount)) {
+    return {
+      success: false,
+      message: "Invalid account number."
+    };
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    /*
+     * Lock the user.
+     *
+     * This prevents two withdrawals from spending the same
+     * balance concurrently.
+     */
+    const userResult = await client.query(
+      `
+      SELECT
+        id,
+        telegram_id,
+        name,
+        balance
+      FROM users
+      WHERE telegram_id = $1
+        AND is_active = TRUE
+        AND is_banned = FALSE
+        AND is_blocked = FALSE
+      FOR UPDATE
+      `,
+      [telegramId]
+    );
+
+    if (!userResult.rows.length) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Account not found or inactive."
+      };
+    }
+
+    const user = userResult.rows[0];
+
+    const currentBalance = Number(user.balance || 0);
+
+    if (currentBalance < withdrawalAmount) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          `Insufficient balance. Available: ${currentBalance} ETB`
+      };
+    }
+
+    /*
+     * Verify payment method.
+     */
+    const methodResult = await client.query(
+      `
+      SELECT
+        id,
+        name,
+        amharic_name,
+        emoji
+      FROM payment_methods
+      WHERE id = $1
+        AND is_active = TRUE
+      `,
+      [methodId]
+    );
+
+    if (!methodResult.rows.length) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Payment method not found or inactive."
+      };
+    }
+
+    /*
+     * Deduct the user's balance immediately.
+     */
+    const balanceResult = await client.query(
+      `
+      UPDATE users
+      SET balance = balance - $1
+      WHERE id = $2
+        AND balance >= $1
+      RETURNING balance
+      `,
+      [
+        withdrawalAmount,
+        user.id
+      ]
+    );
+
+    if (!balanceResult.rows.length) {
+      throw new Error(
+        "Balance changed before withdrawal could be created."
+      );
+    }
+
+    const balanceAfter =
+      Number(balanceResult.rows[0].balance);
+
+    /*
+     * Create the withdrawal in the queue.
+     */
+    const withdrawalResult = await client.query(
+      `
+      INSERT INTO withdrawals (
+        user_id,
+        payment_method_id,
+        payment_account_id,
+        approved_by_id,
+        rejected_by_id,
+        account_number,
+        amount,
+        status,
+        rejection_reason,
+        claimed_by_id,
+        claimed_at,
+        processed_at,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        $1,
+        $2,
+        NULL,
+        NULL,
+        NULL,
+        $3,
+        $4,
+        'pending',
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NOW(),
+        NOW()
+      )
+      RETURNING *
+      `,
+      [
+        user.id,
+        methodId,
+        cleanAccount,
+        withdrawalAmount
+      ]
+    );
+
+    const withdrawal = withdrawalResult.rows[0];
+
+    /*
+     * Financial audit record.
+     */
+    await client.query(
+      `
+      INSERT INTO transactions (
+        user_id,
+        type,
+        amount,
+        balance_after,
+        reference
+      )
+      VALUES (
+        $1,
+        'withdrawal',
+        $2,
+        $3,
+        $4
+      )
+      `,
+      [
+        user.id,
+        -withdrawalAmount,
+        balanceAfter,
+        `withdrawal:${withdrawal.id}`
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      success: true,
+
+      withdrawal,
+
+      user_id: user.id,
+      telegram_id: user.telegram_id,
+      user_name: user.name,
+
+      amount: withdrawalAmount,
+
+      balance_before: currentBalance,
+      balance_after: balanceAfter
+    };
+
+  } catch (err) {
+    await safeRollback(client);
+
+    console.error(
+      "createWithdrawal error:",
+      err
+    );
+
+    return {
+      success: false,
+      message: "Could not create withdrawal request."
+    };
+
+  } finally {
+    client.release();
+  }
+},
+
+  async claimPendingWithdrawals(
+  adminTelegramId,
+  paymentMethodId = null,
+  limit = 10
+) {
+  const safeLimit = Math.min(
+    Math.max(Number(limit) || 10, 1),
+    50
+  );
+
+  const methodId = paymentMethodId
+    ? toPositiveInteger(
         paymentMethodId,
         "paymentMethodId"
-      );
-
-    const withdrawalAmount =
-      toPositiveAmount(amount);
-
-    if (
-      !Number.isInteger(
-        withdrawalAmount
-      ) ||
-      withdrawalAmount < 10
-    ) {
-
-      return {
-        success: false,
-        message:
-          "Withdrawal amount must be a whole number of at least 10 ETB."
-      };
-    }
-
-    const cleanAccount =
-      String(
-        accountNumber ?? ""
       )
-        .trim()
-        .replace(
-          /[\s\-()]/g,
-          ""
-        );
+    : null;
 
-    if (
-      !/^\d{1,20}$/.test(
-        cleanAccount
-      )
-    ) {
+  const client = await pool.connect();
 
-      return {
-        success: false,
-        message:
-          "Invalid account number."
-      };
-    }
+  try {
+    await client.query("BEGIN");
 
-    const client =
-      await pool.connect();
+    /*
+     * Verify admin.
+     */
+    const adminResult = await client.query(
+      `
+      SELECT id, name, telegram_id
+      FROM users
+      WHERE telegram_id = $1
+        AND is_admin = TRUE
+        AND is_active = TRUE
+        AND is_banned = FALSE
+        AND is_blocked = FALSE
+      LIMIT 1
+      `,
+      [adminTelegramId]
+    );
 
-    try {
-
-      await client.query(
-        "BEGIN"
-      );
-
-      const userResult =
-        await client.query(
-          `
-          SELECT
-            id,
-            telegram_id,
-            name,
-            balance
-          FROM users
-          WHERE telegram_id = $1
-            AND is_active = TRUE
-            AND is_banned = FALSE
-            AND is_blocked = FALSE
-          FOR UPDATE
-          `,
-          [telegramId]
-        );
-
-      if (
-        !userResult.rows.length
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        return {
-          success: false,
-          message:
-            "Account not found or inactive."
-        };
-      }
-
-      const user =
-        userResult.rows[0];
-
-      const currentBalance =
-        Number(
-          user.balance || 0
-        );
-
-      if (
-        withdrawalAmount >
-        currentBalance
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        return {
-          success: false,
-          message:
-            `Insufficient balance. Available: ${currentBalance} ETB`
-        };
-      }
-
-      const methodResult =
-        await client.query(
-          `
-          SELECT
-            id,
-            name,
-            amharic_name,
-            emoji
-          FROM payment_methods
-          WHERE id = $1
-            AND is_active = TRUE
-          `,
-          [methodId]
-        );
-
-      if (
-        !methodResult.rows.length
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        return {
-          success: false,
-          message:
-            "Payment method not found or inactive."
-        };
-      }
-
-      const newBalance =
-        currentBalance -
-        withdrawalAmount;
-
-      const balanceResult =
-        await client.query(
-          `
-          UPDATE users
-          SET balance = $1
-          WHERE id = $2
-          RETURNING balance
-          `,
-          [
-            newBalance,
-            user.id
-          ]
-        );
-
-      const withdrawalResult =
-        await client.query(
-          `
-          INSERT INTO withdrawals (
-            user_id,
-            payment_method_id,
-            payment_account_id,
-            approved_by_id,
-            account_number,
-            amount,
-            status,
-            reject_reason,
-            created_at,
-            updated_at
-          )
-          VALUES (
-            $1,
-            $2,
-            NULL,
-            NULL,
-            $3,
-            $4,
-            'pending',            
-            NULL,
-            NOW(),
-            NOW()
-          )
-          RETURNING *
-          `,
-          [
-            user.id,
-            methodId,
-            cleanAccount,
-            withdrawalAmount
-          ]
-        );
-
-      await client.query(
-        `
-        INSERT INTO transactions (
-          user_id,
-          type,
-          amount,
-          balance_after,
-          reference
-        )
-        VALUES (
-          $1,
-          'withdrawal',
-          $2,
-          $3,
-          $4
-        )
-        `,
-        [
-          user.id,
-          -withdrawalAmount,
-          newBalance,
-          `withdrawal:${withdrawalResult.rows[0].id}`
-        ]
-      );
-
-      await client.query(
-        "COMMIT"
-      );
-
-      return {
-        success: true,
-
-        withdrawal:
-          withdrawalResult.rows[0],
-
-        user_id:
-          user.id,
-
-        telegram_id:
-          user.telegram_id,
-
-        user_name:
-          user.name,
-
-        amount:
-          withdrawalAmount,
-
-        balance_before:
-          currentBalance,
-
-        balance_after:
-          Number(
-            balanceResult.rows[0].balance
-          )
-      };
-
-    } catch (err) {
-
-      await safeRollback(
-        client
-      );
-
-      console.error(
-        "createWithdrawal error:",
-        err
-      );
+    if (!adminResult.rows.length) {
+      await client.query("ROLLBACK");
 
       return {
         success: false,
-        message:
-          "Could not create withdrawal request."
+        message: "Admin account not found."
       };
-
-    } finally {
-
-      client.release();
-
     }
-  },
 
-  async getPendingWithdrawals(
-    limit = 5
-  ) {
+    const admin = adminResult.rows[0];
 
-    const safeLimit =
-      Math.min(
-        Math.max(
-          Number(limit) || 5,
-          1
-        ),
-        100
-      );
-
-    const { rows } =
-      await pool.query(
-        `
-        SELECT
-          w.id,
-          w.user_id,
-          w.payment_method_id,
-          w.payment_account_id,
-          w.approved_by_id,
-          w.account_number,
-          w.amount,
-          w.status,
-          w.reject_reason,
-          w.created_at,
-          w.updated_at,
-
-          u.telegram_id,
-          u.name,
-          u.phone,
-          u.balance,
-
-          pm.name AS payment_method,
-          pm.amharic_name
-            AS payment_method_amharic,
-          pm.emoji
-            AS payment_method_emoji
-
+    /*
+     * 5-minute lease.
+     *
+     * Expired processing requests become claimable again.
+     */
+    const result = await client.query(
+      `
+      WITH candidates AS (
+        SELECT w.id
         FROM withdrawals w
-
-        JOIN users u
-          ON u.id = w.user_id
-
-        LEFT JOIN payment_methods pm
-          ON pm.id =
-             w.payment_method_id
-
-        WHERE w.status = 'pending'          
-
-        ORDER BY w.created_at ASC
-
-        LIMIT $1
-        `,
-        [safeLimit]
-      );
-
-    return rows;
-  },
-
-  async approveWithdrawal(
-    withdrawalId,
-    adminTelegramId,
-    paymentAccountId
-  ) {
-
-    const withdrawalIdNum =
-      toPositiveInteger(
-        withdrawalId,
-        "withdrawalId"
-      );
-
-    const accountId =
-      toPositiveInteger(
-        paymentAccountId,
-        "paymentAccountId"
-      );
-
-    const client =
-      await pool.connect();
-
-    try {
-
-      await client.query(
-        "BEGIN"
-      );
-
-      const withdrawalResult =
-        await client.query(
-          `
-          SELECT
-            w.*,
-            u.telegram_id,
-            u.name,
-            u.balance
-          FROM withdrawals w
-          JOIN users u
-            ON u.id = w.user_id
-          WHERE w.id = $1
-          FOR UPDATE
-          `,
-          [withdrawalIdNum]
-        );
-
-      if (
-        !withdrawalResult.rows.length
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        return {
-          success: false,
-          message:
-            "Withdrawal request not found."
-        };
-      }
-
-      const withdrawal =
-        withdrawalResult.rows[0];
-
-      if (
-        !withdrawal.is_pending ||
-        withdrawal.is_approved
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        return {
-          success: false,
-          message:
-            "This withdrawal has already been processed."
-        };
-      }
-
-      const adminResult =
-        await client.query(
-          `
-          SELECT id
-          FROM users
-          WHERE telegram_id = $1
-            AND is_admin = TRUE
-            AND is_active = TRUE
-            AND is_banned = FALSE
-            AND is_blocked = FALSE
-          LIMIT 1
-          `,
-          [adminTelegramId]
-        );
-
-      if (
-        !adminResult.rows.length
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        return {
-          success: false,
-          message:
-            "Admin account not found."
-        };
-      }
-
-      const adminId =
-        adminResult.rows[0].id;
-
-      const accountResult =
-        await client.query(
-          `
-          SELECT
-            pa.id,
-            pa.payment_method_id,
-            pa.account_number,
-            pa.account_name,
-            pa.balance,
-            pa.is_active,
-            pa.is_removed
-          FROM payment_accounts pa
-          WHERE pa.id = $1
-          FOR UPDATE
-          `,
-          [accountId]
-        );
-
-      if (
-        !accountResult.rows.length
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        return {
-          success: false,
-          message:
-            "Payment account not found."
-        };
-      }
-
-      const account =
-        accountResult.rows[0];
-
-      if (
-        !account.is_active ||
-        account.is_removed
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        return {
-          success: false,
-          message:
-            "Selected payment account is inactive or removed."
-        };
-      }
-
-      if (
-        Number(
-          account.payment_method_id
-        ) !==
-        Number(
-          withdrawal.payment_method_id
-        )
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        return {
-          success: false,
-          message:
-            "Payment account does not match the withdrawal method."
-        };
-      }
-
-      const amount =
-        Number(
-          withdrawal.amount
-        );
-
-      const accountBalance =
-        Number(
-          account.balance || 0
-        );
-
-      if (
-        !Number.isFinite(amount) ||
-        amount <= 0 ||
-        accountBalance < amount
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        return {
-          success: false,
-          message:
-            "Insufficient payment-account balance."
-        };
-      }
-
-      const accountAfter =
-        accountBalance -
-        amount;
-
-      await client.query(
-        `
-        UPDATE payment_accounts
-        SET balance = $1
-        WHERE id = $2
-        `,
-        [
-          accountAfter,
-          account.id
-        ]
-      );
-
-      const updateResult =
-        await client.query(
-          `
-          UPDATE withdrawals
-          SET
-            payment_account_id = $1,
-            approved_by_id = $2,
-            is_pending = FALSE,
-            is_approved = TRUE,
-            reject_reason = NULL,
-            updated_at = NOW()
-          WHERE id = $3
-            AND is_pending = TRUE
-            AND is_approved = FALSE
-          RETURNING *
-          `,
-          [
-            account.id,
-            adminId,
-            withdrawalIdNum
-          ]
-        );
-
-      if (
-        !updateResult.rows.length
-      ) {
-
-        throw new Error(
-          "Withdrawal was already processed."
-        );
-      }
-
-      await client.query(
-        "COMMIT"
-      );
-
-      return {
-        success: true,
-
-        withdrawal_id:
-          withdrawal.id,
-
-        telegram_id:
-          withdrawal.telegram_id,
-
-        user_id:
-          withdrawal.user_id,
-
-        user_name:
-          withdrawal.name,
-
-        amount,
-
-        account_number:
-          withdrawal.account_number,
-
-        payment_method_id:
-          withdrawal.payment_method_id,
-
-        payment_account_id:
-          account.id,
-
-        payment_account_number:
-          account.account_number,
-
-        payment_account_balance_before:
-          accountBalance,
-
-        payment_account_balance_after:
-          accountAfter,
-
-        balance_after:
-          Number(
-            withdrawal.balance
-          ),
-
-        withdrawal:
-          updateResult.rows[0]
-      };
-
-    } catch (err) {
-
-      await safeRollback(
-        client
-      );
-
-      console.error(
-        "approveWithdrawal error:",
-        err
-      );
-
-      return {
-        success: false,
-        message:
-          err.message ||
-          "Withdrawal approval failed."
-      };
-
-    } finally {
-
-      client.release();
-
-    }
-  },
-
-  async rejectWithdrawal(
-    withdrawalId,
-    adminTelegramId,
-    reason
-  ) {
-
-    const withdrawalIdNum =
-      toPositiveInteger(
-        withdrawalId,
-        "withdrawalId"
-      );
-
-    const cleanReason =
-      String(
-        reason ||
-        "Rejected by admin"
+        WHERE
+          (
+            w.status = 'pending'
+            OR (
+              w.status = 'processing'
+              AND w.claimed_at IS NOT NULL
+              AND w.claimed_at < NOW() - INTERVAL '5 minutes'
+            )
+          )
+          AND (
+            $1::bigint IS NULL
+            OR w.payment_method_id = $1
+          )
+        ORDER BY
+          w.created_at ASC,
+          w.id ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT $2
       )
-        .trim()
-        .slice(0, 100);
+      UPDATE withdrawals w
+      SET
+        status = 'processing',
+        claimed_by_id = $3,
+        claimed_at = NOW(),
+        updated_at = NOW()
+      FROM candidates c
+      WHERE w.id = c.id
+      RETURNING w.*
+      `,
+      [
+        methodId,
+        safeLimit,
+        admin.id
+      ]
+    );
 
-    const client =
-      await pool.connect();
+    await client.query("COMMIT");
 
-    try {
+    return {
+      success: true,
+      admin_id: admin.id,
+      withdrawals: result.rows,
+      count: result.rows.length
+    };
 
-      await client.query(
-        "BEGIN"
-      );
+  } catch (err) {
+    await safeRollback(client);
 
-      const withdrawalResult =
-        await client.query(
-          `
-          SELECT
-            w.*,
-            u.telegram_id,
-            u.name,
-            u.balance
-          FROM withdrawals w
-          JOIN users u
-            ON u.id = w.user_id
-          WHERE w.id = $1
-          FOR UPDATE
-          `,
-          [withdrawalIdNum]
-        );
+    console.error(
+      "claimPendingWithdrawals error:",
+      err
+    );
 
-      if (
-        !withdrawalResult.rows.length
-      ) {
+    return {
+      success: false,
+      message: "Could not claim withdrawals."
+    };
 
-        await client.query(
-          "ROLLBACK"
-        );
+  } finally {
+    client.release();
+  }
+},
+  
+async getPendingWithdrawals(
+  limit = 10,
+  paymentMethodId = null
+) {
+  const safeLimit = Math.min(
+    Math.max(Number(limit) || 10, 1),
+    100
+  );
 
-        return {
-          success: false,
-          message:
-            "Withdrawal request not found."
-        };
-      }
+  const methodId = paymentMethodId
+    ? toPositiveInteger(
+        paymentMethodId,
+        "paymentMethodId"
+      )
+    : null;
 
-      const withdrawal =
-        withdrawalResult.rows[0];
+  const { rows } = await pool.query(
+    `
+    SELECT
+      w.id,
+      w.user_id,
+      w.payment_method_id,
+      w.payment_account_id,
 
-      if (
-        !withdrawal.is_pending ||
-        withdrawal.is_approved
-      ) {
+      w.account_number,
+      w.amount,
+      w.status,
+      w.rejection_reason,
 
-        await client.query(
-          "ROLLBACK"
-        );
+      w.created_at,
+      w.updated_at,
 
-        return {
-          success: false,
-          message:
-            "This withdrawal has already been processed."
-        };
-      }
+      u.telegram_id,
+      u.name,
+      u.phone,
+      u.balance,
 
-      const adminResult =
-        await client.query(
-          `
-          SELECT id
-          FROM users
-          WHERE telegram_id = $1
-            AND is_admin = TRUE
-            AND is_active = TRUE
-            AND is_banned = FALSE
-            AND is_blocked = FALSE
-          LIMIT 1
-          `,
-          [adminTelegramId]
-        );
+      pm.name AS payment_method,
+      pm.amharic_name AS payment_method_amharic,
+      pm.emoji AS payment_method_emoji
 
-      if (
-        !adminResult.rows.length
-      ) {
+    FROM withdrawals w
 
-        await client.query(
-          "ROLLBACK"
-        );
+    JOIN users u
+      ON u.id = w.user_id
 
-        return {
-          success: false,
-          message:
-            "Admin account not found."
-        };
-      }
+    LEFT JOIN payment_methods pm
+      ON pm.id = w.payment_method_id
 
-      const balanceResult =
-        await client.query(
-          `
-          UPDATE users
-          SET balance =
-              balance + $1
-          WHERE id = $2
-          RETURNING balance
-          `,
-          [
-            withdrawal.amount,
-            withdrawal.user_id
-          ]
-        );
+    WHERE w.status = 'pending'
 
-      const updateResult =
-        await client.query(
-          `
-          UPDATE withdrawals
-          SET
-            approved_by_id = $1,
-            is_pending = FALSE,
-            is_approved = FALSE,
-            reject_reason = $2,
-            updated_at = NOW()
-          WHERE id = $3
-            AND is_pending = TRUE
-            AND is_approved = FALSE
-          RETURNING *
-          `,
-          [
-            adminResult.rows[0].id,
-            cleanReason,
-            withdrawalIdNum
-          ]
-        );
+      AND (
+        $1::bigint IS NULL
+        OR w.payment_method_id = $1
+      )
 
-      if (
-        !updateResult.rows.length
-      ) {
+    ORDER BY
+      w.created_at ASC,
+      w.id ASC
 
-        throw new Error(
-          "Could not update withdrawal."
-        );
-      }
+    LIMIT $2
+    `,
+    [
+      methodId,
+      safeLimit
+    ]
+  );
 
-      await client.query(
-        `
-        INSERT INTO transactions (
-          user_id,
-          type,
-          amount,
-          balance_after,
-          reference
-        )
-        VALUES (
-          $1,
-          'withdrawal_refund',
-          $2,
-          $3,
-          $4
-        )
-        `,
-        [
-          withdrawal.user_id,
-          withdrawal.amount,
-          balanceResult.rows[0].balance,
-          `withdrawal-refund:${withdrawalIdNum}`
-        ]
-      );
+  return rows;
+},
+  async renewWithdrawalClaim(
+  withdrawalId,
+  adminTelegramId
+) {
+  const result = await pool.query(
+    `
+    UPDATE withdrawals w
+    SET
+      claimed_at = NOW(),
+      updated_at = NOW()
+    FROM users admin
+    WHERE w.id = $1
+      AND admin.telegram_id = $2
+      AND admin.is_admin = TRUE
+      AND admin.is_active = TRUE
+      AND w.status = 'processing'
+      AND w.claimed_by_id = admin.id
+    RETURNING w.*
+    `,
+    [
+      withdrawalId,
+      adminTelegramId
+    ]
+  );
 
-      await client.query(
-        "COMMIT"
-      );
+  if (!result.rows.length) {
+    return {
+      success: false,
+      message:
+        "Withdrawal is not owned by this admin or no longer processing."
+    };
+  }
+
+  return {
+    success: true,
+    withdrawal: result.rows[0]
+  };
+},
+async getWithdrawalHistory(
+  telegramId,
+  limit = 20,
+  offset = 0
+) {
+  const safeLimit = Math.min(
+    Math.max(Number(limit) || 20, 1),
+    100
+  );
+
+  const safeOffset = Math.max(
+    Number(offset) || 0,
+    0
+  );
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      w.id,
+      w.amount,
+      w.account_number,
+
+      w.status,
+      w.rejection_reason,
+
+      w.payment_method_id,
+      w.payment_account_id,
+
+      w.approved_by_id,
+      w.rejected_by_id,
+
+      w.created_at,
+      w.updated_at,
+      w.processed_at,
+
+      pm.name AS payment_method,
+      pm.amharic_name AS payment_method_amharic,
+      pm.emoji AS payment_method_emoji,
+
+      pa.account_number AS payment_account_number,
+      pa.account_name AS payment_account_name,
+
+      approved_admin.name AS approved_by_name,
+      rejected_admin.name AS rejected_by_name
+
+    FROM withdrawals w
+
+    JOIN users u
+      ON u.id = w.user_id
+
+    LEFT JOIN payment_methods pm
+      ON pm.id = w.payment_method_id
+
+    LEFT JOIN payment_accounts pa
+      ON pa.id = w.payment_account_id
+
+    LEFT JOIN users approved_admin
+      ON approved_admin.id = w.approved_by_id
+
+    LEFT JOIN users rejected_admin
+      ON rejected_admin.id = w.rejected_by_id
+
+    WHERE u.telegram_id = $1
+
+    ORDER BY
+      w.created_at DESC,
+      w.id DESC
+
+    LIMIT $2
+    OFFSET $3
+    `,
+    [
+      telegramId,
+      safeLimit,
+      safeOffset
+    ]
+  );
+
+  return rows;
+},
+
+  async getAdminWithdrawalHistory(
+  adminTelegramId,
+  limit = 50,
+  offset = 0
+) {
+  const safeLimit = Math.min(
+    Math.max(Number(limit) || 50, 1),
+    100
+  );
+
+  const safeOffset = Math.max(
+    Number(offset) || 0,
+    0
+  );
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      w.id,
+      w.user_id,
+      w.account_number,
+      w.amount,
+      w.status,
+      w.rejection_reason,
+
+      w.payment_method_id,
+      w.payment_account_id,
+
+      w.approved_by_id,
+      w.rejected_by_id,
+
+      w.created_at,
+      w.processed_at,
+      w.updated_at,
+
+      u.telegram_id AS user_telegram_id,
+      u.name AS user_name,
+
+      pm.name AS payment_method,
+      pm.amharic_name AS payment_method_amharic,
+      pm.emoji AS payment_method_emoji,
+
+      pa.account_number AS payment_account_number,
+
+      approved_admin.name AS approved_by_name,
+      rejected_admin.name AS rejected_by_name
+
+    FROM withdrawals w
+
+    JOIN users u
+      ON u.id = w.user_id
+
+    LEFT JOIN payment_methods pm
+      ON pm.id = w.payment_method_id
+
+    LEFT JOIN payment_accounts pa
+      ON pa.id = w.payment_account_id
+
+    LEFT JOIN users approved_admin
+      ON approved_admin.id = w.approved_by_id
+
+    LEFT JOIN users rejected_admin
+      ON rejected_admin.id = w.rejected_by_id
+
+    JOIN users requesting_admin
+      ON requesting_admin.telegram_id = $1
+      AND requesting_admin.is_admin = TRUE
+      AND requesting_admin.is_active = TRUE
+      AND requesting_admin.is_banned = FALSE
+      AND requesting_admin.is_blocked = FALSE
+
+    WHERE
+      w.approved_by_id = requesting_admin.id
+      OR w.rejected_by_id = requesting_admin.id
+
+    ORDER BY
+      w.processed_at DESC NULLS LAST,
+      w.id DESC
+
+    LIMIT $2
+    OFFSET $3
+    `,
+    [
+      adminTelegramId,
+      safeLimit,
+      safeOffset
+    ]
+  );
+
+  return rows;
+},
+  
+  async approveWithdrawal(
+  withdrawalId,
+  adminTelegramId,
+  paymentAccountId
+) {
+  const withdrawalIdNum =
+    toPositiveInteger(
+      withdrawalId,
+      "withdrawalId"
+    );
+
+  const accountId =
+    toPositiveInteger(
+      paymentAccountId,
+      "paymentAccountId"
+    );
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    /*
+     * Verify admin.
+     */
+    const adminResult = await client.query(
+      `
+      SELECT
+        id,
+        telegram_id,
+        name
+      FROM users
+      WHERE telegram_id = $1
+        AND is_admin = TRUE
+        AND is_active = TRUE
+        AND is_banned = FALSE
+        AND is_blocked = FALSE
+      LIMIT 1
+      `,
+      [adminTelegramId]
+    );
+
+    if (!adminResult.rows.length) {
+      await client.query("ROLLBACK");
 
       return {
-        success: true,
-
-        withdrawal_id:
-          withdrawal.id,
-
-        telegram_id:
-          withdrawal.telegram_id,
-
-        user_name:
-          withdrawal.name,
-
-        amount:
-          Number(
-            withdrawal.amount
-          ),
-
-        balance_after:
-          Number(
-            balanceResult.rows[0].balance
-          ),
-
-        rejection_reason:
-          cleanReason,
-
-        withdrawal:
-          updateResult.rows[0]
+        success: false,
+        message: "Admin account not found."
       };
+    }
 
-    } catch (err) {
+    const admin = adminResult.rows[0];
 
-      await safeRollback(
-        client
-      );
+    /*
+     * Lock withdrawal.
+     */
+    const withdrawalResult = await client.query(
+      `
+      SELECT
+        w.*,
+        u.telegram_id,
+        u.name,
+        u.balance
+      FROM withdrawals w
+      JOIN users u
+        ON u.id = w.user_id
+      WHERE w.id = $1
+      FOR UPDATE
+      `,
+      [withdrawalIdNum]
+    );
 
-      console.error(
-        "rejectWithdrawal error:",
-        err
-      );
+    if (!withdrawalResult.rows.length) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Withdrawal request not found."
+      };
+    }
+
+    const withdrawal = withdrawalResult.rows[0];
+
+    /*
+     * Must be actively claimed.
+     */
+    if (withdrawal.status !== "processing") {
+      await client.query("ROLLBACK");
 
       return {
         success: false,
         message:
-          err.message ||
-          "Withdrawal rejection failed."
+          `Withdrawal is not being processed. Current status: ${withdrawal.status}`
       };
-
-    } finally {
-
-      client.release();
-
     }
-  },
 
+    /*
+     * Only the admin who claimed it can approve it.
+     */
+    if (
+      Number(withdrawal.claimed_by_id) !==
+      Number(admin.id)
+    ) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "This withdrawal is assigned to another admin."
+      };
+    }
+
+    /*
+     * Prevent an expired lease from being approved.
+     */
+    const claimedAt =
+      withdrawal.claimed_at
+        ? new Date(withdrawal.claimed_at)
+        : null;
+
+    if (
+      !claimedAt ||
+      Date.now() - claimedAt.getTime() >
+        5 * 60 * 1000
+    ) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "This withdrawal claim has expired. Please claim it again."
+      };
+    }
+
+    /*
+     * Lock payment account.
+     */
+    const accountResult = await client.query(
+      `
+      SELECT
+        id,
+        payment_method_id,
+        account_number,
+        account_name,
+        balance,
+        is_active,
+        is_removed
+      FROM payment_accounts
+      WHERE id = $1
+      FOR UPDATE
+      `,
+      [accountId]
+    );
+
+    if (!accountResult.rows.length) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Payment account not found."
+      };
+    }
+
+    const account = accountResult.rows[0];
+
+    if (
+      !account.is_active ||
+      account.is_removed
+    ) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "Selected payment account is inactive or removed."
+      };
+    }
+
+    if (
+      Number(account.payment_method_id) !==
+      Number(withdrawal.payment_method_id)
+    ) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "Payment account does not match the withdrawal method."
+      };
+    }
+
+    const amount =
+      Number(withdrawal.amount);
+
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Invalid withdrawal amount."
+      };
+    }
+
+    const accountBalance =
+      Number(account.balance || 0);
+
+    if (accountBalance < amount) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "Insufficient payment-account balance."
+      };
+    }
+
+    const accountAfter =
+      accountBalance - amount;
+
+    /*
+     * Deduct from the payment account.
+     */
+    await client.query(
+      `
+      UPDATE payment_accounts
+      SET balance = balance - $1
+      WHERE id = $2
+      `,
+      [
+        amount,
+        account.id
+      ]
+    );
+
+    /*
+     * Final state.
+     *
+     * Your actual database uses 'approved',
+     * NOT 'completed'.
+     */
+    const updateResult = await client.query(
+      `
+      UPDATE withdrawals
+      SET
+        payment_account_id = $1,
+        approved_by_id = $2,
+        rejected_by_id = NULL,
+        status = 'approved',
+        rejection_reason = NULL,
+        claimed_by_id = NULL,
+        claimed_at = NULL,
+        processed_at = NOW(),
+        updated_at = NOW()
+      WHERE id = $3
+        AND status = 'processing'
+        AND claimed_by_id = $2
+      RETURNING *
+      `,
+      [
+        account.id,
+        admin.id,
+        withdrawalIdNum
+      ]
+    );
+
+    if (!updateResult.rows.length) {
+      throw new Error(
+        "Withdrawal could not be completed."
+      );
+    }
+
+    await client.query("COMMIT");
+
+    const approvedWithdrawal =
+      updateResult.rows[0];
+
+    return {
+      success: true,
+
+      withdrawal_id:
+        approvedWithdrawal.id,
+
+      telegram_id:
+        withdrawal.telegram_id,
+
+      user_id:
+        withdrawal.user_id,
+
+      user_name:
+        withdrawal.name,
+
+      amount,
+
+      account_number:
+        withdrawal.account_number,
+
+      payment_method_id:
+        withdrawal.payment_method_id,
+
+      payment_account_id:
+        account.id,
+
+      payment_account_number:
+        account.account_number,
+
+      payment_account_balance_before:
+        accountBalance,
+
+      payment_account_balance_after:
+        accountAfter,
+
+      balance_after:
+        Number(withdrawal.balance),
+
+      withdrawal:
+        approvedWithdrawal
+    };
+
+  } catch (err) {
+    await safeRollback(client);
+
+    console.error(
+      "approveWithdrawal error:",
+      err
+    );
+
+    return {
+      success: false,
+      message:
+        err.message ||
+        "Withdrawal approval failed."
+    };
+
+  } finally {
+    client.release();
+  }
+},
+
+
+async rejectWithdrawal(
+  withdrawalId,
+  adminTelegramId,
+  reason
+) {
+  const withdrawalIdNum =
+    toPositiveInteger(
+      withdrawalId,
+      "withdrawalId"
+    );
+
+  const cleanReason =
+    String(
+      reason || "Rejected by admin"
+    )
+      .trim()
+      .slice(0, 100);
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    /*
+     * Verify admin.
+     */
+    const adminResult = await client.query(
+      `
+      SELECT id, telegram_id, name
+      FROM users
+      WHERE telegram_id = $1
+        AND is_admin = TRUE
+        AND is_active = TRUE
+        AND is_banned = FALSE
+        AND is_blocked = FALSE
+      LIMIT 1
+      `,
+      [adminTelegramId]
+    );
+
+    if (!adminResult.rows.length) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Admin account not found."
+      };
+    }
+
+    const admin = adminResult.rows[0];
+
+    /*
+     * Lock withdrawal + user.
+     */
+    const withdrawalResult = await client.query(
+      `
+      SELECT
+        w.*,
+        u.telegram_id,
+        u.name,
+        u.balance
+      FROM withdrawals w
+      JOIN users u
+        ON u.id = w.user_id
+      WHERE w.id = $1
+      FOR UPDATE
+      `,
+      [withdrawalIdNum]
+    );
+
+    if (!withdrawalResult.rows.length) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Withdrawal request not found."
+      };
+    }
+
+    const withdrawal =
+      withdrawalResult.rows[0];
+
+    if (withdrawal.status !== "processing") {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          `Withdrawal is not being processed. Current status: ${withdrawal.status}`
+      };
+    }
+
+    if (
+      Number(withdrawal.claimed_by_id) !==
+      Number(admin.id)
+    ) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "This withdrawal is assigned to another admin."
+      };
+    }
+
+    /*
+     * Check claim lease.
+     */
+    const claimedAt =
+      withdrawal.claimed_at
+        ? new Date(withdrawal.claimed_at)
+        : null;
+
+    if (
+      !claimedAt ||
+      Date.now() - claimedAt.getTime() >
+        5 * 60 * 1000
+    ) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message:
+          "This withdrawal claim has expired. Please claim it again."
+      };
+    }
+
+    /*
+     * Refund user's original withdrawal amount.
+     */
+    const balanceResult = await client.query(
+      `
+      UPDATE users
+      SET balance = balance + $1
+      WHERE id = $2
+      RETURNING balance
+      `,
+      [
+        withdrawal.amount,
+        withdrawal.user_id
+      ]
+    );
+
+    if (!balanceResult.rows.length) {
+      throw new Error(
+        "Could not refund user balance."
+      );
+    }
+
+    const balanceAfter =
+      Number(balanceResult.rows[0].balance);
+
+    /*
+     * Mark withdrawal rejected.
+     */
+    const updateResult = await client.query(
+      `
+      UPDATE withdrawals
+      SET
+        rejected_by_id = $1,
+        approved_by_id = NULL,
+        status = 'rejected',
+        rejection_reason = $2,
+        claimed_by_id = NULL,
+        claimed_at = NULL,
+        processed_at = NOW(),
+        updated_at = NOW()
+      WHERE id = $3
+        AND status = 'processing'
+        AND claimed_by_id = $1
+      RETURNING *
+      `,
+      [
+        admin.id,
+        cleanReason,
+        withdrawalIdNum
+      ]
+    );
+
+    if (!updateResult.rows.length) {
+      throw new Error(
+        "Could not update withdrawal."
+      );
+    }
+
+    /*
+     * Financial audit trail.
+     */
+    await client.query(
+      `
+      INSERT INTO transactions (
+        user_id,
+        type,
+        amount,
+        balance_after,
+        reference
+      )
+      VALUES (
+        $1,
+        'withdrawal_refund',
+        $2,
+        $3,
+        $4
+      )
+      `,
+      [
+        withdrawal.user_id,
+        withdrawal.amount,
+        balanceAfter,
+        `withdrawal-refund:${withdrawalIdNum}`
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      success: true,
+
+      withdrawal_id:
+        withdrawal.id,
+
+      telegram_id:
+        withdrawal.telegram_id,
+
+      user_id:
+        withdrawal.user_id,
+
+      user_name:
+        withdrawal.name,
+
+      amount:
+        Number(withdrawal.amount),
+
+      balance_after:
+        balanceAfter,
+
+      rejection_reason:
+        cleanReason,
+
+      withdrawal:
+        updateResult.rows[0]
+    };
+
+  } catch (err) {
+    await safeRollback(client);
+
+    console.error(
+      "rejectWithdrawal error:",
+      err
+    );
+
+    return {
+      success: false,
+      message:
+        err.message ||
+        "Withdrawal rejection failed."
+    };
+
+  } finally {
+    client.release();
+  }
+},
+  
   // ============================================================
 // BROADCAST DRAFTS
 // ============================================================
