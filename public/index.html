@@ -2935,23 +2935,29 @@ function refreshCardCells(){
 }
 
 function autoClaimBingo(){
-  if(!myCardId || !claimWindowOpen || autoClaimSent) return;
+    if(!myCardId || !claimWindowOpen) return;
 
-  const valid1=isWinningSet(markedIndices);
-  const valid2=myCardId2 && isWinningSet(markedIndices2);
+    const valid1=isWinningSet(markedIndices);
+    const valid2=myCardId2 && isWinningSet(markedIndices2);
 
-  if(!valid1 && !valid2) return;
+    if(!valid1 && !valid2) return;
 
-  autoClaimSent=true;
+    if(!ws || ws.readyState !== WebSocket.OPEN){
+        console.warn('[BINGO] Cannot claim: WebSocket not open');
+        return;
+    }
 
-  wsSend({
-    type:'claimBingo',
-    cardId:myCardId,
-    markedIndices:Array.from(markedIndices),
-    cardId2:myCardId2||null,
-    markedIndices2:myCardId2 ? Array.from(markedIndices2) : null,
-    automatic:true
-  });
+    autoClaimSent=true;
+
+    ws.send(JSON.stringify({
+        type:'claimBingo',
+        cardId:myCardId,
+        markedIndices:Array.from(markedIndices),
+        cardId2:myCardId2||null,
+        markedIndices2:myCardId2
+            ? Array.from(markedIndices2)
+            : []
+    }));
 }
 
 function resetAutomaticGameState(){
