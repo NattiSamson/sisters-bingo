@@ -2186,7 +2186,7 @@ function handle(msg){
       // and retry with the same verified Telegram ID.
       document.getElementById('loadingText').innerText='authRetry';      
       setTimeout(()=>{
-        const id=getTelegramId();
+        const id=telegramId;//getTelegramId();
         if(id) 
         {
           document.getElementById('loadingText').innerText='tid='+id;
