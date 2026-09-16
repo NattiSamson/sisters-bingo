@@ -4668,26 +4668,144 @@ if (claimNew) {
 // ADMIN — REFRESH PENDING LIST
 // ============================================================
 
-bot.callbackQuery(
-  "admin_pending_refresh",
-  async (ctx) => {
+bot.callbackQuery("admin_refresh_withdrawals", async (ctx) => {
+  try {
+    await ctx.answerCallbackQuery();
 
-    const admin =
-      await getCurrentAdmin(ctx);
+    const adminTelegramId = ctx.from.id;
 
-    if (!admin) {
+    // Get the admin's current withdrawal state
+    const adminState =
+      pendingAdminWithdrawal[adminTelegramId];
+
+    if (!adminState?.paymentMethodId) {
+      await ctx.reply(
+        "❌ Please select a payment method first."
+      );
       return;
     }
 
-    await answerCallback(ctx);
+    // Claim a NEW batch of available withdrawals.
+    // This should only claim pending/expired withdrawals.
+    const claimResult =
+      await db.claimPendingWithdrawals(
+        adminTelegramId,
+        adminState.paymentMethodId,
+        5
+      );
 
-    await showPendingWithdrawals(
-      ctx,
-      true
+    if (!claimResult?.success) {
+      await ctx.reply(
+        `❌ ${
+          claimResult?.message ||
+          "Failed to refresh withdrawals."
+        }`
+      );
+      return;
+    }
+
+    const withdrawals =
+      claimResult.withdrawals || [];
+
+    // Replace the admin's current displayed claim list
+    adminState.claimedWithdrawals = withdrawals;
+
+    // New 5-minute claim lease
+    if (withdrawals.length > 0) {
+      adminState.claimExpiresAt =
+        Date.now() + 5 * 60 * 1000;
+    } else {
+      adminState.claimExpiresAt = null;
+    }
+
+    // Update the existing Telegram message
+    if (withdrawals.length === 0) {
+      await ctx.editMessageText(
+        "📭 *No pending withdrawals available right now.*\n\n" +
+        "Tap 🔄 Refresh to check again.",
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🔄 Refresh",
+                  callback_data:
+                    "admin_refresh_withdrawals",
+                },
+              ],
+            ],
+          },
+        }
+      );
+
+      return;
+    }
+
+    let message =
+      "💸 *Pending Withdrawals*\n\n";
+
+    withdrawals.forEach((withdrawal, index) => {
+      message +=
+        `*${index + 1}. Withdrawal #${withdrawal.id}*\n` +
+        `👤 User: *${withdrawal.name || "Unknown"}*\n` +
+        `💰 Amount: *${withdrawal.amount} ETB*\n` +
+        `📱 Account: \`${withdrawal.account_number}\`\n\n`;
+    });
+
+    const buttons = [];
+
+    withdrawals.forEach((withdrawal) => {
+      buttons.push([
+        {
+          text: `✅ Approve #${withdrawal.id}`,
+          callback_data:
+            `approve_withdrawal_${withdrawal.id}`,
+        },
+        {
+          text: `❌ Reject #${withdrawal.id}`,
+          callback_data:
+            `reject_withdrawal_${withdrawal.id}`,
+        },
+      ]);
+    });
+
+    buttons.push([
+      {
+        text: "🔄 Refresh",
+        callback_data:
+          "admin_refresh_withdrawals",
+      },
+    ]);
+
+    await ctx.editMessageText(
+      message,
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: buttons,
+        },
+      }
     );
 
+    // Save message ID for expiry cleanup
+    adminState.claimMessageId =
+      ctx.callbackQuery.message.message_id;
+
+  } catch (error) {
+    console.error(
+      "admin_refresh_withdrawals error:",
+      error
+    );
+
+    try {
+      await ctx.answerCallbackQuery({
+        text: "❌ Failed to refresh withdrawals.",
+        show_alert: true,
+      });
+    } catch (_) {}
   }
-);
+});
 
 // ============================================================
 // ADMIN PENDING BUTTON
