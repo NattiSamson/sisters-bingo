@@ -2208,24 +2208,11 @@ function handle(msg){
   isAdmin=msg.isAdmin||false;
   adminToken=telegramId||'';
   document.getElementById('welcomeName').innerText=myName||'Player';
- // document.getElementById('welcomeStatus').innerText=msg.isRegistered?'Welcome back! 👋':'Registered!';
-  if(isAdmin){
-    document.getElementById('navAdmin').style.display='flex';
-    document.getElementById('navRules').style.display='none';
-    // Check if this is a root admin — if so, show the Settings tab
-    if(telegramId){
-      fetch(`${API_BASE}/api/user/${telegramId}`).then(r=>r.json()).then(u=>{
-        if(u&&(u.phone===ADMIN_PHONE_CLIENT||u.phone===ADMIN_PHONE_CLIENT2)){
-          document.getElementById('settingsTab').style.display='';
-          document.getElementById('analyticsTab').style.display='';
-        }
-      }).catch(()=>{});
-    }
-  }
   // Restore an active room first. The server decides whether it is still
   // waiting/counting down or officially playing; do not assume a selected card
   // means the game has started.
   restoreActiveGameState();
+      document.getElementById('loadingText').innerText='myRoomId=' + myRoomId + ', telegramid=' + telegramId;
   if(myRoomId && telegramId){
     restoringActiveGame=true;
     if(activeGamePhase==='countdown') navGo('screenCards','navGame');
