@@ -2172,7 +2172,7 @@ function handle(msg){
         sendTelegramAuth(tid);
         // Refresh the profile independently.
         // A temporary HTTP/API failure must not prevent login.
-        refreshAccountProfile(6,500).catch(err => {
+        await refreshAccountProfile(6,500).catch(err => {
           console.warn('Account profile refresh failed:', err);
         });    
         goToGame();
