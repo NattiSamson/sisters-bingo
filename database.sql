@@ -129,8 +129,12 @@ CREATE TABLE public.broadcast_drafts (
     admin_id bigint NOT NULL,
     image_url text,
     message text,
-    status character varying(20) DEFAULT 'waiting_image'::character varying,
-    created_at timestamp without time zone DEFAULT now()
+    status character varying(50) DEFAULT 'waiting_image'::character varying,
+    created_at timestamp without time zone DEFAULT now(),
+    button_title text,
+    include_image boolean DEFAULT false NOT NULL,
+    include_text boolean DEFAULT false NOT NULL,
+    include_button boolean DEFAULT false NOT NULL
 );
 
 
@@ -856,6 +860,9 @@ ALTER TABLE ONLY public.transactions
 --
 -- PostgreSQL database dump complete
 --
+
+
+
 
 
 
