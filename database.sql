@@ -10,6 +10,9 @@ CREATE DATABASE beteseb_bingo;
 --
 -- PostgreSQL database dump
 --
+--
+-- PostgreSQL database dump
+--
 
 -- Dumped from database version 18.6 (2078fcb)
 -- Dumped by pg_dump version 18.4
@@ -447,17 +450,20 @@ ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id;
 CREATE TABLE public.withdrawals (
     id integer CONSTRAINT "withdrawals _id_not_null" NOT NULL,
     user_id integer CONSTRAINT "withdrawals _user_id_not_null" NOT NULL,
-    payment_method_id integer,
-    payment_account_id integer,
-    approved_by_id integer,
-    account_number character varying(20),
+    payment_method_id bigint,
+    payment_account_id bigint,
+    approved_by_id bigint,
+    rejected_by_id bigint,
+    account_number character varying(50),
     amount numeric(10,2),
-    is_pending boolean DEFAULT true NOT NULL,
-    is_approved boolean DEFAULT false NOT NULL,
-    reject_reason character varying(100),
+    status character varying(30) DEFAULT 'pending'::character varying,
+    rejection_reason character varying(100),
+    claimed_by_id bigint,
+    "claimed_at " timestamp without time zone,
+    "processed_at " timestamp without time zone,
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now(),
-    CONSTRAINT withdrawals_status_check CHECK ((((is_pending = true) AND (is_approved = false)) OR ((is_pending = false) AND (is_approved = true)) OR ((is_pending = false) AND (is_approved = false))))
+    CONSTRAINT withdrawals_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'processing'::character varying, 'approved'::character varying, 'rejected'::character varying, 'failed'::character varying, 'cancelled'::character varying])::text[])))
 );
 
 
@@ -780,10 +786,24 @@ CREATE INDEX idx_users_telegram ON public.users USING btree (telegram_id);
 
 
 --
--- Name: idx_withdrawals_pending_created; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_withdrawals_claimed; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_withdrawals_pending_created ON public.withdrawals USING btree (is_pending, is_approved, created_at);
+CREATE INDEX idx_withdrawals_claimed ON public.withdrawals USING btree (claimed_by_id, "claimed_at ") WHERE ((status)::text = 'processing'::text);
+
+
+--
+-- Name: idx_withdrawals_queue; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_withdrawals_queue ON public.withdrawals USING btree (payment_method_id, created_at, id) WHERE ((status)::text = 'pending'::text);
+
+
+--
+-- Name: idx_withdrawals_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_withdrawals_user ON public.withdrawals USING btree (user_id, created_at DESC);
 
 
 --
@@ -860,10 +880,4 @@ ALTER TABLE ONLY public.transactions
 --
 -- PostgreSQL database dump complete
 --
-
-
-
-
-
-
 
