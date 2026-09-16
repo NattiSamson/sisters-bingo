@@ -108,141 +108,85 @@ bot.use(async (ctx, next) => {
   }
 });
 
-function scheduleWithdrawalClaimCleanup(
-  adminTelegramId
+async function cleanupExpiredAdminWithdrawalUI(
+  telegramId
 ) {
   const state =
     pendingAdminWithdrawal[
-      adminTelegramId
+      telegramId
     ];
 
   if (!state) {
     return;
   }
 
+  if (
+    !state.claimedWithdrawals ||
+    !state.claimedWithdrawals.length
+  ) {
+    return;
+  }
+
+  if (
+    state.claimExpiresAt &&
+    Date.now() <
+      state.claimExpiresAt
+  ) {
+    return;
+  }
+
   /*
-   * Don't create multiple timers for the same admin.
+   * Local lease expired.
    */
+  state.claimedWithdrawals = [];
+
+  state.claimExpiresAt = null;
+
   if (state.cleanupTimer) {
     clearTimeout(
       state.cleanupTimer
     );
+
+    state.cleanupTimer = null;
   }
 
-  const expiresAt =
-    state.claimExpiresAt;
+  if (state.claimMessageId) {
 
-  if (!expiresAt) {
-    return;
+    try {
+
+      await bot.api.deleteMessage(
+        telegramId,
+        state.claimMessageId
+      );
+
+    } catch (err) {
+
+      try {
+
+        await bot.api.editMessageText(
+          telegramId,
+          state.claimMessageId,
+          "⏱ *Withdrawal claim expired.*\n\n" +
+          "The withdrawals were released for other admins.",
+          {
+            parse_mode: "Markdown"
+          }
+        );
+
+      } catch (editError) {
+
+        console.error(
+          "Expired withdrawal UI cleanup failed:",
+          editError
+        );
+
+      }
+    }
+
+    state.claimMessageId = null;
   }
-
-  const delay =
-    Math.max(
-      expiresAt - Date.now(),
-      1000
-    );
-
-  state.cleanupTimer =
-    setTimeout(
-      async () => {
-
-        try {
-
-          const currentState =
-            pendingAdminWithdrawal[
-              adminTelegramId
-            ];
-
-          if (!currentState) {
-            return;
-          }
-
-          /*
-           * Clear the local state.
-           */
-          currentState.claimedWithdrawals =
-            [];
-
-          currentState.claimExpiresAt =
-            null;
-
-          currentState.cleanupTimer =
-            null;
-
-          /*
-           * IMPORTANT:
-           *
-           * We do NOT modify the database here.
-           *
-           * The DB lease already expired.
-           *
-           * Another admin can claim these withdrawals.
-           */
-
-          /*
-           * Delete the Telegram message.
-           */
-          if (
-            currentState.claimMessageId
-          ) {
-
-            try {
-
-              await bot.api.deleteMessage(
-                adminTelegramId,
-                currentState.claimMessageId
-              );
-
-            } catch (telegramError) {
-
-              console.error(
-                "Could not delete expired withdrawal message:",
-                telegramError
-              );
-
-              /*
-               * If Telegram won't let us delete it,
-               * try editing it instead.
-               */
-              try {
-
-                await bot.api.editMessageText(
-                  adminTelegramId,
-                  currentState.claimMessageId,
-                  "⏱ *Withdrawal claim expired.*\n\n" +
-                  "These withdrawals have been released and can be claimed by another admin.",
-                  {
-                    parse_mode: "Markdown"
-                  }
-                );
-
-              } catch (editError) {
-
-                console.error(
-                  "Could not edit expired withdrawal message:",
-                  editError
-                );
-
-              }
-            }
-          }
-
-          currentState.claimMessageId =
-            null;
-
-        } catch (err) {
-
-          console.error(
-            "Withdrawal claim cleanup error:",
-            err
-          );
-
-        }
-
-      },
-      delay
-    );
 }
+
 function scheduleWithdrawalClaimCleanup(
   adminTelegramId
 ) {
