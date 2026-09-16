@@ -419,11 +419,15 @@ async function loadUser(tid,retries=6,delayMs=500) {
       if(u){
         const balance=Number.parseFloat(u.balance);
         userCache[id] = {
-          name:u.name||'',
-          phone:u.phone||'',
-          balance:Number.isFinite(balance)?balance:0,
-          isAdmin:u.is_admin===true
-        };
+                          name: u.name || '',
+                          phone: u.phone || '',
+                          balance: Number.isFinite(balance) ? balance : 0,
+                          isAdmin: u.is_admin === true,
+                        
+                          // Authentication status
+                          is_blocked: u.is_blocked === true,
+                          is_active: u.is_active !== false
+                        };
         return userCache[id];
       }
       // Query succeeded and there is genuinely no matching account.
@@ -930,12 +934,12 @@ wss.on('connection',(ws)=>{
               const user=await loadUser(tid,6,500);
               if(user)
               {
-               if(user.is_blocked === true)
+               if(user.is_blocked !== false)
                {
                 send(ws,{type:'authBlockedUser',retryAfter:1000});
                 return;
                }
-               else if(user.is_active !== false)
+               else if(user.is_active !== true)
                {
                 send(ws,{type:'authInactiveUser',retryAfter:1000});
                 return;
@@ -948,10 +952,6 @@ wss.on('connection',(ws)=>{
                 client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
                 send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
                }
-               else
-              {
-               send(ws,{type:'authRetry',retryAfter:1000});
-              }
               } else {
                 // Never convert a failed/late database lookup into a fake zero wallet.
                 send(ws,{type:'authRetry',retryAfter:1000});
