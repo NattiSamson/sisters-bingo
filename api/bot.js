@@ -41,7 +41,7 @@ const pendingBroadcastRecipient = new Map();
 // ============================================================
 // CLEAR USER STATE
 // ============================================================
-async function clearPendingState(telegramId) 
+function clearPendingState(telegramId) 
 {
   delete pendingPhone[telegramId];
   delete pendingDelete[telegramId];
@@ -57,7 +57,7 @@ async function clearPendingState(telegramId)
   pendingAdminRoleSearch.delete(telegramId);
   pendingBroadcastRecipient.delete(telegramId);  
     try {
-    await db.clearBotUserState(
+    db.clearBotUserState(
       telegramId
     );
   } catch (err) {
@@ -903,31 +903,10 @@ async function showHome(ctx, user)
   {
      keyboard.push([{ text: "🎮 Play", web_app: { url: `${GAME_URL}?tid=${telegramId}`}}]);
   }
-  keyboard.push([{ text: "💰 Balance", callback_data: "user_balance"},
-                 { text: "📊 Statistics", callback_data: "user_statistics"},],
-                [{
-      text: "💎 Deposit",
-      callback_data: "user_deposit"
-    },
-    {
-      text: "🏧 Withdraw",
-      callback_data: "user_withdraw"
-    }
-  ],
-  [
-    {
-      text: "🆘 Support",
-      callback_data: "user_support"
-    },
-    {
-      text: "🗑️ Delete",
-      callback_data: "user_delete"
-    }
-  ]
-
-);
-
-
+  keyboard.push([{ text: "💰 Balance", callback_data: "user_balance"}, { text: "📊 Statistics", callback_data: "user_statistics"},],
+                [{ text: "💎 Deposit", callback_data: "user_deposit"}, { text: "🏧 Withdraw", callback_data: "user_withdraw"}],
+                [{ text: "🆘 Support", callback_data: "user_support"}, { text: "🗑️ Delete", callback_data: "user_delete"}]);
+  
   // ============================================================
 // USER STATISTICS
 // ============================================================
@@ -1013,7 +992,7 @@ bot.callbackQuery(
   "user_statistics",
   async (ctx) => {
   await answerCallback(ctx);
-  await clearPendingState(ctx.from.id);
+  clearPendingState(ctx.from.id);
 
     await showUserStatistics(ctx);
 
@@ -1026,7 +1005,7 @@ bot.callbackQuery(
 bot.callbackQuery("user_home", async (ctx) => {
   try {
   await answerCallback(ctx);
-  await clearPendingState(ctx.from.id);
+  clearPendingState(ctx.from.id);
 
     const user = await db.getUserByTelegramId(ctx.from.id);
 
@@ -1054,7 +1033,7 @@ bot.callbackQuery(
   "user_delete",
   async (ctx) => {
   await answerCallback(ctx);
-  await clearPendingState(ctx.from.id);
+  clearPendingState(ctx.from.id);
 
     await ctx.editMessageText(
       "⚠️ *አካውንትዎን ማጥፋት ይፈልጋሉ?*\n\n" +
@@ -1088,7 +1067,7 @@ bot.callbackQuery(
   "user_cancel_delete",
   async (ctx) => {
   await answerCallback(ctx);
-  await clearPendingState(ctx.from.id);
+  clearPendingState(ctx.from.id);
     
   const user = await db.getUserByTelegramId(ctx.from.id);
 
@@ -1113,7 +1092,7 @@ bot.callbackQuery(
   "user_confirm_delete",
   async (ctx) => {
   await answerCallback(ctx);
-  await clearPendingState(ctx.from.id);
+  clearPendingState(ctx.from.id);
 
     try {
 
@@ -1129,7 +1108,7 @@ bot.callbackQuery(
 
       }
 
-      await clearPendingState(
+      clearPendingState(
         telegramId
       );
 
@@ -2127,7 +2106,7 @@ bot.callbackQuery(
         return;
       }
 
-      await clearPendingState(ctx.from.id);
+      clearPendingState(ctx.from.id);
 
       pendingAdminRoleSearch.set(
         ctx.from.id,
@@ -3172,7 +3151,7 @@ bot.command(
       "Player";
 
 
-    await clearPendingState(
+    clearPendingState(
       telegramId
     );
 
@@ -3467,7 +3446,7 @@ bot.callbackQuery(
   "user_balance",
   async (ctx) => {
   await answerCallback(ctx);
-  await clearPendingState(ctx.from.id);
+  clearPendingState(ctx.from.id);
 
     await showBalance(ctx);
   }
@@ -3639,7 +3618,7 @@ bot.callbackQuery(
   "user_deposit",
   async (ctx) => {
   await answerCallback(ctx);
-  await clearPendingState(ctx.from.id);
+  clearPendingState(ctx.from.id);
   await showDeposit(ctx);
   }
 );
@@ -3791,7 +3770,7 @@ bot.callbackQuery(
   "user_cancel_deposit",
   async (ctx) => {
   await answerCallback(ctx);
-  await clearPendingState(ctx.from.id);
+  clearPendingState(ctx.from.id);
     try {
 
       await ctx.editMessageText(
@@ -3954,7 +3933,7 @@ bot.callbackQuery(
   "user_withdraw",
   async (ctx) => {
   await answerCallback(ctx);
-  await clearPendingState(ctx.from.id);
+  clearPendingState(ctx.from.id);
 
     await showWithdrawal(ctx);
   }
@@ -4062,7 +4041,7 @@ bot.callbackQuery(
   "user_cancel_withdrawal",
   async (ctx) => {
   await answerCallback(ctx);
-  await clearPendingState(ctx.from.id);
+  clearPendingState(ctx.from.id);
 
     try {
 
@@ -5002,7 +4981,7 @@ bot.callbackQuery(
 // ============================================================
 bot.callbackQuery("admin_home", async (ctx) => {
   await answerCallback(ctx);
-  await clearPendingState(ctx.from.id);
+  clearPendingState(ctx.from.id);
   const admin = await getCurrentAdmin(ctx);
     if (!admin) 
     {
@@ -5390,7 +5369,7 @@ bot.callbackQuery(
   "user_support",
   async (ctx) => {
   await answerCallback(ctx);
-  await clearPendingState(ctx.from.id);
+  clearPendingState(ctx.from.id);
 
     await showSupport(
       ctx
@@ -7540,7 +7519,7 @@ bot.on(
               result2 > 0
             ) {
 
-              await clearPendingState(
+              clearPendingState(
                 telegramId
               );
 
@@ -7774,7 +7753,7 @@ await db.setBotUserState(
 
           if (!user) {
 
-            await clearPendingState(
+            clearPendingState(
   ctx.from.id
 );
 
