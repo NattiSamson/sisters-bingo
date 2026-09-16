@@ -3611,7 +3611,7 @@ async function showWithdrawal(
 
       `💰 ያለዎት ሂሳብ፦ ${balance} ETB\n\n` +
 
-      "ዝቅተኛው የመውጫ መጠን 50 ETB ነው።"
+      "ዝቅተኛው የወጪ መጠን 50 ETB ነው።"
 
     );
 
@@ -3628,7 +3628,7 @@ async function showWithdrawal(
   ) {
 
     return ctx.reply(
-      "❌ ለጊዜው የመውጫ የክፍያ መንገድ አልተዘጋጀም።"
+      "❌ ለጊዜው የወጪ የክፍያ መንገድ አልተዘጋጀም።"
     );
 
   }
@@ -3753,7 +3753,7 @@ bot.callbackQuery(
     if (!pending) {
 
       return ctx.reply(
-        "❌ የመውጫ ጥያቄው ጊዜው አልፎበታል። /start ይጫኑ።"
+        "❌ የወጪ ጥያቄው ጊዜው አልፎበታል። /start ይጫኑ።"
       );
 
     }
@@ -3793,7 +3793,7 @@ bot.callbackQuery(
 
       await ctx.editMessageText(
 
-        "🏧 *የመውጫ አካውንት*\n\n" +
+        "🏧 *የወጪ አካውንት*\n\n" +
 
         `💳 የክፍያ መንገድ፦ *${paymentMethod.amharic_name}*\n\n` +
 
@@ -3839,13 +3839,13 @@ bot.callbackQuery(
     try {
 
       await ctx.editMessageText(
-        "❌ የመውጫ ጥያቄዎ ተሰርዟል።"
+        "❌ የወጪ ጥያቄዎ ተሰርዟል።"
       );
 
     } catch {
 
       await ctx.reply(
-        "❌ የመውጫ ጥያቄዎ ተሰርዟል።"
+        "❌ የወጪ ጥያቄዎ ተሰርዟል።"
       );
 
     }
@@ -4748,7 +4748,7 @@ await ctx.reply(
 
           result.telegram_id,
 
-          "✅ *የመውጫ ጥያቄዎ ጸድቋል!*\n\n" +
+          "✅ *የወጪ ጥያቄዎ ጸድቋል!*\n\n" +
 
           `💰 መጠን፦ *${result.amount} ETB*\n` +
 
@@ -6356,7 +6356,7 @@ bot.on(
 
               reject.withdrawal.telegram_id,
 
-              "❌ *የመውጫ ጥያቄዎ ተቀባይነት አላገኘም።*\n\n" +
+              "❌ *የወጪ ጥያቄዎ ተቀባይነት አላገኘም።*\n\n" +
 
               `💰 መጠን፦ *${
                 result.amount ||
@@ -7294,11 +7294,11 @@ bot.on(
           }
 
           if (
-            amount < 10
+            amount < 50
           ) {
 
             return ctx.reply(
-              "❌ ዝቅተኛው የመውጫ መጠን 10 ETB ነው።"
+              "❌ ዝቅተኛው የወጪ መጠን 10 ETB ነው።"
             );
 
           }
@@ -7371,7 +7371,7 @@ bot.on(
 
           return ctx.reply(
 
-            "✅ *የመውጫ ጥያቄዎ ተቀብለናል!*\n\n" +
+            "✅ *የወጪ ጥያቄዎ ተቀብለናል!*\n\n" +
 
             `💳 የክፍያ መንገድ፦ *${
               withdrawal.paymentMethod.amharic_name
@@ -7400,7 +7400,7 @@ bot.on(
           );
 
           return ctx.reply(
-            "❌ የመውጫ ጥያቄውን ማስኬድ አልተቻለም።"
+            "❌ የወጪ ጥያቄውን ማስኬድ አልተቻለም።"
           );
 
         }
