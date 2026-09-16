@@ -3602,7 +3602,7 @@ async function showWithdrawal(
 
 
   if (
-    balance < 10
+    balance < 50
   ) {
 
     return ctx.reply(
@@ -3611,7 +3611,7 @@ async function showWithdrawal(
 
       `💰 ያለዎት ሂሳብ፦ ${balance} ETB\n\n` +
 
-      "ዝቅተኛው የመውጫ መጠን 10 ETB ነው።"
+      "ዝቅተኛው የመውጫ መጠን 50 ETB ነው።"
 
     );
 
@@ -3726,7 +3726,7 @@ bot.callbackQuery(
 // ============================================================
 
 bot.callbackQuery(
-  /^withdraw_method_(\d+)$/,
+  /^user_withdraw_method_(\d+)$/,
   async (ctx) => {
 
     await answerCallback(
