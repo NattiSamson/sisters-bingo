@@ -501,11 +501,11 @@ bot.callbackQuery(
             [
               {
                 text: "አዎ",
-                callback_data: "delete_confirm"
+                callback_data: "user_confirm_delete"
               },
               {
                 text: "አይ",
-                callback_data: "delete_cancel"
+                callback_data: "user_cancel_delete"
               }
             ]
           ]
