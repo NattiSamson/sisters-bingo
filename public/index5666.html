@@ -1627,11 +1627,11 @@ function renderUserProfile(u, history=[]){
   const name=String(u?.name||u?.playerName||myName||'Player').trim()||'Player';
   const balance=Number(u?.balance);
   const rows=Array.isArray(history)?history:[];
-  // These three values now come directly from the Neon users row.
-  // History is used only for the separate Latest Earnings display.
-  const games=Number.isFinite(Number(u?.total_games)) ? Number(u.total_games) : 0;
-  const wins=Number.isFinite(Number(u?.total_wins)) ? Number(u.total_wins) : 0;
-  const winnings=Number.isFinite(Number(u?.total_winnings)) ? Number(u.total_winnings) : 0;
+  const games=Number.isFinite(Number(u?.total_games)) ? Number(u.total_games) : rows.length;
+  const winsFromHistory=rows.filter(g=>g?.won===true || g?.won==='true').length;
+  const wins=Number.isFinite(Number(u?.total_wins)) ? Number(u.total_wins) : winsFromHistory;
+  const winningsFromHistory=rows.reduce((sum,g)=>sum+(Number(g?.amount_won)||0),0);
+  const winnings=Number.isFinite(Number(u?.total_winnings)) ? Number(u.total_winnings) : winningsFromHistory;
   const latest=rows.find(g=>(Number(g?.amount_won)||0)>0);
   const latestEarnings=latest ? (Number(latest.amount_won)||0) : 0;
   myName=name;
