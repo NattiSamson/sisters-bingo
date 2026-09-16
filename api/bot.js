@@ -3091,23 +3091,12 @@ bot.command(
 
     clearPendingState(
       telegramId
-    );
-
-    delete pendingPhone[
-      telegramId
-    ];
-
-    delete pendingAdminReject[
-      telegramId
-    ];
+    );   
 
 
     try {
 
-      const existing =
-  await db.getUserByTelegramIdIncludingInactive(
-    telegramId
-  );
+      const existing =  await db.getUserByTelegramIdIncludingInactive(telegramId);
 
 if (existing) {
 
@@ -3366,18 +3355,23 @@ async function showBalance(
 }
 
 
-bot.command(
-  "balance",
-  showBalance
-);
+bot.command("balance",showBalance);
+bot.command("deposit",showDeposit);
+bot.command("withdraw",showWithdrawal);
+bot.command("support",showSupport);
+
 
 bot.hears("balance", showBalance);
 bot.hears("💰 Balance", showBalance);
 bot.hears("deposit", showDeposit);
+bot.hears("deposit", showDeposit);
 bot.hears("withdraw", showWithdrawal);
 bot.hears("🏧 Withdraw", showWithdrawal);
 bot.hears("support", showSupport);
+bot.hears("support", showSupport);
 bot.hears("📊 Leaderboard", showLeaderboard);
+bot.hears("📊 Leaderboard", showLeaderboard);
+bot.hears("🎮 Play", showPlay);
 bot.hears("🎮 Play", showPlay);
 
 bot.callbackQuery(
