@@ -68,6 +68,7 @@ bot.use(session({  initial: () => (
     paymentMethod: null,
     paymentType: null
   })}));
+
 bot.use(async (ctx, next) => {
   try {
     const telegramId = ctx.from?.id;
@@ -105,6 +106,102 @@ bot.use(async (ctx, next) => {
     return next();
   }
 });
+// ============================================================
+// BROADCAST SELECTION TEXT
+// ============================================================
+
+function getBroadcastSelectionText(
+  draft
+) {
+  return (
+    "📢 *Create Broadcast*\n\n" +
+
+    `🖼 Image: ${
+      draft.include_image
+        ? "✅"
+        : "❌"
+    }\n` +
+
+    `📝 Text: ${
+      draft.include_text
+        ? "✅"
+        : "❌"
+    }\n` +
+
+    `🎮 Play Button: ${
+      draft.include_button
+        ? "✅"
+        : "❌"
+    }\n\n` +
+
+    "Select the components you want."
+  );
+}
+
+
+// ============================================================
+// BROADCAST SELECTION KEYBOARD
+// ============================================================
+
+function getBroadcastSelectionKeyboard(
+  draft
+) {
+  return {
+    inline_keyboard: [
+
+      [
+        {
+          text:
+            draft.include_image
+              ? "✅ 🖼 Image"
+              : "🖼 Image",
+
+          callback_data:
+            "broadcast_toggle_image"
+        },
+
+        {
+          text:
+            draft.include_text
+              ? "✅ 📝 Text"
+              : "📝 Text",
+
+          callback_data:
+            "broadcast_toggle_text"
+        }
+      ],
+
+      [
+        {
+          text:
+            draft.include_button
+              ? "✅ 🎮 Play Button"
+              : "🎮 Play Button",
+
+          callback_data:
+            "broadcast_toggle_button"
+        }
+      ],
+
+      [
+        {
+          text: "➡️ Continue",
+          callback_data:
+            "broadcast_continue"
+        }
+      ],
+
+      [
+        {
+          text: "❌ Cancel",
+          callback_data:
+            "broadcast_cancel"
+        }
+      ]
+
+    ]
+  };
+}
 // ============================================================
 // ADMIN AUTHORIZATION
 // ============================================================
@@ -164,7 +261,322 @@ async function getCurrentAdminPermission(ctx, permission)
     }
     return admin;
 }
+// ============================================================
+// BROADCAST HELPERS
+// ============================================================
 
+function getBroadcastKeyboard(
+  draft,
+  telegramId
+) {
+  if (
+    !draft ||
+    draft.include_button !== true ||
+    !draft.button_title
+  ) {
+    return undefined;
+  }
+
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: draft.button_title,
+          web_app: {
+            url: `${GAME_URL}?tid=${telegramId}`
+          }
+        }
+      ]
+    ]
+  };
+}
+
+
+// ------------------------------------------------------------
+// Determine whether the draft is complete
+// ------------------------------------------------------------
+
+function isBroadcastDraftComplete(draft) {
+  if (!draft) {
+    return false;
+  }
+
+  // At least image OR text must exist.
+  if (
+    draft.include_image !== true &&
+    draft.include_text !== true
+  ) {
+    return false;
+  }
+
+  if (
+    draft.include_image === true &&
+    !draft.image_url
+  ) {
+    return false;
+  }
+
+  if (
+    draft.include_text === true &&
+    !draft.message
+  ) {
+    return false;
+  }
+
+  if (
+    draft.include_button === true &&
+    !draft.button_title
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+
+// ------------------------------------------------------------
+// Find the next thing the admin must provide
+// ------------------------------------------------------------
+
+function getNextBroadcastStep(draft) {
+  if (
+    draft.include_image === true &&
+    !draft.image_url
+  ) {
+    return "image";
+  }
+
+  if (
+    draft.include_text === true &&
+    !draft.message
+  ) {
+    return "text";
+  }
+
+  if (
+    draft.include_button === true &&
+    !draft.button_title
+  ) {
+    return "button";
+  }
+
+  return "complete";
+}
+
+
+// ------------------------------------------------------------
+// Ask admin for the next broadcast component
+// ------------------------------------------------------------
+
+async function continueBroadcastBuilder(
+  ctx,
+  adminTelegramId
+) {
+  const draft =
+    await db.getBroadcastDraft(
+      adminTelegramId
+    );
+
+  if (!draft) {
+    return;
+  }
+
+  const nextStep =
+    getNextBroadcastStep(draft);
+
+  // ----------------------------------------------------------
+  // IMAGE
+  // ----------------------------------------------------------
+
+  if (nextStep === "image") {
+    await db.updateBroadcastStatus(
+      adminTelegramId,
+      "waiting_image"
+    );
+
+    return ctx.reply(
+      "🖼 *Send the image*\n\n" +
+      "This image will be included in the broadcast.\n\n" +
+      "❌ Send /cancel to cancel.",
+      {
+        parse_mode: "Markdown"
+      }
+    );
+  }
+
+  // ----------------------------------------------------------
+  // TEXT
+  // ----------------------------------------------------------
+
+  if (nextStep === "text") {
+    await db.updateBroadcastStatus(
+      adminTelegramId,
+      "waiting_message"
+    );
+
+    return ctx.reply(
+      "📝 *Send the broadcast message*\n\n" +
+      "❌ Send /cancel to cancel.",
+      {
+        parse_mode: "Markdown"
+      }
+    );
+  }
+
+  // ----------------------------------------------------------
+  // BUTTON
+  // ----------------------------------------------------------
+
+  if (nextStep === "button") {
+    await db.updateBroadcastStatus(
+      adminTelegramId,
+      "waiting_button_title"
+    );
+
+    return ctx.reply(
+      "🎮 *Send the Play button title*\n\n" +
+      "Example:\n" +
+      "`🎮 Play Now`\n\n" +
+      "You can use any title you want.\n\n" +
+      "❌ Send /cancel to cancel.",
+      {
+        parse_mode: "Markdown"
+      }
+    );
+  }
+
+  // ----------------------------------------------------------
+  // COMPLETE
+  // ----------------------------------------------------------
+
+  if (nextStep === "complete") {
+    await showBroadcastPreview(
+      ctx,
+      adminTelegramId
+    );
+  }
+}
+
+
+// ------------------------------------------------------------
+// SHOW BROADCAST PREVIEW TO ADMIN
+// ------------------------------------------------------------
+
+async function showBroadcastPreview(
+  ctx,
+  adminTelegramId
+) {
+  const draft =
+    await db.getBroadcastDraft(
+      adminTelegramId
+    );
+
+  if (!draft) {
+    return ctx.reply(
+      "❌ Broadcast draft not found."
+    );
+  }
+
+  if (
+    !isBroadcastDraftComplete(draft)
+  ) {
+    return ctx.reply(
+      "❌ Broadcast information is incomplete."
+    );
+  }
+
+  const users =
+    await db.getAllActiveUsers();
+
+  const replyMarkup =
+    getBroadcastKeyboard(
+      draft,
+      adminTelegramId
+    );
+
+  // ----------------------------------------------------------
+  // SEND THE ACTUAL PREVIEW TO THE ADMIN
+  // ----------------------------------------------------------
+
+  if (
+    draft.include_image === true
+  ) {
+    await bot.api.sendPhoto(
+      adminTelegramId,
+      draft.image_url,
+      {
+        caption:
+          draft.include_text === true
+            ? draft.message
+            : undefined,
+
+        reply_markup:
+          replyMarkup
+      }
+    );
+  } else {
+    await bot.api.sendMessage(
+      adminTelegramId,
+      draft.message,
+      {
+        reply_markup:
+          replyMarkup
+      }
+    );
+  }
+
+  // ----------------------------------------------------------
+  // CONFIRMATION MESSAGE
+  // ----------------------------------------------------------
+
+  await ctx.reply(
+    `📢 *BROADCAST PREVIEW*\n\n` +
+    `👥 Recipients: ${users.length}\n\n` +
+    `🖼 Image: ${
+      draft.include_image
+        ? "Yes"
+        : "No"
+    }\n` +
+    `📝 Text: ${
+      draft.include_text
+        ? "Yes"
+        : "No"
+    }\n` +
+    `🎮 Play Button: ${
+      draft.include_button
+        ? `Yes — "${draft.button_title}"`
+        : "No"
+    }\n\n` +
+    `The message above is the exact content that will be broadcast.\n\n` +
+    `Send it to everyone?`,
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "✅ SEND TO ALL",
+              callback_data:
+                "broadcast_confirm"
+            }
+          ],
+          [
+            {
+              text: "❌ CANCEL",
+              callback_data:
+                "broadcast_cancel"
+            }
+          ]
+        ]
+      }
+    }
+  );
+
+  await db.updateBroadcastStatus(
+    adminTelegramId,
+    "preview"
+  );
+}
 // ============================================================
 // CALLBACK HELPER
 // ============================================================
@@ -4728,9 +5140,6 @@ bot.command(
   showPlay
 );
 
-
-
-
 // ============================================================
 // ADMIN BROADCAST
 // ============================================================
@@ -4739,58 +5148,311 @@ bot.callbackQuery(
   "admin_broadcast",
   async (ctx) => {
 
-    const admin = await getCurrentAdminPermission(
-    ctx,
-    "broadcast"
-);
-
-
+    const admin =
+      await getCurrentAdminPermission(
+        ctx,
+        "broadcast"
+      );
 
     if (!admin) {
-
       return;
-
     }
 
+    await answerCallback(ctx);
 
-    await answerCallback(
-      ctx
-    );
-
-
-    /*
-     * Store the broadcast draft against
-     * the CURRENT ADMIN'S Telegram ID.
-     *
-     * This means multiple admins can have
-     * independent broadcast drafts.
-     */
+    const adminTelegramId =
+      admin.telegram_id;
 
     await db.createBroadcastDraft(
-      admin.telegram_id
+      adminTelegramId
     );
-
 
     await ctx.reply(
-
-      "📢 *Broadcast mode started!*\n\n" +
-
-      "Please send the image you want to broadcast.\n\n" +
-
-      "❌ Send /cancel to cancel.",
-
+      "📢 *Create Broadcast*\n\n" +
+      "Choose what you want to include.\n\n" +
+      "You can choose:\n" +
+      "• Image\n" +
+      "• Text\n" +
+      "• Play button\n\n" +
+      "Select at least Image or Text.",
       {
-
-        parse_mode:
-          "Markdown"
-
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🖼 Image",
+                callback_data:
+                  "broadcast_toggle_image"
+              },
+              {
+                text: "📝 Text",
+                callback_data:
+                  "broadcast_toggle_text"
+              }
+            ],
+            [
+              {
+                text: "🎮 Play Button",
+                callback_data:
+                  "broadcast_toggle_button"
+              }
+            ],
+            [
+              {
+                text: "➡️ Continue",
+                callback_data:
+                  "broadcast_continue"
+              }
+            ],
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "broadcast_cancel"
+              }
+            ]
+          ]
+        }
       }
-
     );
-
   }
 );
 
+// ============================================================
+// BROADCAST TOGGLE IMAGE
+// ============================================================
+
+bot.callbackQuery(
+  "broadcast_toggle_image",
+  async (ctx) => {
+
+    const admin =
+      await getCurrentAdminPermission(
+        ctx,
+        "broadcast"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const draft =
+      await db.getBroadcastDraft(
+        admin.telegram_id
+      );
+
+    if (!draft) {
+      return;
+    }
+
+    const newValue =
+      draft.include_image !== true;
+
+    await db.updateBroadcastOptions(
+      admin.telegram_id,
+      newValue,
+      draft.include_text === true,
+      draft.include_button === true
+    );
+
+    const updated =
+      await db.getBroadcastDraft(
+        admin.telegram_id
+      );
+
+    await ctx.editMessageText(
+      getBroadcastSelectionText(
+        updated
+      ),
+      {
+        parse_mode: "Markdown",
+        reply_markup:
+          getBroadcastSelectionKeyboard(
+            updated
+          )
+      }
+    );
+  }
+);
+
+
+// ============================================================
+// BROADCAST TOGGLE TEXT
+// ============================================================
+
+bot.callbackQuery(
+  "broadcast_toggle_text",
+  async (ctx) => {
+
+    const admin =
+      await getCurrentAdminPermission(
+        ctx,
+        "broadcast"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const draft =
+      await db.getBroadcastDraft(
+        admin.telegram_id
+      );
+
+    if (!draft) {
+      return;
+    }
+
+    const newValue =
+      draft.include_text !== true;
+
+    await db.updateBroadcastOptions(
+      admin.telegram_id,
+      draft.include_image === true,
+      newValue,
+      draft.include_button === true
+    );
+
+    const updated =
+      await db.getBroadcastDraft(
+        admin.telegram_id
+      );
+
+    await ctx.editMessageText(
+      getBroadcastSelectionText(
+        updated
+      ),
+      {
+        parse_mode: "Markdown",
+        reply_markup:
+          getBroadcastSelectionKeyboard(
+            updated
+          )
+      }
+    );
+  }
+);
+
+
+// ============================================================
+// BROADCAST TOGGLE BUTTON
+// ============================================================
+
+bot.callbackQuery(
+  "broadcast_toggle_button",
+  async (ctx) => {
+
+    const admin =
+      await getCurrentAdminPermission(
+        ctx,
+        "broadcast"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const draft =
+      await db.getBroadcastDraft(
+        admin.telegram_id
+      );
+
+    if (!draft) {
+      return;
+    }
+
+    const newValue =
+      draft.include_button !== true;
+
+    await db.updateBroadcastOptions(
+      admin.telegram_id,
+      draft.include_image === true,
+      draft.include_text === true,
+      newValue
+    );
+
+    const updated =
+      await db.getBroadcastDraft(
+        admin.telegram_id
+      );
+
+    await ctx.editMessageText(
+      getBroadcastSelectionText(
+        updated
+      ),
+      {
+        parse_mode: "Markdown",
+        reply_markup:
+          getBroadcastSelectionKeyboard(
+            updated
+          )
+      }
+    );
+  }
+);
+
+
+// ============================================================
+// BROADCAST CONTINUE
+// ============================================================
+
+bot.callbackQuery(
+  "broadcast_continue",
+  async (ctx) => {
+
+    const admin =
+      await getCurrentAdminPermission(
+        ctx,
+        "broadcast"
+      );
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const draft =
+      await db.getBroadcastDraft(
+        admin.telegram_id
+      );
+
+    if (!draft) {
+      return;
+    }
+
+    // At least image or text is required.
+    if (
+      draft.include_image !== true &&
+      draft.include_text !== true
+    ) {
+      return ctx.reply(
+        "❌ Please select at least 🖼 Image or 📝 Text."
+      );
+    }
+
+    await ctx.editMessageText(
+      "✅ Content selected.\n\n" +
+      "Let's build your broadcast..."
+    );
+
+    await continueBroadcastBuilder(
+      ctx,
+      admin.telegram_id
+    );
+  }
+);
+
+// ============================================================
+// BROADCAST IMAGE
+// ============================================================
 
 // ============================================================
 // BROADCAST IMAGE
@@ -4801,71 +5463,52 @@ bot.on(
   async (ctx) => {
 
     const admin =
-      await getCurrentAdmin(
-        ctx
-      );
-
+      await getCurrentAdmin(ctx);
 
     if (!admin) {
-
       return;
-
     }
-
 
     const adminTelegramId =
       admin.telegram_id;
-
 
     const draft =
       await db.getBroadcastDraft(
         adminTelegramId
       );
 
-
     if (!draft) {
-
       return;
-
     }
-
 
     if (
       draft.status !==
       "waiting_image"
     ) {
-
       return;
-
     }
-
 
     const photo =
       ctx.message.photo[
         ctx.message.photo.length - 1
       ];
 
-
     const fileId =
       photo.file_id;
-
 
     await db.updateBroadcastImage(
       adminTelegramId,
       fileId
     );
 
-
     await ctx.reply(
-
-      "✅ Image received!\n\n" +
-
-      "Now send the message/caption you want to broadcast.\n\n" +
-
-      "❌ Send /cancel to cancel."
-
+      "✅ Image received."
     );
 
+    await continueBroadcastBuilder(
+      ctx,
+      adminTelegramId
+    );
   }
 );
 
@@ -6771,154 +7414,123 @@ bot.on(
 
       }
 
+// ========================================================
+// 10. BROADCAST
+// ========================================================
 
-      // ========================================================
-      // 10. BROADCAST
-      // ========================================================
+const admin =
+  await getCurrentAdmin(ctx);
 
-      const admin =
-        await getCurrentAdmin(ctx);
+if (admin) {
 
-      if (
-        admin
-      ) {
+  const adminTelegramId =
+    admin.telegram_id;
 
-        const adminTelegramId =
-          admin.telegram_id;
+  const draft =
+    await db.getBroadcastDraft(
+      adminTelegramId
+    );
 
-        // ------------------------------------------------------
-        // BROADCAST CANCEL
-        // ------------------------------------------------------
+  // --------------------------------------------------------
+  // BROADCAST CANCEL
+  // --------------------------------------------------------
 
-        if (
-          text === "/cancel"
-        ) {
+  if (
+    text === "/cancel" &&
+    draft
+  ) {
 
-          const draft =
-            await db.getBroadcastDraft(
-              adminTelegramId
-            );
+    await db.deleteBroadcastDraft(
+      adminTelegramId
+    );
 
-          if (
-            draft
-          ) {
+    return ctx.reply(
+      "❌ Broadcast cancelled."
+    );
+  }
 
-            await db.deleteBroadcastDraft(
-              adminTelegramId
-            );
+  // --------------------------------------------------------
+  // DO NOT INTERCEPT ADMIN REJECTION
+  // --------------------------------------------------------
 
-            return ctx.reply(
-              "❌ Broadcast cancelled."
-            );
+  if (
+    pendingAdminReject[
+      adminTelegramId
+    ]
+  ) {
+    return next();
+  }
 
-          }
+  if (draft) {
 
-        }
+    // ------------------------------------------------------
+    // MESSAGE
+    // ------------------------------------------------------
 
-        // ------------------------------------------------------
-        // BROADCAST MESSAGE
-        // ------------------------------------------------------
+    if (
+      draft.status ===
+      "waiting_message"
+    ) {
 
-        // Do not intercept rejection messages here.
-        if (
-          pendingAdminReject[
-            adminTelegramId
-          ]
-        ) {
+      await db.updateBroadcastMessage(
+        adminTelegramId,
+        text
+      );
 
-          return next();
+      await ctx.reply(
+        "✅ Message received."
+      );
 
-        }
+      return continueBroadcastBuilder(
+        ctx,
+        adminTelegramId
+      );
+    }
 
-        const draft =
-          await db.getBroadcastDraft(
-            adminTelegramId
-          );
 
-        if (
-          draft &&
-          draft.status ===
-            "waiting_message"
-        ) {
+    // ------------------------------------------------------
+    // BUTTON TITLE
+    // ------------------------------------------------------
 
-          await db.updateBroadcastMessage(
-            adminTelegramId,
-            text
-          );
+    if (
+      draft.status ===
+      "waiting_button_title"
+    ) {
 
-          const users =
-            await db.getAllActiveUsers();
+      const buttonTitle =
+        text.trim();
 
-          await bot.api.sendPhoto(
-
-            adminTelegramId,
-
-            draft.image_url,
-
-            {
-              caption:
-                text,
-
-              reply_markup: {
-                inline_keyboard: [
-                  [
-                    {
-                      text:
-                        "🎮 Play Now",
-
-                      web_app: {
-                        url:
-                          `${GAME_URL}?tid=${adminTelegramId}`
-                      }
-                    }
-                  ]
-                ]
-              }
-
-            }
-
-          );
-
-          return ctx.reply(
-
-            `📢 *BROADCAST PREVIEW*\n\n` +
-
-            `👥 Recipients: ${users.length}\n\n` +
-
-            "Are you sure you want to send this to everyone?",
-
-            {
-              parse_mode:
-                "Markdown",
-
-              reply_markup: {
-                inline_keyboard: [
-                  [
-                    {
-                      text:
-                        "✅ SEND TO ALL",
-
-                      callback_data:
-                        "broadcast_confirm"
-                    },
-                    {
-                      text:
-                        "❌ CANCEL",
-
-                      callback_data:
-                        "broadcast_cancel"
-                    }
-                  ]
-                ]
-              }
-            }
-
-          );
-
-        }
-
+      if (!buttonTitle) {
+        return ctx.reply(
+          "❌ Button title cannot be empty."
+        );
       }
 
+      if (
+        buttonTitle.length > 64
+      ) {
+        return ctx.reply(
+          "❌ Button title must be 64 characters or fewer."
+        );
+      }
+
+      await db.updateBroadcastButtonTitle(
+        adminTelegramId,
+        buttonTitle
+      );
+
+      await ctx.reply(
+        "✅ Play button title saved."
+      );
+
+      return continueBroadcastBuilder(
+        ctx,
+        adminTelegramId
+      );
+    }
+
+  }
+}
 
       // ========================================================
       // NOTHING CLAIMED THIS MESSAGE
@@ -6954,69 +7566,55 @@ bot.callbackQuery(
         ctx
       );
 
-
     if (!admin) {
-
       return;
-
     }
 
-
-    await answerCallback(
-      ctx
-    );
-
+    await answerCallback(ctx);
 
     const adminTelegramId =
       admin.telegram_id;
-
 
     const draft =
       await db.getBroadcastDraft(
         adminTelegramId
       );
 
-
     if (!draft) {
-
       return ctx.editMessageText(
         "❌ Broadcast draft not found."
       );
-
     }
 
+    // --------------------------------------------------------
+    // SECURITY / VALIDATION
+    // --------------------------------------------------------
 
     if (
-      !draft.image_url ||
-      !draft.message
+      !isBroadcastDraftComplete(
+        draft
+      )
     ) {
-
       return ctx.editMessageText(
         "❌ Broadcast information is incomplete."
       );
-
     }
-
 
     const users =
       await db.getAllActiveUsers();
 
-
-    let sent = 0;
-
-    let failed = 0;
-
-
     await ctx.editMessageText(
-
       `📢 Broadcasting...\n\n` +
-
       `👥 Users: ${users.length}\n\n` +
-
       `⏳ Please wait...`
-
     );
 
+    let sent = 0;
+    let failed = 0;
+
+    // --------------------------------------------------------
+    // SEND TO EVERY USER
+    // --------------------------------------------------------
 
     for (
       const user of users
@@ -7024,51 +7622,58 @@ bot.callbackQuery(
 
       try {
 
-        await bot.api.sendPhoto(
+        const replyMarkup =
+          getBroadcastKeyboard(
+            draft,
+            user.telegram_id
+          );
 
-          user.telegram_id,
+        // ----------------------------------------------------
+        // IMAGE BROADCAST
+        // ----------------------------------------------------
 
-          draft.image_url,
+        if (
+          draft.include_image === true
+        ) {
 
-          {
+          await bot.api.sendPhoto(
+            user.telegram_id,
+            draft.image_url,
+            {
+              caption:
+                draft.include_text === true
+                  ? draft.message
+                  : undefined,
 
-            caption:
-              draft.message,
-
-            reply_markup: {
-
-              inline_keyboard: [
-
-                [
-
-                  {
-
-                    text:
-                      "🎮 Play Now",
-
-                    web_app: {
-
-                      url:
-                        `${GAME_URL}?tid=${user.telegram_id}`
-
-                    }
-
-                  }
-
-                ]
-
-              ]
-
+              reply_markup:
+                replyMarkup
             }
+          );
 
-          }
+        }
 
-        );
+        // ----------------------------------------------------
+        // TEXT-ONLY BROADCAST
+        // ----------------------------------------------------
 
+        else if (
+          draft.include_text === true
+        ) {
+
+          await bot.api.sendMessage(
+            user.telegram_id,
+            draft.message,
+            {
+              reply_markup:
+                replyMarkup
+            }
+          );
+
+        }
 
         sent++;
 
-
+        // Small delay between users
         await new Promise(
           resolve =>
             setTimeout(
@@ -7081,45 +7686,35 @@ bot.callbackQuery(
 
         failed++;
 
-
         console.error(
-
           `❌ Failed to send to ${user.telegram_id}:`,
-
           err.description ||
           err.message
-
         );
-
       }
-
     }
 
+    // --------------------------------------------------------
+    // DELETE DRAFT
+    // --------------------------------------------------------
 
     await db.deleteBroadcastDraft(
       adminTelegramId
     );
 
+    // --------------------------------------------------------
+    // RESULT
+    // --------------------------------------------------------
 
     await ctx.reply(
-
       `📢 *Broadcast completed!*\n\n` +
-
       `👥 Total: ${users.length}\n` +
-
       `✅ Sent: ${sent}\n` +
-
       `❌ Failed: ${failed}`,
-
       {
-
-        parse_mode:
-          "Markdown"
-
+        parse_mode: "Markdown"
       }
-
     );
-
   }
 );
 
