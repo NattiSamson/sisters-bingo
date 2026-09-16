@@ -5929,9 +5929,9 @@ bot.on(
       // 8. WITHDRAWAL — ACCOUNT NUMBER
       // ========================================================
 
-    const withdrawalState =  pendingWithdrawal[telegramId];
+    const withdrawal =  pendingWithdrawal[telegramId];
       
-      const withdrawal =  withdrawalState &&  withdrawalState.stateType === "withdrawal"  ? withdrawalState.stateData  : null;
+      
 
       if (
         withdrawal &&
