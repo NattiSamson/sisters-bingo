@@ -459,8 +459,8 @@ CREATE TABLE public.withdrawals (
     status character varying(30) DEFAULT 'pending'::character varying,
     rejection_reason character varying(100),
     claimed_by_id bigint,
-    "claimed_at " timestamp without time zone,
-    "processed_at " timestamp without time zone,
+    claimed_at timestamp without time zone,
+    processed_at timestamp without time zone,
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now(),
     CONSTRAINT withdrawals_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'processing'::character varying, 'approved'::character varying, 'rejected'::character varying, 'failed'::character varying, 'cancelled'::character varying])::text[])))
@@ -789,7 +789,7 @@ CREATE INDEX idx_users_telegram ON public.users USING btree (telegram_id);
 -- Name: idx_withdrawals_claimed; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_withdrawals_claimed ON public.withdrawals USING btree (claimed_by_id, "claimed_at ") WHERE ((status)::text = 'processing'::text);
+CREATE INDEX idx_withdrawals_claimed ON public.withdrawals USING btree (claimed_by_id, claimed_at) WHERE ((status)::text = 'processing'::text);
 
 
 --
