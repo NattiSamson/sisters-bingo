@@ -2181,21 +2181,23 @@ function handle(msg){
       //document.getElementById('loadingText').innerText='3';      
       break;
 
-    case 'authRetry':
-      // A lookup failure is not an unregistered account. Keep the existing balance
-      // and retry with the same verified Telegram ID.
-      //document.getElementById('loadingText').innerText='authRetry';      
-      setTimeout(()=>{
-        const id=telegramId;//getTelegramId();
-        if(id) 
-        {
-          //document.getElementById('loadingText').innerText='tid='+id;
-          sendTelegramAuth(id);
-        }
-      },Math.max(300,Number(msg.retryAfter)||750));
-     // document.getElementById('loadingText').innerText='4';    
-      
-      break;
+   case 'authRetry':
+          document.getElementById('loadingText').innerText =
+            'Loading your account...';
+        
+          if (authRetryTimer) {
+            clearTimeout(authRetryTimer);
+          }
+        
+          authRetryTimer = setTimeout(() => {
+            authRetryTimer = null;
+        
+            if (telegramId) {
+              sendTelegramAuth(telegramId);
+            }
+          }, Math.max(300, Number(msg.retryAfter) || 750));
+
+  break;
       
     case 'authBlockedUser':
       document.getElementById('loadingText').innerText='!!!! YOU ARE BLOCKED! !!!!!';
