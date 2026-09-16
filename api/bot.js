@@ -4449,7 +4449,7 @@ if (claimNew) {
     await db.claimPendingWithdrawals(
       admin.telegram_id,
       adminState.paymentMethodId,
-      5
+      1
     );
 
   if (!claimResult || !claimResult.success) {
@@ -4706,7 +4706,7 @@ bot.callbackQuery("admin_refresh_withdrawals", async (ctx) => {
       await db.claimPendingWithdrawals(
         adminTelegramId,
         adminState.paymentMethodId,
-        5
+        1
       );
 
     if (!claimResult?.success) {
