@@ -41,7 +41,7 @@ const pendingBroadcastRecipient = new Map();
 // ============================================================
 // CLEAR USER STATE
 // ============================================================
-function clearPendingState(telegramId) 
+async function clearPendingState(telegramId) 
 {
   delete pendingPhone[telegramId];
   delete pendingDelete[telegramId];
@@ -56,6 +56,16 @@ function clearPendingState(telegramId)
   pendingAdminUserSearch.delete(telegramId);
   pendingAdminRoleSearch.delete(telegramId);
   pendingBroadcastRecipient.delete(telegramId);  
+    try {
+    await db.clearBotUserState(
+      telegramId
+    );
+  } catch (err) {
+    console.error(
+      "Failed to clear persistent bot state:",
+      err
+    );
+  }
 }
 
 // ============================================================
@@ -1003,7 +1013,7 @@ bot.callbackQuery(
   "user_statistics",
   async (ctx) => {
   await answerCallback(ctx);
-  clearPendingState(ctx.from.id);
+  await clearPendingState(ctx.from.id);
 
     await showUserStatistics(ctx);
 
@@ -1016,7 +1026,7 @@ bot.callbackQuery(
 bot.callbackQuery("user_home", async (ctx) => {
   try {
   await answerCallback(ctx);
-  clearPendingState(ctx.from.id);
+  await clearPendingState(ctx.from.id);
 
     const user = await db.getUserByTelegramId(ctx.from.id);
 
@@ -1044,7 +1054,7 @@ bot.callbackQuery(
   "user_delete",
   async (ctx) => {
   await answerCallback(ctx);
-  clearPendingState(ctx.from.id);
+  await clearPendingState(ctx.from.id);
 
     await ctx.editMessageText(
       "⚠️ *አካውንትዎን ማጥፋት ይፈልጋሉ?*\n\n" +
@@ -1078,7 +1088,7 @@ bot.callbackQuery(
   "user_cancel_delete",
   async (ctx) => {
   await answerCallback(ctx);
-  clearPendingState(ctx.from.id);
+  await clearPendingState(ctx.from.id);
     
   const user = await db.getUserByTelegramId(ctx.from.id);
 
@@ -1103,7 +1113,7 @@ bot.callbackQuery(
   "user_confirm_delete",
   async (ctx) => {
   await answerCallback(ctx);
-  clearPendingState(ctx.from.id);
+  await clearPendingState(ctx.from.id);
 
     try {
 
@@ -1119,7 +1129,7 @@ bot.callbackQuery(
 
       }
 
-      clearPendingState(
+      await clearPendingState(
         telegramId
       );
 
@@ -2117,7 +2127,7 @@ bot.callbackQuery(
         return;
       }
 
-      clearPendingState(ctx.from.id);
+      await clearPendingState(ctx.from.id);
 
       pendingAdminRoleSearch.set(
         ctx.from.id,
@@ -3162,7 +3172,7 @@ bot.command(
       "Player";
 
 
-    clearPendingState(
+    await clearPendingState(
       telegramId
     );
 
@@ -3457,7 +3467,7 @@ bot.callbackQuery(
   "user_balance",
   async (ctx) => {
   await answerCallback(ctx);
-  clearPendingState(ctx.from.id);
+  await clearPendingState(ctx.from.id);
 
     await showBalance(ctx);
   }
@@ -3629,7 +3639,7 @@ bot.callbackQuery(
   "user_deposit",
   async (ctx) => {
   await answerCallback(ctx);
-  clearPendingState(ctx.from.id);
+  await clearPendingState(ctx.from.id);
   await showDeposit(ctx);
   }
 );
@@ -3781,7 +3791,7 @@ bot.callbackQuery(
   "user_cancel_deposit",
   async (ctx) => {
   await answerCallback(ctx);
-  clearPendingState(ctx.from.id);
+  await clearPendingState(ctx.from.id);
     try {
 
       await ctx.editMessageText(
@@ -3944,7 +3954,7 @@ bot.callbackQuery(
   "user_withdraw",
   async (ctx) => {
   await answerCallback(ctx);
-  clearPendingState(ctx.from.id);
+  await clearPendingState(ctx.from.id);
 
     await showWithdrawal(ctx);
   }
@@ -4006,19 +4016,7 @@ bot.callbackQuery(
       }
 
 
-      pendingWithdrawal[
-        telegramId
-      ] = {
-
-        step:
-          "account",
-
-        paymentMethodId:
-          methodId,
-
-        paymentMethod
-
-      };
+     await db.setBotUserState(telegramId,"withdrawal", { step: "account", paymentMethodId: methodId });
 
 
       await ctx.editMessageText(
@@ -4064,7 +4062,7 @@ bot.callbackQuery(
   "user_cancel_withdrawal",
   async (ctx) => {
   await answerCallback(ctx);
-  clearPendingState(ctx.from.id);
+  await clearPendingState(ctx.from.id);
 
     try {
 
@@ -5004,7 +5002,7 @@ bot.callbackQuery(
 // ============================================================
 bot.callbackQuery("admin_home", async (ctx) => {
   await answerCallback(ctx);
-  clearPendingState(ctx.from.id);
+  await clearPendingState(ctx.from.id);
   const admin = await getCurrentAdmin(ctx);
     if (!admin) 
     {
@@ -5392,7 +5390,7 @@ bot.callbackQuery(
   "user_support",
   async (ctx) => {
   await answerCallback(ctx);
-  clearPendingState(ctx.from.id);
+  await clearPendingState(ctx.from.id);
 
     await showSupport(
       ctx
@@ -7542,7 +7540,7 @@ bot.on(
               result2 > 0
             ) {
 
-              clearPendingState(
+              await clearPendingState(
                 telegramId
               );
 
@@ -7592,10 +7590,15 @@ bot.on(
       // 8. WITHDRAWAL — ACCOUNT NUMBER
       // ========================================================
 
+      const withdrawalState =
+  await db.getBotUserState(
+    telegramId
+  );
       const withdrawal =
-        pendingWithdrawal[
-          telegramId
-        ];
+  withdrawalState &&
+  withdrawalState.stateType === "withdrawal"
+    ? withdrawalState.stateData
+    : null;
 
       if (
         withdrawal &&
@@ -7629,27 +7632,76 @@ bot.on(
 
         if (
           accountNumber.length >
-          20
+          30
         ) {
 
           return ctx.reply(
-            "❌ የአካውንት ቁጥሩ ከ20 ፊደል/ቁጥር መብለጥ አይችልም።"
+            "❌ የአካውንት ቁጥሩ ከ30 ፊደል/ቁጥር መብለጥ አይችልም።"
           );
 
         }
+        const paymentMethod =
+  await db.getPaymentMethodById(
+    withdrawal.paymentMethodId
+  );
 
-        pendingWithdrawal[
-          telegramId
-        ] = {
+if (!paymentMethod) {
+  return ctx.reply(
+    "❌ የክፍያ መንገዱ አልተገኘም።"
+  );
+}
 
-          ...withdrawal,
+const paymentMethodName =
+  String(
+    paymentMethod.name || ""
+  )
+    .trim()
+    .toLowerCase();
 
-          step:
-            "amount",
+const paymentMethodAmharic =
+  String(
+    paymentMethod.amharic_name || ""
+  ).trim();
 
-          accountNumber
+const isMobile =
+  paymentMethodName === "mobile" ||
+  paymentMethodAmharic === "ሞባይል";
 
-        };
+let accountNumber;
+
+if (isMobile) {
+  accountNumber =
+    normalizeEthiopianPhone(text);
+
+  if (!accountNumber) {
+    return ctx.reply(
+      "❌ እባክዎ ትክክለኛ የኢትዮጵያ ሞባይል ቁጥር ያስገቡ።\n\n" +
+      "ምሳሌ፦ `0912345678`"
+    );
+  }
+} else {
+  accountNumber =
+    text.replace(
+      /[\s\-()]/g,
+      ""
+    );
+
+  if (!accountNumber) {
+    return ctx.reply(
+      "❌ እባክዎ ትክክለኛ የአካውንት ቁጥር ያስገቡ።"
+    );
+  }
+}
+
+await db.setBotUserState(
+  telegramId,
+  "withdrawal",
+  {
+    ...withdrawal,
+    step: "amount",
+    accountNumber
+  }
+);
 
         return ctx.reply(
 
@@ -7724,9 +7776,9 @@ bot.on(
 
           if (!user) {
 
-            delete pendingWithdrawal[
-              telegramId
-            ];
+            await clearPendingState(
+  ctx.from.id
+);
 
             return ctx.reply(
               "❌ አካውንትዎ አልተገኘም።"
@@ -7779,9 +7831,7 @@ bot.on(
 
           }
 
-          delete pendingWithdrawal[
-            telegramId
-          ];
+          await db.clearBotUserState(telegramId);
 
           return ctx.reply(
 
