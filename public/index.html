@@ -2925,7 +2925,7 @@ function applyAutomaticMarks(){
   const win1=markOne(myCardNumbers,markedIndices,'');
   const win2=myCardId2 ? markOne(myCardNumbers2,markedIndices2,'b2_') : false;
 
-  if((win1||win2) && !autoClaimSent && myCardId && claimWindowOpen){
+  if((win1||win2) && !autoClaimSent && myCardId){
     autoClaimSent=true;
     // Give the DOM one tick to reflect the automatic marks before submitting.
     setTimeout(()=>autoClaimBingo(),50);
