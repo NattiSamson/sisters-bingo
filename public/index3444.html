@@ -1082,12 +1082,12 @@ body{
   </div>
 </div>
 
-<div id="screenLoading" class="screen" style="display:none">
+<div id="screenLoading" class="screen active">
   <div class="loading-spinner"></div>
   <div class="loading-text" id="loadingText">Connecting...</div>
 </div>
 
-<div id="screenLobby" class="screen active">
+<div id="screenLobby" class="screen">
   <div class="welcome-banner">
     <div class="lobby-hero-art" aria-hidden="true">
       <div class="lobby-crown">♛</div>
@@ -1823,7 +1823,7 @@ function handle(msg){
       if(msg.stakes) renderStakes(msg.stakes);
       const pageParam = new URLSearchParams(location.search).get('page');
       if(pageParam !== 'deposit' && pageParam !== 'withdraw') goScreen('screenLobby');
-      
+      document.getElementById('loadingText').innerText='Loading your account...';
       if(pageParam === 'deposit') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('deposit'); }, 1500);
       if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('withdraw'); }, 1500);
       // Authenticate as soon as the Telegram ID is available. If it was resolved
@@ -1850,7 +1850,7 @@ function handle(msg){
     case 'authRetry':
       // A lookup failure is not an unregistered account. Keep the existing balance
       // and retry with the same verified Telegram ID.
-      
+      document.getElementById('loadingText').innerText='Loading your account...';
       setTimeout(()=>{
         const id=getTelegramId();
         if(id) sendTelegramAuth(id);
