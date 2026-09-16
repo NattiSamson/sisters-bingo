@@ -880,14 +880,14 @@ module.exports = {
             SELECT COUNT(*)
             FROM withdrawals w
             WHERE w.user_id = u.id
-              AND w.status = 'pending'
+              AND w.status IN ('pending', 'processing')
           ) AS pending_withdrawals,
 
           (
             SELECT COUNT(*)
             FROM withdrawals w
             WHERE w.user_id = u.id
-              AND w.status = 'completed'
+              AND w.status = 'approved'
           ) AS approved_withdrawals,
 
           (
@@ -959,7 +959,7 @@ module.exports = {
             )
             FROM withdrawals w
             WHERE w.user_id = u.id
-              AND w.status = 'completed'
+              AND w.status = 'approved'
           ) AS approved_withdrawal_amount,
 
           (
@@ -969,7 +969,7 @@ module.exports = {
             )
             FROM withdrawals w
             WHERE w.user_id = u.id
-              AND w.status = 'pending' 
+              AND w.status IN ('pending', 'processing')
           ) AS pending_withdrawal_amount,
 
           (
@@ -1029,13 +1029,13 @@ module.exports = {
           (
             SELECT COUNT(*)
             FROM withdrawals
-            WHERE status = 'pending'             
+            WHERE status IN ('pending', 'processing')            
           ) AS pending_withdrawals,
 
           (
             SELECT COUNT(*)
             FROM withdrawals
-            WHERE status = 'completed'
+            WHERE status = 'approved'
           ) AS approved_withdrawals,
 
           (
@@ -1688,7 +1688,7 @@ async getPendingWithdrawals(
     LEFT JOIN payment_methods pm
       ON pm.id = w.payment_method_id
 
-    WHERE w.status = 'pending'
+    WHERE w.status IN ('pending', 'processing')
 
       AND (
         $1::bigint IS NULL
