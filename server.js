@@ -642,7 +642,8 @@ function callNumber(room){
   room.claimWindowOpen=true; scheduleNextCall(room);
 }
 
-function evaluateClaims(room){ 
+function evaluateClaims(room){
+ alert(room);
   room.claimEvalTimer=null;
   const winners=[], cheaters=[];
   room.claimedThisRound.forEach(claim=>{
