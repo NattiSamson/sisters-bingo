@@ -457,7 +457,7 @@ CREATE TABLE public.withdrawals (
     rejection_reason character varying(100),
     claimed_by_id bigint,
     claimed_at timestamp without time zone,
-    "processed_at " timestamp without time zone,
+    processed_at timestamp without time zone,
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now(),
     CONSTRAINT withdrawals_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'processing'::character varying, 'approved'::character varying, 'rejected'::character varying, 'failed'::character varying, 'cancelled'::character varying])::text[])))
