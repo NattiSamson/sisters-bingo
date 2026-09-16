@@ -675,6 +675,7 @@ function evaluateClaims(room){
 }
 
 async function endGame(room, winners, customMsg, noWinner){
+ console.error('endGame async function');
   if(room.callTimer) clearTimeout(room.callTimer);
   if(room.countdownTimer) clearInterval(room.countdownTimer);
   if(room.claimEvalTimer) clearTimeout(room.claimEvalTimer);
