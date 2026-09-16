@@ -2951,12 +2951,6 @@ function autoClaimBingo(){
   });
 }
 
-// Kept only as an internal compatibility function. There is no user-facing
-// manual BINGO control anymore.
-function claimBingo(){
-  autoClaimBingo();
-}
-
 function resetAutomaticGameState(){
   calledNumbersSet=new Set();
   autoClaimSent=false;
