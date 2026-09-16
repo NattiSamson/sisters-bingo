@@ -107,6 +107,277 @@ bot.use(async (ctx, next) => {
     return next();
   }
 });
+
+function scheduleWithdrawalClaimCleanup(
+  adminTelegramId
+) {
+  const state =
+    pendingAdminWithdrawal[
+      adminTelegramId
+    ];
+
+  if (!state) {
+    return;
+  }
+
+  /*
+   * Don't create multiple timers for the same admin.
+   */
+  if (state.cleanupTimer) {
+    clearTimeout(
+      state.cleanupTimer
+    );
+  }
+
+  const expiresAt =
+    state.claimExpiresAt;
+
+  if (!expiresAt) {
+    return;
+  }
+
+  const delay =
+    Math.max(
+      expiresAt - Date.now(),
+      1000
+    );
+
+  state.cleanupTimer =
+    setTimeout(
+      async () => {
+
+        try {
+
+          const currentState =
+            pendingAdminWithdrawal[
+              adminTelegramId
+            ];
+
+          if (!currentState) {
+            return;
+          }
+
+          /*
+           * Clear the local state.
+           */
+          currentState.claimedWithdrawals =
+            [];
+
+          currentState.claimExpiresAt =
+            null;
+
+          currentState.cleanupTimer =
+            null;
+
+          /*
+           * IMPORTANT:
+           *
+           * We do NOT modify the database here.
+           *
+           * The DB lease already expired.
+           *
+           * Another admin can claim these withdrawals.
+           */
+
+          /*
+           * Delete the Telegram message.
+           */
+          if (
+            currentState.claimMessageId
+          ) {
+
+            try {
+
+              await bot.api.deleteMessage(
+                adminTelegramId,
+                currentState.claimMessageId
+              );
+
+            } catch (telegramError) {
+
+              console.error(
+                "Could not delete expired withdrawal message:",
+                telegramError
+              );
+
+              /*
+               * If Telegram won't let us delete it,
+               * try editing it instead.
+               */
+              try {
+
+                await bot.api.editMessageText(
+                  adminTelegramId,
+                  currentState.claimMessageId,
+                  "⏱ *Withdrawal claim expired.*\n\n" +
+                  "These withdrawals have been released and can be claimed by another admin.",
+                  {
+                    parse_mode: "Markdown"
+                  }
+                );
+
+              } catch (editError) {
+
+                console.error(
+                  "Could not edit expired withdrawal message:",
+                  editError
+                );
+
+              }
+            }
+          }
+
+          currentState.claimMessageId =
+            null;
+
+        } catch (err) {
+
+          console.error(
+            "Withdrawal claim cleanup error:",
+            err
+          );
+
+        }
+
+      },
+      delay
+    );
+}
+function scheduleWithdrawalClaimCleanup(
+  adminTelegramId
+) {
+  const state =
+    pendingAdminWithdrawal[
+      adminTelegramId
+    ];
+
+  if (!state) {
+    return;
+  }
+
+  /*
+   * Don't create multiple timers for the same admin.
+   */
+  if (state.cleanupTimer) {
+    clearTimeout(
+      state.cleanupTimer
+    );
+  }
+
+  const expiresAt =
+    state.claimExpiresAt;
+
+  if (!expiresAt) {
+    return;
+  }
+
+  const delay =
+    Math.max(
+      expiresAt - Date.now(),
+      1000
+    );
+
+  state.cleanupTimer =
+    setTimeout(
+      async () => {
+
+        try {
+
+          const currentState =
+            pendingAdminWithdrawal[
+              adminTelegramId
+            ];
+
+          if (!currentState) {
+            return;
+          }
+
+          /*
+           * Clear the local state.
+           */
+          currentState.claimedWithdrawals =
+            [];
+
+          currentState.claimExpiresAt =
+            null;
+
+          currentState.cleanupTimer =
+            null;
+
+          /*
+           * IMPORTANT:
+           *
+           * We do NOT modify the database here.
+           *
+           * The DB lease already expired.
+           *
+           * Another admin can claim these withdrawals.
+           */
+
+          /*
+           * Delete the Telegram message.
+           */
+          if (
+            currentState.claimMessageId
+          ) {
+
+            try {
+
+              await bot.api.deleteMessage(
+                adminTelegramId,
+                currentState.claimMessageId
+              );
+
+            } catch (telegramError) {
+
+              console.error(
+                "Could not delete expired withdrawal message:",
+                telegramError
+              );
+
+              /*
+               * If Telegram won't let us delete it,
+               * try editing it instead.
+               */
+              try {
+
+                await bot.api.editMessageText(
+                  adminTelegramId,
+                  currentState.claimMessageId,
+                  "⏱ *Withdrawal claim expired.*\n\n" +
+                  "These withdrawals have been released and can be claimed by another admin.",
+                  {
+                    parse_mode: "Markdown"
+                  }
+                );
+
+              } catch (editError) {
+
+                console.error(
+                  "Could not edit expired withdrawal message:",
+                  editError
+                );
+
+              }
+            }
+          }
+
+          currentState.claimMessageId =
+            null;
+
+        } catch (err) {
+
+          console.error(
+            "Withdrawal claim cleanup error:",
+            err
+          );
+
+        }
+
+      },
+      delay
+    );
+}
 // ============================================================
 // BROADCAST SELECTION TEXT
 // ============================================================
@@ -3938,7 +4209,7 @@ async function showAdminPaymentMethods(ctx) {
 bot.callbackQuery(
   "admin_withdrawals",
   async (ctx) => {
-
+    await cleanupExpiredAdminWithdrawalUI(ctx.from.id);
     const admin = await getCurrentAdminPermission(
     ctx,
     "withdrawals"
@@ -4146,15 +4417,12 @@ bot.callbackQuery(
         admin.telegram_id
       ] = {
 
-        paymentMethodId:
-          account.payment_method_id,
-
-        paymentAccountId:
-          account.id,
-
-        paymentAccount:
-          account
-
+        paymentMethodId: account.payment_method_id,
+        paymentAccountId: account.id,
+        paymentAccount: account,
+        claimMessageId: null,
+        claimedWithdrawals: [],
+        claimExpiresAt: null
       };
 
       await showPendingWithdrawals(
@@ -4187,207 +4455,271 @@ async function showPendingWithdrawals(
   ctx,
   editMessage = false
 ) {
-
-  const admin =
-    await getCurrentAdmin(ctx);
+  const admin = await getCurrentAdmin(ctx);
 
   if (!admin) {
     return;
   }
 
   const adminState =
-    pendingAdminWithdrawal[
-      admin.telegram_id
-    ];
+    pendingAdminWithdrawal[admin.telegram_id];
 
   if (!adminState) {
-
     return showAdminPaymentMethods(ctx);
-
   }
 
-  const withdrawals =
-    await db.getPendingWithdrawals(
-      5
-    );
-
-  const account =
-    adminState.paymentAccount;
-
-  let message =
-
-    "👑 *PENDING WITHDRAWALS*\n\n" +
-
-    "━━━━━━━━━━━━━━━━━━━━\n" +
-
-    `💳 Method: *${
-      account.pm_amharic_name ||
-      account.pm_name ||
-      "Unknown"
-    }*\n` +
-
-    `📱 Payment Account: \`${account.account_number}\`\n` +
-
-    `💰 Available: *${account.balance} ETB*\n` +
-
-    "━━━━━━━━━━━━━━━━━━━━\n\n";
-
-  if (
-    !withdrawals ||
-    withdrawals.length === 0
-  ) {
-
-    message +=
-      "✅ There are no pending withdrawals.";
-
-  } else {
-
-    withdrawals.forEach(
-      (w, index) => {
-
-        const created =
-          w.created_at
-            ? new Date(
-                w.created_at
-              ).toLocaleString(
-                "en-GB"
-              )
-            : "";
-
-        message +=
-
-          `${index + 1}. 🆔 *#${w.id}*\n` +
-
-          `👤 ${w.name || "Unknown"}\n` +
-
-          `💳 ${
-            w.payment_method_amharic ||
-            w.payment_method ||
-            "Unknown"
-          }\n` +
-
-          `📱 Recipient: \`${w.account_number}\`\n` +
-
-          `💰 *${w.amount} ETB*\n` +
-
-          `${created
-            ? `📅 ${created}\n`
-            : ""}` +
-
-          "\n";
-
-      }
-    );
-
-  }
-
-  const keyboard = [];
-
-  for (
-    const w of withdrawals
-  ) {
-
-    keyboard.push([
-
-      {
-        text:
-          `✅ Approve #${w.id}`,
-
-        callback_data:
-          `approve_withdrawal_${w.id}`
-      },
-
-      {
-        text:
-          `❌ Reject #${w.id}`,
-
-        callback_data:
-          `reject_withdrawal_${w.id}`
-      }
-
-    ]);
-
-  }
-
-  keyboard.push([
-
-    {
-      text:
-        "💳 Change Account",
-
-      callback_data:
-        "admin_withdrawals"
-    },
-
-    {
-      text:
-        "🔄 Refresh",
-
-      callback_data:
-        "admin_pending_refresh"
-    }
-
-  ]);
-
-  keyboard.push([
-
-    {
-      text:
-        "🏠 Home",
-
-      callback_data:
-        "admin_home"
-    }
-
-  ]);
-
-  const options = {
-
-    parse_mode:
-      "Markdown",
-
-    reply_markup: {
-
-      inline_keyboard:
-        keyboard
-
-    }
-
-  };
-
-  if (editMessage) {
-
-    try {
-
-      await ctx.editMessageText(
-        message,
-        options
+  try {
+    /*
+     * ----------------------------------------------------------
+     * CLAIM NEW WITHDRAWALS
+     * ----------------------------------------------------------
+     *
+     * This is NOT getPendingWithdrawals().
+     *
+     * It atomically changes:
+     *
+     * pending -> processing
+     *
+     * and assigns the rows to this admin.
+     */
+    const claimResult =
+      await db.claimPendingWithdrawals(
+        admin.telegram_id,
+        adminState.paymentMethodId,
+        10
       );
+
+    if (
+      !claimResult ||
+      !claimResult.success
+    ) {
+      return ctx.reply(
+        `❌ ${
+          claimResult?.message ||
+          "Could not claim withdrawals."
+        }`
+      );
+    }
+
+    const withdrawals =
+      claimResult.withdrawals || [];
+
+    /*
+     * Save the claimed withdrawals in this admin's
+     * temporary Telegram state.
+     */
+    adminState.claimedWithdrawals =
+      withdrawals;
+
+    /*
+     * Five-minute lease.
+     *
+     * This is only for the Telegram UI.
+     * The DATABASE remains the real source of truth.
+     */
+    adminState.claimExpiresAt =
+      Date.now() + (5 * 60 * 1000);
+
+    let message =
+      "👑 *WITHDRAWALS ASSIGNED TO YOU*\n\n" +
+      "━━━━━━━━━━━━━━━━━━━━\n" +
+      `💳 Method: *${
+        adminState.paymentAccount.pm_amharic_name ||
+        adminState.paymentAccount.pm_name ||
+        "Unknown"
+      }*\n` +
+      `📱 Payment Account: \`${adminState.paymentAccount.account_number}\`\n` +
+      `⏱ Claim expires in: *5 minutes*\n` +
+      "━━━━━━━━━━━━━━━━━━━━\n\n";
+
+    if (!withdrawals.length) {
+      message +=
+        "There are no withdrawals available right now.";
+
+      const keyboard = {
+        inline_keyboard: [
+          [
+            {
+              text: "🔄 Refresh",
+              callback_data:
+                "admin_refresh_withdrawals"
+            }
+          ],
+          [
+            {
+              text: "🏠 Home",
+              callback_data:
+                "admin_home"
+            }
+          ]
+        ]
+      };
+
+      if (editMessage) {
+        try {
+          await ctx.editMessageText(
+            message,
+            {
+              parse_mode: "Markdown",
+              reply_markup: keyboard
+            }
+          );
+        } catch (err) {
+          await ctx.reply(
+            message,
+            {
+              parse_mode: "Markdown",
+              reply_markup: keyboard
+            }
+          );
+        }
+      } else {
+        await ctx.reply(
+          message,
+          {
+            parse_mode: "Markdown",
+            reply_markup: keyboard
+          }
+        );
+      }
 
       return;
-
-    } catch (err) {
-
-      // If the message cannot be edited,
-      // send a new message instead.
-
-      console.log(
-        "Pending message edit failed:",
-        err.description ||
-        err.message
-      );
-
     }
 
+    /*
+     * ----------------------------------------------------------
+     * DISPLAY CLAIMED WITHDRAWALS
+     * ----------------------------------------------------------
+     */
+    withdrawals.forEach(
+      (withdrawal, index) => {
+
+        message +=
+          `*${index + 1}. Withdrawal #${withdrawal.id}*\n` +
+          `👤 User: *${withdrawal.name || "Unknown"}*\n` +
+          `💰 Amount: *${withdrawal.amount} ETB*\n` +
+          `📱 Account: \`${withdrawal.account_number}\`\n\n`;
+
+      }
+    );
+
+    /*
+     * Buttons.
+     */
+    const keyboard = [];
+
+    withdrawals.forEach(
+      (withdrawal) => {
+
+        keyboard.push([
+          {
+            text:
+              `✅ #${withdrawal.id}`,
+            callback_data:
+              `approve_withdrawal_${withdrawal.id}`
+          },
+          {
+            text:
+              `❌ #${withdrawal.id}`,
+            callback_data:
+              `reject_withdrawal_${withdrawal.id}`
+          }
+        ]);
+
+      }
+    );
+
+    keyboard.push([
+      {
+        text: "🔄 Refresh",
+        callback_data:
+          "admin_refresh_withdrawals"
+      }
+    ]);
+
+    keyboard.push([
+      {
+        text: "🏠 Home",
+        callback_data:
+          "admin_home"
+      }
+    ]);
+
+    const options = {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: keyboard
+      }
+    };
+
+    /*
+     * ----------------------------------------------------------
+     * SEND / EDIT TELEGRAM MESSAGE
+     * ----------------------------------------------------------
+     */
+    let sentMessage;
+
+    if (editMessage) {
+
+      try {
+
+        await ctx.editMessageText(
+          message,
+          options
+        );
+
+        /*
+         * The callback message remains the same Telegram message.
+         */
+        adminState.claimMessageId =
+          ctx.callbackQuery?.message?.message_id;
+
+      } catch (err) {
+
+        sentMessage =
+          await ctx.reply(
+            message,
+            options
+          );
+
+        adminState.claimMessageId =
+          sentMessage.message_id;
+
+      }
+
+    } else {
+
+      sentMessage =
+        await ctx.reply(
+          message,
+          options
+        );
+
+      adminState.claimMessageId =
+        sentMessage.message_id;
+    }
+
+    /*
+     * Schedule local cleanup if this server instance remains alive.
+     *
+     * DATABASE lease is still authoritative.
+     */
+    scheduleWithdrawalClaimCleanup(
+      admin.telegram_id
+    );
+
+  } catch (err) {
+
+    console.error(
+      "showPendingWithdrawals error:",
+      err
+    );
+
+    await ctx.reply(
+      "❌ Could not load withdrawals."
+    );
   }
-
-  await ctx.reply(
-    message,
-    options
-  );
-
 }
-
 
 // ============================================================
 // ADMIN — REFRESH PENDING LIST
@@ -4625,90 +4957,115 @@ bot.callbackQuery("admin_home", async (ctx) => {
 bot.callbackQuery(
   /^approve_withdrawal_(\d+)$/,
   async (ctx) => {
-
-    const admin =
-      await getCurrentAdmin(
-        ctx
-      );
-
+await cleanupExpiredAdminWithdrawalUI(
+  ctx.from.id
+);
+     const admin =
+      await getCurrentAdmin(ctx);
 
     if (!admin) {
-
       return;
-
     }
-
 
     await answerCallback(
       ctx,
       "Approving..."
     );
 
+    await cleanupExpiredAdminWithdrawalUI(
+      admin.telegram_id
+    );
 
     const withdrawalId =
-      Number(
-        ctx.match[1]
-      );
-
+      Number(ctx.match[1]);
 
     try {
 
-      /*
-       * IMPORTANT:
-       *
-       * Pass the CURRENT ADMIN'S Telegram ID.
-       *
-       * db.approveWithdrawal() should then:
-       *
-       * 1. Verify the Telegram ID belongs to an
-       *    active, non-banned admin.
-       *
-       * 2. Store the actual users.id in
-       *    withdrawals.approved_by_id.
-       *
-       * 3. Approve the withdrawal.
-       *
-       * 4. Deduct the user's balance only once.
-       */
-
       const adminState =
-  pendingAdminWithdrawal[
-    admin.telegram_id
-  ];
+        pendingAdminWithdrawal[
+          admin.telegram_id
+        ];
 
-if (!adminState) {
+      if (!adminState) {
+        return ctx.reply(
+          "⏱ Your withdrawal claim has expired. Please press Pending again."
+        );
+      }
 
-  return ctx.reply(
-
-    "❌ Please select a payment account first.\n\n" +
-    "Press ⏳ Pending and select the payment account."
-
-  );
-
-}
-
-const result =
-  await db.approveWithdrawal(
-
-    withdrawalId,
-
-    admin.telegram_id,
-
-    adminState.paymentAccountId
-
-  );
-
+      const result =
+        await db.approveWithdrawal(
+          withdrawalId,
+          admin.telegram_id,
+          adminState.paymentAccountId
+        );
 
       if (
         !result ||
         !result.success
       ) {
 
+        /*
+         * If the lease expired, remove the stale
+         * Telegram UI.
+         */
+        if (
+          result?.message?.toLowerCase()
+            .includes("expired")
+        ) {
+
+          await cleanupExpiredAdminWithdrawalUI(
+            admin.telegram_id
+          );
+
+        }
+
         return ctx.reply(
-          `❌ ${result?.message || "Withdrawal approval failed."}`
+          `❌ ${
+            result?.message ||
+            "Withdrawal approval failed."
+          }`
+        );
+      }
+
+      /*
+       * Remove this withdrawal from the local
+       * claimed list.
+       */
+      adminState.claimedWithdrawals =
+        (
+          adminState.claimedWithdrawals || []
+        ).filter(
+          w =>
+            Number(w.id) !==
+            Number(withdrawalId)
         );
 
-      }
+      /*
+       * Send approval notification to user.
+       *
+       * Keep your existing notification code here.
+       */
+
+      /*
+       * Refresh the admin's remaining claims.
+       */
+      await showPendingWithdrawals(
+        ctx,
+        true
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Approve withdrawal error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Withdrawal approval failed."
+      );
+      return;
+    }
 
 pendingAdminWithdrawal[admin.telegram_id]
 await ctx.reply(
