@@ -2003,9 +2003,7 @@ bot.callbackQuery(
 bot.callbackQuery(
   "admin_financial_statistics",
   async (ctx) => {
-
     try {
-
       await answerCallback(ctx);
 
       const admin =
@@ -2021,16 +2019,75 @@ bot.callbackQuery(
       const stats =
         await db.getAdminFinancialStatistics();
 
-      const message =
-        `💰 *FINANCIAL STATISTICS*\n\n` +
+      let message =
+        "💰 *FINANCIAL STATISTICS*\n\n";
 
-        `💎 *Total Deposits*\n` +
-        `*${stats.totalDepositAmount.toFixed(2)} ETB*\n\n` +
+      // ========================================================
+      // PAYMENT ACCOUNTS
+      // ========================================================
 
-        `🏧 *Withdrawals*\n` +
-        `⏳ Pending: *${stats.pendingWithdrawalAmount.toFixed(2)} ETB*\n` +
-        `✅ Approved: *${stats.approvedWithdrawalAmount.toFixed(2)} ETB*\n` +
-        `❌ Rejected: *${stats.rejectedWithdrawalAmount.toFixed(2)} ETB*`;
+      message +=
+        "💳 *PAYMENT ACCOUNTS*\n\n";
+
+      if (
+        !stats.accounts ||
+        stats.accounts.length === 0
+      ) {
+        message +=
+          "No payment accounts found.\n\n";
+      } else {
+        stats.accounts.forEach(
+          (account, index) => {
+            message +=
+              `${index + 1}. ` +
+              `${account.paymentMethodEmoji} ` +
+              `*${account.accountName}*\n`;
+
+            message +=
+              `📱 Account: \`${account.accountNumber}\`\n`;
+
+            message +=
+              `💳 Method: *${account.paymentMethodName}*\n`;
+
+            message +=
+              `💰 Balance: *${account.balance.toFixed(2)} ETB*\n\n`;
+
+            message +=
+              `💎 Deposits: *${account.depositCount}*\n`;
+
+            message +=
+              `   💰 Amount: *${account.depositAmount.toFixed(2)} ETB*\n`;
+
+            message +=
+              `🏧 Withdrawals: *${account.withdrawalCount}*\n`;
+
+            message +=
+              `   💰 Amount: *${account.withdrawalAmount.toFixed(2)} ETB*\n\n`;
+
+            message +=
+              "────────────────────\n\n";
+          }
+        );
+      }
+
+      // ========================================================
+      // OVERALL TOTALS
+      // ========================================================
+
+      message +=
+        "📊 *OVERALL TOTALS*\n\n";
+
+      message +=
+        `💎 Total Deposits: *${stats.totalDepositCount}*\n`;
+
+      message +=
+        `💰 Deposit Amount: *${stats.totalDepositAmount.toFixed(2)} ETB*\n\n`;
+
+      message +=
+        `🏧 Total Withdrawals: *${stats.totalWithdrawalCount}*\n`;
+
+      message +=
+        `💰 Withdrawal Amount: *${stats.totalWithdrawalAmount.toFixed(2)} ETB*`;
 
       await ctx.editMessageText(
         message,
@@ -2038,7 +2095,6 @@ bot.callbackQuery(
           parse_mode: "Markdown",
           reply_markup: {
             inline_keyboard: [
-
               [
                 {
                   text: "🔄 Refresh",
@@ -2046,7 +2102,6 @@ bot.callbackQuery(
                     "admin_financial_statistics"
                 }
               ],
-
               [
                 {
                   text: "⬅️ Statistics",
@@ -2059,25 +2114,46 @@ bot.callbackQuery(
                     "admin_home"
                 }
               ]
-
             ]
           }
         }
       );
 
     } catch (err) {
-
       console.error(
         "Admin financial statistics error:",
         err
       );
 
-      await ctx.reply(
-        "❌ Could not load financial statistics."
-      );
-
+      try {
+        await ctx.editMessageText(
+          "❌ Could not load financial statistics.",
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: "⬅️ Statistics",
+                    callback_data:
+                      "admin_statistics_menu"
+                  },
+                  {
+                    text: "🏠 Home",
+                    callback_data:
+                      "admin_home"
+                  }
+                ]
+              ]
+            }
+          }
+        );
+      } catch (editError) {
+        console.error(
+          "Could not display financial statistics error:",
+          editError
+        );
+      }
     }
-
   }
 );
 // ============================================================
