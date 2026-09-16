@@ -52,7 +52,7 @@ function clearPendingState(telegramId)
   delete pendingAdminWithdrawal[telegramId];  
   delete pendingAdminAccountEdit[telegramId];
   delete pendingAdminAccountDelete[telegramId];
-  
+ 
   pendingAdminUserSearch.delete(telegramId);
   pendingAdminRoleSearch.delete(telegramId);
   pendingBroadcastRecipient.delete(telegramId);  
@@ -5989,36 +5989,11 @@ bot.on(
           );
 
         }
-        const paymentMethod =
-  await db.getPaymentMethodById(
-    withdrawal.paymentMethodId
-  );
-
-if (!paymentMethod) {
-  return ctx.reply(
-    "❌ የክፍያ መንገዱ አልተገኘም።"
-  );
-}
-
-const paymentMethodName =
-  String(
-    paymentMethod.name || ""
-  )
-    .trim()
-    .toLowerCase();
-
-const paymentMethodAmharic =
-  String(
-    paymentMethod.amharic_name || ""
-  ).trim();
-
-const isMobile =
-  paymentMethodName === "mobile" ||
-  paymentMethodAmharic === "ሞባይል";
+        
+const isMobile = paymentMethodName === "mobile" || paymentMethodAmharic === "ሞባይል";
 
 if (isMobile) {
-  accountNumber =
-    normalizeEthiopianPhone(accountNumber);
+  accountNumber = normalizeEthiopianPhone(accountNumber);
 
   if (!accountNumber) {
     return ctx.reply(
