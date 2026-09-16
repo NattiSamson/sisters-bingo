@@ -5014,7 +5014,7 @@ await ctx.reply(
 
   `💳 Paid from: \`${result.payment_account_number}\`\n` +
 
-  `💰 Account balance after: *${result.payment_account_balance_after} ETB*\n\n` +
+  `💰 Account balance after: *${result.payment_account_balance_after} ETB*\n` +
 
   `👑 Approved by: *${admin.name || admin.telegram_id}*`,
 
