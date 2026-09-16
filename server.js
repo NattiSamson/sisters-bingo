@@ -1710,17 +1710,64 @@ app.get('/api/user/:tid', async(req,res)=>{
   if(!tid) return res.status(400).json({error:'Missing Telegram ID'});
   if(!db) return res.status(503).json({error:'Database unavailable'});
   try{
-    const rows=await db.q('SELECT * FROM users WHERE telegram_id=$1',[tid]);
+    // Keep the existing users balance/win totals authoritative, but compute
+    // games played from finished-game participation as a safe fallback.
+    // Also calculate the latest actual payout directly from finished games.
+    // This avoids relying on the history transaction join for the Profile UI.
+    const rows=await db.q(`
+      SELECT u.*,
+        COALESCE((
+          SELECT COUNT(DISTINCT g.id)
+          FROM games g
+          WHERE g.status='finished'
+            AND (
+              EXISTS (
+                SELECT 1 FROM game_participants gp
+                WHERE gp.game_id=g.id AND gp.user_id=u.id
+              )
+              OR EXISTS (
+                SELECT 1 FROM transactions t
+                WHERE t.user_id=u.id
+                  AND t.reference=g.room_id
+                  AND t.type='stake'
+              )
+            )
+        ),0)::int AS computed_total_games,
+        COALESCE((
+          SELECT g.win_amount
+          FROM games g
+          WHERE g.status='finished'
+            AND $1 = ANY(COALESCE(g.winner_ids, ARRAY[]::text[]))
+          ORDER BY g.ended_at DESC NULLS LAST, g.id DESC
+          LIMIT 1
+        ),0)::numeric AS latest_earnings
+      FROM users u
+      WHERE u.telegram_id=$1
+      LIMIT 1
+    `,[tid]);
     const u=rows[0]||null;
     if(!u) return res.status(404).json({error:'Not found'});
+
+    const storedGames=Math.max(0,Number(u.total_games)||0);
+    const computedGames=Math.max(0,Number(u.computed_total_games)||0);
+    const totalGames=Math.max(storedGames,computedGames);
+    if(totalGames!==storedGames){
+      try{ await db.q('UPDATE users SET total_games=$1 WHERE id=$2',[totalGames,u.id]); }
+      catch(e){ console.error('Profile total_games sync:',e.message); }
+    }
+
     const user={
       telegramId:String(u.telegram_id),
       name:u.name||'',
       phone:u.phone||'',
       balance:Number.parseFloat(u.balance)||0,
+      total_games:totalGames,
+      total_wins:Math.max(0,Number(u.total_wins)||0),
+      total_winnings:Math.max(0,Number(u.total_winnings)||0),
+      latest_earnings:Math.max(0,Number(u.latest_earnings)||0),
       isAdmin:u.is_admin===true || isAdminPhone(u.phone)
     };
-    userCache[tid]=user;
+    userCache[tid]={...(userCache[tid]||{}),...user};
     res.json(user);
   }catch(e){
     console.error('GET /api/user error:',e.message);
