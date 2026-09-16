@@ -149,6 +149,161 @@ module.exports = {
     return rows[0] || null;
   },
 
+  async getAdminFinancialStatistics() {
+  const { rows } = await pool.query(`
+    WITH deposit_stats AS (
+      SELECT
+        d.payment_account_id,
+        COUNT(*) AS deposit_count,
+        COALESCE(SUM(d.amount), 0) AS deposit_amount
+      FROM deposits d
+      GROUP BY d.payment_account_id
+    ),
+
+    withdrawal_stats AS (
+      SELECT
+        w.payment_account_id,
+        COUNT(*) AS withdrawal_count,
+        COALESCE(SUM(w.amount), 0) AS withdrawal_amount
+      FROM withdrawals w
+      WHERE w.status = 'approved'
+        AND w.payment_account_id IS NOT NULL
+      GROUP BY w.payment_account_id
+    ),
+
+    account_stats AS (
+      SELECT
+        pa.id AS payment_account_id,
+        pa.account_name,
+        pa.account_number,
+        pa.balance,
+
+        pm.id AS payment_method_id,
+        pm.name AS payment_method_name,
+        pm.amharic_name AS payment_method_amharic,
+        pm.emoji AS payment_method_emoji,
+
+        COALESCE(ds.deposit_count, 0) AS deposit_count,
+        COALESCE(ds.deposit_amount, 0) AS deposit_amount,
+
+        COALESCE(ws.withdrawal_count, 0) AS withdrawal_count,
+        COALESCE(ws.withdrawal_amount, 0) AS withdrawal_amount
+
+      FROM payment_accounts pa
+
+      JOIN payment_methods pm
+        ON pm.id = pa.payment_method_id
+
+      LEFT JOIN deposit_stats ds
+        ON ds.payment_account_id = pa.id
+
+      LEFT JOIN withdrawal_stats ws
+        ON ws.payment_account_id = pa.id
+
+      WHERE pa.is_removed = FALSE
+    )
+
+    SELECT
+      payment_account_id,
+      account_name,
+      account_number,
+      balance,
+
+      payment_method_id,
+      payment_method_name,
+      payment_method_amharic,
+      payment_method_emoji,
+
+      deposit_count,
+      deposit_amount,
+
+      withdrawal_count,
+      withdrawal_amount
+
+    FROM account_stats
+
+    ORDER BY
+      payment_method_id ASC,
+      payment_account_id ASC
+  `);
+
+  const accounts = rows.map((row) => ({
+    paymentAccountId:
+      Number(row.payment_account_id),
+
+    accountName:
+      row.account_name || "Unnamed Account",
+
+    accountNumber:
+      row.account_number || "",
+
+    balance:
+      Number(row.balance || 0),
+
+    paymentMethodId:
+      Number(row.payment_method_id),
+
+    paymentMethodName:
+      row.payment_method_name || "Payment Method",
+
+    paymentMethodAmharic:
+      row.payment_method_amharic || "",
+
+    paymentMethodEmoji:
+      row.payment_method_emoji || "💳",
+
+    depositCount:
+      Number(row.deposit_count || 0),
+
+    depositAmount:
+      Number(row.deposit_amount || 0),
+
+    withdrawalCount:
+      Number(row.withdrawal_count || 0),
+
+    withdrawalAmount:
+      Number(row.withdrawal_amount || 0)
+  }));
+
+  const totalDepositCount =
+    accounts.reduce(
+      (sum, account) =>
+        sum + account.depositCount,
+      0
+    );
+
+  const totalDepositAmount =
+    accounts.reduce(
+      (sum, account) =>
+        sum + account.depositAmount,
+      0
+    );
+
+  const totalWithdrawalCount =
+    accounts.reduce(
+      (sum, account) =>
+        sum + account.withdrawalCount,
+      0
+    );
+
+  const totalWithdrawalAmount =
+    accounts.reduce(
+      (sum, account) =>
+        sum + account.withdrawalAmount,
+      0
+    );
+
+  return {
+    accounts,
+
+    totalDepositCount,
+    totalDepositAmount,
+
+    totalWithdrawalCount,
+    totalWithdrawalAmount
+  };
+},
+
   async getUserByTelegramIdIncludingInactive(
     telegramId
   ) {
