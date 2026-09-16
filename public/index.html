@@ -2177,17 +2177,11 @@ function handle(msg){
         //goToGame();
       });
       break;
-    case 'authInvalidTelegramId':
-      document.getElementById('loadingText').innerText='Invalid Telegram ID is used! Please try again!';
-      break;
-    case 'authUnknownUser':
-      document.getElementById('loadingText').innerText='Unkown User Detected! Please Register first! And try again....';
-      break;
 
     case 'authRetry':
       // A lookup failure is not an unregistered account. Keep the existing balance
       // and retry with the same verified Telegram ID.
-      document.getElementById('loadingText').innerText='Something went wrong, retrying....';
+      document.getElementById('loadingText').innerText='Loading your account...';      
       setTimeout(()=>{
         const id=getTelegramId();
         if(id) sendTelegramAuth(id);
