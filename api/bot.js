@@ -5935,7 +5935,288 @@ bot.on(
         String(
           ctx.message.text || ""
         ).trim();
+// ========================================================
+      // 8. WITHDRAWAL — ACCOUNT NUMBER
+      // ========================================================
 
+      const withdrawalState =
+  await db.getBotUserState(
+    telegramId
+  );
+      const withdrawal =
+  withdrawalState &&
+  withdrawalState.stateType === "withdrawal"
+    ? withdrawalState.stateData
+    : null;
+
+      if (
+        withdrawal &&
+        withdrawal.step ===
+          "account"
+      ) {
+
+        if (
+          text.startsWith("/")
+        ) {
+
+          return next();
+
+        }
+
+        const accountNumber =
+          text.replace(
+            /[\s\-()]/g,
+            ""
+          );
+
+        if (
+          !accountNumber
+        ) {
+
+          return ctx.reply(
+            "❌ እባክዎ ትክክለኛ የአካውንት ቁጥር ያስገቡ።"
+          );
+
+        }
+
+        if (
+          accountNumber.length >
+          30
+        ) {
+
+          return ctx.reply(
+            "❌ የአካውንት ቁጥሩ ከ30 ፊደል/ቁጥር መብለጥ አይችልም።"
+          );
+
+        }
+        const paymentMethod =
+  await db.getPaymentMethodById(
+    withdrawal.paymentMethodId
+  );
+
+if (!paymentMethod) {
+  return ctx.reply(
+    "❌ የክፍያ መንገዱ አልተገኘም።"
+  );
+}
+
+const paymentMethodName =
+  String(
+    paymentMethod.name || ""
+  )
+    .trim()
+    .toLowerCase();
+
+const paymentMethodAmharic =
+  String(
+    paymentMethod.amharic_name || ""
+  ).trim();
+
+const isMobile =
+  paymentMethodName === "mobile" ||
+  paymentMethodAmharic === "ሞባይል";
+
+if (isMobile) {
+  accountNumber =
+    normalizeEthiopianPhone(text);
+
+  if (!accountNumber) {
+    return ctx.reply(
+      "❌ እባክዎ ትክክለኛ የኢትዮጵያ ሞባይል ቁጥር ያስገቡ።\n\n" +
+      "ምሳሌ፦ `0912345678`"
+    );
+  }
+} else {
+  accountNumber =
+    text.replace(
+      /[\s\-()]/g,
+      ""
+    );
+
+  if (!accountNumber) {
+    return ctx.reply(
+      "❌ እባክዎ ትክክለኛ የአካውንት ቁጥር ያስገቡ።"
+    );
+  }
+}
+
+await db.setBotUserState(
+  telegramId,
+  "withdrawal",
+  {
+    ...withdrawal,
+    step: "amount",
+    accountNumber
+  }
+);
+
+        return ctx.reply(
+
+          "✅ *የአካውንት ቁጥር ተቀብለናል።*\n\n" +
+
+          `📱 አካውንት፦ *${accountNumber}*\n\n` +
+
+          "💰 አሁን ማውጣት የሚፈልጉትን የብር መጠን ያስገቡ።\n\n" +
+
+          "ምሳሌ፦ `100`",
+
+          {
+            parse_mode:
+              "Markdown"
+          }
+
+        );
+
+      }
+
+
+      // ========================================================
+      // 9. WITHDRAWAL — AMOUNT
+      // ========================================================
+
+      if (
+        withdrawal &&
+        withdrawal.step ===
+          "amount"
+      ) {
+
+        if (
+          text.startsWith("/")
+        ) {
+
+          return next();
+
+        }
+
+        try {
+
+          const amount =
+            Number(text);
+
+          if (
+            !Number.isFinite(
+              amount
+            ) ||
+            amount <= 0
+          ) {
+
+            return ctx.reply(
+              "❌ እባክዎ ትክክለኛ የብር መጠን ያስገቡ።"
+            );
+
+          }
+
+          if (
+            amount < 50
+          ) {
+
+            return ctx.reply(
+              "❌ ዝቅተኛው የወጪ መጠን 50 ETB ነው።"
+            );
+
+          }
+
+          const user =
+            await db.getUserByTelegramId(
+              telegramId
+            );
+
+          if (!user) {
+
+            clearPendingState(
+  ctx.from.id
+);
+
+            return ctx.reply(
+              "❌ አካውንትዎ አልተገኘም።"
+            );
+
+          }
+
+          const userBalance =
+            Number(
+              user.balance
+            );
+
+          if (
+            amount >
+            userBalance
+          ) {
+
+            return ctx.reply(
+
+              "❌ በቂ ቀሪ ሂሳብ የሎትም።\n\n" +
+
+              `💰 ያለዎት ቀሪ ሂሳብ፦ ${userBalance} ETB\n` +
+
+              `💸 የጠየቁት፦ ${amount} ETB`
+
+            );
+
+          }
+
+          const result =
+            await db.createWithdrawal(
+
+              telegramId,
+
+              withdrawal.paymentMethodId,
+
+              withdrawal.accountNumber,
+
+              amount
+
+            );
+
+          if (
+            !result.success
+          ) {
+
+            return ctx.reply(
+              `❌ ${result.message}`
+            );
+
+          }
+
+          await db.clearBotUserState(telegramId);
+
+          return ctx.reply(
+
+            "✅ *የወጪ ጥያቄዎ ተቀብለናል!*\n\n" +
+
+            `💳 የክፍያ መንገድ፦ *${
+              withdrawal.paymentMethod.amharic_name
+            }*\n` +
+
+            `📱 አካውንት፦ *${
+              withdrawal.accountNumber
+            }*\n` +
+
+            `💰 መጠን፦ *${amount} ETB*\n\n` +
+
+            "⏳ ጥያቄዎ በአስተዳዳሪ እየተገመገመ ነው።",
+
+            {
+              parse_mode:
+                "Markdown"
+            }
+
+          );
+
+        } catch (err) {
+
+          console.error(
+            "Withdrawal amount error:",
+            err
+          );
+
+          return ctx.reply(
+            "❌ የወጪ ጥያቄውን ማስኬድ አልተቻለም።"
+          );
+
+        }
+
+      }
       // ========================================================
       // COMMANDS
       // ========================================================
@@ -7565,288 +7846,7 @@ bot.on(
       }
 
 
-      // ========================================================
-      // 8. WITHDRAWAL — ACCOUNT NUMBER
-      // ========================================================
-
-      const withdrawalState =
-  await db.getBotUserState(
-    telegramId
-  );
-      const withdrawal =
-  withdrawalState &&
-  withdrawalState.stateType === "withdrawal"
-    ? withdrawalState.stateData
-    : null;
-
-      if (
-        withdrawal &&
-        withdrawal.step ===
-          "account"
-      ) {
-
-        if (
-          text.startsWith("/")
-        ) {
-
-          return next();
-
-        }
-
-        const accountNumber =
-          text.replace(
-            /[\s\-()]/g,
-            ""
-          );
-
-        if (
-          !accountNumber
-        ) {
-
-          return ctx.reply(
-            "❌ እባክዎ ትክክለኛ የአካውንት ቁጥር ያስገቡ።"
-          );
-
-        }
-
-        if (
-          accountNumber.length >
-          30
-        ) {
-
-          return ctx.reply(
-            "❌ የአካውንት ቁጥሩ ከ30 ፊደል/ቁጥር መብለጥ አይችልም።"
-          );
-
-        }
-        const paymentMethod =
-  await db.getPaymentMethodById(
-    withdrawal.paymentMethodId
-  );
-
-if (!paymentMethod) {
-  return ctx.reply(
-    "❌ የክፍያ መንገዱ አልተገኘም።"
-  );
-}
-
-const paymentMethodName =
-  String(
-    paymentMethod.name || ""
-  )
-    .trim()
-    .toLowerCase();
-
-const paymentMethodAmharic =
-  String(
-    paymentMethod.amharic_name || ""
-  ).trim();
-
-const isMobile =
-  paymentMethodName === "mobile" ||
-  paymentMethodAmharic === "ሞባይል";
-
-if (isMobile) {
-  accountNumber =
-    normalizeEthiopianPhone(text);
-
-  if (!accountNumber) {
-    return ctx.reply(
-      "❌ እባክዎ ትክክለኛ የኢትዮጵያ ሞባይል ቁጥር ያስገቡ።\n\n" +
-      "ምሳሌ፦ `0912345678`"
-    );
-  }
-} else {
-  accountNumber =
-    text.replace(
-      /[\s\-()]/g,
-      ""
-    );
-
-  if (!accountNumber) {
-    return ctx.reply(
-      "❌ እባክዎ ትክክለኛ የአካውንት ቁጥር ያስገቡ።"
-    );
-  }
-}
-
-await db.setBotUserState(
-  telegramId,
-  "withdrawal",
-  {
-    ...withdrawal,
-    step: "amount",
-    accountNumber
-  }
-);
-
-        return ctx.reply(
-
-          "✅ *የአካውንት ቁጥር ተቀብለናል።*\n\n" +
-
-          `📱 አካውንት፦ *${accountNumber}*\n\n` +
-
-          "💰 አሁን ማውጣት የሚፈልጉትን የብር መጠን ያስገቡ።\n\n" +
-
-          "ምሳሌ፦ `100`",
-
-          {
-            parse_mode:
-              "Markdown"
-          }
-
-        );
-
-      }
-
-
-      // ========================================================
-      // 9. WITHDRAWAL — AMOUNT
-      // ========================================================
-
-      if (
-        withdrawal &&
-        withdrawal.step ===
-          "amount"
-      ) {
-
-        if (
-          text.startsWith("/")
-        ) {
-
-          return next();
-
-        }
-
-        try {
-
-          const amount =
-            Number(text);
-
-          if (
-            !Number.isFinite(
-              amount
-            ) ||
-            amount <= 0
-          ) {
-
-            return ctx.reply(
-              "❌ እባክዎ ትክክለኛ የብር መጠን ያስገቡ።"
-            );
-
-          }
-
-          if (
-            amount < 50
-          ) {
-
-            return ctx.reply(
-              "❌ ዝቅተኛው የወጪ መጠን 50 ETB ነው።"
-            );
-
-          }
-
-          const user =
-            await db.getUserByTelegramId(
-              telegramId
-            );
-
-          if (!user) {
-
-            clearPendingState(
-  ctx.from.id
-);
-
-            return ctx.reply(
-              "❌ አካውንትዎ አልተገኘም።"
-            );
-
-          }
-
-          const userBalance =
-            Number(
-              user.balance
-            );
-
-          if (
-            amount >
-            userBalance
-          ) {
-
-            return ctx.reply(
-
-              "❌ በቂ ቀሪ ሂሳብ የሎትም።\n\n" +
-
-              `💰 ያለዎት ቀሪ ሂሳብ፦ ${userBalance} ETB\n` +
-
-              `💸 የጠየቁት፦ ${amount} ETB`
-
-            );
-
-          }
-
-          const result =
-            await db.createWithdrawal(
-
-              telegramId,
-
-              withdrawal.paymentMethodId,
-
-              withdrawal.accountNumber,
-
-              amount
-
-            );
-
-          if (
-            !result.success
-          ) {
-
-            return ctx.reply(
-              `❌ ${result.message}`
-            );
-
-          }
-
-          await db.clearBotUserState(telegramId);
-
-          return ctx.reply(
-
-            "✅ *የወጪ ጥያቄዎ ተቀብለናል!*\n\n" +
-
-            `💳 የክፍያ መንገድ፦ *${
-              withdrawal.paymentMethod.amharic_name
-            }*\n` +
-
-            `📱 አካውንት፦ *${
-              withdrawal.accountNumber
-            }*\n` +
-
-            `💰 መጠን፦ *${amount} ETB*\n\n` +
-
-            "⏳ ጥያቄዎ በአስተዳዳሪ እየተገመገመ ነው።",
-
-            {
-              parse_mode:
-                "Markdown"
-            }
-
-          );
-
-        } catch (err) {
-
-          console.error(
-            "Withdrawal amount error:",
-            err
-          );
-
-          return ctx.reply(
-            "❌ የወጪ ጥያቄውን ማስኬድ አልተቻለም።"
-          );
-
-        }
-
-      }
+      
 
 // ========================================================
 // 10. BROADCAST
