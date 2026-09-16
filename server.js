@@ -671,15 +671,33 @@ function evaluateClaims(room){
 
   room.claimedThisRound=[]; room.claimWindowOpen=false;
 
-  if(winners.length>0) endGame(room,winners,null,false);
-  else scheduleNextCall(room);
+if(winners.length > 0){
+    return endGame(room,winners,null,false);
 }
 
+if(room.status === 'playing'){
+    scheduleNextCall(room);
+}
+}
+
+
 async function endGame(room, winners, customMsg, noWinner){
- 
-  if(room.callTimer) clearTimeout(room.callTimer);
-  if(room.countdownTimer) clearInterval(room.countdownTimer);
-  if(room.claimEvalTimer) clearTimeout(room.claimEvalTimer);
+    if(!room || room.status === 'finished'){
+        console.warn('[GAME] duplicate/invalid endGame', room?.roomId);
+        return;
+    }
+
+    room.status='finished';
+
+    if(room.callTimer){
+        clearTimeout(room.callTimer);
+        room.callTimer=null;
+    }
+
+    if(room.claimEvalTimer){
+        clearTimeout(room.claimEvalTimer);
+        room.claimEvalTimer=null;
+    }
   room.status='finished'; room.claimWindowOpen=false;
 
   let winAmount=0, winnerNames=[], winnerTids=[];
