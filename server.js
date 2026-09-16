@@ -643,7 +643,7 @@ function callNumber(room){
 }
 
 function evaluateClaims(room){
- alert(room);
+ 
   room.claimEvalTimer=null;
   const winners=[], cheaters=[];
   room.claimedThisRound.forEach(claim=>{
