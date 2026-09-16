@@ -1564,8 +1564,18 @@ async createWithdrawal(
     const result = await client.query(
       `
       WITH candidates AS (
-        SELECT w.id
-        FROM withdrawals w
+          SELECT
+              w.id,
+              w.user_id,
+              u.name,
+              w.amount,
+              w.payment_method_id,
+              w.created_at,
+              w.status,
+              w.claimed_at
+          FROM withdrawals w
+          JOIN users u
+              ON u.id = w.user_id
         WHERE
           (
             w.status = 'pending'
