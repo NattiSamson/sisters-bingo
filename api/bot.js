@@ -36,6 +36,7 @@ const pendingAdminAccountEdit = {};
 const pendingAdminAccountDelete = {};
 const pendingAdminUserSearch = new Map();
 const pendingAdminRoleSearch = new Map();
+const pendingBroadcastRecipient = new Map();
 
 // ============================================================
 // CLEAR USER STATE
@@ -54,7 +55,7 @@ function clearPendingState(telegramId)
   
   pendingAdminUserSearch.delete(telegramId);
   pendingAdminRoleSearch.delete(telegramId);
-  
+  pendingBroadcastRecipient.delete(telegramId);  
 }
 
 // ============================================================
@@ -532,23 +533,10 @@ async function showBroadcastPreview(
   await ctx.reply(
     `📢 *BROADCAST PREVIEW*\n\n` +
     `👥 Recipients: ${users.length}\n\n` +
-    `🖼 Image: ${
-      draft.include_image
-        ? "Yes"
-        : "No"
-    }\n` +
-    `📝 Text: ${
-      draft.include_text
-        ? "Yes"
-        : "No"
-    }\n` +
-    `🎮 Play Button: ${
-      draft.include_button
-        ? `Yes — "${draft.button_title}"`
-        : "No"
-    }\n\n` +
-    `The message above is the exact content that will be broadcast.\n\n` +
-    `Send it to everyone?`,
+    `🖼 Image: ${ draft.include_image ? "Yes" : "No"  }\n` +
+    `📝 Text: ${  draft.include_text ? "Yes" : "No"  }\n` +
+    `🎮 Play Button: ${ draft.include_button ? `Yes — "${draft.button_title}"` : "No" }\n\n` +
+    `The message above is the exact content that will be broadcast.`,
     {
       parse_mode: "Markdown",
       reply_markup: {
@@ -556,8 +544,13 @@ async function showBroadcastPreview(
           [
             {
               text: "✅ SEND TO ALL",
-              callback_data:
-                "broadcast_confirm"
+              callback_data: "broadcast_confirm"
+            }
+          ],
+          [
+            {
+              text: "👤 SEND TO SPECIFIC PERSON",
+              callback_data: "broadcast_specific"
             }
           ],
           [
@@ -7440,6 +7433,10 @@ if (admin) {
     draft
   ) {
 
+      pendingBroadcastRecipient.delete(
+    adminTelegramId
+  );
+
     await db.deleteBroadcastDraft(
       adminTelegramId
     );
@@ -7462,6 +7459,110 @@ if (admin) {
   }
 
   if (draft) {
+    // ============================================================
+// BROADCAST SPECIFIC RECIPIENT PHONE
+// ============================================================
+
+if (
+  draft &&
+  draft.status ===
+    "waiting_broadcast_phone"
+) {
+
+  const phone =
+    text.trim();
+
+  if (
+    phone === "/cancel"
+  ) {
+
+    pendingBroadcastRecipient.delete(
+      adminTelegramId
+    );
+
+    await db.updateBroadcastStatus(
+      adminTelegramId,
+      "preview"
+    );
+
+    return ctx.reply(
+      "❌ Specific-person broadcast cancelled.\n\n" +
+      "The broadcast draft is still available."
+    );
+  }
+
+  const user =
+    await db.getUserByPhone(
+      phone
+    );
+
+  if (!user) {
+
+    return ctx.reply(
+      "❌ *User not found.*\n\n" +
+      "Make sure the phone number is registered and the account is active.\n\n" +
+      "Example:\n" +
+      "`0912345678`\n\n" +
+      "or\n" +
+      "`+251912345678`",
+      {
+        parse_mode: "Markdown"
+      }
+    );
+  }
+
+  // ----------------------------------------------------------
+  // SAVE RECIPIENT IN ADMIN STATE
+  // ----------------------------------------------------------
+
+  pendingBroadcastRecipient.set(
+    adminTelegramId,
+    {
+      step: "confirm",
+      userTelegramId:
+        user.telegram_id,
+      userId:
+        user.id,
+      phone:
+        user.phone,
+      name:
+        user.name
+    }
+  );
+
+  await db.updateBroadcastStatus(
+    adminTelegramId,
+    "specific_recipient_confirm"
+  );
+
+  return ctx.reply(
+    "👤 *Recipient Found*\n\n" +
+    `👤 Name: *${user.name || "Unknown"}*\n` +
+    `📱 Phone: \`${user.phone || phone}\`\n\n` +
+    "Do you want to send the broadcast to this person?",
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "✅ SEND",
+              callback_data:
+                "broadcast_specific_confirm"
+            }
+          ],
+          [
+            {
+              text: "❌ CANCEL",
+              callback_data:
+                "broadcast_cancel_specific"
+            }
+          ]
+        ]
+      }
+    }
+  );
+}
 
     // ------------------------------------------------------
     // MESSAGE
@@ -7719,6 +7820,83 @@ bot.callbackQuery(
 );
 
 
+
+// ============================================================
+// BROADCAST TO SPECIFIC PERSON
+// ============================================================
+
+bot.callbackQuery(
+  "broadcast_specific",
+  async (ctx) => {
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const adminTelegramId =
+      admin.telegram_id;
+
+    const draft =
+      await db.getBroadcastDraft(
+        adminTelegramId
+      );
+
+    if (!draft) {
+      return ctx.reply(
+        "❌ Broadcast draft not found."
+      );
+    }
+
+    if (!isBroadcastDraftComplete(draft)) {
+      return ctx.reply(
+        "❌ Broadcast information is incomplete."
+      );
+    }
+
+    // Remember that the next text message is a
+    // phone number for a specific broadcast recipient.
+    pendingBroadcastRecipient.set(
+      adminTelegramId,
+      {
+        step: "waiting_phone"
+      }
+    );
+
+    await db.updateBroadcastStatus(
+      adminTelegramId,
+      "waiting_broadcast_phone"
+    );
+
+    await ctx.reply(
+      "👤 *Send to Specific Person*\n\n" +
+      "Please send the user's phone number.\n\n" +
+      "Example:\n" +
+      "`0912345678`\n\n" +
+      "or\n" +
+      "`+251912345678`\n\n" +
+      "❌ Send /cancel to cancel.",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "broadcast_cancel_specific"
+              }
+            ]
+          ]
+        }
+      }
+    );
+  }
+);
 // ============================================================
 // BROADCAST CANCEL
 // ============================================================
@@ -7754,6 +7932,189 @@ bot.callbackQuery(
       "❌ Broadcast cancelled."
     );
 
+  }
+);
+// ============================================================
+// CONFIRM SPECIFIC RECIPIENT
+// ============================================================
+
+bot.callbackQuery(
+  "broadcast_specific_confirm",
+  async (ctx) => {
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const adminTelegramId =
+      admin.telegram_id;
+
+    const draft =
+      await db.getBroadcastDraft(
+        adminTelegramId
+      );
+
+    if (!draft) {
+      return ctx.editMessageText(
+        "❌ Broadcast draft not found."
+      );
+    }
+
+    if (!isBroadcastDraftComplete(draft)) {
+      return ctx.editMessageText(
+        "❌ Broadcast information is incomplete."
+      );
+    }
+
+    const recipient =
+      pendingBroadcastRecipient.get(
+        adminTelegramId
+      );
+
+    if (
+      !recipient ||
+      !recipient.userTelegramId
+    ) {
+      return ctx.editMessageText(
+        "❌ Recipient information expired. Please try again."
+      );
+    }
+
+    const telegramId =
+      recipient.userTelegramId;
+
+    try {
+
+      const replyMarkup =
+        getBroadcastKeyboard(
+          draft,
+          telegramId
+        );
+
+      // ------------------------------------------------------
+      // IMAGE
+      // ------------------------------------------------------
+
+      if (
+        draft.include_image === true
+      ) {
+
+        await bot.api.sendPhoto(
+          telegramId,
+          draft.image_url,
+          {
+            caption:
+              draft.include_text === true
+                ? draft.message
+                : undefined,
+
+            reply_markup:
+              replyMarkup
+          }
+        );
+
+      }
+
+      // ------------------------------------------------------
+      // TEXT ONLY
+      // ------------------------------------------------------
+
+      else if (
+        draft.include_text === true
+      ) {
+
+        await bot.api.sendMessage(
+          telegramId,
+          draft.message,
+          {
+            reply_markup:
+              replyMarkup
+          }
+        );
+      }
+
+      pendingBroadcastRecipient.delete(
+        adminTelegramId
+      );
+
+      await db.deleteBroadcastDraft(
+        adminTelegramId
+      );
+
+      await ctx.editMessageText(
+        "✅ *Broadcast sent successfully.*\n\n" +
+        `👤 Recipient: ${recipient.name || "Unknown"}\n` +
+        `📱 Phone: \`${recipient.phone || "Unknown"}\``,
+        {
+          parse_mode: "Markdown"
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Specific broadcast error:",
+        err
+      );
+
+      pendingBroadcastRecipient.delete(
+        adminTelegramId
+      );
+
+      await ctx.editMessageText(
+        "❌ Failed to send the broadcast to this user.\n\n" +
+        "The broadcast draft has NOT been deleted. " +
+        "You can try again."
+      );
+    }
+  }
+);
+// ============================================================
+// CANCEL SPECIFIC RECIPIENT
+// ============================================================
+
+bot.callbackQuery(
+  "broadcast_cancel_specific",
+  async (ctx) => {
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const adminTelegramId =
+      admin.telegram_id;
+
+    pendingBroadcastRecipient.delete(
+      adminTelegramId
+    );
+
+    const draft =
+      await db.getBroadcastDraft(
+        adminTelegramId
+      );
+
+    if (draft) {
+
+      await db.updateBroadcastStatus(
+        adminTelegramId,
+        "preview"
+      );
+    }
+
+    await ctx.editMessageText(
+      "❌ Specific-person sending cancelled.\n\n" +
+      "Your broadcast draft is still saved."
+    );
   }
 );
 // ============================================================
