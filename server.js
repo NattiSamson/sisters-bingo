@@ -929,7 +929,7 @@ wss.on('connection',(ws)=>{
                const tid = String(msg.telegramId || '').trim();
 
                  if (!/^\d+$/.test(tid) || Number(tid) <= 0) {
-                   send(ws, { type: 'authInvalidTelegramId', retryAfter: 1000 });
+                   send(ws, { type: 'authRetry', retryAfter: 1000 });
                    break;
                  }
 
@@ -937,7 +937,7 @@ wss.on('connection',(ws)=>{
               
                 if (!user) {
                   // Database/account lookup failed or user doesn't exist.
-                  send(ws, { type: 'authUnknownUser', retryAfter: 1000 });
+                  send(ws, { type: 'authRetry', retryAfter: 1000 });
                   break;
                 }
 
