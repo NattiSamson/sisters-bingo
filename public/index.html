@@ -2188,7 +2188,14 @@ function handle(msg){
         if(id) sendTelegramAuth(id);
       },Math.max(300,Number(msg.retryAfter)||750));
       break;
-
+      
+    case 'authBlockedUser':
+      document.getElementById('loadingText').innerText='!!!! YOU ARE BLOCKED! !!!!!';
+      break;
+    case 'authInactiveUser':
+      document.getElementById('loadingText').innerText='Your account is Inactive please make it active!';
+      break;
+      
     case 'authSuccess':
   // Accept a WebSocket balance only for a confirmed registered account.
   myName=msg.playerName||myName||'Player';
