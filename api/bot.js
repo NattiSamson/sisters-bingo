@@ -4251,7 +4251,7 @@ bot.callbackQuery(
           {
             text:
               `${account.account_number} — ` +
-              `${account.account_name || ""}`,
+              `${account.balance || ""}`,
 
             callback_data:
               `admin_pending_account_${account.id}`
