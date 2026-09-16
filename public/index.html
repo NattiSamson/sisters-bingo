@@ -2170,8 +2170,11 @@ function handle(msg){
         // First load the account directly over HTTPS. This breaks the old failure
         // mode where a WebSocket lookup returned a fake zero/unregistered snapshot.
         sendTelegramAuth(tid);
-        await refreshAccountProfile(6,500);
-        document.getElementById('loadingText').innerText='all done!';
+        // Refresh the profile independently.
+        // A temporary HTTP/API failure must not prevent login.
+        refreshAccountProfile(6,500).catch(err => {
+          console.warn('Account profile refresh failed:', err);
+        });    
         goToGame();
       });
       break;
