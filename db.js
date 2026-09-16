@@ -880,25 +880,21 @@ module.exports = {
             SELECT COUNT(*)
             FROM withdrawals w
             WHERE w.user_id = u.id
-              AND w.is_pending = TRUE
-              AND w.is_approved = FALSE
+              AND w.status = 'pending'
           ) AS pending_withdrawals,
 
           (
             SELECT COUNT(*)
             FROM withdrawals w
             WHERE w.user_id = u.id
-              AND w.is_pending = FALSE
-              AND w.is_approved = TRUE
+              AND w.status = 'completed'
           ) AS approved_withdrawals,
 
           (
             SELECT COUNT(*)
             FROM withdrawals w
             WHERE w.user_id = u.id
-              AND w.is_pending = FALSE
-              AND w.is_approved = FALSE
-              AND w.reject_reason IS NOT NULL
+              AND w.status = 'rejected'              
           ) AS rejected_withdrawals
 
         FROM users u
@@ -963,8 +959,7 @@ module.exports = {
             )
             FROM withdrawals w
             WHERE w.user_id = u.id
-              AND w.is_pending = FALSE
-              AND w.is_approved = TRUE
+              AND w.status = 'completed'
           ) AS approved_withdrawal_amount,
 
           (
@@ -974,8 +969,7 @@ module.exports = {
             )
             FROM withdrawals w
             WHERE w.user_id = u.id
-              AND w.is_pending = TRUE
-              AND w.is_approved = FALSE
+              AND w.status = 'pending' 
           ) AS pending_withdrawal_amount,
 
           (
@@ -985,9 +979,7 @@ module.exports = {
             )
             FROM withdrawals w
             WHERE w.user_id = u.id
-              AND w.is_pending = FALSE
-              AND w.is_approved = FALSE
-              AND w.reject_reason IS NOT NULL
+              AND w.status = 'rejected'
           ) AS rejected_withdrawal_amount
 
         FROM users u
@@ -1037,30 +1029,25 @@ module.exports = {
           (
             SELECT COUNT(*)
             FROM withdrawals
-            WHERE is_pending = TRUE
-              AND is_approved = FALSE
+            WHERE status = 'pending'             
           ) AS pending_withdrawals,
 
           (
             SELECT COUNT(*)
             FROM withdrawals
-            WHERE is_pending = FALSE
-              AND is_approved = TRUE
+            WHERE status = 'completed'
           ) AS approved_withdrawals,
 
           (
             SELECT COUNT(*)
             FROM withdrawals
-            WHERE is_pending = FALSE
-              AND is_approved = FALSE
-              AND reject_reason IS NOT NULL
+            WHERE status = 'rejected'
           ) AS rejected_withdrawals,
 
           (
             SELECT COUNT(*)
             FROM users
-            WHERE is_active = TRUE
-              AND is_blocked = FALSE
+            WHERE is_active = TRUE              
           ) AS active_users,
 
           (
@@ -1450,8 +1437,7 @@ module.exports = {
             approved_by_id,
             account_number,
             amount,
-            is_pending,
-            is_approved,
+            status,
             reject_reason,
             created_at,
             updated_at
@@ -1463,8 +1449,7 @@ module.exports = {
             NULL,
             $3,
             $4,
-            TRUE,
-            FALSE,
+            'pending',            
             NULL,
             NOW(),
             NOW()
@@ -1583,8 +1568,7 @@ module.exports = {
           w.approved_by_id,
           w.account_number,
           w.amount,
-          w.is_pending,
-          w.is_approved,
+          w.status,
           w.reject_reason,
           w.created_at,
           w.updated_at,
@@ -1609,8 +1593,7 @@ module.exports = {
           ON pm.id =
              w.payment_method_id
 
-        WHERE w.is_pending = TRUE
-          AND w.is_approved = FALSE
+        WHERE w.status = 'pending'          
 
         ORDER BY w.created_at ASC
 
