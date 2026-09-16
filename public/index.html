@@ -2187,8 +2187,14 @@ function handle(msg){
       document.getElementById('loadingText').innerText='authRetry';      
       setTimeout(()=>{
         const id=getTelegramId();
-        if(id) sendTelegramAuth(id);
+        if(id) 
+        {
+          document.getElementById('loadingText').innerText='tid='+id;
+          sendTelegramAuth(id);
+        }
       },Math.max(300,Number(msg.retryAfter)||750));
+      document.getElementById('loadingText').innerText='4';    
+      
       break;
       
     case 'authBlockedUser':
