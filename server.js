@@ -35,7 +35,7 @@ app.use((req, res, next) => {
   next();
 });
 
-const ADMIN_PHONE = '251934255415';
+const ADMIN_PHONE = '251965666656';
 function isAdminPhone(phone) {
   if (!phone) return false;
   const normalized = String(phone).replace(/^\+/, '');
@@ -419,15 +419,11 @@ async function loadUser(tid,retries=6,delayMs=500) {
       if(u){
         const balance=Number.parseFloat(u.balance);
         userCache[id] = {
-                          name: u.name || '',
-                          phone: u.phone || '',
-                          balance: Number.isFinite(balance) ? balance : 0,
-                          isAdmin: u.is_admin === true,
-                        
-                          // Authentication status
-                          is_blocked: u.is_blocked,
-                          is_active: u.is_active
-                        };
+          name:u.name||'',
+          phone:u.phone||'',
+          balance:Number.isFinite(balance)?balance:0,
+          isAdmin:u.is_admin===true
+        };
         return userCache[id];
       }
       // Query succeeded and there is genuinely no matching account.
@@ -647,7 +643,6 @@ function callNumber(room){
 }
 
 function evaluateClaims(room){
- 
   room.claimEvalTimer=null;
   const winners=[], cheaters=[];
   room.claimedThisRound.forEach(claim=>{
@@ -675,33 +670,14 @@ function evaluateClaims(room){
 
   room.claimedThisRound=[]; room.claimWindowOpen=false;
 
-if(winners.length > 0){
-    return endGame(room,winners,null,false);
+  if(winners.length>0) endGame(room,winners,null,false);
+  else scheduleNextCall(room);
 }
-
-if(room.status === 'playing'){
-    scheduleNextCall(room);
-}
-}
-
 
 async function endGame(room, winners, customMsg, noWinner){
-    if(!room || room.status === 'finished'){
-        console.warn('[GAME] duplicate/invalid endGame', room?.roomId);
-        return;
-    }
-
-    room.status='finished';
-
-    if(room.callTimer){
-        clearTimeout(room.callTimer);
-        room.callTimer=null;
-    }
-
-    if(room.claimEvalTimer){
-        clearTimeout(room.claimEvalTimer);
-        room.claimEvalTimer=null;
-    }
+  if(room.callTimer) clearTimeout(room.callTimer);
+  if(room.countdownTimer) clearInterval(room.countdownTimer);
+  if(room.claimEvalTimer) clearTimeout(room.claimEvalTimer);
   room.status='finished'; room.claimWindowOpen=false;
 
   let winAmount=0, winnerNames=[], winnerTids=[];
@@ -925,69 +901,23 @@ wss.on('connection',(ws)=>{
 
           switch(msg.type){
 
-          case 'telegramAuth': {
-               const tid = String(msg.telegramId || '').trim();
-
-                 if (!/^\d+$/.test(tid) || Number(tid) <= 0) {
-                   send(ws, { type: 'authRetry', retryAfter: 1000 });
-                   break;
-                 }
-
-                const user = await loadUser(tid, 6, 500);
-              
-                if (!user) {
-                  // Database/account lookup failed or user doesn't exist.
-                  send(ws, { type: 'authRetry', retryAfter: 1000 });
-                  break;
-                }
-
-              // ─────────────────────────────────────
-              // BLOCKED USER
-              // ─────────────────────────────────────
-              if (user.is_blocked === true) {
-                console.log(`🚫 Blocked user attempted login: ${tid}`);
-            
-                send(ws, {
-                  type: 'authBlockedUser',
-                  message: 'You are blocked!'
-                });
-            
-                break;
-              }            
-              // ─────────────────────────────────────
-              // INACTIVE USER
-              // ─────────────────────────────────────
-              if (user.is_active === false) {
-                console.log(`⏸️ Inactive user attempted login: ${tid}`);
-            
-                send(ws, {
-                  type: 'authInactiveUser',
-                  message: 'Your account is inactive. Please contact support.'
-                });
-            
+            case 'telegramAuth':{
+              const tid=String(msg.telegramId||'').trim();
+              if(!/^\d+$/.test(tid) || Number(tid)<=0){
+                send(ws,{type:'authRetry',retryAfter:1000});
                 break;
               }
-            
-              // ─────────────────────────────────────
-              // AUTHENTICATED USER
-              // ─────────────────────────────────────
-              client.telegramId = tid;
-              client.playerName = user.name || client.playerName || 'Player';
-              client.balance = Number.isFinite(Number(user.balance))
-                ? Number(user.balance)
-                : 0;
-            
-              client.isAdmin = user.isAdmin || isAdminPhone(user.phone);
-            
-              send(ws, {
-                type: 'authSuccess',
-                playerName: client.playerName,
-                balance: client.balance,
-                isRegistered: true,
-                isAdmin: client.isAdmin,
-                adminToken: client.isAdmin ? ADMIN_PHONE : undefined
-              });
-            
+              const user=await loadUser(tid,6,500);
+              if(user){
+                client.telegramId=tid;
+                client.playerName=user.name||client.playerName||'Player';
+                client.balance=Number.isFinite(Number(user.balance))?Number(user.balance):0;
+                client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
+                send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
+              } else {
+                // Never convert a failed/late database lookup into a fake zero wallet.
+                send(ws,{type:'authRetry',retryAfter:1000});
+              }
               break;
             }
 
@@ -1428,81 +1358,43 @@ wss.on('connection',(ws)=>{
 
             }
 
-case 'claimBingo': {
-    if (!client.roomId) return;
+            case 'claimBingo':{
 
-    const room = rooms[client.roomId];
+              if(!client.roomId) return;
 
-    if (!room || room.status !== 'playing') {
-        return send(ws, {
-            type: 'claimRejected',
-            reason: 'GAME_NOT_PLAYING'
-        });
-    }
+              const room=rooms[client.roomId];
 
-    const p = room.players.find(
-        p => p.playerId === client.playerId
-    );
+              if(!room||room.status!=='playing') return;
 
-    if (!p || p.disqualified || (!p.cardId && !p.cardId2)) {
-        return send(ws, {
-            type: 'claimRejected',
-            reason: 'INVALID_PLAYER'
-        });
-    }
+              const p=room.players.find(p=>p.playerId===client.playerId);
 
-    if (!room.claimWindowOpen) {
-        return send(ws, {
-            type: 'claimRejected',
-            reason: 'CLAIM_WINDOW_CLOSED'
-        });
-    }
+              if(!p||p.disqualified||(!p.cardId&&!p.cardId2)) return;
 
-    if (!room.claimedThisRound.some(
-        c => c.playerId === client.playerId
-    )) {
-        room.claimedThisRound.push({
-            playerId: client.playerId,
-            markedIndices: Array.isArray(msg.markedIndices)
-                ? msg.markedIndices
-                : [],
-            markedIndices2: Array.isArray(msg.markedIndices2)
-                ? msg.markedIndices2
-                : []
-        });
-    }
+              if(!room.claimWindowOpen) return send(ws,{type:'claimTooLate',message:'ጊዜው አልፏል!'});
 
-    send(ws, {
-        type: 'claimAccepted'
-    });
+              if(!room.claimedThisRound.find(c=>c.playerId===client.playerId))
 
-    if (room.callTimer) {
-        clearTimeout(room.callTimer);
-        room.callTimer = null;
-    }
+                room.claimedThisRound.push({
 
-    if (room.claimEvalTimer) {
-        clearTimeout(room.claimEvalTimer);
-    }
+                  playerId:client.playerId,
 
-    room.claimEvalTimer = setTimeout(
-        () => evaluateClaims(room),
-        CLAIM_COLLECT_MS
-    );
+                  markedIndices:msg.markedIndices||[],
 
-    break;
-}
-            case 'claimAccepted':
-           autoClaimSent = true;
-           break;
-       
-       case 'claimRejected':
-           autoClaimSent = false;
-           break;
-       
-       case 'claimTooLate':
-           autoClaimSent = false;
-           break;
+                  cardId2:msg.cardId2||null,
+
+                  markedIndices2:msg.markedIndices2||[]
+
+                });
+
+              if(room.callTimer) clearTimeout(room.callTimer);
+
+              if(room.claimEvalTimer) clearTimeout(room.claimEvalTimer);
+
+              room.claimEvalTimer=setTimeout(()=>evaluateClaims(room), CLAIM_COLLECT_MS);
+
+              break;
+
+            }
 
             case 'leaveRoom':
 

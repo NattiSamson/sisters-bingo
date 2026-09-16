@@ -1617,10 +1617,9 @@ function goToGame(){
 }
 
 function goToWallet(){gotoProfile();}
-function gotoProfile(){
+async function gotoProfile(){
   navGo('screenProfile','navProfile');
-  // Show the profile immediately. The server refresh runs silently in the background.
-  loadUserProfile(false).catch(()=>{});
+  await loadUserProfile();
 }
 
 function renderUserProfile(u, history=[]){
@@ -1655,33 +1654,15 @@ function renderUserProfile(u, history=[]){
 async function loadUserProfile(force=false){
   if(!telegramId) telegramId=getTelegramId();
   const status=document.getElementById('profileStatus');
-
-  // Never show a loading screen/message for Profile. If we have a cached account,
-  // render it immediately and then refresh it silently from the server.
-  if(status) status.style.display='none';
-
-  let id=normalizeTelegramId(telegramId);
-  if(!id){
-    try{ id=normalizeTelegramId(localStorage.getItem('melaBingoTelegramId')); }catch(e){}
-  }
-
-  // Render the last successfully loaded profile instantly while the network refreshes.
-  if(id && !force){
-    try{
-      const cached=JSON.parse(localStorage.getItem('melaBingoProfile')||'null');
-      if(cached && cached.telegramId===id && cached.user){
-        renderUserProfile(cached.user,Array.isArray(cached.history)?cached.history:[]);
-      }
-    }catch(e){}
-  }
-
-  if(!id){
-    // The normal app/account flow can still resolve Telegram authentication later.
+  if(!telegramId){
+    if(status){status.style.display='block';status.innerText='Profile is waiting for your account.';}
     return false;
   }
-
-  telegramId=id;
+  if(status){status.style.display='block';status.innerText='Loading profile...';}
   try{
+    const id=normalizeTelegramId(telegramId);
+    if(!id) throw new Error('Invalid Telegram ID');
+    telegramId=id;
     const [userRes,historyRes]=await Promise.all([
       fetch(`${API_BASE}/api/user/${encodeURIComponent(id)}?_=${Date.now()}`,{cache:'no-store'}),
       fetch(`${API_BASE}/api/history/${encodeURIComponent(id)}?limit=100&_=${Date.now()}`,{cache:'no-store'})
@@ -1689,26 +1670,12 @@ async function loadUserProfile(force=false){
     const userData=await userRes.json().catch(()=>({}));
     const historyData=await historyRes.json().catch(()=>[]);
     if(!userRes.ok) throw new Error(userData.error||'Profile request failed');
-    const history=Array.isArray(historyData)?historyData:[];
-    renderUserProfile(userData,history);
-
-    // Cache only a successfully loaded server profile. This is UI data only;
-    // Neon/server balance remains authoritative and is never changed here.
-    try{
-      localStorage.setItem('melaBingoProfile',JSON.stringify({
-        telegramId:id,
-        user:userData,
-        history:history,
-        savedAt:Date.now()
-      }));
-    }catch(e){}
-
+    renderUserProfile(userData,Array.isArray(historyData)?historyData:[]);
     if(status) status.style.display='none';
     return true;
   }catch(e){
-    console.error('Profile refresh:',e);
-    // Keep the cached/current profile visible if the background refresh fails.
-    if(status) status.style.display='none';
+    console.error('Profile:',e);
+    if(status){status.style.display='block';status.innerText='Unable to load your profile.';}
     return false;
   }
 }
