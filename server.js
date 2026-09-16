@@ -925,37 +925,69 @@ wss.on('connection',(ws)=>{
 
           switch(msg.type){
 
-            case 'telegramAuth':{
-              const tid=String(msg.telegramId||'').trim();
-              if(!/^\d+$/.test(tid) || Number(tid)<=0){
-                send(ws,{type:'authRetry',retryAfter:1000});
+          case 'telegramAuth': {
+               const tid = String(msg.telegramId || '').trim();
+
+                 if (!/^\d+$/.test(tid) || Number(tid) <= 0) {
+                   send(ws, { type: 'authRetry', retryAfter: 1000 });
+                   break;
+                 }
+
+                const user = await loadUser(tid, 6, 500);
+              
+                if (!user) {
+                  // Database/account lookup failed or user doesn't exist.
+                  send(ws, { type: 'authRetry', retryAfter: 1000 });
+                  break;
+                }
+
+              // ─────────────────────────────────────
+              // BLOCKED USER
+              // ─────────────────────────────────────
+              if (user.is_blocked === true) {
+                console.log(`🚫 Blocked user attempted login: ${tid}`);
+            
+                send(ws, {
+                  type: 'authBlockedUser',
+                  message: 'You are blocked!'
+                });
+            
+                break;
+              }            
+              // ─────────────────────────────────────
+              // INACTIVE USER
+              // ─────────────────────────────────────
+              if (user.is_active === false) {
+                console.log(`⏸️ Inactive user attempted login: ${tid}`);
+            
+                send(ws, {
+                  type: 'authInactiveUser',
+                  message: 'Your account is inactive. Please contact support.'
+                });
+            
                 break;
               }
-              const user=await loadUser(tid,6,500);
-              if(user)
-              {
-               if(user.is_blocked === true)
-               {
-                send(ws,{type:'authBlockedUser',retryAfter:1000});
-                return;
-               }
-               else if(user.is_active === false)
-               {
-                send(ws,{type:'authInactiveUser',retryAfter:1000});
-                return;
-               }
-               else
-               {
-                client.telegramId=tid;
-                client.playerName=user.name||client.playerName||'Player';
-                client.balance=Number.isFinite(Number(user.balance))?Number(user.balance):0;
-                client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
-                send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
-               }
-              } else {
-                // Never convert a failed/late database lookup into a fake zero wallet.
-                send(ws,{type:'authRetry',retryAfter:1000});
-              }
+            
+              // ─────────────────────────────────────
+              // AUTHENTICATED USER
+              // ─────────────────────────────────────
+              client.telegramId = tid;
+              client.playerName = user.name || client.playerName || 'Player';
+              client.balance = Number.isFinite(Number(user.balance))
+                ? Number(user.balance)
+                : 0;
+            
+              client.isAdmin = user.isAdmin || isAdminPhone(user.phone);
+            
+              send(ws, {
+                type: 'authSuccess',
+                playerName: client.playerName,
+                balance: client.balance,
+                isRegistered: true,
+                isAdmin: client.isAdmin,
+                adminToken: client.isAdmin ? ADMIN_PHONE : undefined
+              });
+            
               break;
             }
 
