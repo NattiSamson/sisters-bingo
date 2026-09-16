@@ -2164,9 +2164,8 @@ function handle(msg){
           document.getElementById('loadingText').innerText='Waiting for Telegram account...';
           setTimeout(()=>{ const retryId=getTelegramId(); if(retryId) sendTelegramAuth(retryId); },1000);
           return;
-        }
+        }        
         
-        document.getElementById('loadingText').innerText=tid;
         // First load the account directly over HTTPS. This breaks the old failure
         // mode where a WebSocket lookup returned a fake zero/unregistered snapshot.
         await sendTelegramAuth(tid);
