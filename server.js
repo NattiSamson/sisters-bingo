@@ -425,8 +425,8 @@ async function loadUser(tid,retries=6,delayMs=500) {
                           isAdmin: u.is_admin === true,
                         
                           // Authentication status
-                          is_blocked: u.is_blocked === true,
-                          is_active: u.is_active !== false
+                          is_blocked: u.is_blocked,
+                          is_active: u.is_active
                         };
         return userCache[id];
       }
@@ -934,12 +934,12 @@ wss.on('connection',(ws)=>{
               const user=await loadUser(tid,6,500);
               if(user)
               {
-               if(user.is_blocked !== false)
+               if(user.is_blocked === true)
                {
                 send(ws,{type:'authBlockedUser',retryAfter:1000});
                 return;
                }
-               else if(user.is_active !== true)
+               else if(user.is_active === false)
                {
                 send(ws,{type:'authInactiveUser',retryAfter:1000});
                 return;
@@ -950,7 +950,7 @@ wss.on('connection',(ws)=>{
                 client.playerName=user.name||client.playerName||'Player';
                 client.balance=Number.isFinite(Number(user.balance))?Number(user.balance):0;
                 client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
-                send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
+                //send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
                }
               } else {
                 // Never convert a failed/late database lookup into a fake zero wallet.
