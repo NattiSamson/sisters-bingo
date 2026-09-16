@@ -899,7 +899,7 @@ module.exports = {
               AND w.is_pending = FALSE
               AND w.is_approved = FALSE
               AND w.reject_reason IS NOT NULL
-          ) AS rejected_withdrawals,
+          ) AS rejected_withdrawals
 
         FROM users u
 
