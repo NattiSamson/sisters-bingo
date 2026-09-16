@@ -268,7 +268,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .lobby-players-card{margin:38px 0 10px;background:linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.07));border:1px solid rgba(255,255,255,.22);border-radius:17px;padding:32px 16px;text-align:center}.lobby-players-number{font-size:32px;font-weight:900}.lobby-players-label{margin-top:6px;color:#d8c9f4;font-size:16px}.lobby-players-sub{margin-top:5px;color:#9f8fc0;font-size:11px}
 @media(max-width:380px){.mela-welcome-title{font-size:30px}}
 /* Flat, equally-spaced bottom navigation */
-.bottom-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));justify-content:initial;padding:0;gap:0;height:68px;align-items:stretch}
+.bottom-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));justify-content:initial;padding:0;gap:0;height:68px;align-items:stretch}
 .bottom-nav .nav-item{width:100%;min-width:0;min-height:68px;padding:5px 0;justify-content:center;gap:2px;border-radius:0;color:#94a3b8;font-size:10px;font-weight:700}
 .bottom-nav .nav-item.active{color:#a78bfa;background:rgba(37,99,235,.18);border-radius:12px;margin:5px 18px;padding:4px 0;min-height:58px;align-self:center;box-sizing:border-box}
 .bottom-nav .nav-icon{font-size:0;width:26px;height:26px;margin-bottom:1px;display:flex;align-items:center;justify-content:center}
@@ -994,6 +994,31 @@ body{
   .spectator-wait-card{min-height:245px;}
 }
 
+
+/* ─── PROFILE UI (frontend-only) ───────────────────────────── */
+.profile-wrap{padding:8px 0 18px;}
+.profile-hero{background:linear-gradient(135deg,#202969,#33206f 55%,#173c78);border:1px solid rgba(85,220,255,.28);border-radius:18px;padding:22px 18px;margin-bottom:14px;box-shadow:0 12px 28px rgba(0,0,0,.22);text-align:center;}
+.profile-avatar{width:68px;height:68px;border-radius:50%;margin:0 auto 10px;display:flex;align-items:center;justify-content:center;background:linear-gradient(145deg,#55dcff,#6258ff);color:#fff;font-size:27px;font-weight:900;box-shadow:0 0 24px rgba(85,220,255,.22);}
+.profile-name{font-size:20px;font-weight:900;color:#fff;margin-bottom:4px;}
+.profile-id{font-size:10px;color:#b9c3f5;word-break:break-all;}
+.profile-balance{margin-top:15px;background:rgba(10,15,45,.34);border:1px solid rgba(250,204,21,.25);border-radius:12px;padding:12px;}
+.profile-balance-label{font-size:10px;color:#b9c3f5;text-transform:uppercase;letter-spacing:1px;}
+.profile-balance-value{font-size:25px;font-weight:900;color:#facc15;margin-top:3px;}
+.profile-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px;}
+.profile-stat{background:linear-gradient(145deg,#202969,#151b55);border:1px solid rgba(139,92,246,.25);border-radius:14px;padding:15px 12px;text-align:center;}
+.profile-stat-icon{font-size:20px;margin-bottom:5px;}
+.profile-stat-label{font-size:9px;color:#aeb8ed;text-transform:uppercase;letter-spacing:.6px;}
+.profile-stat-value{font-size:20px;font-weight:900;color:#fff;margin-top:3px;}
+.profile-info-card{background:linear-gradient(145deg,#1b245d,#11163f);border:1px solid rgba(85,220,255,.2);border-radius:14px;padding:15px;margin-bottom:12px;}
+.profile-info-title{font-size:11px;font-weight:900;color:#55dcff;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;}
+.profile-info-row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(139,92,246,.14);font-size:12px;}
+.profile-info-row:last-child{border-bottom:0;padding-bottom:0;}
+.profile-info-row span:first-child{color:#9da5e8;}
+.profile-info-row span:last-child{color:#fff;font-weight:700;text-align:right;word-break:break-word;}
+.profile-refresh{width:100%;background:linear-gradient(105deg,#3478ff,#6258ff);border:0;color:#fff;border-radius:12px;padding:12px;font-weight:800;cursor:pointer;}
+.profile-refresh:active{transform:scale(.985);}
+@media(max-width:420px){.profile-wrap{padding-left:2px;padding-right:2px}.profile-stats{gap:8px}.profile-stat{padding:13px 8px}.profile-stat-value{font-size:18px}}
+
 </style>
 </head>
 <body>
@@ -1235,6 +1260,42 @@ body{
     </div>
     <button class="btn-submit btn-red" onclick="submitWithdrawal()">Request Withdrawal</button>
     <div id="withdrawMsg" style="display:none" class="status-msg"></div>
+  </div>
+</div>
+
+
+<div id="screenProfile" class="screen">
+  <div class="profile-wrap">
+    <div class="profile-hero">
+      <div class="profile-avatar" id="profileAvatar">M</div>
+      <div class="profile-name" id="profileName">Player</div>
+      <div class="profile-id" id="profileTelegramId">Telegram account</div>
+      <div class="profile-balance">
+        <div class="profile-balance-label">Wallet Balance</div>
+        <div class="profile-balance-value" id="profileBalance">ETB 0.00</div>
+      </div>
+    </div>
+
+    <div class="profile-stats">
+      <div class="profile-stat">
+        <div class="profile-stat-icon">🎱</div>
+        <div class="profile-stat-label">Games Played</div>
+        <div class="profile-stat-value" id="profileGamesPlayed">0</div>
+      </div>
+      <div class="profile-stat">
+        <div class="profile-stat-icon">🏆</div>
+        <div class="profile-stat-label">Total Winnings</div>
+        <div class="profile-stat-value" id="profileTotalWinnings">ETB 0.00</div>
+      </div>
+    </div>
+
+    <div class="profile-info-card">
+      <div class="profile-info-title">Account</div>
+      <div class="profile-info-row"><span>Name</span><span id="profileInfoName">Player</span></div>
+      <div class="profile-info-row"><span>Phone</span><span id="profilePhone">—</span></div>
+    </div>
+
+    <button class="profile-refresh" onclick="loadProfile(true)">↻ Refresh Profile</button>
   </div>
 </div>
 
@@ -1538,24 +1599,13 @@ body{
 </div>
 
 <div class="bottom-nav">
-  <div class="nav-item" id="navGame" onclick="goToGame()">
+  <div class="nav-item active" id="navGame" onclick="goToGame()">
     <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 8h10c2.2 0 3.7 1.2 4.4 3.2l1 3.2c.5 1.7-.4 3.4-2.1 3.9-1.2.4-2.5 0-3.3-.9L15.5 16h-7l-3.5 3.4c-.8.9-2.1 1.3-3.3.9-1.7-.5-2.6-2.2-2.1-3.9l1-3.2C1.3 9.2 2.8 8 5 8h2z"/><path d="M7.5 11.5v4M5.5 13.5h4M16.5 12.5h.01M19 15h.01"/></svg></span>
     <span>GAME</span>
   </div>
-
-  <div class="nav-item" id="navHistory" onclick="goToHistory()">
-    <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 5v5h5"/><path d="M12 7v5l3.5 2"/></svg></span>
-    <span>HISTORY</span>
-  </div>
-
-  <div class="nav-item" id="navRules" onclick="navGo('screenRules','navRules')">
-    <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 3.5v-1h6v1"/><path d="M8.5 9h7M8.5 13h7M8.5 17h5"/></svg></span>
-    <span>RULES</span>
-  </div>
-
-  <div class="nav-item" id="navAdmin" onclick="navGo('screenAdmin','navAdmin')" style="display:none">
-    <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3.5a2.2 2.2 0 0 1 2.1 1.6l.3 1.1 1 .6 1.1-.2a2.2 2.2 0 0 1 2.5 1.3l.2.5a2.2 2.2 0 0 1-.7 2.7l-.9.7v1.2l.9.7a2.2 2.2 0 0 1 .7 2.7l-.2.5a2.2 2.2 0 0 1-2.5 1.3l-1.1-.2-1 .6-.3 1.1a2.2 2.2 0 0 1-2.1 1.6h-.6a2.2 2.2 0 0 1-2.1-1.6L9 19l-1-.6-1.1.2a2.2 2.2 0 0 1-2.5-1.3l-.2-.5a2.2 2.2 0 0 1 .7-2.7l.9-.7v-1.2l-.9-.7a2.2 2.2 0 0 1-.7-2.7l.2-.5a2.2 2.2 0 0 1 2.5-1.3l1.1.2 1-.6.3-1.1A2.2 2.2 0 0 1 11.4 3.5z"/><circle cx="12" cy="12" r="2.7"/></svg></span><span>ADMIN</span>
-    <span class="nav-dot show" id="adminDot" style="display:none"></span>
+  <div class="nav-item" id="navProfile" onclick="goToProfile()">
+    <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6"/></svg></span>
+    <span>PROFILE</span>
   </div>
 </div>
 
@@ -1850,7 +1900,17 @@ function goToGame(){
   restoreActiveGameState();
   const roomId=myRoomId||localStorage.getItem('roomId');
   if(!myStakeId) myStakeId=localStorage.getItem('stakeId');
-  if(!roomId){ showToast('አሁን ንቁ ጨዋታ የለም።','warn'); return; }
+
+  // No game has been entered: Game tab always returns to the normal lobby.
+  // Clear only stale room/session navigation state; do not touch balance logic.
+  if(!roomId){
+    clearActiveGameState();
+    myRoomId=null;
+    myStakeId=null;
+    navGo('screenLobby','navGame');
+    return;
+  }
+
   myRoomId=roomId;
   if(activeGamePhase==='spectating'){
     navGo('screenGame','navGame');
@@ -1867,7 +1927,73 @@ function goToGame(){
   if(telegramId) wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
 }
 
-function goToWallet(){navGo('screenWallet','navWallet');}
+function goToProfile(){
+  navGo('screenProfile','navProfile');
+  loadProfile(false);
+}
+
+function profileMoney(value){
+  const n=Number(value);
+  return Number.isFinite(n) ? `ETB ${n.toFixed(2)}` : 'ETB 0.00';
+}
+
+async function loadProfile(forceRefresh=false){
+  const tid=normalizeTelegramId(telegramId||getTelegramId());
+  if(tid) telegramId=tid;
+
+  const name=String(myName||'Player').trim()||'Player';
+  const nameEl=document.getElementById('profileName');
+  const infoName=document.getElementById('profileInfoName');
+  const idEl=document.getElementById('profileTelegramId');
+  const phoneEl=document.getElementById('profilePhone');
+  const avatar=document.getElementById('profileAvatar');
+  const balEl=document.getElementById('profileBalance');
+  if(nameEl) nameEl.innerText=name;
+  if(infoName) infoName.innerText=name;
+  if(idEl) idEl.innerText=tid ? `Telegram ID: ${tid}` : 'Telegram account';
+  if(avatar) avatar.innerText=name.charAt(0).toUpperCase();
+  if(balEl) balEl.innerText=profileMoney(currentBalance);
+
+  if(!tid){
+    if(phoneEl) phoneEl.innerText='—';
+    return;
+  }
+
+  try{
+    const userRes=await fetch(`${API_BASE}/api/user/${encodeURIComponent(tid)}?_=${Date.now()}`,{cache:'no-store'});
+    if(userRes.ok){
+      const u=await userRes.json();
+      if(u.name){
+        myName=String(u.name);
+        if(nameEl) nameEl.innerText=myName;
+        if(infoName) infoName.innerText=myName;
+        if(avatar) avatar.innerText=myName.charAt(0).toUpperCase();
+      }
+      if(phoneEl) phoneEl.innerText=String(u.phone||'—');
+      const b=Number(u.balance);
+      if(Number.isFinite(b) && b>=0){ setBalance(b); if(balEl) balEl.innerText=profileMoney(b); }
+    }
+  }catch(e){}
+
+  try{
+    const histRes=await fetch(`${API_BASE}/api/history/${encodeURIComponent(tid)}?limit=100&_=${Date.now()}`,{cache:'no-store'});
+    if(histRes.ok){
+      const rows=await histRes.json();
+      const list=Array.isArray(rows)?rows:[];
+      const gamesEl=document.getElementById('profileGamesPlayed');
+      const winningsEl=document.getElementById('profileTotalWinnings');
+      const games=list.length;
+      const winnings=list.reduce((sum,row)=>{
+        const amount=Number(row.amount_won ?? row.win_amount ?? 0);
+        return sum+(Number.isFinite(amount)?Math.max(0,amount):0);
+      },0);
+      if(gamesEl) gamesEl.innerText=String(games);
+      if(winningsEl) winningsEl.innerText=profileMoney(winnings);
+    }
+  }catch(e){}
+}
+
+function goToWallet(){navGo('screenWallet','navGame');}
 async function goToHistory(){
   navGo('screenHistory','navHistory');
   await loadGameHistory();
@@ -2690,11 +2816,6 @@ function showWinnerOverlay(msg){
   }
   renderResultCard(winningCard,msg.calledNumbers||[]);
   ov.classList.add('show');
-  // Play Bingo sound when there is a winner
-  if(!noWinner) 
-  {
-    playBallAudio(76);
-  }
   if(iWon) startConfetti(); else stopConfetti();
 }
 function hideWinnerOverlay(){
@@ -2989,11 +3110,20 @@ let soundEnabled = true;
 let audioCache = {};   // number -> Audio object (preloaded)
 let audioUnlocked = false;
 
+// Map number to B/I/N/G/O letter
+function ballLetter(n){
+  if(n<=15) return 'b';
+  if(n<=30) return 'i';
+  if(n<=45) return 'n';
+  if(n<=60) return 'g';
+  return 'o';
+}
+
 // Preload all 75 audio files in background after user first interacts
 function preloadAudio(){
-  for(let i=1;i<=76;i++)
-  { 
-    const path = i === 76 ? '/audio/Bingo.mp3' : `/audio/${i}.mp3`;  
+  for(let i=1;i<=75;i++){
+    const letter=ballLetter(i);
+    const path=`/audio/${letter}${i}.mp3`;
     const a=new Audio(path);
     a.preload='auto';
     audioCache[i]=a;
@@ -3022,8 +3152,9 @@ function playBallAudio(n){
     if(a){
       a.currentTime=0;
       a.play().catch(()=>{});
-    } else {      
-      const fresh=new Audio(`/audio/${n}.mp3`);
+    } else {
+      const letter=ballLetter(n);
+      const fresh=new Audio(`/audio/${letter}${n}.mp3`);
       fresh.play().catch(()=>{});
       audioCache[n]=fresh;
     }
