@@ -43,13 +43,12 @@ const pendingAdminRoleSearch = new Map();
 function clearPendingState(telegramId) 
 {
   delete pendingPhone[telegramId];
-  delete pendingDeposit[telegramId];
-  
-  delete pendingWithdrawal[telegramId];
-  delete pendingAdminWithdrawal[telegramId];
-  delete pendingAdminAccount[telegramId];
   delete pendingDelete[telegramId];
+  delete pendingDeposit[telegramId];  
+  delete pendingWithdrawal[telegramId];  
   delete pendingAdminReject[telegramId];
+  delete pendingAdminAccount[telegramId];
+  delete pendingAdminWithdrawal[telegramId];  
   delete pendingAdminAccountEdit[telegramId];
   delete pendingAdminAccountDelete[telegramId];
   
