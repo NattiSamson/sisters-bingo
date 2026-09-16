@@ -149,6 +149,75 @@ module.exports = {
     return rows[0] || null;
   },
 
+  async setBotUserState(
+  telegramId,
+  stateType,
+  stateData
+) {
+  await pool.query(
+    `
+    INSERT INTO bot_user_states (
+      telegram_id,
+      state_type,
+      state_data,
+      updated_at
+    )
+    VALUES ($1, $2, $3::jsonb, NOW())
+
+    ON CONFLICT (telegram_id)
+    DO UPDATE SET
+      state_type = EXCLUDED.state_type,
+      state_data = EXCLUDED.state_data,
+      updated_at = NOW()
+    `,
+    [
+      telegramId,
+      stateType,
+      JSON.stringify(stateData || {})
+    ]
+  );
+
+  return true;
+},
+
+async getBotUserState(telegramId) {
+  const { rows } = await pool.query(
+    `
+    SELECT
+      telegram_id,
+      state_type,
+      state_data,
+      updated_at
+    FROM bot_user_states
+    WHERE telegram_id = $1
+    `,
+    [telegramId]
+  );
+
+  if (!rows.length) {
+    return null;
+  }
+
+  return {
+    telegramId: Number(rows[0].telegram_id),
+    stateType: rows[0].state_type,
+    stateData: rows[0].state_data || {},
+    updatedAt: rows[0].updated_at
+  };
+},
+
+async clearBotUserState(telegramId) {
+  await pool.query(
+    `
+    DELETE FROM bot_user_states
+    WHERE telegram_id = $1
+    `,
+    [telegramId]
+  );
+
+  return true;
+},
+
   async getAdminFinancialStatistics() {
   const { rows } = await pool.query(`
     WITH deposit_stats AS (
