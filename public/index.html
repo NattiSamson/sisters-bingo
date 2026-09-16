@@ -2169,20 +2169,20 @@ function handle(msg){
         document.getElementById('loadingText').innerText=tid;
         // First load the account directly over HTTPS. This breaks the old failure
         // mode where a WebSocket lookup returned a fake zero/unregistered snapshot.
-        sendTelegramAuth(tid);
+        await sendTelegramAuth(tid);
         // Refresh the profile independently.
         // A temporary HTTP/API failure must not prevent login.
-        await refreshAccountProfile(6,500).catch(err => {
-          console.warn('Account profile refresh failed:', err);
-        });    
-        goToGame();
+      //  await refreshAccountProfile(6,500).catch(err => {
+      //    console.warn('Account profile refresh failed:', err);
+      //  });    
+        //goToGame();
       });
       break;
 
     case 'authRetry':
       // A lookup failure is not an unregistered account. Keep the existing balance
       // and retry with the same verified Telegram ID.
-      document.getElementById('loadingText').innerText='Loading your account...';
+      document.getElementById('loadingText').innerText='authRetry';
       setTimeout(()=>{
         const id=getTelegramId();
         if(id) sendTelegramAuth(id);
