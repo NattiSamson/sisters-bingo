@@ -928,7 +928,18 @@ wss.on('connection',(ws)=>{
                 break;
               }
               const user=await loadUser(tid,6,500);
-              if(user){
+              if(user)
+              {
+               if(user.is_blocked === true)
+               {
+                send(ws,{type:'authBlockedUser',retryAfter:1000});
+                return;
+               }
+               else if(user.is_active !== false)
+               {
+                send(ws,{type:'authInactiveUser',retryAfter:1000});
+                return;
+               }
                 client.telegramId=tid;
                 client.playerName=user.name||client.playerName||'Player';
                 client.balance=Number.isFinite(Number(user.balance))?Number(user.balance):0;
