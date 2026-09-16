@@ -32,6 +32,8 @@ const pendingAdminWithdrawal  = {};
 const pendingAdminAccount = {};
 const pendingDelete = {};
 const pendingAdminReject = {};
+const pendingAdminAccountEdit = {};
+const pendingAdminAccountDelete = {};
 const pendingAdminUserSearch = new Map();
 const pendingAdminRoleSearch = new Map();
 
@@ -48,6 +50,8 @@ function clearPendingState(telegramId)
   delete pendingAdminAccount[telegramId];
   delete pendingDelete[telegramId];
   delete pendingAdminReject[telegramId];
+  delete pendingAdminAccountEdit[telegramId];
+  delete pendingAdminAccountDelete[telegramId];
   
   pendingAdminUserSearch.delete(telegramId);
   pendingAdminRoleSearch.delete(telegramId);
@@ -2174,89 +2178,86 @@ if (!admin) {
 // SHOW PAYMENT ACCOUNTS MENU
 // ============================================================
 
-async function showAdminAccounts(ctx) {
+// ============================================================
+// SHOW PAYMENT ACCOUNTS MENU
+// ============================================================
 
-  const admin =
-    await getCurrentAdmin(ctx);
+async function showAdminAccounts(ctx) {
+  const admin = await getCurrentAdmin(ctx);
 
   if (!admin) {
     return;
   }
 
   try {
-
     const accounts =
       await db.getAllPaymentAccountsForAdmin();
 
     let message =
       "💳 *PAYMENT ACCOUNTS*\n\n";
 
-    if (
-      !accounts ||
-      accounts.length === 0
-    ) {
-
+    if (!accounts || accounts.length === 0) {
       message +=
         "No payment accounts have been created yet.\n\n";
-
     } else {
+      accounts.forEach((account, index) => {
+        const methodName =
+          account.pm_amharic_name ||
+          account.pm_name ||
+          "Payment Method";
 
-      accounts.forEach(
-        (account, index) => {
+        const typeName =
+          account.pt_amharic_name ||
+          account.pt_name ||
+          "";
 
-          const methodName =
-            account.pm_amharic_name ||
-            account.pm_name ||
-            "Payment Method";
+        const activeStatus =
+          account.is_active
+            ? "🟢 Active"
+            : "🔴 Inactive";
 
-          const typeName =
-            account.pt_amharic_name ||
-            account.pt_name ||
-            "";
+        const removedStatus =
+          account.is_removed
+            ? "🗑️ Removed"
+            : "✅ Not removed";
 
-          const status =
-            account.is_active
-              ? "🟢 Active"
-              : "🔴 Inactive";
+        message +=
+          `${index + 1}. ${account.pm_emoji || "💳"} *${account.account_name}*\n` +
+          `💳 Method: *${methodName}*\n`;
 
+        if (typeName) {
           message +=
-            `${index + 1}. ${account.pm_emoji || "💳"} *${account.account_name}*\n` +
-            `💳 Method: *${methodName}*\n`;
-
-          if (typeName) {
-
-            message +=
-              `📂 Type: *${typeName}*\n`;
-
-          }
-
-          message +=
-            `📱 Account: \`${account.account_number}\`\n` +
-            `💰 Balance: *${account.balance} ETB*\n` +
-            `📌 Status: ${status}\n\n`;
-
+            `📂 Type: *${typeName}*\n`;
         }
-      );
 
+        message +=
+          `📱 Account: \`${account.account_number}\`\n` +
+          `💰 Balance: *${account.balance} ETB*\n` +
+          `📌 Status: ${activeStatus}\n` +
+          `🗑️ Removed: ${removedStatus}\n\n`;
+      });
     }
-
 
     const keyboard = [];
 
-
     // ----------------------------------------------------------
-    // EXISTING ACCOUNT TOGGLE BUTTONS
+    // ACCOUNT ACTION BUTTONS
     // ----------------------------------------------------------
 
-    if (
-      accounts &&
-      accounts.length > 0
-    ) {
+    if (accounts && accounts.length > 0) {
+      for (const account of accounts) {
 
-      for (
-        const account of accounts
-      ) {
+        // Edit
+        keyboard.push([
+          {
+            text:
+              `✏️ Edit ${account.account_name}`,
+            callback_data:
+              `admin_account_edit_${account.id}`
+          }
+        ]);
 
+        // Activate / Deactivate
         keyboard.push([
           {
             text:
@@ -2269,10 +2270,20 @@ async function showAdminAccounts(ctx) {
           }
         ]);
 
+        // Delete / Undelete
+        keyboard.push([
+          {
+            text:
+              account.is_removed
+                ? `♻️ Undelete ${account.account_name}`
+                : `🗑️ Delete ${account.account_name}`,
+
+            callback_data:
+              `admin_account_remove_${account.id}_${account.is_removed ? "0" : "1"}`
+          }
+        ]);
       }
-
     }
-
 
     // ----------------------------------------------------------
     // MAIN BUTTONS
@@ -2280,84 +2291,49 @@ async function showAdminAccounts(ctx) {
 
     keyboard.push([
       {
-        text:
-          "➕ Add Account",
-
-        callback_data:
-          "admin_account_add"
+        text: "➕ Add Account",
+        callback_data: "admin_account_add"
       }
     ]);
 
     keyboard.push([
       {
-        text:
-          "🔄 Refresh",
-
-        callback_data:
-          "admin_accounts"
+        text: "🔄 Refresh",
+        callback_data: "admin_accounts"
       },
-
       {
-        text:
-          "🏠 Home",
-
-        callback_data:
-          "admin_home"
+        text: "🏠 Home",
+        callback_data: "admin_home"
       }
     ]);
 
-
     const options = {
-
-      parse_mode:
-        "Markdown",
-
+      parse_mode: "Markdown",
       reply_markup: {
-        inline_keyboard:
-          keyboard
+        inline_keyboard: keyboard
       }
-
     };
 
-
-    // ----------------------------------------------------------
-    // EDIT EXISTING MESSAGE WHEN CALLED FROM BUTTON
-    // ----------------------------------------------------------
-
-    if (
-      ctx.callbackQuery
-    ) {
-
+    if (ctx.callbackQuery) {
       try {
-
         await ctx.editMessageText(
           message,
           options
         );
-
       } catch (err) {
-
-        // Message may already contain the same text
-        // or may not be editable.
-
         await ctx.reply(
           message,
           options
         );
-
       }
-
     } else {
-
       await ctx.reply(
         message,
         options
       );
-
     }
 
   } catch (err) {
-
     console.error(
       "Admin accounts screen error:",
       err
@@ -2366,9 +2342,7 @@ async function showAdminAccounts(ctx) {
     await ctx.reply(
       "❌ Could not load payment accounts."
     );
-
   }
-
 }
 
 
@@ -2665,13 +2639,10 @@ bot.callbackQuery(
     );
 
     const accountId =
-      Number(
-        ctx.match[1]
-      );
+      Number(ctx.match[1]);
 
     const isActive =
       ctx.match[2] === "1";
-
 
     try {
 
@@ -2682,17 +2653,12 @@ bot.callbackQuery(
         );
 
       if (!account) {
-
         return ctx.reply(
-          "❌ Payment account not found."
+          "❌ Payment account not found or it is deleted."
         );
-
       }
 
-
-      await showAdminAccounts(
-        ctx
-      );
+      await showAdminAccounts(ctx);
 
     } catch (err) {
 
@@ -2704,9 +2670,793 @@ bot.callbackQuery(
       await ctx.reply(
         "❌ Could not change the account status."
       );
+    }
+  }
+);
 
+// ============================================================
+// DELETE / UNDELETE PAYMENT ACCOUNT
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_account_remove_(\d+)_(0|1)$/,
+  async (ctx) => {
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+      return;
     }
 
+    const accountId =
+      Number(ctx.match[1]);
+
+    const shouldRemove =
+      ctx.match[2] === "1";
+
+    await answerCallback(
+      ctx,
+      shouldRemove
+        ? "Deleting account..."
+        : "Restoring account..."
+    );
+
+    try {
+
+      const account =
+        await db.setPaymentAccountRemoved(
+          accountId,
+          shouldRemove
+        );
+
+      if (!account) {
+        return ctx.reply(
+          "❌ Payment account not found."
+        );
+      }
+
+      await showAdminAccounts(ctx);
+
+    } catch (err) {
+
+      console.error(
+        "Payment account delete/undelete error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not change the deleted status."
+      );
+    }
+  }
+);
+
+// ============================================================
+// EDIT PAYMENT ACCOUNT
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_account_edit_(\d+)$/,
+  async (ctx) => {
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const accountId =
+      Number(ctx.match[1]);
+
+    try {
+
+      const account =
+        await db.getPaymentAccountByIdForAdmin(
+          accountId
+        );
+
+      if (!account) {
+        return ctx.reply(
+          "❌ Payment account not found."
+        );
+      }
+
+      pendingAdminAccountEdit[
+        admin.telegram_id
+      ] = {
+        step: "account_name",
+        accountId,
+
+        originalName:
+          account.account_name,
+
+        originalAccountNumber:
+          account.account_number,
+
+        originalBalance:
+          Number(account.balance),
+
+        accountName:
+          account.account_name,
+
+        accountNumber:
+          account.account_number,
+
+        balance:
+          Number(account.balance),
+
+        paymentTypeName:
+          account.pt_name,
+
+        paymentTypeAmharicName:
+          account.pt_amharic_name
+      };
+
+      await ctx.editMessageText(
+        "✏️ *EDIT PAYMENT ACCOUNT*\n\n" +
+
+        `👤 Current name: *${account.account_name}*\n\n` +
+
+        "Enter the new account name.\n" +
+        "Or press *Keep Current* to leave it unchanged.",
+
+        {
+          parse_mode: "Markdown",
+
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "✅ Keep Current",
+                  callback_data:
+                    `admin_account_edit_keep_name_${accountId}`
+                }
+              ],
+              [
+                {
+                  text: "❌ Cancel",
+                  callback_data:
+                    "admin_account_edit_cancel"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Edit payment account start error:",
+        err
+      );
+
+      await ctx.reply(
+        "❌ Could not load the payment account."
+      );
+    }
+  }
+);
+// ============================================================
+// EDIT ACCOUNT — CANCEL
+// ============================================================
+
+bot.callbackQuery(
+  "admin_account_edit_cancel",
+  async (ctx) => {
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    delete pendingAdminAccountEdit[
+      admin.telegram_id
+    ];
+
+    await showAdminAccounts(ctx);
+  }
+);
+
+// ============================================================
+// EDIT ACCOUNT — CONFIRMATION SCREEN
+// ============================================================
+
+async function showAdminAccountEditConfirmation(
+  ctx,
+  pending
+) {
+
+  await ctx.editMessageText(
+
+    "✏️ *CONFIRM ACCOUNT CHANGES*\n\n" +
+
+    `👤 Name:\n*${pending.accountName}*\n\n` +
+
+    `📱 Account Number:\n\`${pending.accountNumber}\`\n\n` +
+
+    `💰 Balance:\n*${pending.balance} ETB*\n\n` +
+
+    "Are these changes correct?",
+
+    {
+      parse_mode: "Markdown",
+
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "✅ Save Changes",
+              callback_data:
+                `admin_account_edit_save_${pending.accountId}`
+            }
+          ],
+          [
+            {
+              text: "❌ Cancel",
+              callback_data:
+                "admin_account_edit_cancel"
+            }
+          ]
+        ]
+      }
+    }
+  );
+}
+// ============================================================
+// EDIT ACCOUNT — SAVE
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_account_edit_save_(\d+)$/,
+  async (ctx) => {
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(
+      ctx,
+      "Saving changes..."
+    );
+
+    const accountId =
+      Number(ctx.match[1]);
+
+    const pending =
+      pendingAdminAccountEdit[
+        admin.telegram_id
+      ];
+
+    if (!pending) {
+      return ctx.reply(
+        "❌ The edit session has expired. Please try again."
+      );
+    }
+
+    if (
+      Number(pending.accountId) !==
+      accountId
+    ) {
+      return ctx.reply(
+        "❌ Invalid edit session."
+      );
+    }
+
+    try {
+
+      const result =
+        await db.updatePaymentAccount(
+          accountId,
+          pending.accountName,
+          pending.accountNumber,
+          pending.balance
+        );
+
+      if (!result) {
+        return ctx.reply(
+          "❌ Payment account not found or could not be updated."
+        );
+      }
+
+      delete pendingAdminAccountEdit[
+        admin.telegram_id
+      ];
+
+      await ctx.editMessageText(
+        "✅ *PAYMENT ACCOUNT UPDATED*\n\n" +
+
+        `👤 Name: *${result.account_name}*\n` +
+        `📱 Account: \`${result.account_number}\`\n` +
+        `💰 Balance: *${result.balance} ETB*\n\n` +
+
+        "The account has been updated successfully.",
+
+        {
+          parse_mode: "Markdown",
+
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "💳 Accounts",
+                  callback_data:
+                    "admin_accounts"
+                }
+              ],
+              [
+                {
+                  text: "🏠 Home",
+                  callback_data:
+                    "admin_home"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Update payment account error:",
+        err
+      );
+
+      await ctx.reply(
+        `❌ ${err.message || "Could not update the payment account."}`
+      );
+    }
+  }
+);
+// ============================================================
+// EDIT ACCOUNT — TEXT INPUT
+// ============================================================
+
+bot.on(
+  "message:text",
+  async (ctx, next) => {
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+      return next();
+    }
+
+    const telegramId =
+      admin.telegram_id;
+
+    const pending =
+      pendingAdminAccountEdit[
+        telegramId
+      ];
+
+    if (!pending) {
+      return next();
+    }
+
+    const text =
+      String(
+        ctx.message.text || ""
+      ).trim();
+
+    if (text === "/cancel") {
+
+      delete pendingAdminAccountEdit[
+        telegramId
+      ];
+
+      return ctx.reply(
+        "❌ Payment account editing cancelled."
+      );
+    }
+
+    // ==========================================================
+    // STEP 1 — ACCOUNT NAME
+    // ==========================================================
+
+    if (
+      pending.step ===
+      "account_name"
+    ) {
+
+      if (!text) {
+        return ctx.reply(
+          "❌ Account name cannot be empty."
+        );
+      }
+
+      if (text.length > 100) {
+        return ctx.reply(
+          "❌ Account name cannot exceed 100 characters."
+        );
+      }
+
+      pending.accountName =
+        text.substring(0, 100);
+
+      pending.step =
+        "account_number";
+
+      const isMobile =
+        String(
+          pending.paymentTypeName || ""
+        )
+          .trim()
+          .toLowerCase() === "mobile" ||
+
+        String(
+          pending.paymentTypeAmharicName || ""
+        ).trim() === "ሞባይል";
+
+      await ctx.reply(
+        "✏️ *ACCOUNT NAME UPDATED*\n\n" +
+
+        `👤 New name: *${pending.accountName}*\n\n` +
+
+        `📱 Current account number: \`${pending.accountNumber}\`\n\n` +
+
+        (
+          isMobile
+            ? "Enter the new *mobile account number*.\n\n" +
+              "Example: `0912345678`"
+            : "Enter the new *account number*."
+        ),
+
+        {
+          parse_mode: "Markdown",
+
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "✅ Keep Current",
+                  callback_data:
+                    `admin_account_edit_keep_number_${pending.accountId}`
+                }
+              ],
+              [
+                {
+                  text: "❌ Cancel",
+                  callback_data:
+                    "admin_account_edit_cancel"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+      return;
+    }
+
+    // ==========================================================
+    // STEP 2 — ACCOUNT NUMBER
+    // ==========================================================
+
+    if (
+      pending.step ===
+      "account_number"
+    ) {
+
+      if (!text) {
+        return ctx.reply(
+          "❌ Account number cannot be empty."
+        );
+      }
+
+      const normalizedAccountNumber =
+        normalizePaymentAccountNumber(
+          text,
+          pending.paymentTypeName,
+          pending.paymentTypeAmharicName
+        );
+
+      if (!normalizedAccountNumber) {
+        return ctx.reply(
+          "❌ Invalid account number.\n\n" +
+          "Please enter a valid account number."
+        );
+      }
+
+      if (
+        normalizedAccountNumber.length > 100
+      ) {
+        return ctx.reply(
+          "❌ Account number cannot exceed 100 characters."
+        );
+      }
+
+      pending.accountNumber =
+        normalizedAccountNumber;
+
+      pending.step =
+        "balance";
+
+      await ctx.reply(
+        "✏️ *ACCOUNT NUMBER UPDATED*\n\n" +
+
+        `👤 Name: *${pending.accountName}*\n` +
+        `📱 New account: \`${pending.accountNumber}\`\n\n` +
+
+        `💰 Current balance: *${pending.balance} ETB*\n\n` +
+
+        "Enter the new balance.",
+
+        {
+          parse_mode: "Markdown",
+
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "✅ Keep Current",
+                  callback_data:
+                    `admin_account_edit_keep_balance_${pending.accountId}`
+                }
+              ],
+              [
+                {
+                  text: "❌ Cancel",
+                  callback_data:
+                    "admin_account_edit_cancel"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+      return;
+    }
+
+    // ==========================================================
+    // STEP 3 — BALANCE
+    // ==========================================================
+
+    if (
+      pending.step ===
+      "balance"
+    ) {
+
+      const balance =
+        Number(
+          text.replace(/,/g, "")
+        );
+
+      if (
+        !Number.isFinite(balance) ||
+        balance < 0
+      ) {
+        return ctx.reply(
+          "❌ Invalid balance.\n\n" +
+          "Please enter a number greater than or equal to 0.\n\n" +
+          "Example:\n" +
+          "`0`\n" +
+          "`5000`\n" +
+          "`12500.50`"
+        );
+      }
+
+      pending.balance =
+        balance;
+
+      pending.step =
+        "confirm";
+
+      await showAdminAccountEditConfirmation(
+        ctx,
+        pending
+      );
+
+      return;
+    }
+
+    return next();
+  }
+);
+// ============================================================
+// EDIT ACCOUNT — KEEP NAME
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_account_edit_keep_name_(\d+)$/,
+  async (ctx) => {
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const pending =
+      pendingAdminAccountEdit[
+        admin.telegram_id
+      ];
+
+    if (!pending) {
+      return ctx.reply(
+        "❌ The edit session has expired. Please try again."
+      );
+    }
+
+    pending.accountName =
+      pending.originalName;
+
+    pending.step =
+      "account_number";
+
+    const isMobile =
+      String(
+        pending.paymentTypeName || ""
+      )
+        .trim()
+        .toLowerCase() === "mobile" ||
+
+      String(
+        pending.paymentTypeAmharicName || ""
+      ).trim() === "ሞባይል";
+
+    await ctx.editMessageText(
+      "✏️ *EDIT PAYMENT ACCOUNT*\n\n" +
+
+      `👤 Name: *${pending.accountName}* ✅\n\n` +
+
+      `📱 Current account number: \`${pending.accountNumber}\`\n\n` +
+
+      "Enter the new account number.\n" +
+      "Or press *Keep Current*.",
+
+      {
+        parse_mode: "Markdown",
+
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "✅ Keep Current",
+                callback_data:
+                  `admin_account_edit_keep_number_${pending.accountId}`
+              }
+            ],
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "admin_account_edit_cancel"
+              }
+            ]
+          ]
+        }
+      }
+    );
+  }
+);
+
+// ============================================================
+// EDIT ACCOUNT — KEEP ACCOUNT NUMBER
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_account_edit_keep_number_(\d+)$/,
+  async (ctx) => {
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const pending =
+      pendingAdminAccountEdit[
+        admin.telegram_id
+      ];
+
+    if (!pending) {
+      return ctx.reply(
+        "❌ The edit session has expired. Please try again."
+      );
+    }
+
+    pending.accountNumber =
+      pending.originalAccountNumber;
+
+    pending.step =
+      "balance";
+
+    await ctx.editMessageText(
+      "✏️ *EDIT PAYMENT ACCOUNT*\n\n" +
+
+      `👤 Name: *${pending.accountName}*\n` +
+      `📱 Account: \`${pending.accountNumber}\` ✅\n\n` +
+
+      `💰 Current balance: *${pending.balance} ETB*\n\n` +
+
+      "Enter the new balance.\n" +
+      "Or press *Keep Current*.",
+
+      {
+        parse_mode: "Markdown",
+
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "✅ Keep Current",
+                callback_data:
+                  `admin_account_edit_keep_balance_${pending.accountId}`
+              }
+            ],
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "admin_account_edit_cancel"
+              }
+            ]
+          ]
+        }
+      }
+    );
+  }
+);
+
+// ============================================================
+// EDIT ACCOUNT — KEEP BALANCE
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_account_edit_keep_balance_(\d+)$/,
+  async (ctx) => {
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const pending =
+      pendingAdminAccountEdit[
+        admin.telegram_id
+      ];
+
+    if (!pending) {
+      return ctx.reply(
+        "❌ The edit session has expired. Please try again."
+      );
+    }
+
+    pending.balance =
+      pending.originalBalance;
+
+    pending.step =
+      "confirm";
+
+    await showAdminAccountEditConfirmation(
+      ctx,
+      pending
+    );
   }
 );
 
