@@ -2196,6 +2196,7 @@ function handle(msg){
       break;
       
     case 'authSuccess':
+      document.getElementById('loadingText').innerText='authSuccess';
   // Accept a WebSocket balance only for a confirmed registered account.
   myName=msg.playerName||myName||'Player';
   if(msg.isRegistered===true && msg.balance!==undefined && msg.balance!==null && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
