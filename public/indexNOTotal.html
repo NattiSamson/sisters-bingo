@@ -1082,12 +1082,12 @@ body{
   </div>
 </div>
 
-<div id="screenLoading" class="screen active">
+<div id="screenLoading" class="screen" style="display:none">
   <div class="loading-spinner"></div>
   <div class="loading-text" id="loadingText">Connecting...</div>
 </div>
 
-<div id="screenLobby" class="screen">
+<div id="screenLobby" class="screen active">
   <div class="welcome-banner">
     <div class="lobby-hero-art" aria-hidden="true">
       <div class="lobby-crown">♛</div>
@@ -1627,19 +1627,13 @@ function renderUserProfile(u, history=[]){
   const name=String(u?.name||u?.playerName||myName||'Player').trim()||'Player';
   const balance=Number(u?.balance);
   const rows=Array.isArray(history)?history:[];
-  const games=Number.isFinite(Number(u?.total_games)) ? Number(u.total_games) : rows.length;
-  const winsFromHistory=rows.filter(g=>g?.won===true || g?.won==='true').length;
-  const wins=Number.isFinite(Number(u?.total_wins)) ? Number(u.total_wins) : winsFromHistory;
-  const winningsFromHistory=rows.reduce((sum,g)=>sum+(Number(g?.amount_won)||0),0);
-  const winnings=Number.isFinite(Number(u?.total_winnings)) ? Number(u.total_winnings) : winningsFromHistory;
-  // Prefer the authoritative latest payout calculated by the server directly
-  // from the finished games table. Keep the history value as a fallback.
-  const historyLatest=rows.find(g=>(Number(g?.amount_won)||0)>0);
-  const historyLatestEarnings=historyLatest ? (Number(historyLatest.amount_won)||0) : 0;
-  const apiLatestEarnings=Number(u?.latest_earnings);
-  const latestEarnings=Number.isFinite(apiLatestEarnings) && apiLatestEarnings>=0
-    ? apiLatestEarnings
-    : historyLatestEarnings;
+  // These three values now come directly from the Neon users row.
+  // History is used only for the separate Latest Earnings display.
+  const games=Number.isFinite(Number(u?.total_games)) ? Number(u.total_games) : 0;
+  const wins=Number.isFinite(Number(u?.total_wins)) ? Number(u.total_wins) : 0;
+  const winnings=Number.isFinite(Number(u?.total_winnings)) ? Number(u.total_winnings) : 0;
+  const latest=rows.find(g=>(Number(g?.amount_won)||0)>0);
+  const latestEarnings=latest ? (Number(latest.amount_won)||0) : 0;
   myName=name;
   if(Number.isFinite(balance) && balance>=0) setBalance(balance);
   const nameEl=document.getElementById('profileName');
@@ -1829,7 +1823,7 @@ function handle(msg){
       if(msg.stakes) renderStakes(msg.stakes);
       const pageParam = new URLSearchParams(location.search).get('page');
       if(pageParam !== 'deposit' && pageParam !== 'withdraw') goScreen('screenLobby');
-      document.getElementById('loadingText').innerText='Loading your account...';
+      
       if(pageParam === 'deposit') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('deposit'); }, 1500);
       if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('withdraw'); }, 1500);
       // Authenticate as soon as the Telegram ID is available. If it was resolved
@@ -1856,7 +1850,7 @@ function handle(msg){
     case 'authRetry':
       // A lookup failure is not an unregistered account. Keep the existing balance
       // and retry with the same verified Telegram ID.
-      document.getElementById('loadingText').innerText='Loading your account...';
+      
       setTimeout(()=>{
         const id=getTelegramId();
         if(id) sendTelegramAuth(id);
