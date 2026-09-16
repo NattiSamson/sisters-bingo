@@ -3035,7 +3035,224 @@ bot.on(
       return next();
     }
 
-    const telegramId =
+   // ============================================================
+// EDIT ACCOUNT — KEEP NAME
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_account_edit_keep_name_(\d+)$/,
+  async (ctx) => {
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const pending =
+      pendingAdminAccountEdit[
+        admin.telegram_id
+      ];
+
+    if (!pending) {
+      return ctx.reply(
+        "❌ The edit session has expired. Please try again."
+      );
+    }
+
+    pending.accountName =
+      pending.originalName;
+
+    pending.step =
+      "account_number";
+
+    const isMobile =
+      String(
+        pending.paymentTypeName || ""
+      )
+        .trim()
+        .toLowerCase() === "mobile" ||
+
+      String(
+        pending.paymentTypeAmharicName || ""
+      ).trim() === "ሞባይል";
+
+    await ctx.editMessageText(
+      "✏️ *EDIT PAYMENT ACCOUNT*\n\n" +
+
+      `👤 Name: *${pending.accountName}* ✅\n\n` +
+
+      `📱 Current account number: \`${pending.accountNumber}\`\n\n` +
+
+      "Enter the new account number.\n" +
+      "Or press *Keep Current*.",
+
+      {
+        parse_mode: "Markdown",
+
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "✅ Keep Current",
+                callback_data:
+                  `admin_account_edit_keep_number_${pending.accountId}`
+              }
+            ],
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "admin_account_edit_cancel"
+              }
+            ]
+          ]
+        }
+      }
+    );
+  }
+);
+
+// ============================================================
+// EDIT ACCOUNT — KEEP ACCOUNT NUMBER
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_account_edit_keep_number_(\d+)$/,
+  async (ctx) => {
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const pending =
+      pendingAdminAccountEdit[
+        admin.telegram_id
+      ];
+
+    if (!pending) {
+      return ctx.reply(
+        "❌ The edit session has expired. Please try again."
+      );
+    }
+
+    pending.accountNumber =
+      pending.originalAccountNumber;
+
+    pending.step =
+      "balance";
+
+    await ctx.editMessageText(
+      "✏️ *EDIT PAYMENT ACCOUNT*\n\n" +
+
+      `👤 Name: *${pending.accountName}*\n` +
+      `📱 Account: \`${pending.accountNumber}\` ✅\n\n` +
+
+      `💰 Current balance: *${pending.balance} ETB*\n\n` +
+
+      "Enter the new balance.\n" +
+      "Or press *Keep Current*.",
+
+      {
+        parse_mode: "Markdown",
+
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "✅ Keep Current",
+                callback_data:
+                  `admin_account_edit_keep_balance_${pending.accountId}`
+              }
+            ],
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "admin_account_edit_cancel"
+              }
+            ]
+          ]
+        }
+      }
+    );
+  }
+);
+
+// ============================================================
+// EDIT ACCOUNT — KEEP BALANCE
+// ============================================================
+
+bot.callbackQuery(
+  /^admin_account_edit_keep_balance_(\d+)$/,
+  async (ctx) => {
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+      return;
+    }
+
+    await answerCallback(ctx);
+
+    const pending =
+      pendingAdminAccountEdit[
+        admin.telegram_id
+      ];
+
+    if (!pending) {
+      return ctx.reply(
+        "❌ The edit session has expired. Please try again."
+      );
+    }
+
+    pending.balance =
+      pending.originalBalance;
+
+    pending.step =
+      "confirm";
+
+    await showAdminAccountEditConfirmation(
+      ctx,
+      pending
+    );
+  }
+);
+
+
+// ============================================================
+// ADD ACCOUNT — TEXT INPUT
+// ============================================================
+//
+// IMPORTANT:
+// This handler MUST appear BEFORE the existing
+// BROADCAST TEXT handler.
+//
+// Your current broadcast text handler starts around line 4589.
+// ============================================================
+
+bot.on(
+  "message:text",
+  async (ctx, next) => {
+
+    const admin =
+      await getCurrentAdmin(ctx);
+
+    if (!admin) {
+
+      return next();
+
+    }
+     const telegramId =
       admin.telegram_id;
 
     const pending =
@@ -3267,223 +3484,6 @@ bot.on(
     return next();
   }
 );
-// ============================================================
-// EDIT ACCOUNT — KEEP NAME
-// ============================================================
-
-bot.callbackQuery(
-  /^admin_account_edit_keep_name_(\d+)$/,
-  async (ctx) => {
-
-    const admin =
-      await getCurrentAdmin(ctx);
-
-    if (!admin) {
-      return;
-    }
-
-    await answerCallback(ctx);
-
-    const pending =
-      pendingAdminAccountEdit[
-        admin.telegram_id
-      ];
-
-    if (!pending) {
-      return ctx.reply(
-        "❌ The edit session has expired. Please try again."
-      );
-    }
-
-    pending.accountName =
-      pending.originalName;
-
-    pending.step =
-      "account_number";
-
-    const isMobile =
-      String(
-        pending.paymentTypeName || ""
-      )
-        .trim()
-        .toLowerCase() === "mobile" ||
-
-      String(
-        pending.paymentTypeAmharicName || ""
-      ).trim() === "ሞባይል";
-
-    await ctx.editMessageText(
-      "✏️ *EDIT PAYMENT ACCOUNT*\n\n" +
-
-      `👤 Name: *${pending.accountName}* ✅\n\n` +
-
-      `📱 Current account number: \`${pending.accountNumber}\`\n\n` +
-
-      "Enter the new account number.\n" +
-      "Or press *Keep Current*.",
-
-      {
-        parse_mode: "Markdown",
-
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "✅ Keep Current",
-                callback_data:
-                  `admin_account_edit_keep_number_${pending.accountId}`
-              }
-            ],
-            [
-              {
-                text: "❌ Cancel",
-                callback_data:
-                  "admin_account_edit_cancel"
-              }
-            ]
-          ]
-        }
-      }
-    );
-  }
-);
-
-// ============================================================
-// EDIT ACCOUNT — KEEP ACCOUNT NUMBER
-// ============================================================
-
-bot.callbackQuery(
-  /^admin_account_edit_keep_number_(\d+)$/,
-  async (ctx) => {
-
-    const admin =
-      await getCurrentAdmin(ctx);
-
-    if (!admin) {
-      return;
-    }
-
-    await answerCallback(ctx);
-
-    const pending =
-      pendingAdminAccountEdit[
-        admin.telegram_id
-      ];
-
-    if (!pending) {
-      return ctx.reply(
-        "❌ The edit session has expired. Please try again."
-      );
-    }
-
-    pending.accountNumber =
-      pending.originalAccountNumber;
-
-    pending.step =
-      "balance";
-
-    await ctx.editMessageText(
-      "✏️ *EDIT PAYMENT ACCOUNT*\n\n" +
-
-      `👤 Name: *${pending.accountName}*\n` +
-      `📱 Account: \`${pending.accountNumber}\` ✅\n\n` +
-
-      `💰 Current balance: *${pending.balance} ETB*\n\n` +
-
-      "Enter the new balance.\n" +
-      "Or press *Keep Current*.",
-
-      {
-        parse_mode: "Markdown",
-
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "✅ Keep Current",
-                callback_data:
-                  `admin_account_edit_keep_balance_${pending.accountId}`
-              }
-            ],
-            [
-              {
-                text: "❌ Cancel",
-                callback_data:
-                  "admin_account_edit_cancel"
-              }
-            ]
-          ]
-        }
-      }
-    );
-  }
-);
-
-// ============================================================
-// EDIT ACCOUNT — KEEP BALANCE
-// ============================================================
-
-bot.callbackQuery(
-  /^admin_account_edit_keep_balance_(\d+)$/,
-  async (ctx) => {
-
-    const admin =
-      await getCurrentAdmin(ctx);
-
-    if (!admin) {
-      return;
-    }
-
-    await answerCallback(ctx);
-
-    const pending =
-      pendingAdminAccountEdit[
-        admin.telegram_id
-      ];
-
-    if (!pending) {
-      return ctx.reply(
-        "❌ The edit session has expired. Please try again."
-      );
-    }
-
-    pending.balance =
-      pending.originalBalance;
-
-    pending.step =
-      "confirm";
-
-    await showAdminAccountEditConfirmation(
-      ctx,
-      pending
-    );
-  }
-);
-
-
-// ============================================================
-// ADD ACCOUNT — TEXT INPUT
-// ============================================================
-//
-// IMPORTANT:
-// This handler MUST appear BEFORE the existing
-// BROADCAST TEXT handler.
-//
-// Your current broadcast text handler starts around line 4589.
-// ============================================================
-
-bot.on(
-  "message:text",
-  async (ctx, next) => {
-
-    const admin =
-      await getCurrentAdmin(ctx);
-
-    if (!admin) {
-
-      return next();
-
-    }
 
 
     const telegramId =
