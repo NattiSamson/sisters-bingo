@@ -10,9 +10,6 @@ CREATE DATABASE beteseb_bingo;
 --
 -- PostgreSQL database dump
 --
---
--- PostgreSQL database dump
---
 
 -- Dumped from database version 18.6 (2078fcb)
 -- Dumped by pg_dump version 18.4
@@ -460,7 +457,7 @@ CREATE TABLE public.withdrawals (
     rejection_reason character varying(100),
     claimed_by_id bigint,
     claimed_at timestamp without time zone,
-    processed_at timestamp without time zone,
+    "processed_at " timestamp without time zone,
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now(),
     CONSTRAINT withdrawals_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'processing'::character varying, 'approved'::character varying, 'rejected'::character varying, 'failed'::character varying, 'cancelled'::character varying])::text[])))
@@ -846,6 +843,54 @@ ALTER TABLE ONLY public.deposits
 
 
 --
+-- Name: withdrawals fk_withdrawals_approved_by; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.withdrawals
+    ADD CONSTRAINT fk_withdrawals_approved_by FOREIGN KEY (approved_by_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: withdrawals fk_withdrawals_claimed_by; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.withdrawals
+    ADD CONSTRAINT fk_withdrawals_claimed_by FOREIGN KEY (claimed_by_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: withdrawals fk_withdrawals_payment_account; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.withdrawals
+    ADD CONSTRAINT fk_withdrawals_payment_account FOREIGN KEY (payment_account_id) REFERENCES public.payment_accounts(id) ON DELETE SET NULL;
+
+
+--
+-- Name: withdrawals fk_withdrawals_payment_method; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.withdrawals
+    ADD CONSTRAINT fk_withdrawals_payment_method FOREIGN KEY (payment_method_id) REFERENCES public.payment_methods(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: withdrawals fk_withdrawals_rejected_by; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.withdrawals
+    ADD CONSTRAINT fk_withdrawals_rejected_by FOREIGN KEY (rejected_by_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: withdrawals fk_withdrawals_user; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.withdrawals
+    ADD CONSTRAINT fk_withdrawals_user FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
 -- Name: game_participants game_participants_game_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -880,4 +925,6 @@ ALTER TABLE ONLY public.transactions
 --
 -- PostgreSQL database dump complete
 --
+
+
 
