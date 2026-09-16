@@ -2380,7 +2380,7 @@ function handle(msg){
       document.getElementById('playerCountVal').innerText=msg.playerCount||0;
       updateActivePlayers(msg.players||[]);
       break;
-    case 'claimTooLate': showToast('⏰ ጊዜው አልፏል! ከሚቀጥለው ቁጥር በፊት ይጠይቁ።','warn'); break;
+    case 'claimTooLate': showToast('⏰ ጊዜው አልፏል! ከሚቀጥለው ቁጥር በፊት ይጠይቁ።','warn');autoClaimSent = false; break;
     case 'disqualified': showDisqualified(); break;
 
     case 'gameOver':
