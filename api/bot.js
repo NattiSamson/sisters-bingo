@@ -4430,7 +4430,7 @@ async function showPendingWithdrawals(
       await db.claimPendingWithdrawals(
         admin.telegram_id,
         adminState.paymentMethodId,
-        10
+        5
       );
 
     if (
@@ -4473,6 +4473,7 @@ async function showPendingWithdrawals(
         "Unknown"
       }*\n` +
       `📱 Payment Account: \`${adminState.paymentAccount.account_number}\`\n` +
+      `💵Account Balance: \`${adminState.paymentAccount.balance} ETB\`\n` +
       `⏱ Claim expires in: *5 minutes*\n` +
       "━━━━━━━━━━━━━━━━━━━━\n\n";
 
