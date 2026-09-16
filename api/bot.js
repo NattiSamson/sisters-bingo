@@ -4397,7 +4397,8 @@ bot.callbackQuery(
 
 async function showPendingWithdrawals(
   ctx,
-  editMessage = false
+  editMessage = false,
+  claimNew = true
 ) {
   const admin = await getCurrentAdmin(ctx);
 
@@ -4426,43 +4427,39 @@ async function showPendingWithdrawals(
      *
      * and assigns the rows to this admin.
      */
-    const claimResult =
-      await db.claimPendingWithdrawals(
-        admin.telegram_id,
-        adminState.paymentMethodId,
-        5
-      );
+    let withdrawals;
 
-    if (
-      !claimResult ||
-      !claimResult.success
-    ) {
-      return ctx.reply(
-        `❌ ${
-          claimResult?.message ||
-          "Could not claim withdrawals."
-        }`
-      );
-    }
+if (claimNew) {
+  const claimResult =
+    await db.claimPendingWithdrawals(
+      admin.telegram_id,
+      adminState.paymentMethodId,
+      5
+    );
 
-    const withdrawals =
-      claimResult.withdrawals || [];
+  if (!claimResult || !claimResult.success) {
+    return ctx.reply(
+      `❌ ${
+        claimResult?.message ||
+        "Could not claim withdrawals."
+      }`
+    );
+  }
 
-    /*
-     * Save the claimed withdrawals in this admin's
-     * temporary Telegram state.
-     */
-    adminState.claimedWithdrawals =
-      withdrawals;
+  withdrawals =
+    claimResult.withdrawals || [];
 
-    /*
-     * Five-minute lease.
-     *
-     * This is only for the Telegram UI.
-     * The DATABASE remains the real source of truth.
-     */
-    adminState.claimExpiresAt =
-      Date.now() + (5 * 60 * 1000);
+  adminState.claimedWithdrawals =
+    withdrawals;
+
+  adminState.claimExpiresAt =
+    Date.now() + (5 * 60 * 1000);
+
+} else {
+  // Display withdrawals already claimed by this admin.
+  withdrawals =
+    adminState.claimedWithdrawals || [];
+}
 
     let message =
       "👑 *WITHDRAWALS ASSIGNED TO YOU*\n\n" +
@@ -4977,14 +4974,10 @@ await cleanupExpiredAdminWithdrawalUI(
        * Remove this withdrawal from the local
        * claimed list.
        */
-      adminState.claimedWithdrawals =
-        (
-          adminState.claimedWithdrawals || []
-        ).filter(
-          w =>
-            Number(w.id) !==
-            Number(withdrawalId)
-        );
+     adminState.claimedWithdrawals =
+  (adminState.claimedWithdrawals || []).filter(
+    w => Number(w.id) !== Number(withdrawalId)
+  );
 
       /*
        * Send approval notification to user.
@@ -4995,12 +4988,9 @@ await cleanupExpiredAdminWithdrawalUI(
       /*
        * Refresh the admin's remaining claims.
        */
-      await showPendingWithdrawals(
-        ctx,
-        true
-      );
 
- pendingAdminWithdrawal[admin.telegram_id]
+
+ pendingAdminWithdrawal[admin.telegram_id];
 await ctx.reply(
 
   "✅ *WITHDRAWAL APPROVED*\n\n" +
@@ -5070,7 +5060,9 @@ await ctx.reply(
       // ------------------------------------------------------
 
       await showPendingWithdrawals(
-        ctx
+        ctx,
+        true,
+        false
       );
 
     } catch (err) {
