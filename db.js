@@ -2664,60 +2664,267 @@ module.exports = {
     return rows[0] || null;
   },
 
-  async getAllPaymentAccountsForAdmin() {
+  // ============================================================
+// GET PAYMENT ACCOUNT BY ID — ADMIN
+// Includes inactive and removed accounts.
+// ============================================================
 
-    const { rows } =
-      await pool.query(
-        `
-        SELECT
-          pa.id,
-          pa.payment_method_id,
-          pa.account_number,
-          pa.account_name,
-          pa.balance,
-          pa.is_active,
-          pa.is_removed,
+async getPaymentAccountByIdForAdmin(
+  paymentAccountId
+) {
 
-          pm.name
-            AS pm_name,
+  const id =
+    Number(paymentAccountId);
 
-          pm.amharic_name
-            AS pm_amharic_name,
+  if (
+    !Number.isInteger(id) ||
+    id <= 0
+  ) {
+    return null;
+  }
 
-          pm.emoji
-            AS pm_emoji,
+  const { rows } =
+    await pool.query(
+      `
+      SELECT
+        pa.id,
+        pa.payment_method_id,
+        pa.account_number,
+        pa.account_name,
+        pa.balance,
+        pa.is_active,
+        pa.is_removed,
 
-          pt.name
-            AS pt_name,
+        pm.name
+          AS pm_name,
 
-          pt.amharic_name
-            AS pt_amharic_name,
+        pm.amharic_name
+          AS pm_amharic_name,
 
-          pt.emoji
-            AS pt_emoji
+        pm.emoji
+          AS pm_emoji,
 
-        FROM payment_accounts pa
+        pt.name
+          AS pt_name,
 
-        JOIN payment_methods pm
-          ON pm.id =
-             pa.payment_method_id
+        pt.amharic_name
+          AS pt_amharic_name,
 
-        JOIN payment_types pt
-          ON pt.id =
-             pm.type_id
+        pt.emoji
+          AS pt_emoji
 
-        WHERE pm.is_active = TRUE
-          AND pt.is_active = TRUE
-          AND pa.is_removed = FALSE
+      FROM payment_accounts pa
 
-        ORDER BY
-          pm."order" ASC,
-          pa.id ASC
-        `
-      );
+      JOIN payment_methods pm
+        ON pm.id =
+           pa.payment_method_id
 
-    return rows;
-  },
+      JOIN payment_types pt
+        ON pt.id =
+           pm.type_id
+
+      WHERE pa.id = $1
+
+      LIMIT 1
+      `,
+      [id]
+    );
+
+  return rows[0] || null;
+},
+  // ============================================================
+// DELETE / UNDELETE PAYMENT ACCOUNT
+// Soft delete using is_removed.
+// ============================================================
+
+async setPaymentAccountRemoved(
+  paymentAccountId,
+  isRemoved
+) {
+
+  const id =
+    Number(paymentAccountId);
+
+  if (
+    !Number.isInteger(id) ||
+    id <= 0
+  ) {
+    return null;
+  }
+
+  const { rows } =
+    await pool.query(
+      `
+      UPDATE payment_accounts
+
+      SET
+        is_removed = $1
+
+      WHERE id = $2
+
+      RETURNING
+        id,
+        payment_method_id,
+        account_number,
+        account_name,
+        balance,
+        is_active,
+        is_removed
+      `,
+      [
+        Boolean(isRemoved),
+        id
+      ]
+    );
+
+  return rows[0] || null;
+},
+  // ============================================================
+// UPDATE PAYMENT ACCOUNT
+// ============================================================
+
+async updatePaymentAccount(
+  paymentAccountId,
+  accountName,
+  accountNumber,
+  balance
+) {
+
+  const id =
+    Number(paymentAccountId);
+
+  if (
+    !Number.isInteger(id) ||
+    id <= 0
+  ) {
+    return null;
+  }
+
+  const name =
+    String(
+      accountName ?? ""
+    ).trim();
+
+  const number =
+    String(
+      accountNumber ?? ""
+    ).trim();
+
+  const numericBalance =
+    Number(balance);
+
+  if (!name || name.length > 100) {
+    throw new Error(
+      "Invalid account name."
+    );
+  }
+
+  if (!number || number.length > 100) {
+    throw new Error(
+      "Invalid account number."
+    );
+  }
+
+  if (
+    !Number.isFinite(numericBalance) ||
+    numericBalance < 0
+  ) {
+    throw new Error(
+      "Invalid account balance."
+    );
+  }
+
+  const { rows } =
+    await pool.query(
+      `
+      UPDATE payment_accounts
+
+      SET
+        account_name = $1,
+        account_number = $2,
+        balance = $3
+
+      WHERE id = $4
+
+      RETURNING
+        id,
+        payment_method_id,
+        account_number,
+        account_name,
+        balance,
+        is_active,
+        is_removed
+      `,
+      [
+        name,
+        number,
+        numericBalance,
+        id
+      ]
+    );
+
+  return rows[0] || null;
+},
+
+  // ============================================================
+// PAYMENT ACCOUNTS — ADMIN LIST
+// Includes removed accounts so admin can undelete them.
+// ============================================================
+
+async getAllPaymentAccountsForAdmin() {
+
+  const { rows } =
+    await pool.query(
+      `
+      SELECT
+        pa.id,
+        pa.payment_method_id,
+        pa.account_number,
+        pa.account_name,
+        pa.balance,
+        pa.is_active,
+        pa.is_removed,
+
+        pm.name
+          AS pm_name,
+
+        pm.amharic_name
+          AS pm_amharic_name,
+
+        pm.emoji
+          AS pm_emoji,
+
+        pt.name
+          AS pt_name,
+
+        pt.amharic_name
+          AS pt_amharic_name,
+
+        pt.emoji
+          AS pt_emoji
+
+      FROM payment_accounts pa
+
+      JOIN payment_methods pm
+        ON pm.id =
+           pa.payment_method_id
+
+      JOIN payment_types pt
+        ON pt.id =
+           pm.type_id
+
+      WHERE pm.is_active = TRUE
+        AND pt.is_active = TRUE
+
+      ORDER BY
+        pa.is_removed ASC,
+        pm."order" ASC,
+        pa.id ASC
+      `
+    );
+
+  return rows;
+},
 
   async setPaymentAccountActive(
     paymentAccountId,
