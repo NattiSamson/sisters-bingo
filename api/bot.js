@@ -7667,8 +7667,6 @@ const isMobile =
   paymentMethodName === "mobile" ||
   paymentMethodAmharic === "ሞባይል";
 
-let accountNumber;
-
 if (isMobile) {
   accountNumber =
     normalizeEthiopianPhone(text);
