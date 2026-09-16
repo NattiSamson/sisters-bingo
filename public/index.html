@@ -2172,6 +2172,7 @@ function handle(msg){
         sendTelegramAuth(tid);
         await refreshAccountProfile(6,500);
         document.getElementById('loadingText').innerText='all done!';
+        goToGame();
       });
       break;
 
