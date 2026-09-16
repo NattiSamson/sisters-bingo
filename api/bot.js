@@ -862,520 +862,7 @@ bot.callbackQuery("admin_manage_user", async (ctx) => {
 
 });
 
-bot.on("message:text", async (ctx, next) => {
-  try {
-    const telegramId = ctx.from.id;
-
-    // ============================================================
-    // MANAGE USER — WAITING FOR PHONE NUMBER
-    // ============================================================
-    const userSearchState =
-      pendingAdminUserSearch.get(telegramId);
-    
-
-    if (
-      userSearchState &&
-      userSearchState.step === "waiting_phone"
-    ) {
-      const admin =
-        await db.getAdminByTelegramId(telegramId);
-
-      // Only main admin can manage users
-      if (
-        !admin ||
-        admin.admin_role !== "main"
-      ) {
-        pendingAdminUserSearch.delete(telegramId);
-
-        return await ctx.reply(
-          "⛔ You are not authorized to manage users."
-        );
-      }
-
-      const phone =
-        ctx.message.text.trim();
-
-      console.log(
-        "Manage User phone search:",
-        phone
-      );
-
-      // Search user
-      const user =
-        await db.getUserByPhoneForAdmin(phone);
-
-      if (!user) {
-        return await ctx.reply(
-          `❌ *User not found*\n\n` +
-          `📱 Phone: \`${phone}\`\n\n` +
-          `Please send another phone number or press Cancel.`,
-          {
-            parse_mode: "Markdown",
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text: "🏠 Home",
-                    callback_data:
-                      "admin_home"
-                  }
-                ],
-                [
-                  {
-                    text: "❌ Cancel",
-                    callback_data:
-                      "admin_manage_user_cancel"
-                  }
-                ]
-              ]
-            }
-          }
-        );
-      }
-
-      // Prevent managing yourself
-      if (
-        String(user.telegram_id) ===
-        String(telegramId)
-      ) {
-        return await ctx.reply(
-          "⚠️ You cannot block or unblock your own admin account."
-        );
-      }
-
-      // Search completed
-      pendingAdminUserSearch.delete(telegramId);
-
-      const blockStatus =
-        user.is_blocked
-          ? "🚫 Blocked"
-          : "✅ Active";
-
-      const activeStatus =
-        user.is_active
-          ? "🟢 Active"
-          : "⚪ Inactive";
-
-      const keyboard = [];
-
-      // Block / unblock
-      if (user.is_blocked) {
-        keyboard.push([
-          {
-            text: "✅ Unblock User",
-            callback_data:
-              `admin_unblock_user_${user.id}`
-          }
-        ]);
-      } else {
-        keyboard.push([
-          {
-            text: "🚫 Block User",
-            callback_data:
-              `admin_block_user_${user.id}`
-          }
-        ]);
-      }
-
-      keyboard.push([
-        {
-          text: "👤 Manage Another User",
-          callback_data:
-            "admin_manage_user"
-        }
-      ]);
-
-            keyboard.push([
-        {
-        text: "🏠 Home",
-    callback_data:
-      "admin_home"
-        }
-      ]);
-
-      keyboard.push([
-        {
-          text: "❌ Close",
-          callback_data:
-            "admin_manage_user_cancel"
-        }
-      ]);
-
-      await ctx.reply(
-        `👤 *USER FOUND*\n\n` +
-        `👤 Name: *${user.name || "Unknown"}*\n` +
-        `📱 Phone: \`${user.phone || "Not available"}\`\n` +
-        `💰 Balance: *${user.balance || 0} ETB*\n` +
-        `📊 Account: ${activeStatus}\n` +
-        `🔒 Status: ${blockStatus}`,
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: keyboard
-          }
-        }
-      );
-
-      return;
-    }
-
-    // ============================================================
-// USER FINANCIAL STATISTICS PHONE SEARCH
-// ============================================================
-
-const financialStatsState =
-  pendingAdminRoleSearch.get(telegramId);
-
-if (
-  financialStatsState &&
-  financialStatsState.step ===
-    "financial_statistics_phone"
-) {
-
-  const admin =
-    await db.getAdminByTelegramId(
-      telegramId
-    );
-
-  if (
-    !admin ||
-    (
-      admin.admin_role !== "main" &&
-      admin.admin_role !== "statistics"
-    )
-  ) {
-
-    pendingAdminRoleSearch.delete(
-      telegramId
-    );
-
-    return await ctx.reply(
-      "⛔ You are not authorized to view statistics."
-    );
-
-  }
-
-  const phone =
-    ctx.message.text.trim();
-
-  const user =
-    await db.getUserByPhoneForAdmin(
-      phone
-    );
-
-  if (!user) {
-
-    return await ctx.reply(
-      "❌ User not found.\n\n" +
-      "Please send a valid registered phone number."
-    );
-
-  }
-
-  const stats =
-    await db.getUserFinancialStatistics(
-      user.id
-    );
-
-  pendingAdminRoleSearch.delete(
-    telegramId
-  );
-
-  const message =
-    `👤 *USER FINANCIAL STATISTICS*\n\n` +
-
-    `👤 Name: *${user.name || "Unknown"}*\n` +
-    `📱 Phone: \`${user.phone || phone}\`\n\n` +
-
-    `💎 *Total Deposits*\n` +
-    `*${stats.totalDepositAmount.toFixed(2)} ETB*\n\n` +
-
-    `🏧 *Withdrawals*\n` +
-    `⏳ Pending: *${stats.pendingWithdrawalAmount.toFixed(2)} ETB*\n` +
-    `✅ Approved: *${stats.approvedWithdrawalAmount.toFixed(2)} ETB*\n` +
-    `❌ Rejected: *${stats.rejectedWithdrawalAmount.toFixed(2)} ETB*`;
-
-  return await ctx.reply(
-    message,
-    {
-      parse_mode: "Markdown",
-      reply_markup: {
-        inline_keyboard: [
-
-          [
-            {
-              text: "👤 Search Another User",
-              callback_data:
-                "admin_user_financial_statistics"
-            }
-          ],
-
-          [
-            {
-              text: "⬅️ Statistics",
-              callback_data:
-                "admin_statistics_menu"
-            },
-            {
-              text: "🏠 Home",
-              callback_data:
-                "admin_home"
-            }
-          ]
-
-        ]
-      }
-    }
-  );
-}
-        // ============================================================
-    // MANAGE ADMINS — WAITING FOR PHONE NUMBER
-    // ============================================================
-
-    const roleSearchState =
-      pendingAdminRoleSearch.get(telegramId);
-
-    if (
-      roleSearchState &&
-      roleSearchState.step === "waiting_phone"
-    ) {
-
-      const admin =
-        await db.getAdminByTelegramId(
-          telegramId
-        );
-
-      // Only main admin can manage admins
-      if (
-        !admin ||
-        admin.admin_role !== "main"
-      ) {
-
-        pendingAdminRoleSearch.delete(
-          telegramId
-        );
-
-        return await ctx.reply(
-          "⛔ You are not authorized to manage admins."
-        );
-
-      }
-
-      const phone =
-        ctx.message.text.trim();
-
-      console.log(
-        "Manage Admins phone search:",
-        phone
-      );
-
-      // Search user
-      const user =
-        await db.getUserByPhoneForAdmin(
-          phone
-        );
-
-      if (!user) {
-
-        return await ctx.reply(
-          `❌ *User not found*\n\n` +
-          `📱 Phone: \`${phone}\`\n\n` +
-          `Please send another phone number or press Cancel.`,
-          {
-            parse_mode: "Markdown",
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text: "🏠 Home",
-                    callback_data:
-                      "admin_home"
-                  }
-                ],
-                [
-                  {
-                    text: "❌ Cancel",
-                    callback_data:
-                      "admin_manage_admins_cancel"
-                  }
-                ]
-              ]
-            }
-          }
-        );
-
-      }
-
-      // Do not allow changing your own admin role
-      if (
-        String(user.telegram_id) ===
-        String(telegramId)
-      ) {
-
-        pendingAdminRoleSearch.delete(
-          telegramId
-        );
-
-        return await ctx.reply(
-          "⚠️ You cannot change your own admin role.",
-          {
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text: "👑 Manage Another Admin",
-                    callback_data:
-                      "admin_manage_admins"
-                  }
-                ],
-                [
-                  {
-                    text: "🏠 Home",
-                    callback_data:
-                      "admin_home"
-                  }
-                ]
-              ]
-            }
-          }
-        );
-
-      }
-
-      // Search completed
-      pendingAdminRoleSearch.delete(
-        telegramId
-      );
-
-      const keyboard = [];
-
-      // Main Admin
-      keyboard.push([
-        {
-          text: "👑 Main Admin",
-          callback_data:
-            `set_admin_main_${user.id}`
-        }
-      ]);
-
-      // Statistics Admin
-      keyboard.push([
-        {
-          text: "📊 Statistics Admin",
-          callback_data:
-            `set_admin_statistics_${user.id}`
-        }
-      ]);
-
-      // Withdrawal Admin
-      keyboard.push([
-        {
-          text: "💸 Withdrawal Admin",
-          callback_data:
-            `set_admin_withdrawal_${user.id}`
-        }
-      ]);
-
-      // Broadcast Admin
-      keyboard.push([
-        {
-          text: "📢 Broadcast Admin",
-          callback_data:
-            `set_admin_broadcast_${user.id}`
-        }
-      ]);
-
-      // Remove Admin
-      if (user.is_admin === true) {
-
-        keyboard.push([
-          {
-            text: "🚫 Remove Admin Rights",
-            callback_data:
-              `remove_admin_${user.id}`
-          }
-        ]);
-
-      }
-
-      keyboard.push([
-        {
-          text: "👑 Manage Another Admin",
-          callback_data:
-            "admin_manage_admins"
-        }
-      ]);
-
-      keyboard.push([
-        {
-          text: "🏠 Home",
-          callback_data:
-            "admin_home"
-        }
-      ]);
-
-      const currentRole =
-        user.is_admin
-          ? (
-              user.admin_role === "main"
-                ? "👑 Main Admin"
-                : user.admin_role === "statistics"
-                ? "📊 Statistics Admin"
-                : user.admin_role === "withdrawal"
-                ? "💸 Withdrawal Admin"
-                : user.admin_role === "broadcast"
-                ? "📢 Broadcast Admin"
-                : "Admin"
-            )
-          : "👤 Normal User";
-
-      await ctx.reply(
-        `👑 *MANAGE ADMIN*\n\n` +
-        `👤 Name: *${user.name || "Unknown"}*\n` +
-        `📱 Phone: \`${user.phone || phone}\`\n` +
-        `🔐 Current Role: *${currentRole}*\n\n` +
-        `Select the new admin role:`,
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard:
-              keyboard
-          }
-        }
-      );
-
-      return;
-    }
-
-    // ============================================================
-    // NOT A MANAGE USER / MANAGE ADMINS MESSAGE
-    // ============================================================
-
-    return next();
-
-    // ============================================================
-    // NOT A MANAGE USER MESSAGE
-    // ============================================================
-    return next();
-
-  } catch (error) {
-    console.error(
-      "Admin user phone search error:",
-      error
-    );
-
-    pendingAdminUserSearch.delete(
-      ctx.from.id
-    );
-
-    await ctx.reply(
-      "❌ An error occurred while searching for the user."
-    );
-  }
-});
-
-
-    
+  
 bot.callbackQuery(
   /^admin_block_user_(\d+)$/,
   async (ctx) => {
@@ -3023,885 +2510,6 @@ bot.callbackQuery(
 // EDIT ACCOUNT — TEXT INPUT
 // ============================================================
 
-bot.on(
-  "message:text",
-  async (ctx, next) => {
-
-    const admin =
-      await getCurrentAdmin(ctx);
-
-    if (!admin) {
-      return next();
-    }
-
-   // ============================================================
-// EDIT ACCOUNT — KEEP NAME
-// ============================================================
-
-bot.callbackQuery(
-  /^admin_account_edit_keep_name_(\d+)$/,
-  async (ctx) => {
-
-    const admin =
-      await getCurrentAdmin(ctx);
-
-    if (!admin) {
-      return;
-    }
-
-    await answerCallback(ctx);
-
-    const pending =
-      pendingAdminAccountEdit[
-        admin.telegram_id
-      ];
-
-    if (!pending) {
-      return ctx.reply(
-        "❌ The edit session has expired. Please try again."
-      );
-    }
-
-    pending.accountName =
-      pending.originalName;
-
-    pending.step =
-      "account_number";
-
-    const isMobile =
-      String(
-        pending.paymentTypeName || ""
-      )
-        .trim()
-        .toLowerCase() === "mobile" ||
-
-      String(
-        pending.paymentTypeAmharicName || ""
-      ).trim() === "ሞባይል";
-
-    await ctx.editMessageText(
-      "✏️ *EDIT PAYMENT ACCOUNT*\n\n" +
-
-      `👤 Name: *${pending.accountName}* ✅\n\n` +
-
-      `📱 Current account number: \`${pending.accountNumber}\`\n\n` +
-
-      "Enter the new account number.\n" +
-      "Or press *Keep Current*.",
-
-      {
-        parse_mode: "Markdown",
-
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "✅ Keep Current",
-                callback_data:
-                  `admin_account_edit_keep_number_${pending.accountId}`
-              }
-            ],
-            [
-              {
-                text: "❌ Cancel",
-                callback_data:
-                  "admin_account_edit_cancel"
-              }
-            ]
-          ]
-        }
-      }
-    );
-  }
-);
-
-// ============================================================
-// EDIT ACCOUNT — KEEP ACCOUNT NUMBER
-// ============================================================
-
-bot.callbackQuery(
-  /^admin_account_edit_keep_number_(\d+)$/,
-  async (ctx) => {
-
-    const admin =
-      await getCurrentAdmin(ctx);
-
-    if (!admin) {
-      return;
-    }
-
-    await answerCallback(ctx);
-
-    const pending =
-      pendingAdminAccountEdit[
-        admin.telegram_id
-      ];
-
-    if (!pending) {
-      return ctx.reply(
-        "❌ The edit session has expired. Please try again."
-      );
-    }
-
-    pending.accountNumber =
-      pending.originalAccountNumber;
-
-    pending.step =
-      "balance";
-
-    await ctx.editMessageText(
-      "✏️ *EDIT PAYMENT ACCOUNT*\n\n" +
-
-      `👤 Name: *${pending.accountName}*\n` +
-      `📱 Account: \`${pending.accountNumber}\` ✅\n\n` +
-
-      `💰 Current balance: *${pending.balance} ETB*\n\n` +
-
-      "Enter the new balance.\n" +
-      "Or press *Keep Current*.",
-
-      {
-        parse_mode: "Markdown",
-
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "✅ Keep Current",
-                callback_data:
-                  `admin_account_edit_keep_balance_${pending.accountId}`
-              }
-            ],
-            [
-              {
-                text: "❌ Cancel",
-                callback_data:
-                  "admin_account_edit_cancel"
-              }
-            ]
-          ]
-        }
-      }
-    );
-  }
-);
-
-// ============================================================
-// EDIT ACCOUNT — KEEP BALANCE
-// ============================================================
-
-bot.callbackQuery(
-  /^admin_account_edit_keep_balance_(\d+)$/,
-  async (ctx) => {
-
-    const admin =
-      await getCurrentAdmin(ctx);
-
-    if (!admin) {
-      return;
-    }
-
-    await answerCallback(ctx);
-
-    const pending =
-      pendingAdminAccountEdit[
-        admin.telegram_id
-      ];
-
-    if (!pending) {
-      return ctx.reply(
-        "❌ The edit session has expired. Please try again."
-      );
-    }
-
-    pending.balance =
-      pending.originalBalance;
-
-    pending.step =
-      "confirm";
-
-    await showAdminAccountEditConfirmation(
-      ctx,
-      pending
-    );
-  }
-);
-
-
-// ============================================================
-// ADD ACCOUNT — TEXT INPUT
-// ============================================================
-//
-// IMPORTANT:
-// This handler MUST appear BEFORE the existing
-// BROADCAST TEXT handler.
-//
-// Your current broadcast text handler starts around line 4589.
-// ============================================================
-
-bot.on(
-  "message:text",
-  async (ctx, next) => {
-
-    const admin =
-      await getCurrentAdmin(ctx);
-
-    if (!admin) {
-
-      return next();
-
-    }
-     const telegramId =
-      admin.telegram_id;
-
-    const pending =
-      pendingAdminAccountEdit[
-        telegramId
-      ];
-
-    if (!pending) {
-      return next();
-    }
-
-    const text =
-      String(
-        ctx.message.text || ""
-      ).trim();
-
-    if (text === "/cancel") {
-
-      delete pendingAdminAccountEdit[
-        telegramId
-      ];
-
-      return ctx.reply(
-        "❌ Payment account editing cancelled."
-      );
-    }
-
-    // ==========================================================
-    // STEP 1 — ACCOUNT NAME
-    // ==========================================================
-
-    if (
-      pending.step ===
-      "account_name"
-    ) {
-
-      if (!text) {
-        return ctx.reply(
-          "❌ Account name cannot be empty."
-        );
-      }
-
-      if (text.length > 100) {
-        return ctx.reply(
-          "❌ Account name cannot exceed 100 characters."
-        );
-      }
-
-      pending.accountName =
-        text.substring(0, 100);
-
-      pending.step =
-        "account_number";
-
-      const isMobile =
-        String(
-          pending.paymentTypeName || ""
-        )
-          .trim()
-          .toLowerCase() === "mobile" ||
-
-        String(
-          pending.paymentTypeAmharicName || ""
-        ).trim() === "ሞባይል";
-
-      await ctx.reply(
-        "✏️ *ACCOUNT NAME UPDATED*\n\n" +
-
-        `👤 New name: *${pending.accountName}*\n\n` +
-
-        `📱 Current account number: \`${pending.accountNumber}\`\n\n` +
-
-        (
-          isMobile
-            ? "Enter the new *mobile account number*.\n\n" +
-              "Example: `0912345678`"
-            : "Enter the new *account number*."
-        ),
-
-        {
-          parse_mode: "Markdown",
-
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "✅ Keep Current",
-                  callback_data:
-                    `admin_account_edit_keep_number_${pending.accountId}`
-                }
-              ],
-              [
-                {
-                  text: "❌ Cancel",
-                  callback_data:
-                    "admin_account_edit_cancel"
-                }
-              ]
-            ]
-          }
-        }
-      );
-
-      return;
-    }
-
-    // ==========================================================
-    // STEP 2 — ACCOUNT NUMBER
-    // ==========================================================
-
-    if (
-      pending.step ===
-      "account_number"
-    ) {
-
-      if (!text) {
-        return ctx.reply(
-          "❌ Account number cannot be empty."
-        );
-      }
-
-      const normalizedAccountNumber =
-        normalizePaymentAccountNumber(
-          text,
-          pending.paymentTypeName,
-          pending.paymentTypeAmharicName
-        );
-
-      if (!normalizedAccountNumber) {
-        return ctx.reply(
-          "❌ Invalid account number.\n\n" +
-          "Please enter a valid account number."
-        );
-      }
-
-      if (
-        normalizedAccountNumber.length > 100
-      ) {
-        return ctx.reply(
-          "❌ Account number cannot exceed 100 characters."
-        );
-      }
-
-      pending.accountNumber =
-        normalizedAccountNumber;
-
-      pending.step =
-        "balance";
-
-      await ctx.reply(
-        "✏️ *ACCOUNT NUMBER UPDATED*\n\n" +
-
-        `👤 Name: *${pending.accountName}*\n` +
-        `📱 New account: \`${pending.accountNumber}\`\n\n` +
-
-        `💰 Current balance: *${pending.balance} ETB*\n\n` +
-
-        "Enter the new balance.",
-
-        {
-          parse_mode: "Markdown",
-
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "✅ Keep Current",
-                  callback_data:
-                    `admin_account_edit_keep_balance_${pending.accountId}`
-                }
-              ],
-              [
-                {
-                  text: "❌ Cancel",
-                  callback_data:
-                    "admin_account_edit_cancel"
-                }
-              ]
-            ]
-          }
-        }
-      );
-
-      return;
-    }
-
-    // ==========================================================
-    // STEP 3 — BALANCE
-    // ==========================================================
-
-    if (
-      pending.step ===
-      "balance"
-    ) {
-
-      const balance =
-        Number(
-          text.replace(/,/g, "")
-        );
-
-      if (
-        !Number.isFinite(balance) ||
-        balance < 0
-      ) {
-        return ctx.reply(
-          "❌ Invalid balance.\n\n" +
-          "Please enter a number greater than or equal to 0.\n\n" +
-          "Example:\n" +
-          "`0`\n" +
-          "`5000`\n" +
-          "`12500.50`"
-        );
-      }
-
-      pending.balance =
-        balance;
-
-      pending.step =
-        "confirm";
-
-      await showAdminAccountEditConfirmation(
-        ctx,
-        pending
-      );
-
-      return;
-    }
-
-    return next();
-  }
-);
-
-
-    const telegramId =
-      admin.telegram_id;
-
-    const pending =
-      pendingAdminAccount[
-        telegramId
-      ];
-
-
-    // No account creation in progress.
-    if (!pending) {
-
-      return next();
-
-    }
-
-
-    const text =
-      String(
-        ctx.message.text || ""
-      ).trim();
-
-
-    // ----------------------------------------------------------
-    // CANCEL
-    // ----------------------------------------------------------
-
-    if (
-      text === "/cancel"
-    ) {
-
-      delete pendingAdminAccount[
-        telegramId
-      ];
-
-      return ctx.reply(
-        "❌ Payment account creation cancelled."
-      );
-
-    }
-
-
-    // ==========================================================
-    // STEP 1 — ACCOUNT NAME
-    // ==========================================================
-
-    if (
-      pending.step ===
-      "account_name"
-    ) {
-
-      if (!text) {
-
-        return ctx.reply(
-          "❌ Account name cannot be empty.\n\n" +
-          "Please enter the account name:"
-        );
-
-      }
-
-
-      if (
-        text.length > 100
-      ) {
-
-        return ctx.reply(
-          "❌ Account name is too long.\n\n" +
-          "Please enter a name with 100 characters or fewer:"
-        );
-
-      }
-
-
-      pending.accountName =
-        text.substring(
-          0,
-          100
-        );
-
-
-      pending.step =
-        "account_number";
-
-
-      const isMobile =
-        String(
-          pending.paymentTypeName || ""
-        )
-          .trim()
-          .toLowerCase() ===
-          "mobile" ||
-
-        String(
-          pending.paymentTypeAmharicName || ""
-        ).trim() ===
-          "ሞባይል";
-
-
-      if (isMobile) {
-
-        return ctx.reply(
-
-          "📱 Please enter the *mobile account number*.\n\n" +
-
-          "Examples:\n" +
-          "`0912345678`\n" +
-          "`+251912345678`\n" +
-          "`251912345678`\n\n" +
-
-          "The number will be normalized to `+251...`.",
-
-          {
-            parse_mode:
-              "Markdown"
-          }
-
-        );
-
-      }
-
-
-      return ctx.reply(
-
-        "💳 Please enter the *account number*.\n\n" +
-
-        "The account number will be saved as entered.",
-
-        {
-          parse_mode:
-            "Markdown"
-        }
-
-      );
-
-    }
-
-
-    // ==========================================================
-    // STEP 2 — ACCOUNT NUMBER
-    // ==========================================================
-
-    if (
-      pending.step ===
-      "account_number"
-    ) {
-
-      if (!text) {
-
-        return ctx.reply(
-          "❌ Account number cannot be empty.\n\n" +
-          "Please enter the account number:"
-        );
-
-      }
-
-
-      const normalizedAccountNumber =
-        normalizePaymentAccountNumber(
-
-          text,
-
-          pending.paymentTypeName,
-
-          pending.paymentTypeAmharicName
-
-        );
-
-
-      const isMobile =
-        String(
-          pending.paymentTypeName || ""
-        )
-          .trim()
-          .toLowerCase() ===
-          "mobile" ||
-
-        String(
-          pending.paymentTypeAmharicName || ""
-        ).trim() ===
-          "ሞባይል";
-
-
-      // Mobile numbers MUST be valid Ethiopian numbers.
-      if (
-        isMobile &&
-        !normalizedAccountNumber
-      ) {
-
-        return ctx.reply(
-
-          "❌ Invalid Ethiopian mobile number.\n\n" +
-
-          "Please enter a valid number such as:\n" +
-          "`0912345678`\n" +
-          "`+251912345678`\n" +
-          "`251912345678`",
-
-          {
-            parse_mode:
-              "Markdown"
-          }
-
-        );
-
-      }
-
-
-      if (
-        !normalizedAccountNumber
-      ) {
-
-        return ctx.reply(
-          "❌ Invalid account number.\n\n" +
-          "Please enter the account number again."
-        );
-
-      }
-
-
-      pending.accountNumber =
-        normalizedAccountNumber;
-
-
-      pending.step =
-        "initial_balance";
-
-
-      return ctx.reply(
-
-        "💰 Please enter the *initial balance* in ETB.\n\n" +
-
-        "Example:\n" +
-        "`0`\n" +
-        "`5000`\n" +
-        "`12500.50`",
-
-        {
-          parse_mode:
-            "Markdown"
-        }
-
-      );
-
-    }
-
-
-    // ==========================================================
-    // STEP 3 — INITIAL BALANCE
-    // ==========================================================
-
-    if (
-      pending.step ===
-      "initial_balance"
-    ) {
-
-      const initialBalance =
-        Number(
-          text.replace(
-            /,/g,
-            ""
-          )
-        );
-
-
-      if (
-        !Number.isFinite(
-          initialBalance
-        ) ||
-        initialBalance < 0
-      ) {
-
-        return ctx.reply(
-
-          "❌ Invalid balance.\n\n" +
-
-          "Please enter a number greater than or equal to 0.\n\n" +
-
-          "Example:\n" +
-          "`0`\n" +
-          "`5000`\n" +
-          "`12500.50`",
-
-          {
-            parse_mode:
-              "Markdown"
-          }
-
-        );
-
-      }
-
-
-      try {
-
-        const result =
-          await db.createPaymentAccount(
-
-            pending.paymentMethodId,
-
-            pending.accountName,
-
-            pending.accountNumber,
-
-            initialBalance
-
-          );
-
-
-        if (
-          !result ||
-          result.success !== true
-        ) {
-
-          return ctx.reply(
-
-            `❌ ${result?.message || "Could not create payment account."}`
-
-          );
-
-        }
-
-
-        delete pendingAdminAccount[
-          telegramId
-        ];
-
-
-        const account =
-          result.account;
-
-
-        await ctx.reply(
-
-          "✅ *PAYMENT ACCOUNT CREATED*\n\n" +
-
-          `💳 Method: *${account.pm_amharic_name || account.pm_name}*\n` +
-
-          `📂 Type: *${account.pt_amharic_name || account.pt_name || "-"}*\n` +
-
-          `👤 Name: *${account.account_name}*\n` +
-
-          `📱 Account: \`${account.account_number}\`\n` +
-
-          `💰 Initial Balance: *${account.balance} ETB*\n` +
-
-          "📌 Status: 🟢 *Active*",
-
-          {
-
-            parse_mode:
-              "Markdown",
-
-            reply_markup: {
-
-              inline_keyboard: [
-
-                [
-
-                  {
-
-                    text:
-                      "💳 Accounts",
-
-                    callback_data:
-                      "admin_accounts"
-
-                  }
-
-                ],
-
-                [
-
-                  {
-
-                    text:
-                      "🏠 Home",
-
-                    callback_data:
-                      "admin_home"
-
-                  }
-
-                ]
-
-              ]
-
-            }
-
-          }
-
-        );
-
-      } catch (err) {
-
-        console.error(
-          "Create payment account error:",
-          err
-        );
-
-        await ctx.reply(
-
-          "❌ Could not create the payment account.\n\n" +
-          "Please try again."
-
-        );
-
-      }
-
-      return;
-
-    }
-
-
-    return next();
-
-  }
-);
 
 // ============================================================
 // /START
@@ -4038,106 +2646,7 @@ if (existing) {
 );
 
 
-// ============================================================
-// REGISTRATION TEXT
-// ============================================================
 
-bot.on(
-  "message:text",
-  async (ctx, next) => {
-
-    const telegramId =
-      ctx.from.id;
-
-    const text =
-      ctx.message.text;
-
-
-    const pending =
-      pendingPhone[
-        telegramId
-      ];
-
-
-    if (!pending) {
-
-      return next();
-
-    }
-
-
-    if (
-      pending.step === "ask_name" &&
-      text &&
-      !text.startsWith("/")
-    ) {
-
-      pending.name =
-        text
-          .trim()
-          .substring(
-            0,
-            30
-          );
-
-
-      pending.step =
-        "ask_phone";
-
-
-      await ctx.reply(
-
-        `Nice to meet you, *${pending.name}!*\n\n` +
-
-        `Please share your phone number so we can verify your account:`,
-
-        {
-
-          parse_mode:
-            "Markdown",
-
-          reply_markup: {
-
-            keyboard: [
-
-              [
-
-                {
-
-                  text:
-                    "📱 Share My Phone Number",
-
-                  request_contact:
-                    true
-
-                }
-
-              ]
-
-            ],
-
-            resize_keyboard:
-              true,
-
-            one_time_keyboard:
-              true
-
-          }
-
-        }
-
-      );
-
-
-      return;
-
-    }
-
-
-    return next();
-
-  }
-);
 
 
 // ============================================================
@@ -4628,127 +3137,6 @@ bot.callbackQuery(
 );
 
 
-// ============================================================
-// DEPOSIT SMS
-// ============================================================
-
-bot.on(  "message:text",  async (ctx, next) => {
-
-    const telegramId =
-      ctx.from.id;
-
-    const text =
-      ctx.message.text;
-
-
-    if (      !pendingDeposit[        telegramId      ]    ) {
-
-      return next();
-
-    }
-
-
-    try {
-
-      
-
-      const paymentMethod = ctx.session.paymentMethod;
-      const paymentType = ctx.session.paymentType;
-      await ctx.reply(
-        "✅⏳ የክፍያ መልዕክትዎ ደርሶናል። ክፍያዎ እየተረጋገጠ ነው። እባክዎ ትንሽ ይጠብቁ።"
-      );
-      const result =
-        await processDeposit(
-          text,
-          paymentMethod.name,
-          paymentMethod.amharicName,
-          paymentType.name,
-          paymentType.amharicName
-        );
-
-
-      if (
-        typeof result === "object" &&
-        result !== null
-      ) {
-
-        const receipt =
-          result.receipt;
-
-
-        if (!receipt) {
-
-          return ctx.reply(
-            "❌ የክፍያ ደረሰኝ መረጃ አልተገኘም።"
-          );
-
-        }
-
-
-        const result2 =
-          await db.approveDeposit(
-            receipt,
-            telegramId
-          );
-
-
-        if (
-          result2 > 0
-        ) {
-
-          clearPendingState(
-            telegramId
-          );
-
-
-
-          let successMessage =
-  "✅ *የገቢ ጥያቄዎ ተሳክቷል!*\n\n" +
-  `💰 ${result2} ብር ወደ ሂሳብዎ ተጨምሯል።`;
-
-
-
-return await ctx.reply(
-  successMessage,
-  {
-    parse_mode: "Markdown"
-  }
-);
-
-        }
-
-
-        return ctx.reply(
-          "❌ የገቢ ጥያቄዎ አልተሳካም።"
-        );
-
-      }
-
-
-      return ctx.reply(
-
-        "🚫 ጥያቄው አልተሳካም። " +
-
-        "እባክዎ ትክክለኛውን SMS ይላኩ።"
-
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Deposit processing error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ የክፍያውን ማረጋገጥ አልተቻለም።"
-      );
-
-    }
-
-  }
-);
-
 
 // ============================================================
 // CANCEL DEPOSIT
@@ -5032,317 +3420,6 @@ bot.callbackQuery(
 
   }
 );
-
-
-// ============================================================
-// WITHDRAWAL ACCOUNT
-// ============================================================
-
-bot.on(
-  "message:text",
-  async (ctx, next) => {
-
-    const telegramId =
-      ctx.from.id;
-
-
-    const text =
-      ctx.message.text.trim();
-
-
-    const withdrawal =
-      pendingWithdrawal[
-        telegramId
-      ];
-
-
-    if (!withdrawal) {
-
-      return next();
-
-    }
-
-
-    if (
-      withdrawal.step !==
-      "account"
-    ) {
-
-      return next();
-
-    }
-
-
-    if (
-      text.startsWith("/")
-    ) {
-
-      return next();
-
-    }
-
-
-    const accountNumber =
-      text.replace(
-        /[\s\-()]/g,
-        ""
-      );
-
-
-    if (
-      !accountNumber
-    ) {
-
-      return ctx.reply(
-        "❌ እባክዎ ትክክለኛ የአካውንት ቁጥር ያስገቡ።"
-      );
-
-    }
-
-
-    if (
-      accountNumber.length > 20
-    ) {
-
-      return ctx.reply(
-        "❌ የአካውንት ቁጥሩ ከ20 ፊደል/ቁጥር መብለጥ አይችልም።"
-      );
-
-    }
-
-
-    pendingWithdrawal[
-      telegramId
-    ] = {
-
-      ...withdrawal,
-
-      step:
-        "amount",
-
-      accountNumber
-
-    };
-
-
-    await ctx.reply(
-
-      "✅ *የአካውንት ቁጥር ተቀብለናል።*\n\n" +
-
-      `📱 አካውንት፦ *${accountNumber}*\n\n` +
-
-      "💰 አሁን ማውጣት የሚፈልጉትን የብር መጠን ያስገቡ።\n\n" +
-
-      "ምሳሌ፦ `100`",
-
-      {
-
-        parse_mode:
-          "Markdown"
-
-      }
-
-    );
-
-  }
-);
-
-
-// ============================================================
-// WITHDRAWAL AMOUNT
-// ============================================================
-
-bot.on(
-  "message:text",
-  async (ctx, next) => {
-
-    const telegramId =
-      ctx.from.id;
-
-
-    const text =
-      ctx.message.text.trim();
-
-
-    const withdrawal =
-      pendingWithdrawal[
-        telegramId
-      ];
-
-
-    if (!withdrawal) {
-
-      return next();
-
-    }
-
-
-    if (
-      withdrawal.step !==
-      "amount"
-    ) {
-
-      return next();
-
-    }
-
-
-    if (
-      text.startsWith("/")
-    ) {
-
-      return next();
-
-    }
-
-
-    try {
-
-      const amount =
-        Number(text);
-
-
-      if (
-        !Number.isFinite(amount) ||
-        amount <= 0
-      ) {
-
-        return ctx.reply(
-          "❌ እባክዎ ትክክለኛ የብር መጠን ያስገቡ።\n\nምሳሌ፦ `100`"
-        );
-
-      }
-
-
-      if (
-        !Number.isInteger(amount)
-      ) {
-
-        return ctx.reply(
-          "❌ የመውጫ መጠኑ ሙሉ ቁጥር መሆን አለበት።"
-        );
-
-      }
-
-
-      if (
-        amount < 10
-      ) {
-
-        return ctx.reply(
-          "❌ ቢያንስ 10 ETB ማውጣት ይችላሉ።"
-        );
-
-      }
-
-
-      const user =
-        await db.getUserByTelegramId(
-          telegramId
-        );
-
-
-      if (!user) {
-
-        delete pendingWithdrawal[
-          telegramId
-        ];
-
-        return ctx.reply(
-          "❌ አካውንትዎ አልተገኘም።"
-        );
-
-      }
-
-
-      const balance =
-        Number(user.balance);
-
-
-      if (
-        amount > balance
-      ) {
-
-        return ctx.reply(
-
-          `❌ በቂ ሂሳብ የሎትም።\n\n` +
-
-          `💰 ያለዎት ሂሳብ፦ ${balance} ETB\n` +
-
-          `💸 ለማውጣት የፈለጉት፦ ${amount} ETB`
-
-        );
-
-      }
-
-
-      const result =
-        await db.createWithdrawal(
-
-          telegramId,
-
-          withdrawal.paymentMethodId,
-
-          withdrawal.accountNumber,
-
-          amount
-
-        );
-
-
-      if (
-        !result.success
-      ) {
-
-        return ctx.reply(
-          `❌ ${result.message}`
-        );
-
-      }
-
-
-      delete pendingWithdrawal[
-        telegramId
-      ];
-
-
-      await ctx.reply(
-
-        "✅ *የመውጫ ጥያቄዎ ተቀብለናል!*\n\n" +
-
-        `💳 የክፍያ መንገድ፦ *${withdrawal.paymentMethod.amharic_name}*\n` +
-
-        `📱 አካውንት፦ *${withdrawal.accountNumber}*\n` +
-
-        `💰 መጠን፦ *${amount} ETB*\n\n` +
-
-        "⏳ ጥያቄዎ በአስተዳዳሪ እየተገመገመ ነው።",
-
-        {
-
-          parse_mode:
-            "Markdown"
-
-        }
-
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Withdrawal amount error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ የመውጫ ጥያቄውን ማስኬድ አልተቻለም።"
-      );
-
-    }
-
-  }
-);
-
 
 // ============================================================
 // CANCEL WITHDRAWAL
@@ -6448,249 +4525,6 @@ bot.callbackQuery(
   }
 );
 
-
-// ============================================================
-// ADMIN REJECTION REASON
-// ============================================================
-
-bot.on(
-  "message:text",
-  async (ctx, next) => {
-
-    const telegramId =
-      ctx.from.id;
-
-
-    /*
-     * Check whether this Telegram user is
-     * currently an authorized admin.
-     *
-     * No hard-coded ADMIN_ID.
-     */
-
-    const admin =
-      await getCurrentAdmin(
-        ctx
-      );
-
-
-    if (!admin) {
-
-      return next();
-
-    }
-
-
-    const pending =
-      pendingAdminReject[
-        telegramId
-      ];
-
-
-    if (!pending) {
-
-      return next();
-
-    }
-
-
-    const text =
-      ctx.message.text.trim();
-
-
-    // --------------------------------------------------------
-    // Cancel rejection
-    // --------------------------------------------------------
-
-    if (
-      text === "/cancel"
-    ) {
-
-      delete pendingAdminReject[
-        telegramId
-      ];
-
-
-      return ctx.reply(
-        "❌ Withdrawal rejection cancelled."
-      );
-
-    }
-
-
-    // --------------------------------------------------------
-    // Validate reason
-    // --------------------------------------------------------
-
-    if (!text) {
-
-      return ctx.reply(
-        "❌ Please enter a rejection reason."
-      );
-
-    }
-
-
-    if (
-      text.length < 2
-    ) {
-
-      return ctx.reply(
-        "❌ Please provide a valid rejection reason."
-      );
-
-    }
-
-
-    const withdrawalId =
-      pending.withdrawalId;
-
-
-    const reason =
-      text.substring(
-        0,
-        500
-      );
-
-
-    /*
-     * Clear state BEFORE database operation
-     * so another message cannot accidentally
-     * trigger the same rejection.
-     */
-
-    delete pendingAdminReject[
-      telegramId
-    ];
-
-
-    try {
-
-      /*
-       * Pass the CURRENT ADMIN'S Telegram ID.
-       *
-       * db.rejectWithdrawal() should verify
-       * that this Telegram ID is an active admin.
-       */
-
-      const result =
-        await db.rejectWithdrawal(
-          withdrawalId,
-          admin.telegram_id,
-          reason
-        );
-
-
-      if (
-        !result ||
-        !result.success
-      ) {
-
-        return ctx.reply(
-          `❌ ${result?.message || "Withdrawal rejection failed."}`
-        );
-
-      }
-
-
-      // ------------------------------------------------------
-      // Tell admin
-      // ------------------------------------------------------
-
-      await ctx.reply(
-
-        "❌ *WITHDRAWAL REJECTED*\n\n" +
-
-        `🆔 #${withdrawalId}\n` +
-
-        `👤 User: *${result.user_name || pending.withdrawal.name || "Unknown"}*\n` +
-
-        `💰 Amount: *${result.amount || pending.withdrawal.amount} ETB*\n\n` +
-
-        `📝 Reason:\n${reason}\n\n` +
-
-        `👑 Rejected by: ${admin.name || admin.telegram_id}`,
-
-        {
-
-          parse_mode:
-            "Markdown"
-
-        }
-
-      );
-
-
-      // ------------------------------------------------------
-      // Notify user
-      // ------------------------------------------------------
-
-      if (
-        result.telegram_id
-      ) {
-
-        try {
-
-          await bot.api.sendMessage(
-
-            result.telegram_id,
-
-            "❌ *የመውጫ ጥያቄዎ ውድቅ ተደርጓል።*\n\n" +
-
-            `💰 መጠን፦ *${result.amount || pending.withdrawal.amount} ETB*\n\n` +
-
-            "📝 *የውድቅ ምክንያት፦*\n" +
-
-            `${reason}\n\n` +
-
-            "💰 ምንም ብር ከሂሳብዎ አልተቀነሰም።",
-
-            {
-
-              parse_mode:
-                "Markdown"
-
-            }
-
-          );
-
-        } catch (notifyError) {
-
-          console.error(
-            "Rejection notification error:",
-            notifyError
-          );
-
-        }
-
-      }
-
-
-      // ------------------------------------------------------
-      // Show refreshed pending withdrawals
-      // ------------------------------------------------------
-
-      await showPendingWithdrawals(
-        ctx
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Reject withdrawal error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ Withdrawal rejection failed."
-      );
-
-    }
-
-  }
-);
-
-
 // ============================================================
 // SUPPORT
 // ============================================================
@@ -7036,206 +4870,2072 @@ bot.on(
 );
 
 // ============================================================
-// BROADCAST TEXT
+// ALL TEXT INPUT — SINGLE HANDLER
+// ============================================================
+//
+// IMPORTANT:
+// There must be ONLY ONE bot.on("message:text") in this file.
+//
+// Every text-input flow is routed from here according to the
+// user's current pending state.
+//
+// Priority:
+//
+// 1. Payment account edit
+// 2. Payment account creation
+// 3. Admin rejection reason
+// 4. Admin user search
+// 5. Admin role/statistics search
+// 6. Registration
+// 7. Deposit SMS
+// 8. Withdrawal account
+// 9. Withdrawal amount
+// 10. Broadcast
+//
+// If no state belongs to the message, next() is called.
 // ============================================================
 
 bot.on(
   "message:text",
   async (ctx, next) => {
 
-    const admin =
-      await getCurrentAdmin(
-        ctx
-      );
+    try {
+
+      const telegramId =
+        ctx.from.id;
+
+      const text =
+        String(
+          ctx.message.text || ""
+        ).trim();
+
+      // ========================================================
+      // COMMANDS
+      // ========================================================
+
+      // Do not consume commands inside text-input flows unless
+      // that particular flow explicitly supports /cancel.
+      //
+      // /start, /balance, etc. should continue through the
+      // normal command middleware.
+      //
+      // /cancel is handled below for pending flows.
+
+      // ========================================================
+      // 1. PAYMENT ACCOUNT EDIT
+      // ========================================================
+
+      const edit =
+        pendingAdminAccountEdit[
+          telegramId
+        ];
+
+      if (edit) {
+
+        const admin =
+          await getCurrentAdmin(ctx);
+
+        if (!admin) {
+
+          delete pendingAdminAccountEdit[
+            telegramId
+          ];
+
+          return ctx.reply(
+            "❌ You are not authorized to edit payment accounts."
+          );
+        }
+
+        // ------------------------------------------------------
+        // CANCEL EDIT
+        // ------------------------------------------------------
+
+        if (
+          text === "/cancel"
+        ) {
+
+          delete pendingAdminAccountEdit[
+            telegramId
+          ];
+
+          return ctx.reply(
+            "❌ Payment account editing cancelled."
+          );
+        }
+
+        // ------------------------------------------------------
+        // EDIT — ACCOUNT NAME
+        // ------------------------------------------------------
+
+        if (
+          edit.step ===
+          "account_name"
+        ) {
+
+          if (!text) {
+
+            return ctx.reply(
+              "❌ Account name cannot be empty."
+            );
+
+          }
+
+          if (
+            text.length > 100
+          ) {
+
+            return ctx.reply(
+              "❌ Account name cannot exceed 100 characters."
+            );
+
+          }
+
+          edit.accountName =
+            text.substring(
+              0,
+              100
+            );
+
+          edit.step =
+            "account_number";
+
+          const isMobile =
+            String(
+              edit.paymentTypeName || ""
+            )
+              .trim()
+              .toLowerCase() ===
+              "mobile" ||
+
+            String(
+              edit.paymentTypeAmharicName || ""
+            ).trim() === "ሞባይል";
+
+          return ctx.reply(
+
+            "✏️ *ACCOUNT NAME UPDATED*\n\n" +
+
+            `👤 Name: *${edit.accountName}*\n\n` +
+
+            `📱 Current account number: \`${edit.accountNumber}\`\n\n` +
+
+            (
+              isMobile
+                ? "Enter the new *mobile account number*."
+                : "Enter the new *account number*."
+            ),
+
+            {
+              parse_mode:
+                "Markdown",
+
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    {
+                      text:
+                        "✅ Keep Current",
+
+                      callback_data:
+                        `admin_account_edit_keep_number_${edit.accountId}`
+                    }
+                  ],
+                  [
+                    {
+                      text:
+                        "❌ Cancel",
+
+                      callback_data:
+                        "admin_account_edit_cancel"
+                    }
+                  ]
+                ]
+              }
+
+            }
+
+          );
+        }
+
+        // ------------------------------------------------------
+        // EDIT — ACCOUNT NUMBER
+        // ------------------------------------------------------
+
+        if (
+          edit.step ===
+          "account_number"
+        ) {
+
+          if (!text) {
+
+            return ctx.reply(
+              "❌ Account number cannot be empty."
+            );
+
+          }
+
+          const normalizedAccountNumber =
+            normalizePaymentAccountNumber(
+              text,
+              edit.paymentTypeName,
+              edit.paymentTypeAmharicName
+            );
+
+          if (
+            !normalizedAccountNumber
+          ) {
+
+            return ctx.reply(
+              "❌ Invalid account number.\n\n" +
+              "Please enter a valid account number."
+            );
+
+          }
+
+          if (
+            normalizedAccountNumber.length >
+            100
+          ) {
+
+            return ctx.reply(
+              "❌ Account number cannot exceed 100 characters."
+            );
+
+          }
+
+          edit.accountNumber =
+            normalizedAccountNumber;
+
+          edit.step =
+            "balance";
+
+          return ctx.reply(
+
+            "✏️ *ACCOUNT NUMBER UPDATED*\n\n" +
+
+            `👤 Name: *${edit.accountName}*\n` +
+
+            `📱 Account: \`${edit.accountNumber}\`\n\n` +
+
+            `💰 Current balance: *${edit.balance} ETB*\n\n` +
+
+            "Enter the new balance in ETB.",
+
+            {
+              parse_mode:
+                "Markdown",
+
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    {
+                      text:
+                        "✅ Keep Current",
+
+                      callback_data:
+                        `admin_account_edit_keep_balance_${edit.accountId}`
+                    }
+                  ],
+                  [
+                    {
+                      text:
+                        "❌ Cancel",
+
+                      callback_data:
+                        "admin_account_edit_cancel"
+                    }
+                  ]
+                ]
+              }
+
+            }
+
+          );
+        }
+
+        // ------------------------------------------------------
+        // EDIT — BALANCE
+        // ------------------------------------------------------
+
+        if (
+          edit.step ===
+          "balance"
+        ) {
+
+          const balance =
+            Number(
+              text.replace(
+                /,/g,
+                ""
+              )
+            );
+
+          if (
+            !Number.isFinite(balance) ||
+            balance < 0
+          ) {
+
+            return ctx.reply(
+
+              "❌ Invalid balance.\n\n" +
+
+              "Please enter a number greater than or equal to 0.\n\n" +
+
+              "Examples:\n" +
+              "`0`\n" +
+              "`5000`\n" +
+              "`12500.50`",
+
+              {
+                parse_mode:
+                  "Markdown"
+              }
+
+            );
+
+          }
+
+          edit.balance =
+            balance;
+
+          edit.step =
+            "confirm";
+
+          return showAdminAccountEditConfirmation(
+            ctx,
+            edit
+          );
+        }
+
+        return;
+      }
 
 
-    if (!admin) {
+      // ========================================================
+      // 2. ADD PAYMENT ACCOUNT
+      // ========================================================
 
-      return next();
+      const account =
+        pendingAdminAccount[
+          telegramId
+        ];
 
-    }
+      if (account) {
+
+        const admin =
+          await getCurrentAdmin(ctx);
+
+        if (!admin) {
+
+          delete pendingAdminAccount[
+            telegramId
+          ];
+
+          return ctx.reply(
+            "❌ You are not authorized to create payment accounts."
+          );
+
+        }
+
+        // ------------------------------------------------------
+        // CANCEL
+        // ------------------------------------------------------
+
+        if (
+          text === "/cancel"
+        ) {
+
+          delete pendingAdminAccount[
+            telegramId
+          ];
+
+          return ctx.reply(
+            "❌ Payment account creation cancelled."
+          );
+
+        }
+
+        // ------------------------------------------------------
+        // ACCOUNT NAME
+        // ------------------------------------------------------
+
+        if (
+          account.step ===
+          "account_name"
+        ) {
+
+          if (!text) {
+
+            return ctx.reply(
+              "❌ Account name cannot be empty.\n\n" +
+              "Please enter the account name:"
+            );
+
+          }
+
+          if (
+            text.length > 100
+          ) {
+
+            return ctx.reply(
+              "❌ Account name is too long.\n\n" +
+              "Please enter a name with 100 characters or fewer:"
+            );
+
+          }
+
+          account.accountName =
+            text.substring(
+              0,
+              100
+            );
+
+          account.step =
+            "account_number";
+
+          const isMobile =
+            String(
+              account.paymentTypeName || ""
+            )
+              .trim()
+              .toLowerCase() ===
+              "mobile" ||
+
+            String(
+              account.paymentTypeAmharicName || ""
+            ).trim() === "ሞባይል";
+
+          if (isMobile) {
+
+            return ctx.reply(
+
+              "📱 Please enter the *mobile account number*.\n\n" +
+
+              "Examples:\n" +
+              "`0912345678`\n" +
+              "`+251912345678`\n" +
+              "`251912345678`\n\n" +
+
+              "The number will be normalized to `+251...`.",
+
+              {
+                parse_mode:
+                  "Markdown"
+              }
+
+            );
+
+          }
+
+          return ctx.reply(
+
+            "💳 Please enter the *account number*.\n\n" +
+            "The account number will be saved as entered.",
+
+            {
+              parse_mode:
+                "Markdown"
+            }
+
+          );
+
+        }
+
+        // ------------------------------------------------------
+        // ACCOUNT NUMBER
+        // ------------------------------------------------------
+
+        if (
+          account.step ===
+          "account_number"
+        ) {
+
+          if (!text) {
+
+            return ctx.reply(
+              "❌ Account number cannot be empty.\n\n" +
+              "Please enter the account number:"
+            );
+
+          }
+
+          const normalizedAccountNumber =
+            normalizePaymentAccountNumber(
+              text,
+              account.paymentTypeName,
+              account.paymentTypeAmharicName
+            );
+
+          const isMobile =
+            String(
+              account.paymentTypeName || ""
+            )
+              .trim()
+              .toLowerCase() ===
+              "mobile" ||
+
+            String(
+              account.paymentTypeAmharicName || ""
+            ).trim() === "ሞባይል";
+
+          if (
+            isMobile &&
+            !normalizedAccountNumber
+          ) {
+
+            return ctx.reply(
+
+              "❌ Invalid Ethiopian mobile number.\n\n" +
+
+              "Please enter a valid number such as:\n" +
+              "`0912345678`\n" +
+              "`+251912345678`\n" +
+              "`251912345678`",
+
+              {
+                parse_mode:
+                  "Markdown"
+              }
+
+            );
+
+          }
+
+          if (
+            !normalizedAccountNumber
+          ) {
+
+            return ctx.reply(
+              "❌ Invalid account number.\n\n" +
+              "Please enter the account number again."
+            );
+
+          }
+
+          account.accountNumber =
+            normalizedAccountNumber;
+
+          account.step =
+            "initial_balance";
+
+          return ctx.reply(
+
+            "💰 Please enter the *initial balance* in ETB.\n\n" +
+
+            "Example:\n" +
+            "`0`\n" +
+            "`5000`\n" +
+            "`12500.50`",
+
+            {
+              parse_mode:
+                "Markdown"
+            }
+
+          );
+
+        }
+
+        // ------------------------------------------------------
+        // INITIAL BALANCE
+        // ------------------------------------------------------
+
+        if (
+          account.step ===
+          "initial_balance"
+        ) {
+
+          const initialBalance =
+            Number(
+              text.replace(
+                /,/g,
+                ""
+              )
+            );
+
+          if (
+            !Number.isFinite(
+              initialBalance
+            ) ||
+            initialBalance < 0
+          ) {
+
+            return ctx.reply(
+
+              "❌ Invalid balance.\n\n" +
+
+              "Please enter a number greater than or equal to 0.\n\n" +
+
+              "Example:\n" +
+              "`0`\n" +
+              "`5000`\n" +
+              "`12500.50`",
+
+              {
+                parse_mode:
+                  "Markdown"
+              }
+
+            );
+
+          }
+
+          try {
+
+            const result =
+              await db.createPaymentAccount(
+
+                account.paymentMethodId,
+
+                account.accountName,
+
+                account.accountNumber,
+
+                initialBalance
+
+              );
+
+            if (
+              !result ||
+              result.success !== true
+            ) {
+
+              return ctx.reply(
+                `❌ ${
+                  result?.message ||
+                  "Could not create payment account."
+                }`
+              );
+
+            }
+
+            delete pendingAdminAccount[
+              telegramId
+            ];
+
+            const createdAccount =
+              result.account;
+
+            return ctx.reply(
+
+              "✅ *PAYMENT ACCOUNT CREATED*\n\n" +
+
+              `💳 Method: *${
+                createdAccount.pm_amharic_name ||
+                createdAccount.pm_name
+              }*\n` +
+
+              `📂 Type: *${
+                createdAccount.pt_amharic_name ||
+                createdAccount.pt_name ||
+                "-"
+              }*\n` +
+
+              `👤 Name: *${createdAccount.account_name}*\n` +
+
+              `📱 Account: \`${createdAccount.account_number}\`\n` +
+
+              `💰 Initial Balance: *${createdAccount.balance} ETB*\n` +
+
+              "📌 Status: 🟢 *Active*",
+
+              {
+                parse_mode:
+                  "Markdown",
+
+                reply_markup: {
+                  inline_keyboard: [
+                    [
+                      {
+                        text:
+                          "💳 Accounts",
+
+                        callback_data:
+                          "admin_accounts"
+                      }
+                    ],
+                    [
+                      {
+                        text:
+                          "🏠 Home",
+
+                        callback_data:
+                          "admin_home"
+                      }
+                    ]
+                  ]
+                }
+              }
+
+            );
+
+          } catch (err) {
+
+            console.error(
+              "Create payment account error:",
+              err
+            );
+
+            return ctx.reply(
+              "❌ Could not create the payment account.\n\n" +
+              "Please try again."
+            );
+
+          }
+
+        }
+
+        return;
+      }
 
 
-    const adminTelegramId =
-      admin.telegram_id;
+      // ========================================================
+      // 3. ADMIN WITHDRAWAL REJECTION REASON
+      // ========================================================
+
+      const reject =
+        pendingAdminReject[
+          telegramId
+        ];
+
+      if (reject) {
+
+        const admin =
+          await getCurrentAdmin(ctx);
+
+        if (!admin) {
+
+          delete pendingAdminReject[
+            telegramId
+          ];
+
+          return ctx.reply(
+            "❌ You are not authorized."
+          );
+
+        }
+
+        if (
+          text === "/cancel"
+        ) {
+
+          delete pendingAdminReject[
+            telegramId
+          ];
+
+          return ctx.reply(
+            "❌ Withdrawal rejection cancelled."
+          );
+
+        }
+
+        if (!text) {
+
+          return ctx.reply(
+            "❌ Please enter a rejection reason."
+          );
+
+        }
+
+        if (
+          text.length < 2
+        ) {
+
+          return ctx.reply(
+            "❌ Please provide a valid rejection reason."
+          );
+
+        }
+
+        const withdrawalId =
+          reject.withdrawalId;
+
+        const reason =
+          text.substring(
+            0,
+            500
+          );
+
+        delete pendingAdminReject[
+          telegramId
+        ];
+
+        try {
+
+          const result =
+            await db.rejectWithdrawal(
+              withdrawalId,
+              admin.telegram_id,
+              reason
+            );
+
+          if (
+            !result ||
+            !result.success
+          ) {
+
+            return ctx.reply(
+              `❌ ${
+                result?.message ||
+                "Withdrawal rejection failed."
+              }`
+            );
+
+          }
+
+          await ctx.reply(
+
+            "❌ *WITHDRAWAL REJECTED*\n\n" +
+
+            `🆔 #${withdrawalId}\n` +
+
+            `👤 User: *${
+              result.user_name ||
+              reject.withdrawal.name ||
+              "Unknown"
+            }*\n` +
+
+            `💰 Amount: *${
+              result.amount ||
+              reject.withdrawal.amount
+            } ETB*\n\n` +
+
+            `📝 Reason:\n${reason}\n\n` +
+
+            `👑 Rejected by: ${
+              admin.name ||
+              admin.telegram_id
+            }`,
+
+            {
+              parse_mode:
+                "Markdown"
+            }
+
+          );
+
+          try {
+
+            await bot.api.sendMessage(
+
+              reject.withdrawal.telegram_id,
+
+              "❌ *የመውጫ ጥያቄዎ ተቀባይነት አላገኘም።*\n\n" +
+
+              `💰 መጠን፦ *${
+                result.amount ||
+                reject.withdrawal.amount
+              } ETB*\n\n` +
+
+              `📝 ምክንያት፦\n${reason}`,
+
+              {
+                parse_mode:
+                  "Markdown"
+              }
+
+            );
+
+          } catch (notifyError) {
+
+            console.error(
+              "Rejection notification error:",
+              notifyError
+            );
+
+          }
+
+          return showPendingWithdrawals(
+            ctx
+          );
+
+        } catch (err) {
+
+          console.error(
+            "Withdrawal rejection error:",
+            err
+          );
+
+          return ctx.reply(
+            "❌ Withdrawal rejection failed."
+          );
+
+        }
+
+      }
 
 
-    /*
-     * Do not intercept rejection reason here.
-     * The rejection handler above handles it first.
-     */
+      // ========================================================
+      // 4. ADMIN MANAGE USER
+      // ========================================================
 
-    if (
-      pendingAdminReject[
-        adminTelegramId
-      ]
-    ) {
-
-      return next();
-
-    }
-
-
-    const text =
-      ctx.message.text.trim();
-
-
-    if (
-      text === "/cancel"
-    ) {
-
-      const draft =
-        await db.getBroadcastDraft(
-          adminTelegramId
+      const userSearchState =
+        pendingAdminUserSearch.get(
+          telegramId
         );
 
+      if (
+        userSearchState &&
+        userSearchState.step ===
+          "waiting_phone"
+      ) {
 
-      if (!draft) {
+        const admin =
+          await db.getAdminByTelegramId(
+            telegramId
+          );
 
-        return next();
+        if (
+          !admin ||
+          admin.admin_role !==
+            "main"
+        ) {
+
+          pendingAdminUserSearch.delete(
+            telegramId
+          );
+
+          return ctx.reply(
+            "⛔ You are not authorized to manage users."
+          );
+
+        }
+
+        const user =
+          await db.getUserByPhoneForAdmin(
+            text
+          );
+
+        if (!user) {
+
+          return ctx.reply(
+
+            `❌ *User not found*\n\n` +
+
+            `📱 Phone: \`${text}\`\n\n` +
+
+            "Please send another phone number or press Cancel.",
+
+            {
+              parse_mode:
+                "Markdown",
+
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    {
+                      text:
+                        "🏠 Home",
+
+                      callback_data:
+                        "admin_home"
+                    }
+                  ],
+                  [
+                    {
+                      text:
+                        "❌ Cancel",
+
+                      callback_data:
+                        "admin_manage_user_cancel"
+                    }
+                  ]
+                ]
+              }
+
+            }
+
+          );
+
+        }
+
+        if (
+          String(
+            user.telegram_id
+          ) ===
+          String(
+            telegramId
+          )
+        ) {
+
+          return ctx.reply(
+            "⚠️ You cannot block or unblock your own admin account."
+          );
+
+        }
+
+        pendingAdminUserSearch.delete(
+          telegramId
+        );
+
+        const keyboard = [];
+
+        if (
+          user.is_blocked
+        ) {
+
+          keyboard.push([
+            {
+              text:
+                "✅ Unblock User",
+
+              callback_data:
+                `admin_unblock_user_${user.id}`
+            }
+          ]);
+
+        } else {
+
+          keyboard.push([
+            {
+              text:
+                "🚫 Block User",
+
+              callback_data:
+                `admin_block_user_${user.id}`
+            }
+          ]);
+
+        }
+
+        keyboard.push([
+          {
+            text:
+              "👤 Manage Another User",
+
+            callback_data:
+              "admin_manage_user"
+          }
+        ]);
+
+        keyboard.push([
+          {
+            text:
+              "🏠 Home",
+
+            callback_data:
+              "admin_home"
+          }
+        ]);
+
+        keyboard.push([
+          {
+            text:
+              "❌ Close",
+
+            callback_data:
+              "admin_manage_user_cancel"
+          }
+        ]);
+
+        return ctx.reply(
+
+          `👤 *USER FOUND*\n\n` +
+
+          `👤 Name: *${
+            user.name ||
+            "Unknown"
+          }*\n` +
+
+          `📱 Phone: \`${
+            user.phone ||
+            "Not available"
+          }\`\n` +
+
+          `🔐 Blocked: ${
+            user.is_blocked
+              ? "🚫 Yes"
+              : "✅ No"
+          }\n` +
+
+          `📌 Status: ${
+            user.is_active
+              ? "🟢 Active"
+              : "⚪ Inactive"
+          }`,
+
+          {
+            parse_mode:
+              "Markdown",
+
+            reply_markup: {
+              inline_keyboard:
+                keyboard
+            }
+          }
+
+        );
 
       }
 
 
-      await db.deleteBroadcastDraft(
-        adminTelegramId
-      );
+      // ========================================================
+      // 5. ADMIN ROLE / USER FINANCIAL STATISTICS SEARCH
+      // ========================================================
 
+      const roleSearchState =
+        pendingAdminRoleSearch.get(
+          telegramId
+        );
 
-      return ctx.reply(
-        "❌ Broadcast cancelled."
-      );
+      if (
+        roleSearchState
+      ) {
 
-    }
+        // ------------------------------------------------------
+        // MANAGE ADMIN
+        // ------------------------------------------------------
 
+        if (
+          roleSearchState.step ===
+          "waiting_phone"
+        ) {
 
-    const draft =
-      await db.getBroadcastDraft(
-        adminTelegramId
-      );
+          const admin =
+            await db.getAdminByTelegramId(
+              telegramId
+            );
 
+          if (
+            !admin ||
+            admin.admin_role !==
+              "main"
+          ) {
 
-    if (!draft) {
+            pendingAdminRoleSearch.delete(
+              telegramId
+            );
 
-      return next();
+            return ctx.reply(
+              "⛔ You are not authorized to manage admins."
+            );
 
-    }
+          }
 
+          const user =
+            await db.getUserByPhoneForAdmin(
+              text
+            );
 
-    if (
-      draft.status !==
-      "waiting_message"
-    ) {
+          if (!user) {
 
-      return next();
+            return ctx.reply(
 
-    }
+              `❌ *User not found*\n\n` +
 
+              `📱 Phone: \`${text}\`\n\n` +
 
-    await db.updateBroadcastMessage(
-      adminTelegramId,
-      text
-    );
-
-
-    const users =
-      await db.getAllActiveUsers();
-
-
-    /*
-     * Preview is sent only to the CURRENT admin.
-     */
-
-    await bot.api.sendPhoto(
-
-      adminTelegramId,
-
-      draft.image_url,
-
-      {
-
-        caption:
-          text,
-
-        reply_markup: {
-
-          inline_keyboard: [
-
-            [
+              "Please send another phone number or press Cancel.",
 
               {
+                parse_mode:
+                  "Markdown",
 
+                reply_markup: {
+                  inline_keyboard: [
+                    [
+                      {
+                        text:
+                          "🏠 Home",
+
+                        callback_data:
+                          "admin_home"
+                      }
+                    ],
+                    [
+                      {
+                        text:
+                          "❌ Cancel",
+
+                        callback_data:
+                          "admin_manage_admins_cancel"
+                      }
+                    ]
+                  ]
+                }
+              }
+
+            );
+
+          }
+
+          if (
+            String(
+              user.telegram_id
+            ) ===
+            String(
+              telegramId
+            )
+          ) {
+
+            return ctx.reply(
+              "⚠️ You cannot change your own admin role."
+            );
+
+          }
+
+          pendingAdminRoleSearch.delete(
+            telegramId
+          );
+
+          const keyboard = [
+            [
+              {
                 text:
-                  "🎮 Play Now",
+                  "👑 Main Admin",
 
-                web_app: {
+                callback_data:
+                  `set_admin_main_${user.id}`
+              }
+            ],
+            [
+              {
+                text:
+                  "📊 Statistics Admin",
 
-                  url:
-                    `${GAME_URL}?tid=${adminTelegramId}`
+                callback_data:
+                  `set_admin_statistics_${user.id}`
+              }
+            ],
+            [
+              {
+                text:
+                  "💸 Withdrawal Admin",
 
+                callback_data:
+                  `set_admin_withdrawal_${user.id}`
+              }
+            ],
+            [
+              {
+                text:
+                  "📢 Broadcast Admin",
+
+                callback_data:
+                  `set_admin_broadcast_${user.id}`
+              }
+            ]
+          ];
+
+          if (
+            user.is_admin ===
+            true
+          ) {
+
+            keyboard.push([
+              {
+                text:
+                  "🚫 Remove Admin Rights",
+
+                callback_data:
+                  `remove_admin_${user.id}`
+              }
+            ]);
+
+          }
+
+          keyboard.push([
+            {
+              text:
+                "👑 Manage Another Admin",
+
+              callback_data:
+                "admin_manage_admins"
+            }
+          ]);
+
+          keyboard.push([
+            {
+              text:
+                "🏠 Home",
+
+              callback_data:
+                "admin_home"
+            }
+          ]);
+
+          const currentRole =
+            user.is_admin
+              ? (
+                  user.admin_role ===
+                    "main"
+                    ? "👑 Main Admin"
+                    : user.admin_role ===
+                      "statistics"
+                    ? "📊 Statistics Admin"
+                    : user.admin_role ===
+                      "withdrawal"
+                    ? "💸 Withdrawal Admin"
+                    : user.admin_role ===
+                      "broadcast"
+                    ? "📢 Broadcast Admin"
+                    : "Admin"
+                )
+              : "👤 Normal User";
+
+          return ctx.reply(
+
+            `👑 *MANAGE ADMIN*\n\n` +
+
+            `👤 Name: *${
+              user.name ||
+              "Unknown"
+            }*\n` +
+
+            `📱 Phone: \`${
+              user.phone ||
+              text
+            }\`\n` +
+
+            `🔐 Current Role: *${currentRole}*\n\n` +
+
+            "Select the new admin role:",
+
+            {
+              parse_mode:
+                "Markdown",
+
+              reply_markup: {
+                inline_keyboard:
+                  keyboard
+              }
+            }
+
+          );
+
+        }
+
+
+        // ------------------------------------------------------
+        // USER FINANCIAL STATISTICS
+        // ------------------------------------------------------
+
+        if (
+          roleSearchState.step ===
+          "financial_statistics_phone"
+        ) {
+
+          const admin =
+            await db.getAdminByTelegramId(
+              telegramId
+            );
+
+          if (
+            !admin ||
+            (
+              admin.admin_role !==
+                "main" &&
+              admin.admin_role !==
+                "statistics"
+            )
+          ) {
+
+            pendingAdminRoleSearch.delete(
+              telegramId
+            );
+
+            return ctx.reply(
+              "⛔ You are not authorized to view statistics."
+            );
+
+          }
+
+          const user =
+            await db.getUserByPhoneForAdmin(
+              text
+            );
+
+          if (!user) {
+
+            return ctx.reply(
+              "❌ User not found.\n\n" +
+              "Please send a valid registered phone number."
+            );
+
+          }
+
+          const stats =
+            await db.getUserFinancialStatistics(
+              user.id
+            );
+
+          pendingAdminRoleSearch.delete(
+            telegramId
+          );
+
+          const message =
+
+            `👤 *USER FINANCIAL STATISTICS*\n\n` +
+
+            `👤 Name: *${
+              user.name ||
+              "Unknown"
+            }*\n` +
+
+            `📱 Phone: \`${
+              user.phone ||
+              text
+            }\`\n\n` +
+
+            `💎 *Total Deposits*\n` +
+
+            `*${
+              stats.totalDepositAmount.toFixed(2)
+            } ETB*\n\n` +
+
+            `🏧 *Withdrawals*\n` +
+
+            `⏳ Pending: *${
+              stats.pendingWithdrawalAmount.toFixed(2)
+            } ETB*\n` +
+
+            `✅ Approved: *${
+              stats.approvedWithdrawalAmount.toFixed(2)
+            } ETB*\n` +
+
+            `❌ Rejected: *${
+              stats.rejectedWithdrawalAmount.toFixed(2)
+            } ETB*`;
+
+          return ctx.reply(
+
+            message,
+
+            {
+              parse_mode:
+                "Markdown",
+
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    {
+                      text:
+                        "👤 Search Another User",
+
+                      callback_data:
+                        "admin_user_financial_statistics"
+                    }
+                  ],
+                  [
+                    {
+                      text:
+                        "⬅️ Statistics",
+
+                      callback_data:
+                        "admin_statistics_menu"
+                    },
+                    {
+                      text:
+                        "🏠 Home",
+
+                      callback_data:
+                        "admin_home"
+                    }
+                  ]
+                ]
+              }
+
+            }
+
+          );
+
+        }
+
+      }
+
+
+      // ========================================================
+      // 6. REGISTRATION
+      // ========================================================
+
+      const registration =
+        pendingPhone[
+          telegramId
+        ];
+
+      if (
+        registration
+      ) {
+
+        if (
+          registration.step ===
+          "ask_name"
+        ) {
+
+          if (
+            !text ||
+            text.startsWith("/")
+          ) {
+
+            return next();
+
+          }
+
+          registration.name =
+            text.substring(
+              0,
+              30
+            );
+
+          registration.step =
+            "ask_phone";
+
+          return ctx.reply(
+
+            `Nice to meet you, *${registration.name}!*\n\n` +
+
+            "Please share your phone number so we can verify your account:",
+
+            {
+              parse_mode:
+                "Markdown",
+
+              reply_markup: {
+                keyboard: [
+                  [
+                    {
+                      text:
+                        "📱 Share My Phone Number",
+
+                      request_contact:
+                        true
+                    }
+                  ]
+                ],
+
+                resize_keyboard:
+                  true,
+
+                one_time_keyboard:
+                  true
+              }
+
+            }
+
+          );
+
+        }
+
+      }
+
+
+      // ========================================================
+      // 7. DEPOSIT SMS
+      // ========================================================
+
+      const deposit =
+        pendingDeposit[
+          telegramId
+        ];
+
+      if (
+        deposit
+      ) {
+
+        if (
+          text.startsWith("/")
+        ) {
+
+          return next();
+
+        }
+
+        try {
+
+          const paymentMethod =
+            ctx.session.paymentMethod;
+
+          const paymentType =
+            ctx.session.paymentType;
+
+          await ctx.reply(
+            "✅⏳ የክፍያ መልዕክትዎ ደርሶናል። ክፍያዎ እየተረጋገጠ ነው። እባክዎ ትንሽ ይጠብቁ።"
+          );
+
+          const result =
+            await processDeposit(
+
+              text,
+
+              paymentMethod.name,
+              paymentMethod.amharicName,
+
+              paymentType.name,
+              paymentType.amharicName
+
+            );
+
+          if (
+            typeof result ===
+              "object" &&
+            result !== null
+          ) {
+
+            const receipt =
+              result.receipt;
+
+            if (!receipt) {
+
+              return ctx.reply(
+                "❌ የክፍያ ደረሰኝ መረጃ አልተገኘም።"
+              );
+
+            }
+
+            const result2 =
+              await db.approveDeposit(
+                receipt,
+                telegramId
+              );
+
+            if (
+              result2 > 0
+            ) {
+
+              clearPendingState(
+                telegramId
+              );
+
+              return ctx.reply(
+
+                "✅ *የገቢ ጥያቄዎ ተሳክቷል!*\n\n" +
+
+                `💰 ${result2} ብር ወደ ሂሳብዎ ተጨምሯል።`,
+
+                {
+                  parse_mode:
+                    "Markdown"
                 }
 
-              }
+              );
 
-            ]
+            }
 
-          ]
+            return ctx.reply(
+              "❌ የገቢ ጥያቄዎ አልተሳካም።"
+            );
 
-        }
+          }
 
-      }
+          return ctx.reply(
+            "🚫 ጥያቄው አልተሳካም። " +
+            "እባክዎ ትክክለኛውን SMS ይላኩ።"
+          );
 
-    );
+        } catch (err) {
 
+          console.error(
+            "Deposit processing error:",
+            err
+          );
 
-    await ctx.reply(
-
-      `📢 *BROADCAST PREVIEW*\n\n` +
-
-      `👥 Recipients: ${users.length}\n\n` +
-
-      `Are you sure you want to send this to everyone?`,
-
-      {
-
-        parse_mode:
-          "Markdown",
-
-        reply_markup: {
-
-          inline_keyboard: [
-
-            [
-
-              {
-
-                text:
-                  "✅ SEND TO ALL",
-
-                callback_data:
-                  "broadcast_confirm"
-
-              },
-
-              {
-
-                text:
-                  "❌ CANCEL",
-
-                callback_data:
-                  "broadcast_cancel"
-
-              }
-
-            ]
-
-          ]
+          return ctx.reply(
+            "❌ የክፍያውን ማረጋገጥ አልተቻለም።"
+          );
 
         }
 
       }
 
-    );
+
+      // ========================================================
+      // 8. WITHDRAWAL — ACCOUNT NUMBER
+      // ========================================================
+
+      const withdrawal =
+        pendingWithdrawal[
+          telegramId
+        ];
+
+      if (
+        withdrawal &&
+        withdrawal.step ===
+          "account"
+      ) {
+
+        if (
+          text.startsWith("/")
+        ) {
+
+          return next();
+
+        }
+
+        const accountNumber =
+          text.replace(
+            /[\s\-()]/g,
+            ""
+          );
+
+        if (
+          !accountNumber
+        ) {
+
+          return ctx.reply(
+            "❌ እባክዎ ትክክለኛ የአካውንት ቁጥር ያስገቡ።"
+          );
+
+        }
+
+        if (
+          accountNumber.length >
+          20
+        ) {
+
+          return ctx.reply(
+            "❌ የአካውንት ቁጥሩ ከ20 ፊደል/ቁጥር መብለጥ አይችልም።"
+          );
+
+        }
+
+        pendingWithdrawal[
+          telegramId
+        ] = {
+
+          ...withdrawal,
+
+          step:
+            "amount",
+
+          accountNumber
+
+        };
+
+        return ctx.reply(
+
+          "✅ *የአካውንት ቁጥር ተቀብለናል።*\n\n" +
+
+          `📱 አካውንት፦ *${accountNumber}*\n\n` +
+
+          "💰 አሁን ማውጣት የሚፈልጉትን የብር መጠን ያስገቡ።\n\n" +
+
+          "ምሳሌ፦ `100`",
+
+          {
+            parse_mode:
+              "Markdown"
+          }
+
+        );
+
+      }
+
+
+      // ========================================================
+      // 9. WITHDRAWAL — AMOUNT
+      // ========================================================
+
+      if (
+        withdrawal &&
+        withdrawal.step ===
+          "amount"
+      ) {
+
+        if (
+          text.startsWith("/")
+        ) {
+
+          return next();
+
+        }
+
+        try {
+
+          const amount =
+            Number(text);
+
+          if (
+            !Number.isFinite(
+              amount
+            ) ||
+            amount <= 0
+          ) {
+
+            return ctx.reply(
+              "❌ እባክዎ ትክክለኛ የብር መጠን ያስገቡ።"
+            );
+
+          }
+
+          if (
+            amount < 10
+          ) {
+
+            return ctx.reply(
+              "❌ ዝቅተኛው የመውጫ መጠን 10 ETB ነው።"
+            );
+
+          }
+
+          const user =
+            await db.getUserByTelegramId(
+              telegramId
+            );
+
+          if (!user) {
+
+            delete pendingWithdrawal[
+              telegramId
+            ];
+
+            return ctx.reply(
+              "❌ አካውንትዎ አልተገኘም።"
+            );
+
+          }
+
+          const userBalance =
+            Number(
+              user.balance
+            );
+
+          if (
+            amount >
+            userBalance
+          ) {
+
+            return ctx.reply(
+
+              "❌ በቂ ቀሪ ሂሳብ የሎትም።\n\n" +
+
+              `💰 ያለዎት ቀሪ ሂሳብ፦ ${userBalance} ETB\n` +
+
+              `💸 የጠየቁት፦ ${amount} ETB`
+
+            );
+
+          }
+
+          const result =
+            await db.createWithdrawal(
+
+              telegramId,
+
+              withdrawal.paymentMethodId,
+
+              withdrawal.accountNumber,
+
+              amount
+
+            );
+
+          if (
+            !result.success
+          ) {
+
+            return ctx.reply(
+              `❌ ${result.message}`
+            );
+
+          }
+
+          delete pendingWithdrawal[
+            telegramId
+          ];
+
+          return ctx.reply(
+
+            "✅ *የመውጫ ጥያቄዎ ተቀብለናል!*\n\n" +
+
+            `💳 የክፍያ መንገድ፦ *${
+              withdrawal.paymentMethod.amharic_name
+            }*\n` +
+
+            `📱 አካውንት፦ *${
+              withdrawal.accountNumber
+            }*\n` +
+
+            `💰 መጠን፦ *${amount} ETB*\n\n` +
+
+            "⏳ ጥያቄዎ በአስተዳዳሪ እየተገመገመ ነው።",
+
+            {
+              parse_mode:
+                "Markdown"
+            }
+
+          );
+
+        } catch (err) {
+
+          console.error(
+            "Withdrawal amount error:",
+            err
+          );
+
+          return ctx.reply(
+            "❌ የመውጫ ጥያቄውን ማስኬድ አልተቻለም።"
+          );
+
+        }
+
+      }
+
+
+      // ========================================================
+      // 10. BROADCAST
+      // ========================================================
+
+      const admin =
+        await getCurrentAdmin(ctx);
+
+      if (
+        admin
+      ) {
+
+        const adminTelegramId =
+          admin.telegram_id;
+
+        // ------------------------------------------------------
+        // BROADCAST CANCEL
+        // ------------------------------------------------------
+
+        if (
+          text === "/cancel"
+        ) {
+
+          const draft =
+            await db.getBroadcastDraft(
+              adminTelegramId
+            );
+
+          if (
+            draft
+          ) {
+
+            await db.deleteBroadcastDraft(
+              adminTelegramId
+            );
+
+            return ctx.reply(
+              "❌ Broadcast cancelled."
+            );
+
+          }
+
+        }
+
+        // ------------------------------------------------------
+        // BROADCAST MESSAGE
+        // ------------------------------------------------------
+
+        // Do not intercept rejection messages here.
+        if (
+          pendingAdminReject[
+            adminTelegramId
+          ]
+        ) {
+
+          return next();
+
+        }
+
+        const draft =
+          await db.getBroadcastDraft(
+            adminTelegramId
+          );
+
+        if (
+          draft &&
+          draft.status ===
+            "waiting_message"
+        ) {
+
+          await db.updateBroadcastMessage(
+            adminTelegramId,
+            text
+          );
+
+          const users =
+            await db.getAllActiveUsers();
+
+          await bot.api.sendPhoto(
+
+            adminTelegramId,
+
+            draft.image_url,
+
+            {
+              caption:
+                text,
+
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    {
+                      text:
+                        "🎮 Play Now",
+
+                      web_app: {
+                        url:
+                          `${GAME_URL}?tid=${adminTelegramId}`
+                      }
+                    }
+                  ]
+                ]
+              }
+
+            }
+
+          );
+
+          return ctx.reply(
+
+            `📢 *BROADCAST PREVIEW*\n\n` +
+
+            `👥 Recipients: ${users.length}\n\n` +
+
+            "Are you sure you want to send this to everyone?",
+
+            {
+              parse_mode:
+                "Markdown",
+
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    {
+                      text:
+                        "✅ SEND TO ALL",
+
+                      callback_data:
+                        "broadcast_confirm"
+                    },
+                    {
+                      text:
+                        "❌ CANCEL",
+
+                      callback_data:
+                        "broadcast_cancel"
+                    }
+                  ]
+                ]
+              }
+            }
+
+          );
+
+        }
+
+      }
+
+
+      // ========================================================
+      // NOTHING CLAIMED THIS MESSAGE
+      // ========================================================
+
+      return next();
+
+    } catch (err) {
+
+      console.error(
+        "Unified message:text handler error:",
+        err
+      );
+
+      return next();
+
+    }
 
   }
 );
