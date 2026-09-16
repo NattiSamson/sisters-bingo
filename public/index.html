@@ -2165,13 +2165,13 @@ function handle(msg){
           setTimeout(()=>{ const retryId=getTelegramId(); if(retryId) sendTelegramAuth(retryId); },1000);
           return;
         }
-        telegramId=tid;
+        
         document.getElementById('loadingText').innerText=tid;
         // First load the account directly over HTTPS. This breaks the old failure
         // mode where a WebSocket lookup returned a fake zero/unregistered snapshot.
         sendTelegramAuth(tid);
         await refreshAccountProfile(6,500);
-        
+        document.getElementById('loadingText').innerText='all done!';
       });
       break;
 
