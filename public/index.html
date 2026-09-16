@@ -2155,8 +2155,7 @@ function handle(msg){
       myPlayerId=msg.playerId;
       // Never replace a known balance with the server's initial connection value (0).
       if(msg.stakes) renderStakes(msg.stakes);
-      document.getElementById('loadingText').innerText='Loading your account...';
-      document.getElementById('loadingText').innerText=tid;
+      document.getElementById('loadingText').innerText='Loading your account...';      
       const pageParam = new URLSearchParams(location.search).get('page');
       if(pageParam === 'deposit') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('deposit'); }, 1500);
       if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('withdraw'); }, 1500);
@@ -2167,6 +2166,7 @@ function handle(msg){
           return;
         }
         telegramId=tid;
+        document.getElementById('loadingText').innerText=tid;
         // First load the account directly over HTTPS. This breaks the old failure
         // mode where a WebSocket lookup returned a fake zero/unregistered snapshot.
         sendTelegramAuth(tid);
