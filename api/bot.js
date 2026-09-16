@@ -108,130 +108,78 @@ bot.use(async (ctx, next) => {
   }
 });
 
-async function cleanupExpiredAdminWithdrawalUI(
-  telegramId
-) {
-  const state =
-    pendingAdminWithdrawal[
-      telegramId
-    ];
-
-  if (!state) {
+async function cleanupExpiredAdminWithdrawalUI(telegramId) 
+{
+  const state = pendingAdminWithdrawal[telegramId];
+  if (!state) 
+  {
     return;
   }
-
-  if (
-    !state.claimedWithdrawals ||
-    !state.claimedWithdrawals.length
-  ) {
+  if (!state.claimedWithdrawals || !state.claimedWithdrawals.length) 
+  {
     return;
   }
-
-  if (
-    state.claimExpiresAt &&
-    Date.now() <
-      state.claimExpiresAt
-  ) {
+  if (state.claimExpiresAt && Date.now() < state.claimExpiresAt) 
+  {
     return;
   }
-
   /*
    * Local lease expired.
    */
   state.claimedWithdrawals = [];
-
   state.claimExpiresAt = null;
-
-  if (state.cleanupTimer) {
-    clearTimeout(
-      state.cleanupTimer
-    );
-
+  if (state.cleanupTimer) 
+  {
+    clearTimeout(state.cleanupTimer);
     state.cleanupTimer = null;
   }
-
-  if (state.claimMessageId) {
-
-    try {
-
-      await bot.api.deleteMessage(
-        telegramId,
-        state.claimMessageId
-      );
-
-    } catch (err) {
-
-      try {
-
-        await bot.api.editMessageText(
-          telegramId,
-          state.claimMessageId,
-          "⏱ *Withdrawal claim expired.*\n\n" +
-          "The withdrawals were released for other admins.",
+  if (state.claimMessageId) 
+  {
+    try 
+    {
+          await bot.api.deleteMessage(telegramId, state.claimMessageId);
+    } catch (err) 
+    {
+      try 
+      {
+        await bot.api.editMessageText( telegramId, state.claimMessageId, "⏱ *Withdrawal claim expired.*\n\n" + "The withdrawals were released for other admins.",
           {
             parse_mode: "Markdown"
           }
         );
 
-      } catch (editError) {
-
-        console.error(
-          "Expired withdrawal UI cleanup failed:",
-          editError
-        );
-
+      } catch (editError) 
+      {
+        console.error("Expired withdrawal UI cleanup failed:", editError);
       }
     }
-
     state.claimMessageId = null;
   }
 }
 
-function scheduleWithdrawalClaimCleanup(
-  adminTelegramId
-) {
-  const state =
-    pendingAdminWithdrawal[
-      adminTelegramId
-    ];
-
-  if (!state) {
+function scheduleWithdrawalClaimCleanup(adminTelegramId) 
+{
+  const state = pendingAdminWithdrawal[adminTelegramId];
+  if (!state) 
+  {
     return;
   }
-
   /*
    * Don't create multiple timers for the same admin.
    */
-  if (state.cleanupTimer) {
-    clearTimeout(
-      state.cleanupTimer
-    );
+  if (state.cleanupTimer) 
+  {
+    clearTimeout(state.cleanupTimer);
   }
-
-  const expiresAt =
-    state.claimExpiresAt;
-
-  if (!expiresAt) {
+  const expiresAt = state.claimExpiresAt;
+  if (!expiresAt) 
+  {
     return;
   }
-
-  const delay =
-    Math.max(
-      expiresAt - Date.now(),
-      1000
-    );
-
-  state.cleanupTimer =
-    setTimeout(
-      async () => {
-
+  const delay =  Math.max(expiresAt - Date.now(), 1000);
+  state.cleanupTimer = setTimeout(async () => {
         try {
-
-          const currentState =
-            pendingAdminWithdrawal[
-              adminTelegramId
-            ];
-
+          const currentState = pendingAdminWithdrawal[adminTelegramId];
           if (!currentState) {
             return;
           }
@@ -5925,229 +5873,7 @@ bot.on(
         String(
           ctx.message.text || ""
         ).trim();
-// ========================================================
-      // 8. WITHDRAWAL — ACCOUNT NUMBER
-      // ========================================================
 
-    const withdrawal =  pendingWithdrawal[telegramId];
-      
-      
-
-      if (
-        withdrawal &&
-        withdrawal.step ===
-          "account"
-      ) {
-
-        if (
-          text.startsWith("/")
-        ) {
-
-          return next();
-
-        }
-
-        const accountNumber =
-          text.replace(
-            /[\s\-()]/g,
-            ""
-          );
-
-        if (
-          !accountNumber
-        ) {
-
-          return ctx.reply(
-            "❌ እባክዎ ትክክለኛ የአካውንት ቁጥር ያስገቡ።"
-          );
-
-        }
-
-        if (
-          accountNumber.length >
-          30
-        ) {
-
-          return ctx.reply(
-            "❌ የአካውንት ቁጥሩ ከ30 ፊደል/ቁጥር መብለጥ አይችልም።"
-          );
-
-        }
-        
-
-pendingWithdrawal[telegramId] = {
-  ...withdrawal,
-  step: "amount",
-  accountNumber
-};
-
-        return ctx.reply(
-
-          "✅ *የአካውንት ቁጥር ተቀብለናል።*\n\n" +
-
-          `📱 አካውንት፦ *${normalizeEthiopianPhone(accountNumber)}*\n\n` +
-
-          "💰 አሁን ማውጣት የሚፈልጉትን የብር መጠን ያስገቡ።\n\n" +
-
-          "ምሳሌ፦ `100`",
-
-          {
-            parse_mode:
-              "Markdown"
-          }
-
-        );
-
-      }
-
-
-      // ========================================================
-      // 9. WITHDRAWAL — AMOUNT
-      // ========================================================
-
-      if (
-        withdrawal &&
-        withdrawal.step ===
-          "amount"
-      ) {
-
-        if (
-          text.startsWith("/")
-        ) {
-
-          return next();
-
-        }
-
-        try {
-
-          const amount =
-            Number(text);
-
-          if (
-            !Number.isFinite(
-              amount
-            ) ||
-            amount <= 0
-          ) {
-
-            return ctx.reply(
-              "❌ እባክዎ ትክክለኛ የብር መጠን ያስገቡ።"
-            );
-
-          }
-
-          if (
-            amount < 50
-          ) {
-
-            return ctx.reply(
-              "❌ ዝቅተኛው የወጪ መጠን 50 ETB ነው።"
-            );
-
-          }
-
-          const user =
-            await db.getUserByTelegramId(
-              telegramId
-            );
-
-          if (!user) {
-
-            clearPendingState(
-  ctx.from.id
-);
-
-            return ctx.reply(
-              "❌ አካውንትዎ አልተገኘም።"
-            );
-
-          }
-
-          const userBalance =
-            Number(
-              user.balance
-            );
-
-          if (
-            amount >
-            userBalance
-          ) {
-
-            return ctx.reply(
-
-              "❌ በቂ ቀሪ ሂሳብ የሎትም።\n\n" +
-
-              `💰 ያለዎት ቀሪ ሂሳብ፦ ${userBalance} ETB\n` +
-
-              `💸 የጠየቁት፦ ${amount} ETB`
-
-            );
-
-          }
-
-          const result =
-            await db.createWithdrawal(
-
-              telegramId,
-
-              withdrawal.paymentMethodId,
-
-              withdrawal.accountNumber,
-
-              amount
-
-            );
-
-          if (
-            !result.success
-          ) {
-
-            return ctx.reply(
-              `❌ ${result.message}`
-            );
-
-          }
-
-          delete pendingWithdrawal[telegramId];
-
-          return ctx.reply(
-
-            "✅ *የወጪ ጥያቄዎ ተቀብለናል!*\n\n" +
-
-            `💳 የክፍያ መንገድ፦ *${
-              withdrawal.paymentMethod.amharic_name
-            }*\n` +
-
-            `📱 አካውንት፦ *${
-              withdrawal.accountNumber
-            }*\n` +
-
-            `💰 መጠን፦ *${amount} ETB*\n\n` +
-
-            "⏳ ጥያቄዎ በአስተዳዳሪ እየተገመገመ ነው።",
-
-            {
-              parse_mode:
-                "Markdown"
-            }
-
-          );
-
-        } catch (err) {
-
-          console.error(
-            "Withdrawal amount error:",
-            err
-          );
-
-          return ctx.reply(
-            "❌ የወጪ ጥያቄውን ማስኬድ አልተቻለም።"
-          );
-
-        }
-
-      }
       // ========================================================
       // COMMANDS
       // ========================================================
@@ -7775,6 +7501,229 @@ pendingWithdrawal[telegramId] = {
         }
 
       }
+      // ========================================================
+      // 8. WITHDRAWAL — ACCOUNT NUMBER
+      // ========================================================
+
+    const withdrawal =  pendingWithdrawal[telegramId];
+      
+      
+
+      if (
+        withdrawal &&
+        withdrawal.step ===
+          "account"
+      ) {
+
+        if (
+          text.startsWith("/")
+        ) {
+
+          return next();
+
+        }
+
+        const accountNumber =
+          text.replace(
+            /[\s\-()]/g,
+            ""
+          );
+
+        if (
+          !accountNumber
+        ) {
+
+          return ctx.reply(
+            "❌ እባክዎ ትክክለኛ የአካውንት ቁጥር ያስገቡ።"
+          );
+
+        }
+
+        if (
+          accountNumber.length >
+          30
+        ) {
+
+          return ctx.reply(
+            "❌ የአካውንት ቁጥሩ ከ30 ፊደል/ቁጥር መብለጥ አይችልም።"
+          );
+
+        }
+        
+
+pendingWithdrawal[telegramId] = {
+  ...withdrawal,
+  step: "amount",
+  accountNumber
+};
+
+        return ctx.reply(
+
+          "✅ *የአካውንት ቁጥር ተቀብለናል።*\n\n" +
+
+          `📱 አካውንት፦ *${accountNumber}*\n\n` +
+
+          "💰 አሁን ማውጣት የሚፈልጉትን የብር መጠን ያስገቡ።\n\n" +
+
+          "ምሳሌ፦ `100`",
+
+          {
+            parse_mode:
+              "Markdown"
+          }
+
+        );
+
+      }
+
+
+      // ========================================================
+      // 9. WITHDRAWAL — AMOUNT
+      // ========================================================
+
+      if (
+        withdrawal &&
+        withdrawal.step ===
+          "amount"
+      ) {
+
+        if (
+          text.startsWith("/")
+        ) {
+
+          return next();
+
+        }
+
+        try {
+
+          const amount =
+            Number(text);
+
+          if (
+            !Number.isFinite(
+              amount
+            ) ||
+            amount <= 0
+          ) {
+
+            return ctx.reply(
+              "❌ እባክዎ ትክክለኛ የብር መጠን ያስገቡ።"
+            );
+
+          }
+
+          if (
+            amount < 50
+          ) {
+
+            return ctx.reply(
+              "❌ ዝቅተኛው የወጪ መጠን 50 ETB ነው።"
+            );
+
+          }
+
+          const user =
+            await db.getUserByTelegramId(
+              telegramId
+            );
+
+          if (!user) {
+
+            clearPendingState(
+  ctx.from.id
+);
+
+            return ctx.reply(
+              "❌ አካውንትዎ አልተገኘም።"
+            );
+
+          }
+
+          const userBalance =
+            Number(
+              user.balance
+            );
+
+          if (
+            amount >
+            userBalance
+          ) {
+
+            return ctx.reply(
+
+              "❌ በቂ ቀሪ ሂሳብ የሎትም።\n\n" +
+
+              `💰 ያለዎት ቀሪ ሂሳብ፦ ${userBalance} ETB\n` +
+
+              `💸 የጠየቁት፦ ${amount} ETB`
+
+            );
+
+          }
+
+          const result =
+            await db.createWithdrawal(
+
+              telegramId,
+
+              withdrawal.paymentMethodId,
+
+              withdrawal.accountNumber,
+
+              amount
+
+            );
+
+          if (
+            !result.success
+          ) {
+
+            return ctx.reply(
+              `❌ ${result.message}`
+            );
+
+          }
+
+          delete pendingWithdrawal[telegramId];
+
+          return ctx.reply(
+
+            "✅ *የወጪ ጥያቄዎ ተቀብለናል!*\n\n" +
+
+            `💳 የክፍያ መንገድ፦ *${
+              withdrawal.paymentMethod.amharic_name
+            }*\n` +
+
+            `📱 አካውንት፦ *${
+              withdrawal.accountNumber
+            }*\n` +
+
+            `💰 መጠን፦ *${amount} ETB*\n\n` +
+
+            "⏳ ጥያቄዎ በአስተዳዳሪ እየተገመገመ ነው።",
+
+            {
+              parse_mode:
+                "Markdown"
+            }
+
+          );
+
+        } catch (err) {
+
+          console.error(
+            "Withdrawal amount error:",
+            err
+          );
+
+          return ctx.reply(
+            "❌ የወጪ ጥያቄውን ማስኬድ አልተቻለም።"
+          );
+
+        }
+
+      }
 
 
       
@@ -8450,37 +8399,20 @@ bot.callbackQuery(
 // CANCEL SPECIFIC RECIPIENT
 // ============================================================
 
-bot.callbackQuery(
-  "broadcast_cancel_specific",
-  async (ctx) => {
-
-    const admin =
-      await getCurrentAdmin(ctx);
-
-    if (!admin) {
+bot.callbackQuery("broadcast_cancel_specific",async (ctx) => 
+  {
+    const admin = await getCurrentAdmin(ctx);
+    if (!admin) 
+    {
       return;
     }
-
     await answerCallback(ctx);
-
-    const adminTelegramId =
-      admin.telegram_id;
-
-    pendingBroadcastRecipient.delete(
-      adminTelegramId
-    );
-
-    const draft =
-      await db.getBroadcastDraft(
-        adminTelegramId
-      );
-
-    if (draft) {
-
-      await db.updateBroadcastStatus(
-        adminTelegramId,
-        "preview"
-      );
+    const adminTelegramId = admin.telegram_id;
+    pendingBroadcastRecipient.delete(adminTelegramId);
+    const draft = await db.getBroadcastDraft(adminTelegramId);
+    if (draft) 
+    {
+      await db.updateBroadcastStatus(adminTelegramId, "preview");
     }
 
     await ctx.editMessageText(
