@@ -325,13 +325,14 @@ async function processDeposit(sms,pmName,pmAmharicName,ptName,ptAmharicName)
   }
 
   // Build URL
-  const url = await builURLfromInvoiceNo(invoiceNo);
+  //const url = await builURLfromInvoiceNo(invoiceNo);
+  console.log("i'm here:",invoiceNo);
   
 //  const isValid = await checkUrl("https://links.et/");
     const isValid = await checkUrl("https://checkit.et/");
 
   if (!isValid) {
-    console.log("Stopping. Receipt URL is invalid.");
+    console.log("Checking URL is not responding");
     return 2;
   }
 
