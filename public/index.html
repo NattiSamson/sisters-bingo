@@ -440,6 +440,29 @@ body{padding-bottom:72px;background:#0b061c;}
   scrollbar-width:thin;
   scrollbar-color:#6d3db7 transparent;
 }
+#screenCards .pool-grid{
+  width:100%!important;
+  box-sizing:border-box!important;
+  grid-template-columns:repeat(auto-fit,minmax(38px,1fr))!important;
+  grid-auto-rows:38px!important;
+  justify-content:stretch!important;
+  align-content:start!important;
+  gap:6px!important;
+  padding:6px!important;
+  height:calc(100dvh - 225px)!important;
+  min-height:0!important;
+  max-height:none!important;
+}
+#screenCards .pool-btn{
+  width:100%!important;
+  min-width:0!important;
+  height:38px!important;
+  padding:0!important;
+  line-height:38px!important;
+  font-size:9px!important;
+  border-radius:9px!important;
+  box-sizing:border-box!important;
+}
 #screenCards .pool-grid::-webkit-scrollbar{width:7px;}
 #screenCards .pool-grid::-webkit-scrollbar-thumb{background:#6d3db7;border-radius:8px;}
 #screenCards .pool-btn{
