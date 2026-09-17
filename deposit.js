@@ -223,7 +223,7 @@ async function extractTransactionInfofromThirdParty(typeName, receiptId)
   try 
   {
       pmName == "telebirr";
-      const response = await fetch(`https://checkit.et/api/process.php?type=${encodeURIComponent(typeName..toLowerCase())}&receiptid=${encodeURIComponent(receiptId)}`);
+      const response = await fetch(`https://checkit.et/api/process.php?type=${encodeURIComponent(typeName.toLowerCase())}&receiptid=${encodeURIComponent(receiptId)}`);
       const data = await response.json();
       if (!response.ok || !data.ok) 
       {
