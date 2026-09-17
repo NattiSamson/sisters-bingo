@@ -3546,151 +3546,84 @@ bot.command(
 
 
 
-bot.callbackQuery(
-  "user_deposit",
-  async (ctx) => {
-  await answerCallback(ctx);
-  clearPendingState(ctx.from.id);
-  await showDeposit(ctx);
-  }
-);
+bot.callbackQuery("user_deposit", async (ctx) => 
+  {
+      await answerCallback(ctx);
+      clearPendingState(ctx.from.id);
+      await showDeposit(ctx);
+  });
 
 
 // ============================================================
 // PAYMENT METHOD
 // ============================================================
 
-bot.callbackQuery(
-  /^payment_(\d+)$/,
-  async (ctx) => {
-
-    await answerCallback(
-      ctx
-    );
-
-
-    const paymentMethodId =
-      Number(
-        ctx.match[1]
-      );
-
-
-    try {
-
-      const paymentMethod =
-        await db.getPaymentMethodById(
-          paymentMethodId
-        );
-
-
-      if (!paymentMethod) {
-
-        return ctx.reply(
-          "❌ የክፍያ መንገዱ አልተገኘም።"
-        );
-
-      }
-
-
-      if (
-        paymentMethod.name
-          .toLowerCase()
-          .includes("telebirr")
-      ) {
-
-        pendingDeposit[
-          ctx.from.id
-        ] = true;
-
-
-        const paymentaccount =
-          await db.getPaymentAccount(
-            paymentMethod.id
-          );
-
-
-        if (!paymentaccount) {
-
-          return ctx.reply(
-            "❌ የ" + paymentMethod.amharic_Name + " አካውንት አማራጭ አልተገኘም።"
-          );
-
+bot.callbackQuery(/^payment_(\d+)$/, async (ctx) => 
+  {
+      await answerCallback(ctx);
+      const paymentMethodId = Number(ctx.match[1]);
+      try 
+      {
+        const paymentMethod = await db.getPaymentMethodById(paymentMethodId);
+        if (!paymentMethod) 
+        {
+            return ctx.reply("❌ የክፍያ መንገዱ አልተገኘም።");
         }
-
         const paymentType = await db.getPaymentMethodTypesById(paymentMethod.type_id);
-        if (!paymentType) {
-
-          return ctx.reply(
-            "❌ የክፍያ አማራጭ አልተገኘም።"
-          );
+        if (!paymentType) 
+        {
+            return ctx.reply("❌ የክፍያ አማራጭ አልተገኘም።");
         }
-        ctx.session.paymentMethod = { id: paymentMethod.id , name: paymentMethod.name, amharicName: paymentMethod.amharic_name};
-        ctx.session.paymentType = { id: paymentType.id, name: paymentType.name, amharicName: paymentType.amharic_name};
-
-
-        await ctx.editMessageText(
-
-          "1. ከታች ባለው የ" +
-
-          paymentMethod.amharic_name +
-
-          " አካውንት እስከ 200.00 ብር ድረስ ብቻ ያስገቡ\n\n" +
-
-          paymentMethod.emoji + " *" + paymentMethod.name +  ":* `" + paymentaccount.account_number + "`\n\n" +
-
-          "2. የከፈሉበትን አጭር የጹሁፍ መልዕክት (SMS) " +
-
-          "copy በማድረግ እዚህ ላይ Paste አድርገው " +
-
-          "ያስገቡና ይላኩት👇👇👇",
-
-          {
-
-            parse_mode:
-              "Markdown"
-
-          }
-
-        );
-        setTimeout(async () => {
-        try {
-          await ctx.deleteMessage();
-        } catch (err) {
-          console.error("Could not delete message:", err);
-        }
-      }, 60000);
-
-
+        const paymentaccount = await db.getPaymentAccount(paymentMethod.id);
+        if (paymentaccount)
+        {
+            pendingDeposit[ctx.from.id] = true;            
+            //if (!paymentaccount) 
+           // {
+           //     return ctx.reply("❌ የ" + paymentMethod.amharic_Name + " አካውንት አማራጭ አልተገኘም።");
+           // }          
+            ctx.session.paymentMethod = { id: paymentMethod.id , name: paymentMethod.name, amharicName: paymentMethod.amharic_name};
+            ctx.session.paymentType = { id: paymentType.id, name: paymentType.name, amharicName: paymentType.amharic_name};
+            await ctx.editMessageText(
+              "1. ከታች ባለው የ" +
+              paymentMethod.amharic_name +
+              " አካውንት እስከ 200.00 ብር ድረስ ብቻ ያስገቡ\n\n" +
+              paymentMethod.emoji + " *" + paymentMethod.name +  ":* `" + paymentaccount.account_number + "`\n\n" +
+              "2. የከፈሉበትን አጭር የጹሁፍ መልዕክት (SMS) " +
+              "copy በማድረግ እዚህ ላይ Paste አድርገው " +
+              "ያስገቡና ይላኩት👇👇👇",
+              {
+                  parse_mode: "Markdown"
+              });
+        setTimeout(async () => 
+        {
+            try 
+            {
+                  await ctx.deleteMessage();
+            } 
+            catch (err) 
+            {
+                  console.error("Could not delete message:", err);
+            }
+        }, 60000);
         return;
-
       }
 
 
       await ctx.editMessageText(
-
         `${paymentMethod.emoji || "💳"} ` +
-
         `${paymentMethod.amharic_name}\n\n` +
-
         `ይህ የክፍያ መንገድ በቅርቡ ይጀምራል။`
-
       );
 
-    } catch (err) {
-
-      console.error(
-        "Payment method error:",
-        err
-      );
-
-      await ctx.reply(
-        "❌ የክፍያ መንገዱን ማስኬድ አልተቻለም።"
-      );
-
+    } 
+    catch (err) 
+    {
+        console.error("Payment method error:", err);
+        await ctx.reply("❌ የክፍያ መንገዱን ማስኬድ አልተቻለም።");
     }
 
-  }
-);
+  });
 
 
 
