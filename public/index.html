@@ -87,7 +87,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .bingo-cell.marked{background:var(--purple)!important;color:#fff!important}
 .bingo-cell.called-not-marked{background:#fff8dc!important;color:#8b6914!important}
 .bingo-cell.free{background:var(--purple)!important;color:#fff!important;cursor:default}
-.bingo-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:#271447;border:1px solid #3d226b;color:var(--gray);font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;padding:14px;border-radius:12px;cursor:pointer;margin-top:14px;transition:all .2s}
+.bingo-btn{display:none!important;align-items:center;justify-content:center;gap:8px;width:100%;background:#271447;border:1px solid #3d226b;color:var(--gray);font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;padding:14px;border-radius:12px;cursor:pointer;margin-top:14px;transition:all .2s}
 .bingo-btn.ready{animation:flashPulse .7s infinite alternate;background:var(--green)!important;color:#fff!important;border-color:#fff!important;box-shadow:0 0 22px var(--green)}
 .bingo-btn.locked{background:#1a0a0a!important;color:#666!important;cursor:not-allowed;border-color:#333!important}
 @keyframes flashPulse{0%{transform:scale(1);filter:brightness(1)}100%{transform:scale(1.02);filter:brightness(1.25)}}
@@ -107,17 +107,69 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .wallet-tab.active{background:var(--purple);color:#fff}
 .wallet-section{display:none}
 .wallet-section.active{display:block}
-.profile-list{display:flex;flex-direction:column;gap:10px;margin-top:14px}
-.profile-card{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:13px}
-.profile-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:7px}
-.profile-date{font-size:11px;color:var(--gray)}
-.profile-result{font-size:12px;font-weight:900}
-.profile-result.win{color:var(--green)}
-.profile-result.loss{color:var(--red)}
-.profile-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0}
-.profile-key{color:var(--gray)}
-.profile-value{font-weight:700}
-.profile-empty{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:30px 16px;text-align:center;color:var(--gray);font-size:13px}
+/* ───────── PROFILE — MELA BINGO NEON DASHBOARD ───────── */
+.profile-page{padding:10px 0 24px}
+.profile-hero{
+  position:relative;overflow:hidden;
+  background:
+    radial-gradient(circle at 15% 20%,rgba(56,217,255,.20),transparent 26%),
+    radial-gradient(circle at 82% 15%,rgba(124,92,255,.25),transparent 32%),
+    linear-gradient(145deg,#252d8d 0%,#171c63 55%,#0d1239 100%);
+  border:1px solid rgba(83,180,255,.65);border-radius:22px;
+  padding:20px 16px 18px;
+  box-shadow:0 16px 38px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.08);
+}
+.profile-hero:before{content:'';position:absolute;width:190px;height:190px;right:-90px;top:-95px;border-radius:50%;background:rgba(124,92,255,.18);filter:blur(2px)}
+.profile-hero:after{content:'';position:absolute;width:170px;height:130px;left:-90px;bottom:-75px;border-radius:50%;background:rgba(56,217,255,.12);filter:blur(2px)}
+.profile-hero-row{position:relative;z-index:1;display:flex;align-items:center;gap:16px}
+.profile-avatar{
+  width:88px;height:88px;flex:0 0 88px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(145deg,#5e75ff,#6d43e8);
+  border:3px solid rgba(255,255,255,.72);
+  box-shadow:0 0 26px rgba(83,109,255,.46),inset 0 0 18px rgba(255,255,255,.14);
+  font-family:'Orbitron',sans-serif;font-size:31px;font-weight:900;color:#fff;
+  position:relative;
+}
+.profile-avatar:before{content:'♛';position:absolute;top:-24px;left:50%;transform:translateX(-50%);font-size:30px;color:#ffd43b;filter:drop-shadow(0 0 7px rgba(255,212,59,.55))}
+.profile-hero-copy{min-width:0;text-align:left}
+.profile-name{font-size:28px;font-weight:900;color:#fff;line-height:1.05}
+.profile-sub{margin-top:6px;color:#bfc7ff;font-size:11px;font-weight:700}
+.profile-member{display:inline-flex;align-items:center;gap:6px;margin-top:10px;padding:5px 10px;border:1px solid rgba(255,212,59,.75);border-radius:18px;color:#ffd83d;font-size:9px;font-weight:900;background:rgba(255,212,59,.07)}
+.profile-wallet{
+  margin-top:16px;position:relative;z-index:1;
+  background:linear-gradient(105deg,#3478ff,#5146e5 58%,#6952ee);
+  border:1px solid rgba(255,255,255,.2);border-radius:18px;padding:16px 17px;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  box-shadow:0 12px 26px rgba(39,73,214,.24),inset 0 1px 0 rgba(255,255,255,.12);
+}
+.profile-wallet-copy{text-align:left;min-width:0}
+.profile-wallet-label{font-size:10px;color:rgba(255,255,255,.78);font-weight:900;text-transform:uppercase;letter-spacing:.8px}
+.profile-wallet-value{margin-top:4px;font-family:'Orbitron',sans-serif;font-size:25px;font-weight:900;color:#ffe04d;text-shadow:0 0 14px rgba(255,224,77,.18)}
+.profile-wallet-icon{width:50px;height:50px;flex:0 0 50px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.13);border:2px solid rgba(255,255,255,.45);font-size:24px;box-shadow:inset 0 0 14px rgba(255,255,255,.1)}
+.profile-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
+.profile-stat{
+  min-width:0;min-height:126px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:linear-gradient(145deg,rgba(31,42,113,.98),rgba(13,19,61,.98));
+  border:1px solid rgba(91,146,255,.55);border-radius:17px;padding:13px 7px 11px;text-align:center;
+  box-shadow:0 10px 22px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.06);
+  position:relative;overflow:hidden;
+}
+.profile-stat:after{content:'';position:absolute;left:18%;right:18%;bottom:7px;height:3px;border-radius:99px;background:#3478ff;box-shadow:0 0 9px rgba(52,120,255,.3)}
+.profile-stat.winnings:after{background:#ffd43b;box-shadow:0 0 9px rgba(255,212,59,.3)}
+.profile-stat.earnings:after{background:#22d67a;box-shadow:0 0 9px rgba(34,214,122,.3)}
+.profile-stat.gameswon:after{background:#c54cff;box-shadow:0 0 9px rgba(197,76,255,.3)}
+.profile-stat-icon{font-size:27px;line-height:1;margin-bottom:9px;filter:drop-shadow(0 3px 7px rgba(0,0,0,.25))}
+.profile-stat-value{font-family:'Orbitron',sans-serif;font-size:20px;font-weight:900;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.profile-stat.games .profile-stat-value{color:#55dcff}
+.profile-stat.winnings .profile-stat-value{color:#ffe04d}
+.profile-stat.earnings .profile-stat-value{color:#7cffb2}
+.profile-stat.gameswon .profile-stat-value{color:#e39aff}
+.profile-stat-label{margin-top:6px;color:#b9c2f5;font-size:9px;font-weight:900;line-height:1.2;letter-spacing:.15px}
+.profile-status{margin-top:10px;background:linear-gradient(145deg,rgba(31,39,103,.94),rgba(15,20,63,.96));border:1px solid rgba(91,146,255,.42);border-radius:14px;padding:13px 12px;text-align:center;color:#bfc7ff;font-size:11px;font-weight:700}
+@media(max-width:380px){
+  .profile-hero{padding:18px 12px 16px}.profile-hero-row{gap:12px}.profile-avatar{width:76px;height:76px;flex-basis:76px;font-size:27px}.profile-avatar:before{font-size:26px;top:-21px}.profile-name{font-size:23px}.profile-wallet-value{font-size:21px}.profile-stat{min-height:116px}.profile-stat-value{font-size:16px}.profile-stat-icon{font-size:23px}
+}
 .form-group{margin-bottom:14px}
 .form-label{font-size:12px;color:var(--gray);margin-bottom:5px;display:block}
 .form-input{width:100%;background:var(--card);border:1px solid #4a2d7a;color:#fff;padding:12px;border-radius:8px;font-size:15px;outline:none;transition:border-color .2s}
@@ -1016,44 +1068,6 @@ body{
   .spectator-wait-card{min-height:245px;}
 }
 
-
-/* ───────── RESPONSIVE POOL + VIEWPORT FIX ─────────
-   UI-only overrides. Game, balance and settlement logic are untouched. */
-html,body{width:100%;min-height:100%;}
-html{overflow:hidden;}
-body{height:100dvh;overflow:hidden;padding-bottom:0!important;}
-.navbar{position:relative!important;top:auto!important;flex:none;}
-.bottom-nav{position:fixed!important;bottom:0!important;left:0!important;right:0!important;z-index:200!important;}
-.screen{max-width:500px;margin:0 auto;}
-.screen.active{height:var(--mela-screen-height,calc(100dvh - 140px));overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;}
-#screenCards.active{max-width:none;width:100%;height:var(--mela-screen-height,calc(100dvh - 140px));overflow:hidden;display:flex;flex-direction:column;padding-left:clamp(8px,2.5vw,28px);padding-right:clamp(8px,2.5vw,28px);padding-bottom:10px;}
-#screenCards .card-selection-top,#screenCards #cdPrizePot{flex:none;width:100%;}
-#screenCards .pool-grid{flex:1 1 auto;min-height:0;width:100%;height:auto!important;max-height:none!important;overflow-y:auto;overflow-x:hidden;display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));grid-auto-rows:auto;gap:clamp(4px,.75vw,8px);padding:clamp(5px,.9vw,10px);align-content:start;}
-#screenCards .pool-btn{width:100%!important;min-width:0!important;height:auto!important;min-height:0!important;aspect-ratio:1/1;line-height:1!important;padding:0!important;display:flex;align-items:center;justify-content:center;font-size:clamp(9px,1.25vw,14px)!important;border-radius:clamp(7px,.9vw,11px)!important;}
-#screenCards .pool-btn.taken{cursor:not-allowed!important;}
-#screenCards .pool-btn.mine1,#screenCards .pool-btn.mine2{cursor:pointer!important;}
-@media(max-width:520px){
-  #screenCards .pool-grid{grid-template-columns:repeat(auto-fill,minmax(36px,1fr));gap:5px;padding:4px;}
-  #screenCards .pool-btn{font-size:9px!important;border-radius:8px!important;}
-}
-@media(max-width:380px){
-  #screenCards .pool-grid{grid-template-columns:repeat(auto-fill,minmax(32px,1fr));gap:4px;padding:3px;}
-  #screenCards .pool-btn{font-size:8px!important;}
-}
-@media(min-width:900px){
-  #screenCards{padding-left:clamp(20px,4vw,70px)!important;padding-right:clamp(20px,4vw,70px)!important;}
-  #screenCards .pool-grid{grid-template-columns:repeat(auto-fill,minmax(48px,1fr));}
-}
-/* Ownership always wins over the generic .taken class. */
-#screenCards .pool-btn.mine1,
-#screenCards .pool-btn.mine2{
-  background:linear-gradient(145deg,#ff7a18,#f4510b)!important;
-  color:#fff!important;
-  border-color:#ffb05c!important;
-  box-shadow:0 0 0 1px rgba(255,176,92,.3),0 0 13px rgba(255,101,15,.28)!important;
-  opacity:1!important;
-}
-
 </style>
 </head>
 <body>
@@ -1064,7 +1078,7 @@ body{height:100dvh;overflow:hidden;padding-bottom:0!important;}
   </div>
   <div class="header-actions">
     <button class="sound-btn" id="soundBtn" onclick="toggleSound()" title="Toggle sound">🔊</button>
-    <div class="balance-pill" id="balanceEl" onclick="goToWallet()">ETB 0.00</div>
+    <div class="balance-pill" id="balanceEl" onclick="gotoProfile()">ETB 0.00</div>
   </div>
 </div>
 
@@ -1202,6 +1216,44 @@ body{height:100dvh;overflow:hidden;padding-bottom:0!important;}
 </div>
 </div>
 
+
+<div id="screenProfile" class="screen">
+  <div class="profile-page">
+    <div class="profile-hero">
+      <div class="profile-hero-row">
+        <div class="profile-avatar" id="profileAvatar">M</div>
+        <div class="profile-hero-copy">
+          <div class="profile-name" id="profileName">Player</div>
+          <div class="profile-sub">Mela Bingo Player</div>
+          <div class="profile-member">♛ Mela Bingo Member</div>
+        </div>
+      </div>
+      <div class="profile-wallet">
+        <div class="profile-wallet-copy">
+          <div class="profile-wallet-label">Wallet Balance</div>
+          <div class="profile-wallet-value" id="profileBalance">ETB 0.00</div>
+        </div>
+        <div class="profile-wallet-icon" aria-hidden="true">💳</div>
+      </div>
+    </div>
+
+    <div class="profile-stats">
+    
+      <div class="profile-stat winnings">
+        <div class="profile-stat-icon">🏆</div>
+        <div class="profile-stat-value" id="profileWinnings">ETB 0.00</div>
+        <div class="profile-stat-label">TOTAL WINNINGS</div>
+      </div>
+     
+      <div class="profile-stat gameswon">
+        <div class="profile-stat-icon">🏅</div>
+        <div class="profile-stat-value" id="profileWins">0</div>
+        <div class="profile-stat-label">TOTAL GAMES WON</div>
+      </div>
+    </div>
+    <div id="profileStatus" class="profile-status" style="display:none"></div>
+  </div>
+</div>
 
 <div class="winner-overlay" id="winnerOverlay">
   <div class="confetti-row" id="resultConfetti">🎊🎉🎊🎉🎊</div>
@@ -1408,9 +1460,7 @@ function navGo(screen, navId){
   if(telegramId){
     refreshAccountProfile(3,300);
   }
-  if(screen==='screenCards'){
-    requestAnimationFrame(()=>reapplyMyCardPoolOwnership());
-  }
+
   
 }
 function saveActiveGameState(phase){
@@ -1528,10 +1578,21 @@ function renderSpectatorView(msg={}){
 
 function goToGame(){
   restoreActiveGameState();
+  // Only an explicitly saved countdown/playing/spectating state is an active game.
+  // A leftover roomId after a finished round must never block the normal stake menu.
+  if(activeGamePhase!=='countdown' && activeGamePhase!=='playing' && activeGamePhase!=='spectating'){
+    navGo('screenLobby','navGame');
+    return;
+  }
+
   const roomId=myRoomId||localStorage.getItem('roomId');
-  if(!myStakeId) myStakeId=localStorage.getItem('stakeId');
-  if(!roomId){ showToast('አሁን ንቁ ጨዋታ የለም።','warn'); return; }
+  if(!roomId){
+    clearActiveGameState();
+    navGo('screenLobby','navGame');
+    return;
+  }
   myRoomId=roomId;
+  if(!myStakeId) myStakeId=localStorage.getItem('stakeId');
   if(activeGamePhase==='spectating'){
     navGo('screenGame','navGame');
     renderSpectatorView({calledNumbers:Array.from(calledNumbersSet||[])});
@@ -1542,16 +1603,112 @@ function goToGame(){
     refreshCardCells();
   }else{
     navGo('screenCards','navGame');
-    if(activeGamePhase==='countdown') showSavedCountdown();
-    reapplyMyCardPoolOwnership();
+    showSavedCountdown();
   }
   if(telegramId) wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
 }
 
-function goToWallet(){navGo('screenWallet','navWallet');}
-async function gotoProfile(){
+function goToWallet(){gotoProfile();}
+function gotoProfile(){
   navGo('screenProfile','navProfile');
-  await loadUserProfile();
+  // Show the profile immediately. The server refresh runs silently in the background.
+  loadUserProfile(false).catch(()=>{});
+}
+
+function renderUserProfile(u, history=[]){
+  const name=String(u?.name||u?.playerName||myName||'Player').trim()||'Player';
+  const balance=Number(u?.balance);
+  const rows=Array.isArray(history)?history:[];
+  const games=Number.isFinite(Number(u?.total_games)) ? Number(u.total_games) : rows.length;
+  const winsFromHistory=rows.filter(g=>g?.won===true || g?.won==='true').length;
+  const wins=Number.isFinite(Number(u?.total_wins)) ? Number(u.total_wins) : winsFromHistory;
+  const winningsFromHistory=rows.reduce((sum,g)=>sum+(Number(g?.amount_won)||0),0);
+  const winnings=Number.isFinite(Number(u?.total_winnings)) ? Number(u.total_winnings) : winningsFromHistory;
+  // Prefer the authoritative latest payout calculated by the server directly
+  // from the finished games table. Keep the history value as a fallback.
+  const historyLatest=rows.find(g=>(Number(g?.amount_won)||0)>0);
+  const historyLatestEarnings=historyLatest ? (Number(historyLatest.amount_won)||0) : 0;
+  const apiLatestEarnings=Number(u?.latest_earnings);
+  const latestEarnings=Number.isFinite(apiLatestEarnings) && apiLatestEarnings>=0
+    ? apiLatestEarnings
+    : historyLatestEarnings;
+  myName=name;
+  if(Number.isFinite(balance) && balance>=0) setBalance(balance);
+  const nameEl=document.getElementById('profileName');
+  const avatarEl=document.getElementById('profileAvatar');
+  const gamesEl=document.getElementById('profileGames');
+  const winsEl=document.getElementById('profileWins');
+  const winningsEl=document.getElementById('profileWinnings');
+  const latestEl=document.getElementById('profileLatestEarnings');
+  const profileBalEl=document.getElementById('profileBalance');
+  if(nameEl) nameEl.innerText=name;
+  if(avatarEl) avatarEl.innerText=name.charAt(0).toUpperCase();
+  if(gamesEl) gamesEl.innerText=Number.isFinite(games)?Math.max(0,Math.trunc(games)).toLocaleString():'0';
+  if(winsEl) winsEl.innerText=Number.isFinite(wins)?Math.max(0,Math.trunc(wins)).toLocaleString():'0';
+  if(winningsEl) winningsEl.innerText=`ETB ${Math.max(0,winnings).toFixed(2)}`;
+  if(latestEl) latestEl.innerText=`ETB ${Math.max(0,latestEarnings).toFixed(2)}`;
+  if(profileBalEl) profileBalEl.innerText=Number.isFinite(balance)&&balance>=0?`ETB ${balance.toFixed(2)}`:'ETB 0.00';
+}
+
+async function loadUserProfile(force=false){
+  if(!telegramId) telegramId=getTelegramId();
+  const status=document.getElementById('profileStatus');
+
+  // Never show a loading screen/message for Profile. If we have a cached account,
+  // render it immediately and then refresh it silently from the server.
+  if(status) status.style.display='none';
+
+  let id=normalizeTelegramId(telegramId);
+  if(!id){
+    try{ id=normalizeTelegramId(localStorage.getItem('melaBingoTelegramId')); }catch(e){}
+  }
+
+  // Render the last successfully loaded profile instantly while the network refreshes.
+  if(id && !force){
+    try{
+      const cached=JSON.parse(localStorage.getItem('melaBingoProfile')||'null');
+      if(cached && cached.telegramId===id && cached.user){
+        renderUserProfile(cached.user,Array.isArray(cached.history)?cached.history:[]);
+      }
+    }catch(e){}
+  }
+
+  if(!id){
+    // The normal app/account flow can still resolve Telegram authentication later.
+    return false;
+  }
+
+  telegramId=id;
+  try{
+    const [userRes,historyRes]=await Promise.all([
+      fetch(`${API_BASE}/api/user/${encodeURIComponent(id)}?_=${Date.now()}`,{cache:'no-store'}),
+      fetch(`${API_BASE}/api/history/${encodeURIComponent(id)}?limit=100&_=${Date.now()}`,{cache:'no-store'})
+    ]);
+    const userData=await userRes.json().catch(()=>({}));
+    const historyData=await historyRes.json().catch(()=>[]);
+    if(!userRes.ok) throw new Error(userData.error||'Profile request failed');
+    const history=Array.isArray(historyData)?historyData:[];
+    renderUserProfile(userData,history);
+
+    // Cache only a successfully loaded server profile. This is UI data only;
+    // Neon/server balance remains authoritative and is never changed here.
+    try{
+      localStorage.setItem('melaBingoProfile',JSON.stringify({
+        telegramId:id,
+        user:userData,
+        history:history,
+        savedAt:Date.now()
+      }));
+    }catch(e){}
+
+    if(status) status.style.display='none';
+    return true;
+  }catch(e){
+    console.error('Profile refresh:',e);
+    // Keep the cached/current profile visible if the background refresh fails.
+    if(status) status.style.display='none';
+    return false;
+  }
 }
 
 function formatHistoryDate(value){
@@ -1559,51 +1716,6 @@ function formatHistoryDate(value){
   const d=new Date(value);
   if(Number.isNaN(d.getTime())) return '—';
   return d.toLocaleString();
-}
-
-function loadUserProfile(){
-  const list=document.getElementById('historyList');
-  if(!list) return Promise.resolve();
-  if(!telegramId) telegramId=getTelegramId();
-  if(!telegramId){
-    list.innerHTML='<div class="profile-empty">የTelegram ሂሳብ አልተገናኘም።</div>';
-    return Promise.resolve();
-  }
-  list.innerHTML='<div class="profile-empty">ታሪክ በመጫን ላይ...</div>';
-  return fetch(`${API_BASE}/api/history/${encodeURIComponent(telegramId)}?limit=50`,{cache:'no-store'})
-    .then(async r=>{
-      const data=await r.json().catch(()=>[]);
-      if(!r.ok) throw new Error(data.error||'History request failed');
-      return data;
-    })
-    .then(rows=>{
-      if(!Array.isArray(rows)||!rows.length){
-        list.innerHTML='<div class="profile-empty">📜 እስካሁን የጨዋታ ታሪክ የለዎትም።</div>';
-        return;
-      }
-      list.innerHTML=rows.map(g=>{
-        const won=g.won===true || g.won==='true';
-        const played=Number(g.amount_played)||0;
-        const wonAmount=Number(g.amount_won)||0;
-        const net=wonAmount-played;
-        const stake=Number(g.stake_amount)||0;
-        return `<div class="profile-card">
-          <div class="history-top">
-            <div style="font-weight:900">🎱 ${esc(g.stake_id||('ST'+stake))}</div>
-            <div class="history-result ${won?'win':'loss'}">${won?'🏆 አሸንፈዋል':'— አላሸነፉም'}</div>
-          </div>
-          <div class="history-row"><span class="history-key">ቀን</span><span class="history-value history-date">${esc(formatHistoryDate(g.started_at))}</span></div>
-          <div class="history-row"><span class="history-key">የጨዋታ ዋጋ</span><span class="history-value">${stake.toFixed(2)} ብር</span></div>
-          <div class="history-row"><span class="history-key">የተጫወቱት</span><span class="history-value">-${played.toFixed(2)} ብር</span></div>
-          <div class="history-row"><span class="history-key">ያሸነፉት</span><span class="history-value">${wonAmount>0?'+':''}${wonAmount.toFixed(2)} ብር</span></div>
-          <div class="history-row" style="margin-top:5px;padding-top:7px;border-top:1px solid #2d1b4e"><span class="history-key">የዚህ ጨዋታ ልዩነት</span><span class="history-value" style="color:${net>=0?'var(--green)':'var(--red)'}">${net>=0?'+':''}${net.toFixed(2)} ብር</span></div>
-        </div>`;
-      }).join('');
-    })
-    .catch(e=>{
-      console.error('Profile:',e);
-      list.innerHTML='<div class="profile-empty">የጨዋታ ታሪክን መጫን አልተቻለም።</div>';
-    });
 }
 
 // ─── WEBSOCKET ────────────────────────────────────────────────
@@ -1704,24 +1816,33 @@ function handle(msg){
 
     case 'connected':
       myPlayerId=msg.playerId;
-      // Never replace a known balance with the server's initial connection value (0).
+      // Render the normal game menu immediately. Account authentication happens
+      // asynchronously and must never leave the app stuck on the loading screen.
       if(msg.stakes) renderStakes(msg.stakes);
-      document.getElementById('loadingText').innerText='Loading your account...';
       const pageParam = new URLSearchParams(location.search).get('page');
+      if(pageParam !== 'deposit' && pageParam !== 'withdraw') goScreen('screenLobby');
+      document.getElementById('loadingText').innerText='Loading your account...';
       if(pageParam === 'deposit') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('deposit'); }, 1500);
       if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('withdraw'); }, 1500);
-      waitForTelegramId(40,250).then(async tid=>{
-        if(!tid){
-          document.getElementById('loadingText').innerText='Waiting for Telegram account...';
-          setTimeout(()=>{ const retryId=getTelegramId(); if(retryId) sendTelegramAuth(retryId); },1000);
-          return;
-        }
-        telegramId=tid;
-        // First load the account directly over HTTPS. This breaks the old failure
-        // mode where a WebSocket lookup returned a fake zero/unregistered snapshot.
-        await refreshAccountProfile(6,500);
-        sendTelegramAuth(tid);
-      });
+      // Authenticate as soon as the Telegram ID is available. If it was resolved
+      // before connect(), use it immediately; otherwise wait briefly for Telegram.
+      const existingTid=normalizeTelegramId(telegramId)||getTelegramId();
+      if(existingTid){
+        telegramId=existingTid;
+        refreshAccountProfile(6,400).catch(()=>{});
+        sendTelegramAuth(existingTid);
+      }else{
+        waitForTelegramId(40,250).then(async tid=>{
+          if(!tid){
+            // Do not block the lobby waiting for Telegram initialization.
+            setTimeout(()=>{ const retryId=getTelegramId(); if(retryId) sendTelegramAuth(retryId); },1000);
+            return;
+          }
+          telegramId=tid;
+          refreshAccountProfile(6,400).catch(()=>{});
+          sendTelegramAuth(tid);
+        });
+      }
       break;
 
     case 'authRetry':
@@ -1752,7 +1873,9 @@ function handle(msg){
   // waiting/counting down or officially playing; do not assume a selected card
   // means the game has started.
   restoreActiveGameState();
-  if(myRoomId && telegramId){
+  const loadingWasActive=document.getElementById('screenLoading').classList.contains('active');
+  const hasRestorableGame=!!myRoomId && !!telegramId && ['countdown','playing','spectating'].includes(activeGamePhase);
+  if(hasRestorableGame){
     restoringActiveGame=true;
     if(activeGamePhase==='countdown') navGo('screenCards','navGame');
     else if(activeGamePhase==='playing' || activeGamePhase==='spectating') navGo('screenGame','navGame');
@@ -1765,7 +1888,10 @@ function handle(msg){
         goScreen('screenLobby');
       }
     },6000);
-  } else {
+  } else if(loadingWasActive){
+    // Only the initial loading screen should be replaced automatically.
+    // If the user is already on Profile or another screen, authentication must
+    // not unexpectedly navigate them away.
     goScreen('screenLobby');
   }
   break;
@@ -1835,9 +1961,6 @@ function handle(msg){
         myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
         updateSlotUI();
       }
-      // Keep the selected-card ownership visible immediately and in localStorage.
-      saveActiveGameState(activeGamePhase==='playing'?'playing':'countdown');
-      reapplyMyCardPoolOwnership();
       if(activeGamePhase!=='playing' && activeGamePhase!=='spectating') { activeGamePhase='countdown'; saveActiveGameState('countdown'); }
       break;
 
@@ -2272,59 +2395,34 @@ function updateSlotUI(){}
 function resetSlotUI(){}
 
 // ─── CARD POOL ────────────────────────────────────────────────
-function sameCardId(a,b){ return String(a??'')===String(b??''); }
-function applyCardOwnership(btn,c){
-  if(!btn||!c) return;
-  btn.classList.remove('mine1','mine2','taken');
-  btn.onclick=null;
-  // IMPORTANT: ownership is checked before c.taken. The server marks a player's
-  // own card as taken too, but it must remain vivid orange for that player.
-  if(sameCardId(c.id,myCardId)){
-    btn.classList.add('mine1');
-    btn.onclick=()=>deselectCard(1);
-  }else if(sameCardId(c.id,myCardId2)){
-    btn.classList.add('mine2');
-    btn.onclick=()=>deselectCard(2);
-  }else if(c.taken){
-    btn.classList.add('taken');
-  }else{
-    btn.onclick=()=>pickCard(c.id);
-  }
-}
-function reapplyMyCardPoolOwnership(){
-  const grid=document.getElementById('poolGrid');
-  if(!grid) return;
-  if(!Array.isArray(cardPool)) return;
-  cardPool.forEach(c=>{
-    const btn=document.getElementById('cardbtn-'+c.id);
-    if(btn) applyCardOwnership(btn,c);
-  });
-}
 function renderCardPool(pool){
   const grid=document.getElementById('poolGrid');
-  if(!grid) return;
-  cardPool=Array.isArray(pool)?pool:[];
   grid.innerHTML='';
-  cardPool.forEach(c=>{
-    const btn=document.createElement('div');
-    btn.className='pool-btn';
-    btn.id='cardbtn-'+c.id;
-    btn.innerText=`${c.id}`;
-    applyCardOwnership(btn,c);
+  pool.forEach(c=>{
+    const btn=document.createElement('div'); btn.className='pool-btn'; btn.id='cardbtn-'+c.id; btn.innerText=`${c.id}`;
+    if(c.id===myCardId) btn.classList.add('mine1');
+    else if(c.id===myCardId2) btn.classList.add('mine2');
+    else if(c.taken) btn.classList.add('taken');
+    else btn.onclick=()=>pickCard(c.id);
+    // Allow deselecting own cards
+    if(c.id===myCardId) btn.onclick=()=>deselectCard(1);
+    if(c.id===myCardId2) btn.onclick=()=>deselectCard(2);
     grid.appendChild(btn);
   });
-  // Run once more after the complete DOM exists so a server-side `taken:true`
-  // can never overwrite the current player's orange ownership state.
-  reapplyMyCardPoolOwnership();
 }
 // Patch a single card button in place (used by cardPoolDiff) — avoids re-rendering
 // all 400 buttons just because one card's taken/free state changed.
 function patchCardButton(c){
   const btn=document.getElementById('cardbtn-'+c.id);
   if(!btn) return;
-  applyCardOwnership(btn,c);
-  // Re-apply ownership from the local selected-card state after every server diff.
-  if(sameCardId(c.id,myCardId)||sameCardId(c.id,myCardId2)) applyCardOwnership(btn,c);
+  btn.classList.remove('mine1','mine2','taken');
+  btn.onclick=null;
+  if(c.id===myCardId) btn.classList.add('mine1');
+  else if(c.id===myCardId2) btn.classList.add('mine2');
+  else if(c.taken) btn.classList.add('taken');
+  else btn.onclick=()=>pickCard(c.id);
+  if(c.id===myCardId) btn.onclick=()=>deselectCard(1);
+  if(c.id===myCardId2) btn.onclick=()=>deselectCard(2);
 }
 function pickCard(cardId){
   if(!myCardId){
@@ -2482,27 +2580,16 @@ function toggleSound(){
   showToast(soundEnabled?'🔊 Sound on':'🔇 Sound off');
 }
 
-// ─── VIEWPORT / SCROLL LOCK ──────────────────────────────────
-// Keep one stable app viewport under the fixed header and bottom navigation.
-function updateMelaViewport(){
-  const root=document.documentElement;
-  const vh=(window.visualViewport&&window.visualViewport.height)||window.innerHeight||0;
-  const header=document.querySelector('.navbar');
-  const bottom=document.querySelector('.bottom-nav');
-  const headerH=header?header.getBoundingClientRect().height:0;
-  const bottomH=bottom?bottom.getBoundingClientRect().height:0;
-  const available=Math.max(220,Math.floor(vh-headerH-bottomH));
-  root.style.setProperty('--mela-screen-height',available+'px');
-}
-window.addEventListener('resize',updateMelaViewport,{passive:true});
-window.addEventListener('orientationchange',()=>setTimeout(updateMelaViewport,80),{passive:true});
-if(window.visualViewport) window.visualViewport.addEventListener('resize',updateMelaViewport,{passive:true});
-requestAnimationFrame(updateMelaViewport);
-
 // ─── INIT ────────────────────────────────────────────────────
 buildTracker();
 buildSpectatorTracker();
 restoreCachedBalance();
+// Resolve the Telegram identity before opening the WebSocket when possible.
+// This lets the account balance load immediately instead of starting from ETB 0.00.
+telegramId=getTelegramId();
+if(telegramId){
+  refreshAccountProfile(6,400).catch(()=>{});
+}
 connect();
 //--------------------------------------------------------------
 
