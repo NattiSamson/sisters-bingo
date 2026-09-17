@@ -7344,9 +7344,7 @@ bot.on(
             "✅⏳ የክፍያ መልዕክትዎ ደርሶናል። ክፍያዎ እየተረጋገጠ ነው። እባክዎ ትንሽ ይጠብቁ።"
           );
 
-          const result =
-            await processDeposit(
-
+          const result = await processDeposit(              
               text,
 
               paymentMethod.name,
@@ -7357,11 +7355,8 @@ bot.on(
 
             );
 
-          if (
-            typeof result ===
-              "object" &&
-            result !== null
-          ) {
+          if (result && result.success)
+          {
 
             const receipt =
               result.receipt;
