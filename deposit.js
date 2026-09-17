@@ -246,7 +246,7 @@ async function processDeposit(sms, pmName, pmAmharicName, ptName, ptAmharicName)
   if(sms.length < 10)
   {
     console.log("SMS or InvoiceNo length is lessthan 10.");
-    return return {result,success:true,errorMessage:""};;
+    return {result,success:true,errorMessage:""};;
   }
   let invoiceNo = "";
   let result = null;  
