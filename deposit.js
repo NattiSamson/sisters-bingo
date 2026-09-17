@@ -237,25 +237,36 @@ async function extractTransactionInfo(url) {
   }
 }
 
-async function extractTransactionInfofromThirdParty(url) {
+async function extractTransactionInfofromThirdParty(url, type) {
+  try {
+    const receiptUrl = new URL(url);
+    const receiptId = receiptUrl.pathname
+      .split("/")
+      .filter(Boolean)
+      .pop();
 
-  const response = await fetch("https://links.et/api/verify", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "x-api-key": process.env.LINKS_API_KEY
-  },
-  body: JSON.stringify({
-    url: url
-  })
-});
-  const data = await response.json();
-  if (!response.ok) {
-      console.log("Verification API error:", data);
+    if (!receiptId) {
+      console.error("Could not extract receipt ID from URL");
       return null;
     }
-  
-  return data;  
+
+    const response = await fetch(
+      `https://checkit.et/api/process.php?type=${encodeURIComponent(type)}&receiptid=${encodeURIComponent(receiptId)}`
+    );
+
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+      console.log("Checkit API error:", data);
+      return null;
+    }
+
+    return data;
+
+  } catch (error) {
+    console.error("Checkit API request failed:", error);
+    return null;
+  }
 }
 // ─────────────────────────────────────────────
 // MAIN DEPOSIT PROCESS
@@ -264,6 +275,7 @@ async function extractTransactionInfofromThirdParty(url) {
 async function processDeposit(sms,pmName,pmAmharicName,ptName,ptAmharicName) 
 {  
   let invoiceNo = "";
+  let type = 1;
   if(sms.length > 10)
   {
         if(ptName == "Mobile" || ptAmharicName == "ሞባይል")
@@ -271,10 +283,12 @@ async function processDeposit(sms,pmName,pmAmharicName,ptName,ptAmharicName)
           if(pmName == "telebirr" || pmAmharicName == "ቴሌብር")
           {
              invoiceNo = await extractInvoiceNumbertelebirr(sms);
+             type = 1;
           }
           else if(pmName == "M-PESA" || pmAmharicName == "ኤም-ፔሳ")
           {
             invoiceNo = await extractInvoiceNumbermpessa(sms);
+            type = 2;
           }
           else if(pmName == "CBEBirr" || pmAmharicName == "ሲቢኢ ብር")
           {
@@ -313,7 +327,8 @@ async function processDeposit(sms,pmName,pmAmharicName,ptName,ptAmharicName)
   // Build URL
   const url = await builURLfromInvoiceNo(invoiceNo);
   
-  const isValid = await checkUrl("https://links.et/");
+//  const isValid = await checkUrl("https://links.et/");
+    const isValid = await checkUrl("https://checkit.et/");
 
   if (!isValid) {
     console.log("Stopping. Receipt URL is invalid.");
@@ -322,7 +337,7 @@ async function processDeposit(sms,pmName,pmAmharicName,ptName,ptAmharicName)
 
 
   //const result = await extractTransactionInfo(url);
-  const result = await extractTransactionInfofromThirdParty(url);
+  const result = await extractTransactionInfofromThirdParty(url,type);
   
 
   console.log("Transaction Information:");
