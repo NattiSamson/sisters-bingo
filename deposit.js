@@ -30,15 +30,15 @@ const cheerio = require("cheerio");
     cached: true
 }*/
 
-async function extractInvoiceNumber(typeid, sms) 
+async function extractInvoiceNumber(typeName, sms) 
 {
   let match = "";
   let invoiceNo = "";
-  if(typeid === 1)
+  if(typeName.toLowerCase() === "telebirr")
   {
     match = sms.match(/https:\/\/transactioninfo\.ethiotelecom\.et\/receipt\/([^.\s]+)/i);
   }
-  else if(typeid === 2)
+  else if(typeName.toLowerCase() === "m-pesa")
   {
     match = sms.match(/https:\/\/m-pesabusiness\.safaricom\.et\/receipt\/([^.\s]+)/i);
   }
@@ -51,14 +51,14 @@ async function extractInvoiceNumber(typeid, sms)
   return invoiceNo;
 }
 
-async function builURLfromInvoiceNo(typeid, invoiceNo) 
+async function builURLfromInvoiceNo(typeName, invoiceNo) 
 {
   let url = "";
-  if(typeid === 1)
+  if(typeName.toLowerCase() === "telebirr")
   {
     url = `https://transactioninfo.ethiotelecom.et/receipt/${invoiceNo}`;
   }
-  else if(typeid === 2)
+  else if(typeName.toLowerCase() === "m-pesa")
   {
     url = `https://m-pesabusiness.safaricom.et/receipt/${invoiceNo}`;
   }
@@ -218,11 +218,12 @@ async function extractTransactionInfo(url) {
   }
 }
 
-async function extractTransactionInfofromThirdParty(typeid, receiptId) 
+async function extractTransactionInfofromThirdParty(typeName, receiptId) 
 {
   try 
   {
-      const response = await fetch(`https://checkit.et/api/process.php?type=${encodeURIComponent(typeid)}&receiptid=${encodeURIComponent(receiptId)}`);
+      pmName == "telebirr"
+      const response = await fetch(`https://checkit.et/api/process.php?type=${encodeURIComponent(typeName..toLowerCase())}&receiptid=${encodeURIComponent(receiptId)}`);
       const data = await response.json();
       if (!response.ok || !data.ok) 
       {
@@ -240,34 +241,40 @@ async function extractTransactionInfofromThirdParty(typeid, receiptId)
 // MAIN DEPOSIT PROCESS
 // ─────────────────────────────────────────────
 
-async function processDeposit(sms, typeid, pmName, pmAmharicName, ptName, ptAmharicName) 
+async function processDeposit(sms, pmName, pmAmharicName, ptName, ptAmharicName) 
 { 
   if(sms.length < 10)
   {
     console.log("SMS or InvoiceNo length is lessthan 10.");
-    return null;
+    return return {result,success:true,errorMessage:""};;
   }
   let invoiceNo = "";
-  let typeId = typeid;
   let result = null;  
-  if(ptName == "Mobile" || ptAmharicName == "ሞባይል")
+  if(ptName.toLowerCase() == "Mobile" || ptAmharicName.toLowerCase() == "ሞባይል")
   {
-    if(pmName == "telebirr" || pmAmharicName == "ቴሌብር")
+    if(pmName.toLowerCase() == "telebirr" || pmAmharicName.toLowerCase() == "ቴሌብር")
     {
       if(sms.length > 10)
       {
-          invoiceNo = await extractInvoiceNumber(typeid, sms);         
+          invoiceNo = await extractInvoiceNumber(pmName, sms);         
       }
       else
       {
           invoiceNo = sms;
       }
-      result = await extractTransactionInfofromThirdParty(typeid, invoiceNo);
-      console.log(`Transaction Information for TypeId = ${typeid}:`);
+      result = await extractTransactionInfofromThirdParty(pmName, invoiceNo);
+      console.log(`Transaction Information for Type = ${pmName}:`);
       console.log(result);
-      return result;
+      if(result && result.ok === true)
+          {
+              return {result,success:true,errorMessage:"successfull"};
+          }
+      else
+          {
+              return {result,success:false,errorMessage:"unsuccessfull"};
+          }      
     }
-    else if(pmName == "M-PESA" || pmAmharicName == "ኤም-ፔሳ")
+    else if(pmName.toLowerCase() == "m-pesa" || pmAmharicName == "ኤም-ፔሳ")
     {
       if(sms.length > 10)
       {
@@ -277,12 +284,19 @@ async function processDeposit(sms, typeid, pmName, pmAmharicName, ptName, ptAmha
       {
           invoiceNo = sms;
       }
-      result = await extractTransactionInfofromThirdParty(typeid, invoiceNo);
-      console.log(`Transaction Information for TypeId = ${typeid}:`);
+      result = await extractTransactionInfofromThirdParty(pmName, invoiceNo);
+      console.log(`Transaction Information for Type = ${pmName}:`);
       console.log(result);
-      return result;
+      if(result && result.ok === true)
+          {
+              return {result,success:true,errorMessage:"successfull"};
+          }
+      else
+          {
+              return {result,success:false,errorMessage:"unsuccessfull"};
+          }   
     }
-    else if(pmName == "CBEBirr" || pmAmharicName == "ሲቢኢ ብር")
+    else if(pmName.toLowerCase() == "cbebirr" || pmAmharicName == "ሲቢኢ ብር")
     {
       return null;
     }
@@ -291,14 +305,14 @@ async function processDeposit(sms, typeid, pmName, pmAmharicName, ptName, ptAmha
       return null;
     }
   }
-  else if(ptName == "Bank" || ptAmharicName == "ባንክ")
+  else if(ptName.toLowerCase() == "bank" || ptAmharicName == "ባንክ")
   {
-    if(pmName == "CBE" || pmAmharicName == "ኢትዮጵያ ንግድ ባንክ")
+    if(pmName.toLowerCase() == "cbe" || pmAmharicName == "ኢትዮጵያ ንግድ ባንክ")
     {
         return null;
     }
   }
-  else if(ptName == "Mobile Agent" || ptAmharicName == "ሞባይል ኤጀንት")
+  else if(ptName.toLowerCase() == "mobile agent" || ptAmharicName == "ሞባይል ኤጀንት")
   {
       return null;
   }
