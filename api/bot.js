@@ -7343,7 +7343,7 @@ bot.on(
           await ctx.reply(
             "✅⏳ የክፍያ መልዕክትዎ ደርሶናል። ክፍያዎ እየተረጋገጠ ነው። እባክዎ ትንሽ ይጠብቁ።"
           );
-          const result = await Promise.race([
+        /*  const result = await Promise.race([
           processDeposit(
             text,
             paymentMethod.name,
@@ -7362,7 +7362,8 @@ bot.on(
           return;
         }
 
-          //const result = await processDeposit( text, paymentMethod.name, paymentMethod.amharicName, paymentType.name, paymentType.amharicName);
+*/
+          const result = await processDeposit( text, paymentMethod.name, paymentMethod.amharicName, paymentType.name, paymentType.amharicName);
 
           if (result && result.success)
           {
@@ -8357,4 +8358,4 @@ bot.catch((err) => {console.error("Telegram bot error:", err.error); });
 // ============================================================
 // VERCEL WEBHOOK
 // ============================================================
-module.exports =  webhookCallback(bot,"http");
+module.exports = webhookCallback(bot, "http", { timeoutMilliseconds: 30000, onTimeout: "return",});
