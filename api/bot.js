@@ -7367,8 +7367,7 @@ bot.on(
               );
 
             if (result2.success)
-            ) {
-
+             {
               clearPendingState(
                 telegramId
               );
