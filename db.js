@@ -3762,7 +3762,8 @@ async getAllPaymentAccountsForAdmin() {
       ).trim();
 
     if (receiptNo === undefined || receiptNo === "") {
-      return {success:false, errorMessage:"No Receipt"};
+      console.log(`db.aproveDeposit No receiptNo`);
+      return {success:false, errorMessage:"No receiptNo"};
     }
 
     const amount =
@@ -3771,6 +3772,7 @@ async getAllPaymentAccountsForAdmin() {
       );
 
     if (amount === undefined || amount === "" || amount < 1) {
+      console.log(`db.aproveDeposit No amount`);
       return {success:false, errorMessage:"No amount"};
     }
 
@@ -3781,6 +3783,7 @@ async getAllPaymentAccountsForAdmin() {
       ).trim();
 
     if (creditedAccount === undefined || creditedAccount === "") {
+      console.log(`db.aproveDeposit No creditedAccount`);
       return {success:false, errorMessage:"No creditedAccount"};
     }
 
@@ -3791,6 +3794,7 @@ async getAllPaymentAccountsForAdmin() {
       ).trim();
 
     if (creditedName === undefined || creditedName === "") {
+      console.log(`db.aproveDeposit No creditedAccount`);
       return {success:false, errorMessage:"No creditedAccount"};
     }
 
@@ -3801,6 +3805,7 @@ async getAllPaymentAccountsForAdmin() {
       ).trim() || null;
 
     if (payerName === undefined || payerName === "" || payerName === null) {
+      console.log(`db.aproveDeposit No payerName`);
       return {success:false, errorMessage:"No payerName"};
     }
 
@@ -3811,6 +3816,7 @@ async getAllPaymentAccountsForAdmin() {
       ).trim() || null;
 
     if (payerAccount === undefined || payerAccount === "" || payerAccount === null) {
+      console.log(`db.aproveDeposit No payerAccount`);
       return {success:false, errorMessage:"No payerAccount"};
     }
 
@@ -3840,7 +3846,7 @@ async getAllPaymentAccountsForAdmin() {
         await client.query(
           "ROLLBACK"
         );
-
+        console.log(`db.aproveDeposit Used receiptNo`);
         return {success:false, errorMessage:"Used receiptNo"};
       }
 
@@ -3870,8 +3876,8 @@ async getAllPaymentAccountsForAdmin() {
         await client.query(
           "ROLLBACK"
         );
-
-        return {success:false, errorMessage:"User not be found!"};
+        console.log(`db.aproveDeposit User not found!`);
+        return {success:false, errorMessage:"User not found!"};
       }
 
       const creditedAccountLast4 =
@@ -3889,7 +3895,7 @@ async getAllPaymentAccountsForAdmin() {
         await client.query(
           "ROLLBACK"
         );
-
+        console.log(`db.aproveDeposit Deposit phone number from list of not removed accounts can not be found!`);
         return {success:false, errorMessage:"Deposit phone number from list of not removed accounts can not be found!"};
       }
 
@@ -3933,7 +3939,8 @@ async getAllPaymentAccountsForAdmin() {
         await client.query(
           "ROLLBACK"
         );
-
+        
+        console.log(`db.aproveDeposit Wrong account deposit number!`);
         return {success:false, errorMessage:"Wrong account deposit number!"};
       }
 
@@ -3966,7 +3973,7 @@ async getAllPaymentAccountsForAdmin() {
            await client.query(
           "ROLLBACK"
         );
-
+        console.log(`db.aproveDeposit Deposit phone number from list of not removed accounts can not be found!`);
         return {success:false, errorMessage:"Deposit phone number from list of not removed accounts can not be found!"};
         }
       }
@@ -3975,7 +3982,7 @@ async getAllPaymentAccountsForAdmin() {
         await client.query(
           "ROLLBACK"
         );
-
+        console.log(`db.aproveDeposit No creditedName!`);
         return {success:false, errorMessage:"No creditedName!"};
       }
 
@@ -4086,6 +4093,7 @@ async getAllPaymentAccountsForAdmin() {
         "COMMIT"
       );
 
+      console.log(`db.aproveDeposit Successful`);
       return {success:true, errorMessage:"Successful"};
 
     } catch (err) {
