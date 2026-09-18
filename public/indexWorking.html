@@ -13,17 +13,17 @@
   --b:#3b82f6;--i:#f59e0b;--n:#8b5cf6;--g:#22c55e;--o:#ef4444;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-top:62px;padding-bottom:80px;overflow-x:hidden;min-height:100dvh}
+body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bottom:80px;overflow-x:hidden}
 
 /* NAVBAR */
-.navbar{position:fixed;top:0;left:0;right:0;height:62px;display:flex;align-items:center;justify-content:space-between;background:var(--panel);padding:10px 16px;border-bottom:2px solid #2d174d;z-index:1000}
+.navbar{display:flex;align-items:center;justify-content:space-between;background:var(--panel);padding:14px 16px;border-bottom:2px solid #2d174d;position:sticky;top:0;z-index:100}
 .brand{font-family:'Orbitron',sans-serif;font-weight:900;color:var(--gold);font-size:18px;display:flex;align-items:center;gap:8px}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--red);transition:background .3s}
 .dot.on{background:var(--green)}
 .balance-pill{background:var(--gold);color:#000;font-weight:700;padding:7px 14px;border-radius:20px;font-size:14px;cursor:pointer}
 
 /* SCREENS */
-.screen{display:none;padding:15px;max-width:500px;margin:0 auto;min-height:calc(100dvh - 142px);animation:fadeIn .2s ease}
+.screen{display:none;padding:15px;max-width:500px;margin:0 auto;animation:fadeIn .2s ease}
 .screen.active{display:block}
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 
@@ -424,24 +424,34 @@ body{padding-bottom:72px;background:#0b061c;}
   box-shadow:0 6px 16px rgba(0,0,0,.18);
 }
 #screenCards .pool-grid{
-  width:100%!important;
-  box-sizing:border-box!important;
-  display:grid!important;
-  grid-template-columns:repeat(auto-fill,minmax(30px,1fr))!important;
-  grid-auto-rows:30px!important;
-  justify-content:stretch!important;
-  align-content:start!important;
-  gap:5px!important;
-  padding:6px!important;
-  height:calc(100dvh - 225px)!important;
-  min-height:0!important;
-  max-height:none!important;
-  overflow-y:auto!important;
-  overflow-x:hidden!important;
+  grid-template-columns:repeat(10,30px);
+  grid-auto-rows:30px;
+  justify-content:center;
+  align-content:start;
+  gap:5px;
+  width:100%;
+  box-sizing:border-box;
+  height:calc(100dvh - 225px);
+  min-height:0;
+  max-height:none;
+  padding:4px 3px 8px;
   border-radius:17px;
   background:linear-gradient(180deg,rgba(20,8,39,.72),rgba(9,5,24,.5));
   scrollbar-width:thin;
   scrollbar-color:#6d3db7 transparent;
+}
+#screenCards .pool-grid{
+  width:100%!important;
+  box-sizing:border-box!important;
+  grid-template-columns:repeat(auto-fit,minmax(38px,1fr))!important;
+  grid-auto-rows:38px!important;
+  justify-content:stretch!important;
+  align-content:start!important;
+  gap:6px!important;
+  padding:6px!important;
+  height:calc(100dvh - 225px)!important;
+  min-height:0!important;
+  max-height:none!important;
 }
 #screenCards .pool-btn{
   width:100%!important;
@@ -489,12 +499,12 @@ body{padding-bottom:72px;background:#0b061c;}
   #screenCards .player-people-icon svg{width:31px;height:27px;}
   #screenCards .card-selection-players .player-count{min-width:38px;height:36px;font-size:14px;}
   #screenCards .card-selection-leave{height:38px;padding:0 10px!important;font-size:10px!important;}
-  #screenCards .pool-grid{grid-template-columns:repeat(auto-fill,minmax(29px,1fr))!important;grid-auto-rows:29px!important;gap:4px!important;height:calc(100dvh - 225px)!important;}
+  #screenCards .pool-grid{grid-template-columns:repeat(10,29px);grid-auto-rows:29px;gap:5px;height:calc(100dvh - 225px);max-height:none;padding:3px 2px 6px;}
   #screenCards .pool-btn{width:29px;height:29px;min-width:29px;line-height:29px;font-size:7.5px;border-radius:7px;}
 }
 @media(max-width:360px){
   #screenCards{padding-left:6px;padding-right:6px;}
-  #screenCards .pool-grid{grid-template-columns:repeat(auto-fill,minmax(27px,1fr))!important;grid-auto-rows:27px!important;gap:4px!important;height:calc(100dvh - 225px)!important;}
+  #screenCards .pool-grid{grid-template-columns:repeat(10,27px);grid-auto-rows:27px;gap:4px;height:calc(100dvh - 225px);max-height:none;}
   #screenCards .pool-btn{width:27px;height:27px;min-width:27px;line-height:27px;font-size:7px;}
 }
 
@@ -1251,17 +1261,6 @@ body{
     </div>
 
     <div class="profile-stats">
-      <div class="profile-stat gamesplayed">
-        <div class="profile-stat-icon">🎮</div>
-        <div class="profile-stat-value" id="profileGames">0</div>
-        <div class="profile-stat-label">TOTAL GAMES PLAYED</div>
-      </div>
-
-      <div class="profile-stat latest">
-        <div class="profile-stat-icon">💰</div>
-        <div class="profile-stat-value" id="profileLatestEarnings">ETB 0.00</div>
-        <div class="profile-stat-label">LATEST EARNINGS</div>
-      </div>
     
       <div class="profile-stat winnings">
         <div class="profile-stat-icon">🏆</div>
@@ -1687,8 +1686,15 @@ async function loadUserProfile(force=false){
     try{ id=normalizeTelegramId(localStorage.getItem('melaBingoTelegramId')); }catch(e){}
   }
 
-  // Never render a cached profile balance/statistics. The Profile page must
-  // always be populated from the current database response.
+  // Render the last successfully loaded profile instantly while the network refreshes.
+  if(id && !force){
+    try{
+      const cached=JSON.parse(localStorage.getItem('melaBingoProfile')||'null');
+      if(cached && cached.telegramId===id && cached.user){
+        renderUserProfile(cached.user,Array.isArray(cached.history)?cached.history:[]);
+      }
+    }catch(e){}
+  }
 
   if(!id){
     // The normal app/account flow can still resolve Telegram authentication later.
@@ -2605,7 +2611,7 @@ restoreCachedBalance();
 // This lets the account balance load immediately instead of starting from ETB 0.00.
 telegramId=getTelegramId();
 if(telegramId){
-  refreshAccountProfile(10,400).catch(()=>{});
+  refreshAccountProfile(6,400).catch(()=>{});
 }
 connect();
 //--------------------------------------------------------------
