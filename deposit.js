@@ -353,8 +353,7 @@ if (result.timeout) {
     result: null,
     success: false,
     timeout: true,
-    errorMessage:
-      "ሰርቨሩ ተጨናንቆአል ትንሽ ቆይተው እንደገና ይሞክሩ"
+    errorMessage:"❌ ሰርቨሩ ተጨናንቆአል ትንሽ ቆይተው እንደገና ይሞክሩ"
   };
 }
 
@@ -363,7 +362,7 @@ if (result.ok) {
     result: result.data,
     success: true,
     timeout: false,
-    errorMessage: "successful"
+    errorMessage: "Successful"
   };
 }
 
@@ -371,7 +370,7 @@ return {
   result: result.data || null,
   success: false,
   timeout: false,
-  errorMessage: "unsuccessful"
+  errorMessage: "Unsuccessful"
 };    
     }
     else if(pmName.toLowerCase() == "m-pesa" || pmAmharicName == "ኤም-ፔሳ")
