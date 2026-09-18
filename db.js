@@ -3894,10 +3894,9 @@ async getAllPaymentAccountsForAdmin() {
 
         await client.query(
           "ROLLBACK"
-        );
-        console.log(` creditedPartyAccountNo = ${creditedAccountLast4}`);
-        console.log(`db.aproveDeposit Deposit phone number from list of not removed accounts can not be found!`);
-        return {success:false, timeout:false, errorMessage:"Deposit phone number from list of not removed accounts can not be found!"};
+        );                     
+        console.log(`db.aproveDeposit Deposit phone number from the receipt is not correct! ${creditedAccountLast4}`);
+        return {success:false, timeout:false, errorMessage:"Deposit phone number from the receipt is not correct!"};
       }
 
       const accountResult =
@@ -3974,8 +3973,8 @@ async getAllPaymentAccountsForAdmin() {
            await client.query(
           "ROLLBACK"
         );
-        console.log(`db.aproveDeposit Deposit phone number from list of not removed accounts can not be found!`);
-        return {success:false, timeout:false, errorMessage:"Deposit phone number from list of not removed accounts can not be found!"};
+        console.log(`db.aproveDeposit Deposit account name for the account number can not be matched!  ${creditedName}`);
+        return {success:false, timeout:false, errorMessage:"Deposit account name for the account number can not be matched!"};
         }
       }
       else
