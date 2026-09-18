@@ -7343,27 +7343,26 @@ bot.on(
           await ctx.reply(
             "✅⏳ የክፍያ መልዕክትዎ ደርሶናል። ክፍያዎ እየተረጋገጠ ነው። እባክዎ ትንሽ ይጠብቁ።"
           );
-        /*  const result = await Promise.race([
-          processDeposit(
-            text,
-            paymentMethod.name,
-            paymentMethod.amharicName,
-            paymentType.name,
-            paymentType.amharicName
-          ),
-          new Promise(resolve =>
-            setTimeout(() => resolve({ timeout: true }), 9000)
-          )
-        ]);
+          const result = await processDeposit(
+          text,
+          paymentMethod.name,
+          paymentMethod.amharicName,
+          paymentType.name,
+          paymentType.amharicName
+        );
         
         if (result.timeout) {
-          console.log("ሰርቨሩ ተጨናንቆአል! ትንሽ ቆይተው እንደገና ይሞክሩ።");
-          return ctx.reply(          "❌ ሰርቨሩ ተጨናንቆአል! ትንሽ ቆይተው እንደገና ይሞክሩ።"             );
+          await ctx.reply(result.errorMessage);
+          return;
+        }
+        
+        if (!result.success) {
+          await ctx.reply("❌ የደረሰኝ መረጃው አልተገኘም።");
           return;
         }
 
-*/
-          const result = await processDeposit( text, paymentMethod.name, paymentMethod.amharicName, paymentType.name, paymentType.amharicName);
+
+         // const result = await processDeposit( text, paymentMethod.name, paymentMethod.amharicName, paymentType.name, paymentType.amharicName);
 
           if (result && result.success)
           {
