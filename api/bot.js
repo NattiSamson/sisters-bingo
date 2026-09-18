@@ -7364,7 +7364,7 @@ bot.on(
             if (!receipt) {
 
               return ctx.reply(
-                "❌ የክፍያ ደረሰኝ መረጃ አልተገኘም።"
+                "❌ የክፍያ ደረሰኝ መረጃ አልተገኘም።" + receipt
               );
 
             }
