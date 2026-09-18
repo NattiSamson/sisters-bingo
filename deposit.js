@@ -221,26 +221,44 @@ async function extractTransactionInfo(url) {
 async function extractTransactionInfofromThirdParty(typeName, receiptId) {
   const controller = new AbortController();
 
-  // Give Checkit a maximum of 8 seconds
   const timeout = setTimeout(() => {
     controller.abort();
-  }, 10000);
+  }, 8000);
 
   try {
-    const response = await fetch(
+    const url =
       `https://checkit.et/api/process.php?type=${encodeURIComponent(
         typeName.toLowerCase()
-      )}&receiptid=${encodeURIComponent(receiptId)}`,
-      {
-        signal: controller.signal,
-      }
-    );
+      )}&receiptid=${encodeURIComponent(receiptId)}`;
 
-    // Check HTTP status before trying to parse JSON
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    const contentType = response.headers.get("content-type") || "";
+
     if (!response.ok) {
+      const body = await response.text();
+
       console.error(
-        `Checkit API returned HTTP ${response.status}`
+        `Checkit HTTP ${response.status}:`,
+        body.slice(0, 500)
       );
+
+      return null;
+    }
+
+    if (!contentType.includes("application/json")) {
+      const body = await response.text();
+
+      console.error(
+        "Checkit returned non-JSON response:",
+        body.slice(0, 500)
+      );
+
       return null;
     }
 
@@ -255,7 +273,7 @@ async function extractTransactionInfofromThirdParty(typeName, receiptId) {
 
   } catch (error) {
     if (error.name === "AbortError") {
-      console.error("Checkit API timeout after 10 seconds");
+      console.error("Checkit API timed out after 8 seconds");
     } else {
       console.error("Checkit API request failed:", error);
     }
