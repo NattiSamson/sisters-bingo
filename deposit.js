@@ -248,7 +248,11 @@ async function extractTransactionInfofromThirdParty(typeName, receiptId) {
         body.slice(0, 500)
       );
 
-      return null;
+      return {
+        ok: false,
+        timeout: false,
+        error: `HTTP ${response.status}`
+      };
     }
 
     if (!contentType.includes("application/json")) {
@@ -259,26 +263,51 @@ async function extractTransactionInfofromThirdParty(typeName, receiptId) {
         body.slice(0, 500)
       );
 
-      return null;
+      return {
+        ok: false,
+        timeout: false,
+        error: "Non-JSON response"
+      };
     }
 
     const data = await response.json();
 
     if (!data.ok) {
       console.log("Checkit API error:", data);
-      return null;
+
+      return {
+        ok: false,
+        timeout: false,
+        error: "Checkit API returned ok=false",
+        data
+      };
     }
 
-    return data;
+    return {
+      ok: true,
+      timeout: false,
+      data
+    };
 
   } catch (error) {
+
     if (error.name === "AbortError") {
       console.error("Checkit API timed out after 8 seconds");
-    } else {
-      console.error("Checkit API request failed:", error);
+
+      return {
+        ok: false,
+        timeout: true,
+        error: "Checkit timeout"
+      };
     }
 
-    return null;
+    console.error("Checkit API request failed:", error);
+
+    return {
+      ok: false,
+      timeout: false,
+      error: error.message
+    };
 
   } finally {
     clearTimeout(timeout);
@@ -309,17 +338,41 @@ async function processDeposit(sms, pmName, pmAmharicName, ptName, ptAmharicName)
       {
           invoiceNo = sms;
       }
-      result = await extractTransactionInfofromThirdParty(pmName, invoiceNo);
-      console.log(`Transaction Information for Type = ${pmName}:`);
-      console.log(result);
-      if(result && result.ok === true)
-          {
-              return {result,success:true,errorMessage:"successfull"};
-          }
-      else
-          {
-              return {result,success:false,errorMessage:"unsuccessfull"};
-          }      
+      result = await extractTransactionInfofromThirdParty(
+  pmName,
+  invoiceNo
+);
+
+console.log(
+  `Transaction Information for Type = ${pmName}:`,
+  result
+);
+
+if (result.timeout) {
+  return {
+    result: null,
+    success: false,
+    timeout: true,
+    errorMessage:
+      "ሰርቨሩ ተጨናንቆአል ትንሽ ቆይተው እንደገና ይሞክሩ"
+  };
+}
+
+if (result.ok) {
+  return {
+    result: result.data,
+    success: true,
+    timeout: false,
+    errorMessage: "successful"
+  };
+}
+
+return {
+  result: result.data || null,
+  success: false,
+  timeout: false,
+  errorMessage: "unsuccessful"
+};    
     }
     else if(pmName.toLowerCase() == "m-pesa" || pmAmharicName == "ኤም-ፔሳ")
     {
