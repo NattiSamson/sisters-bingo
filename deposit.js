@@ -223,7 +223,7 @@ async function extractTransactionInfofromThirdParty(typeName, receiptId) {
 
   const timeout = setTimeout(() => {
     controller.abort();
-  }, 8000);
+  }, 10000);
 
   try {
     const url =
@@ -292,7 +292,7 @@ async function extractTransactionInfofromThirdParty(typeName, receiptId) {
   } catch (error) {
 
     if (error.name === "AbortError") {
-      console.error("Checkit API timed out after 8 seconds");
+      console.error("Checkit API timed out after 10 seconds");
 
       return {
         ok: false,
