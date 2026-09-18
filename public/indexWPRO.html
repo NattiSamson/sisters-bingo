@@ -87,7 +87,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .bingo-cell.marked{background:var(--purple)!important;color:#fff!important}
 .bingo-cell.called-not-marked{background:#fff8dc!important;color:#8b6914!important}
 .bingo-cell.free{background:var(--purple)!important;color:#fff!important;cursor:default}
-.bingo-btn{display:none!important;align-items:center;justify-content:center;gap:8px;width:100%;background:#271447;border:1px solid #3d226b;color:var(--gray);font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;padding:14px;border-radius:12px;cursor:pointer;margin-top:14px;transition:all .2s}
+.bingo-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:#271447;border:1px solid #3d226b;color:var(--gray);font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;padding:14px;border-radius:12px;cursor:pointer;margin-top:14px;transition:all .2s}
 .bingo-btn.ready{animation:flashPulse .7s infinite alternate;background:var(--green)!important;color:#fff!important;border-color:#fff!important;box-shadow:0 0 22px var(--green)}
 .bingo-btn.locked{background:#1a0a0a!important;color:#666!important;cursor:not-allowed;border-color:#333!important}
 @keyframes flashPulse{0%{transform:scale(1);filter:brightness(1)}100%{transform:scale(1.02);filter:brightness(1.25)}}
@@ -107,6 +107,17 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .wallet-tab.active{background:var(--purple);color:#fff}
 .wallet-section{display:none}
 .wallet-section.active{display:block}
+.profile-list{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.profile-card{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:13px}
+.profile-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:7px}
+.profile-date{font-size:11px;color:var(--gray)}
+.profile-result{font-size:12px;font-weight:900}
+.profile-result.win{color:var(--green)}
+.profile-result.loss{color:var(--red)}
+.profile-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0}
+.profile-key{color:var(--gray)}
+.profile-value{font-weight:700}
+.profile-empty{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:30px 16px;text-align:center;color:var(--gray);font-size:13px}
 /* ───────── PROFILE — MELA BINGO NEON DASHBOARD ───────── */
 .profile-page{padding:10px 0 24px}
 .profile-hero{
@@ -170,6 +181,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 @media(max-width:380px){
   .profile-hero{padding:18px 12px 16px}.profile-hero-row{gap:12px}.profile-avatar{width:76px;height:76px;flex-basis:76px;font-size:27px}.profile-avatar:before{font-size:26px;top:-21px}.profile-name{font-size:23px}.profile-wallet-value{font-size:21px}.profile-stat{min-height:116px}.profile-stat-value{font-size:16px}.profile-stat-icon{font-size:23px}
 }
+
 .form-group{margin-bottom:14px}
 .form-label{font-size:12px;color:var(--gray);margin-bottom:5px;display:block}
 .form-input{width:100%;background:var(--card);border:1px solid #4a2d7a;color:#fff;padding:12px;border-radius:8px;font-size:15px;outline:none;transition:border-color .2s}
@@ -1069,6 +1081,47 @@ body{
 }
 
 </style>
+
+<style id="mela-responsive-layout-fix">
+html,body{width:100%;height:100%;overflow:hidden!important}
+body{padding:0!important}
+.navbar{position:fixed!important;top:0;left:0;right:0;height:64px;z-index:1000;flex-shrink:0}
+.bottom-nav{position:fixed!important;left:0;right:0;bottom:0;height:64px;z-index:1000}
+.screen{position:fixed!important;left:0;right:0;top:64px;bottom:64px;width:100%!important;max-width:none!important;margin:0!important;padding:10px 12px!important;overflow:hidden!important;animation:none!important}
+.screen.active{display:flex!important;flex-direction:column!important}
+#screenLobby{background:radial-gradient(circle at 12% 7%,rgba(124,92,255,.35),transparent 32%),radial-gradient(circle at 92% 36%,rgba(56,217,255,.2),transparent 28%),linear-gradient(155deg,#1c236d 0%,#17164f 48%,#0a1030 100%)!important;padding:clamp(8px,2vh,18px) clamp(10px,3vw,22px)!important;gap:clamp(6px,1.4vh,12px)!important;overflow:hidden!important}
+#screenLobby .welcome-banner{flex:0 1 auto!important;min-height:0!important;margin:0!important;padding:clamp(10px,2vh,22px) 10px!important}
+#screenLobby .lobby-stake-panel{flex:0 1 auto!important;min-height:0!important;padding:clamp(8px,1.6vh,16px) 10px!important}
+#screenLobby .lobby-stake-heading{margin-bottom:clamp(7px,1.2vh,13px)!important;font-size:clamp(15px,2.3vh,19px)!important}
+#screenLobby .stakes-grid{gap:clamp(6px,1.1vh,11px)!important}
+#screenLobby .stake-card{min-height:clamp(48px,7vh,62px)!important;padding:clamp(8px,1.4vh,14px) 12px!important}
+#screenLobby .lobby-players-card{flex:0 1 auto!important;min-height:0!important;padding:clamp(8px,1.5vh,15px)!important;margin:0!important}
+#screenCards{padding:clamp(6px,1.2vh,12px) clamp(8px,2.5vw,18px)!important;gap:0!important}
+#screenCards .card-selection-top{flex:0 0 auto!important;min-height:0!important;margin:0 0 clamp(5px,1vh,9px)!important;padding:clamp(4px,.9vh,8px) clamp(6px,1.8vw,12px)!important;border-radius:12px!important}
+#screenCards #cdPrizePot{flex:0 0 auto!important;min-height:0!important;margin:0 0 clamp(5px,1vh,9px)!important;padding:clamp(5px,1vh,9px) 10px!important;font-size:clamp(10px,1.8vh,14px)!important;line-height:1.2!important}
+#screenCards #poolGrid{flex:1 1 auto!important;min-height:0!important;height:auto!important;max-height:none!important;overflow-y:auto!important;overflow-x:hidden!important;align-content:start!important;grid-auto-flow:row!important}
+#screenCards .pool-btn{width:100%!important;min-width:0!important;height:clamp(34px,5.5vh,52px)!important;min-height:34px!important;line-height:1!important;padding:2px!important;font-size:clamp(10px,1.8vh,15px)!important}
+/* Keep rows packed while allowing the number of columns to respond to width. */
+#screenCards #poolGrid{grid-template-columns:repeat(auto-fit,minmax(clamp(46px,8vw,72px),1fr))!important;grid-auto-rows:clamp(34px,5.5vh,52px)!important;gap:clamp(5px,1vw,9px)!important;padding:clamp(5px,1vh,9px)!important}
+#screenGame{padding:clamp(6px,1vh,10px) clamp(7px,2vw,12px)!important;overflow:hidden!important}
+#screenGame .game-stats-row{flex:0 0 auto!important}
+#screenGame .claim-bar-wrap{flex:0 0 auto!important}
+#screenGame #cardsWrap{flex:0 0 auto!important;min-height:0!important}
+#screenGame .tracker-wrap{flex:0 0 auto!important}
+@media(max-height:600px){
+ #screenLobby .welcome-banner{padding:7px!important}
+ #screenLobby .lobby-stake-panel{padding:7px!important}
+ #screenLobby .lobby-stake-heading{margin-bottom:6px!important}
+ #screenLobby .stake-card{min-height:42px!important;padding:6px!important}
+ #screenLobby .lobby-players-card{padding:6px!important}
+ #screenCards .card-selection-top{padding:3px 6px!important;margin-bottom:4px!important}
+ #screenCards #cdPrizePot{padding:4px 8px!important;margin-bottom:4px!important}
+}
+@media(max-width:360px){
+ #screenCards #poolGrid{grid-template-columns:repeat(auto-fit,minmax(42px,1fr))!important;gap:4px!important;padding:4px!important}
+ #screenCards .pool-btn{height:32px!important;font-size:9px!important}
+}
+</style>
 </head>
 <body>
 
@@ -1078,16 +1131,16 @@ body{
   </div>
   <div class="header-actions">
     <button class="sound-btn" id="soundBtn" onclick="toggleSound()" title="Toggle sound">🔊</button>
-    <div class="balance-pill" id="balanceEl" onclick="gotoProfile()">ETB 0.00</div>
+    <div class="balance-pill" id="balanceEl" onclick="goToWallet()">ETB 0.00</div>
   </div>
 </div>
 
-<div id="screenLoading" class="screen active">
+<div id="screenLoading" class="screen">
   <div class="loading-spinner"></div>
   <div class="loading-text" id="loadingText">Connecting...</div>
 </div>
 
-<div id="screenLobby" class="screen">
+<div id="screenLobby" class="screen active">
   <div class="welcome-banner">
     <div class="lobby-hero-art" aria-hidden="true">
       <div class="lobby-crown">♛</div>
@@ -1238,21 +1291,13 @@ body{
     </div>
 
     <div class="profile-stats">
-      <div class="profile-stat games">
-        <div class="profile-stat-icon">🎮</div>
-        <div class="profile-stat-value" id="profileGames">0</div>
-        <div class="profile-stat-label">GAMES PLAYED</div>
-      </div>
+    
       <div class="profile-stat winnings">
         <div class="profile-stat-icon">🏆</div>
         <div class="profile-stat-value" id="profileWinnings">ETB 0.00</div>
         <div class="profile-stat-label">TOTAL WINNINGS</div>
       </div>
-      <div class="profile-stat earnings">
-        <div class="profile-stat-icon">🪙</div>
-        <div class="profile-stat-value" id="profileLatestEarnings">ETB 0.00</div>
-        <div class="profile-stat-label">LATEST EARNINGS</div>
-      </div>
+     
       <div class="profile-stat gameswon">
         <div class="profile-stat-icon">🏅</div>
         <div class="profile-stat-value" id="profileWins">0</div>
@@ -1262,6 +1307,7 @@ body{
     <div id="profileStatus" class="profile-status" style="display:none"></div>
   </div>
 </div>
+
 
 <div class="winner-overlay" id="winnerOverlay">
   <div class="confetti-row" id="resultConfetti">🎊🎉🎊🎉🎊</div>
@@ -1586,21 +1632,10 @@ function renderSpectatorView(msg={}){
 
 function goToGame(){
   restoreActiveGameState();
-  // Only an explicitly saved countdown/playing/spectating state is an active game.
-  // A leftover roomId after a finished round must never block the normal stake menu.
-  if(activeGamePhase!=='countdown' && activeGamePhase!=='playing' && activeGamePhase!=='spectating'){
-    navGo('screenLobby','navGame');
-    return;
-  }
-
   const roomId=myRoomId||localStorage.getItem('roomId');
-  if(!roomId){
-    clearActiveGameState();
-    navGo('screenLobby','navGame');
-    return;
-  }
-  myRoomId=roomId;
   if(!myStakeId) myStakeId=localStorage.getItem('stakeId');
+  if(!roomId){ showToast('አሁን ንቁ ጨዋታ የለም።','warn'); return; }
+  myRoomId=roomId;
   if(activeGamePhase==='spectating'){
     navGo('screenGame','navGame');
     renderSpectatorView({calledNumbers:Array.from(calledNumbersSet||[])});
@@ -1611,7 +1646,7 @@ function goToGame(){
     refreshCardCells();
   }else{
     navGo('screenCards','navGame');
-    showSavedCountdown();
+    if(activeGamePhase==='countdown') showSavedCountdown();
   }
   if(telegramId) wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
 }
@@ -1632,8 +1667,14 @@ function renderUserProfile(u, history=[]){
   const wins=Number.isFinite(Number(u?.total_wins)) ? Number(u.total_wins) : winsFromHistory;
   const winningsFromHistory=rows.reduce((sum,g)=>sum+(Number(g?.amount_won)||0),0);
   const winnings=Number.isFinite(Number(u?.total_winnings)) ? Number(u.total_winnings) : winningsFromHistory;
-  const latest=rows.find(g=>(Number(g?.amount_won)||0)>0);
-  const latestEarnings=latest ? (Number(latest.amount_won)||0) : 0;
+  // Prefer the authoritative latest payout calculated by the server directly
+  // from the finished games table. Keep the history value as a fallback.
+  const historyLatest=rows.find(g=>(Number(g?.amount_won)||0)>0);
+  const historyLatestEarnings=historyLatest ? (Number(historyLatest.amount_won)||0) : 0;
+  const apiLatestEarnings=Number(u?.latest_earnings);
+  const latestEarnings=Number.isFinite(apiLatestEarnings) && apiLatestEarnings>=0
+    ? apiLatestEarnings
+    : historyLatestEarnings;
   myName=name;
   if(Number.isFinite(balance) && balance>=0) setBalance(balance);
   const nameEl=document.getElementById('profileName');
@@ -1719,6 +1760,7 @@ function formatHistoryDate(value){
   if(Number.isNaN(d.getTime())) return '—';
   return d.toLocaleString();
 }
+
 
 // ─── WEBSOCKET ────────────────────────────────────────────────
 function connect(){
@@ -1818,39 +1860,30 @@ function handle(msg){
 
     case 'connected':
       myPlayerId=msg.playerId;
-      // Render the normal game menu immediately. Account authentication happens
-      // asynchronously and must never leave the app stuck on the loading screen.
+      // Never replace a known balance with the server's initial connection value (0).
       if(msg.stakes) renderStakes(msg.stakes);
+      
       const pageParam = new URLSearchParams(location.search).get('page');
-      if(pageParam !== 'deposit' && pageParam !== 'withdraw') goScreen('screenLobby');
-      document.getElementById('loadingText').innerText='Loading your account...';
       if(pageParam === 'deposit') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('deposit'); }, 1500);
       if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('withdraw'); }, 1500);
-      // Authenticate as soon as the Telegram ID is available. If it was resolved
-      // before connect(), use it immediately; otherwise wait briefly for Telegram.
-      const existingTid=normalizeTelegramId(telegramId)||getTelegramId();
-      if(existingTid){
-        telegramId=existingTid;
-        refreshAccountProfile(6,400).catch(()=>{});
-        sendTelegramAuth(existingTid);
-      }else{
-        waitForTelegramId(40,250).then(async tid=>{
-          if(!tid){
-            // Do not block the lobby waiting for Telegram initialization.
-            setTimeout(()=>{ const retryId=getTelegramId(); if(retryId) sendTelegramAuth(retryId); },1000);
-            return;
-          }
-          telegramId=tid;
-          refreshAccountProfile(6,400).catch(()=>{});
-          sendTelegramAuth(tid);
-        });
-      }
+      waitForTelegramId(40,250).then(async tid=>{
+        if(!tid){
+          
+          setTimeout(()=>{ const retryId=getTelegramId(); if(retryId) sendTelegramAuth(retryId); },1000);
+          return;
+        }
+        telegramId=tid;
+        // First load the account directly over HTTPS. This breaks the old failure
+        // mode where a WebSocket lookup returned a fake zero/unregistered snapshot.
+        await refreshAccountProfile(6,500);
+        sendTelegramAuth(tid);
+      });
       break;
 
     case 'authRetry':
       // A lookup failure is not an unregistered account. Keep the existing balance
       // and retry with the same verified Telegram ID.
-      document.getElementById('loadingText').innerText='Loading your account...';
+      
       setTimeout(()=>{
         const id=getTelegramId();
         if(id) sendTelegramAuth(id);
@@ -1875,9 +1908,7 @@ function handle(msg){
   // waiting/counting down or officially playing; do not assume a selected card
   // means the game has started.
   restoreActiveGameState();
-  const loadingWasActive=document.getElementById('screenLoading').classList.contains('active');
-  const hasRestorableGame=!!myRoomId && !!telegramId && ['countdown','playing','spectating'].includes(activeGamePhase);
-  if(hasRestorableGame){
+  if(myRoomId && telegramId){
     restoringActiveGame=true;
     if(activeGamePhase==='countdown') navGo('screenCards','navGame');
     else if(activeGamePhase==='playing' || activeGamePhase==='spectating') navGo('screenGame','navGame');
@@ -1890,10 +1921,7 @@ function handle(msg){
         goScreen('screenLobby');
       }
     },6000);
-  } else if(loadingWasActive){
-    // Only the initial loading screen should be replaced automatically.
-    // If the user is already on Profile or another screen, authentication must
-    // not unexpectedly navigate them away.
+  } else {
     goScreen('screenLobby');
   }
   break;
@@ -2586,12 +2614,6 @@ function toggleSound(){
 buildTracker();
 buildSpectatorTracker();
 restoreCachedBalance();
-// Resolve the Telegram identity before opening the WebSocket when possible.
-// This lets the account balance load immediately instead of starting from ETB 0.00.
-telegramId=getTelegramId();
-if(telegramId){
-  refreshAccountProfile(6,400).catch(()=>{});
-}
 connect();
 //--------------------------------------------------------------
 

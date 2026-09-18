@@ -1080,6 +1080,68 @@ body{
   .spectator-wait-card{min-height:245px;}
 }
 
+
+/* FINAL RESPONSIVE CARD GRID + NAVIGATION FIXES */
+#screenCards{
+  max-width:1000px!important;
+  width:100%!important;
+  box-sizing:border-box!important;
+}
+#screenCards .pool-grid{
+  width:100%!important;
+  display:grid!important;
+  grid-template-columns:repeat(8,minmax(0,1fr))!important;
+  gap:8px!important;
+  align-content:start!important;
+  justify-content:stretch!important;
+  padding:8px!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  box-sizing:border-box!important;
+}
+#screenCards .pool-btn{
+  width:100%!important;
+  min-width:0!important;
+  height:44px!important;
+  min-height:44px!important;
+  max-height:44px!important;
+  padding:0!important;
+  margin:0!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  text-align:center!important;
+  line-height:1!important;
+  font-size:12px!important;
+  font-weight:900!important;
+  font-family:'Inter',sans-serif!important;
+  box-sizing:border-box!important;
+}
+@media(max-width:480px){
+  #screenCards .pool-grid{
+    grid-template-columns:repeat(5,minmax(0,1fr))!important;
+    gap:8px!important;
+    padding:7px!important;
+  }
+  #screenCards .pool-btn{height:42px!important;min-height:42px!important;max-height:42px!important;font-size:11px!important;border-radius:9px!important}
+}
+@media(min-width:481px) and (max-width:760px){
+  #screenCards .pool-grid{
+    grid-template-columns:repeat(8,minmax(0,1fr))!important;
+    gap:8px!important;
+    padding:8px!important;
+  }
+  #screenCards .pool-btn{height:44px!important;min-height:44px!important;max-height:44px!important;font-size:12px!important}
+}
+@media(min-width:761px){
+  #screenCards .pool-grid{
+    grid-template-columns:repeat(10,minmax(0,1fr))!important;
+    gap:9px!important;
+    padding:9px!important;
+  }
+  #screenCards .pool-btn{height:46px!important;min-height:46px!important;max-height:46px!important;font-size:12px!important}
+}
+/* If the active game state does not exist, GAME always returns to the lobby. */
 </style>
 
 <style id="mela-responsive-layout-fix">
@@ -1631,11 +1693,32 @@ function renderSpectatorView(msg={}){
 }
 
 function goToGame(){
+  // GAME is a navigation entry point, not an error state. If the player has
+  // not selected/joined an active game, always return to the normal lobby.
   restoreActiveGameState();
-  const roomId=myRoomId||localStorage.getItem('roomId');
-  if(!myStakeId) myStakeId=localStorage.getItem('stakeId');
-  if(!roomId){ showToast('አሁን ንቁ ጨዋታ የለም።','warn'); return; }
+  let saved=null;
+  try{ saved=JSON.parse(localStorage.getItem('activeGameState')||'null'); }catch(e){ saved=null; }
+  const phase=String(saved?.phase||activeGamePhase||'none');
+  const roomId=saved?.roomId || (phase!=='none' ? (myRoomId||localStorage.getItem('roomId')) : null);
+
+  if(!roomId || !['countdown','playing','spectating'].includes(phase)){
+    activeGamePhase='none';
+    activeCountdownLeft=0;
+    myRoomId=null;
+    myStakeId=null;
+    try{
+      localStorage.removeItem('activeGameState');
+      localStorage.removeItem('activeGamePhase');
+      localStorage.removeItem('activeCountdownLeft');
+      localStorage.removeItem('roomId');
+      localStorage.removeItem('stakeId');
+    }catch(e){}
+    navGo('screenLobby','navHome');
+    return;
+  }
+
   myRoomId=roomId;
+  if(saved?.stakeId) myStakeId=saved.stakeId;
   if(activeGamePhase==='spectating'){
     navGo('screenGame','navGame');
     renderSpectatorView({calledNumbers:Array.from(calledNumbersSet||[])});
