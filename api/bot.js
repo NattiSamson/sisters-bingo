@@ -7344,27 +7344,18 @@ bot.on(
             "✅⏳ የክፍያ መልዕክትዎ ደርሶናል። ክፍያዎ እየተረጋገጠ ነው። እባክዎ ትንሽ ይጠብቁ።"
           );
 
-          const result = await processDeposit(              
-              text,
-
-              paymentMethod.name,
-              paymentMethod.amharicName,
-
-              paymentType.name,
-              paymentType.amharicName
-
-            );
+          const result = await processDeposit( text, paymentMethod.name, paymentMethod.amharicName, paymentType.name, paymentType.amharicName);
 
           if (result && result.success)
           {
 
             const receipt =
-              result.receipt;
+              result.result.receipt;
 
-            if (!receipt) {
+            if (!receipt && !receipt.payerName) {
 
               return ctx.reply(
-                "❌ የክፍያ ደረሰኝ መረጃ አልተገኘም።" + receipt
+                "❌ የክፍያ ደረሰኝ መረጃ አልተገኘም።"
               );
 
             }
