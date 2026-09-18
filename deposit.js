@@ -324,10 +324,8 @@ async function processDeposit(sms, pmName, pmAmharicName, ptName, ptAmharicName)
   if(sms.length < 10)
   {
     console.log("SMS or InvoiceNo length is lessthan 10.");
-    return {result,success:false,errorMessage:"SMS or InvoiceNo length is lessthan 10."};;
-  }
-  let invoiceNo = "";
-  let result = null;  
+    return {result,success:false,errorMessage:"SMS or InvoiceNo length is lessthan 10."};
+  }  
   if(ptName.toLowerCase() == "Mobile" || ptAmharicName.toLowerCase() == "ሞባይል")
   {
     if(pmName.toLowerCase() == "telebirr" || pmAmharicName.toLowerCase() == "ቴሌብር")
