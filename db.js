@@ -3943,7 +3943,7 @@ async getAllPaymentAccountsForAdmin() {
         console.log(`db.aproveDeposit Wrong account deposit number!`);
         return {success:false, timeout:false, errorMessage:"Wrong account deposit number!"};
       }
-
+      let user = userResult.rows[0];
       let account =
         accountResult.rows[0];
 
