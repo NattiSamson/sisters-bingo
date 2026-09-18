@@ -319,10 +319,12 @@ async function extractTransactionInfofromThirdParty(typeName, receiptId) {
 
 async function processDeposit(sms, pmName, pmAmharicName, ptName, ptAmharicName) 
 { 
+  let invoiceNo = "";
+  let result = null;
   if(sms.length < 10)
   {
     console.log("SMS or InvoiceNo length is lessthan 10.");
-    return {result,success:true,errorMessage:""};;
+    return {result,success:false,errorMessage:"SMS or InvoiceNo length is lessthan 10."};;
   }
   let invoiceNo = "";
   let result = null;  
@@ -378,7 +380,7 @@ return {
     {
       if(sms.length > 10)
       {
-          invoiceNo = await extractInvoiceNumber(sms,);         
+          invoiceNo = await extractInvoiceNumber(pmName, sms);         
       }
       else
       {
