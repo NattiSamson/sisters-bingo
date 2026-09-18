@@ -3763,7 +3763,7 @@ async getAllPaymentAccountsForAdmin() {
 
     if (receiptNo === undefined || receiptNo === "") {
       console.log(`db.aproveDeposit No receiptNo`);
-      return {success:false, timeout:false, errorMessage:"No receiptNo"};
+      return {success:false, errorMessage:"No receiptNo"};
     }
 
     const amount =
@@ -3773,7 +3773,7 @@ async getAllPaymentAccountsForAdmin() {
 
     if (amount === undefined || amount === "" || amount < 1) {
       console.log(`db.aproveDeposit No amount`);
-      return {success:false, timeout:false, errorMessage:"No amount"};
+      return {success:false, errorMessage:"No amount"};
     }
 
     const creditedAccount =
@@ -3784,7 +3784,7 @@ async getAllPaymentAccountsForAdmin() {
 
     if (creditedAccount === undefined || creditedAccount === "") {
       console.log(`db.aproveDeposit No creditedAccount`);
-      return {success:false, timeout:false, errorMessage:"No creditedAccount"};
+      return {success:false, errorMessage:"No creditedAccount"};
     }
 
     const creditedName =
@@ -3795,7 +3795,7 @@ async getAllPaymentAccountsForAdmin() {
 
     if (creditedName === undefined || creditedName === "") {
       console.log(`db.aproveDeposit No creditedAccount`);
-      return {success:false, timeout:false, errorMessage:"No creditedAccount"};
+      return {success:false, errorMessage:"No creditedAccount"};
     }
 
     const payerName =
@@ -3806,7 +3806,7 @@ async getAllPaymentAccountsForAdmin() {
 
     if (payerName === undefined || payerName === "" || payerName === null) {
       console.log(`db.aproveDeposit No payerName`);
-      return {success:false, timeout:false, errorMessage:"No payerName"};
+      return {success:false, errorMessage:"No payerName"};
     }
 
     const payerAccount =
@@ -3817,7 +3817,7 @@ async getAllPaymentAccountsForAdmin() {
 
     if (payerAccount === undefined || payerAccount === "" || payerAccount === null) {
       console.log(`db.aproveDeposit No payerAccount`);
-      return {success:false, timeout:false, errorMessage:"No payerAccount"};
+      return {success:false, errorMessage:"No payerAccount"};
     }
 
     const client =  await pool.connect();
@@ -3847,7 +3847,7 @@ async getAllPaymentAccountsForAdmin() {
           "ROLLBACK"
         );
         console.log(`db.aproveDeposit Used receiptNo`);
-        return {success:false, timeout:false, errorMessage:"Used receiptNo"};
+        return {success:false, errorMessage:"Used receiptNo"};
       }
 
       const userResult =
@@ -3877,7 +3877,7 @@ async getAllPaymentAccountsForAdmin() {
           "ROLLBACK"
         );
         console.log(`db.aproveDeposit User not found!`);
-        return {success:false, timeout:false, errorMessage:"User not found!"};
+        return {success:false, errorMessage:"User not found!"};
       }
 
       const creditedAccountLast4 =
@@ -3896,7 +3896,7 @@ async getAllPaymentAccountsForAdmin() {
           "ROLLBACK"
         );                     
         console.log(`db.aproveDeposit Deposit phone number from the receipt is not correct! ${creditedAccountLast4}`);
-        return {success:false, timeout:false, errorMessage:"Deposit phone number from the receipt is not correct!"};
+        return {success:false, errorMessage:"Deposit phone number from the receipt is not correct!"};
       }
 
       const accountResult =
@@ -3941,7 +3941,7 @@ async getAllPaymentAccountsForAdmin() {
         );
         
         console.log(`db.aproveDeposit Wrong account deposit number!`);
-        return {success:false, timeout:false, errorMessage:"Wrong account deposit number!"};
+        return {success:false, errorMessage:"Wrong account deposit number!"};
       }
       let user = userResult.rows[0];
       let account =
@@ -3974,7 +3974,7 @@ async getAllPaymentAccountsForAdmin() {
           "ROLLBACK"
         );
         console.log(`db.aproveDeposit Deposit account name for the account number can not be matched!  ${creditedName}`);
-        return {success:false, timeout:false, errorMessage:"Deposit account name for the account number can not be matched!"};
+        return {success:false, errorMessage:"Deposit account name for the account number can not be matched!"};
         }
       }
       else
@@ -3983,7 +3983,7 @@ async getAllPaymentAccountsForAdmin() {
           "ROLLBACK"
         );
         console.log(`db.aproveDeposit No creditedName!`);
-        return {success:false, timeout:false, errorMessage:"No creditedName!"};
+        return {success:false, errorMessage:"No creditedName!"};
       }
 
       const currentBalance =
@@ -4094,7 +4094,7 @@ async getAllPaymentAccountsForAdmin() {
       );
 
       console.log(`db.aproveDeposit Successful`);
-      return {success:false, timeout:false, errorMessage:"Successful"};
+      return {success:true, errorMessage:"Successful"};
 
     } catch (err) {
 
@@ -4105,7 +4105,7 @@ async getAllPaymentAccountsForAdmin() {
       if (
         err.code === "23505"
       ) {
-        return {success:false, timeout:false, errorMessage:"Someting went wrong! error code = "+ err.code};
+        return {success:false, errorMessage:"Someting went wrong! error code = "+ err.code};
       }
 
       console.error(
