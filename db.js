@@ -3895,7 +3895,8 @@ async getAllPaymentAccountsForAdmin() {
         await client.query(
           "ROLLBACK"
         );
-        console.log(`db.aproveDeposit Deposit phone number from list of not removed accounts can not be found! creditedPartyAccountNo = ${creditedAccountLast4}:`);
+        console.log(` creditedPartyAccountNo = ${creditedAccountLast4}:`);
+        console.log(`db.aproveDeposit Deposit phone number from list of not removed accounts can not be found!`);
         return {success:false, errorMessage:"Deposit phone number from list of not removed accounts can not be found!"};
       }
 
