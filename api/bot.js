@@ -7352,13 +7352,13 @@ bot.on(
         );
         
         if (result.timeout) {
-          await ctx.reply(result.errorMessage);
-          return;
+          return await ctx.reply(result.errorMessage);
+          
         }
         
         if (!result.success) {
-          await ctx.reply("❌ የደረሰኝ መረጃው አልተገኘም።");
-          return;
+          return await ctx.reply("❌ የደረሰኝ መረጃው አልተገኘም።");
+          
         }
 
 
@@ -7404,9 +7404,14 @@ bot.on(
               );
 
             }
-
+            let mess = "❌ የገቢ ጥያቄዎ አልተሳካም።\n\n" + result2.errorMessage
+            if(user.is_admin === true)
+            {
+              mess = mess + "\n\n" + result2.errorMessage
+            }
+            
             return ctx.reply(
-              "❌ የገቢ ጥያቄዎ አልተሳካም።\n\n" + result2.errorMessage
+              mess
             );
 
           }
