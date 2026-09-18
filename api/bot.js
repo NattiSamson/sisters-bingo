@@ -7406,7 +7406,7 @@ bot.on(
             }
 
             return ctx.reply(
-              "❌ የገቢ ጥያቄዎ አልተሳካም።"
+              "❌ የገቢ ጥያቄዎ አልተሳካም።\n\n" + result2.errorMessage
             );
 
           }
