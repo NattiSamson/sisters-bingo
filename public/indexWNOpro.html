@@ -118,70 +118,6 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .profile-key{color:var(--gray)}
 .profile-value{font-weight:700}
 .profile-empty{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:30px 16px;text-align:center;color:var(--gray);font-size:13px}
-/* ───────── PROFILE — MELA BINGO NEON DASHBOARD ───────── */
-.profile-page{padding:10px 0 24px}
-.profile-hero{
-  position:relative;overflow:hidden;
-  background:
-    radial-gradient(circle at 15% 20%,rgba(56,217,255,.20),transparent 26%),
-    radial-gradient(circle at 82% 15%,rgba(124,92,255,.25),transparent 32%),
-    linear-gradient(145deg,#252d8d 0%,#171c63 55%,#0d1239 100%);
-  border:1px solid rgba(83,180,255,.65);border-radius:22px;
-  padding:20px 16px 18px;
-  box-shadow:0 16px 38px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.08);
-}
-.profile-hero:before{content:'';position:absolute;width:190px;height:190px;right:-90px;top:-95px;border-radius:50%;background:rgba(124,92,255,.18);filter:blur(2px)}
-.profile-hero:after{content:'';position:absolute;width:170px;height:130px;left:-90px;bottom:-75px;border-radius:50%;background:rgba(56,217,255,.12);filter:blur(2px)}
-.profile-hero-row{position:relative;z-index:1;display:flex;align-items:center;gap:16px}
-.profile-avatar{
-  width:88px;height:88px;flex:0 0 88px;border-radius:50%;
-  display:flex;align-items:center;justify-content:center;
-  background:linear-gradient(145deg,#5e75ff,#6d43e8);
-  border:3px solid rgba(255,255,255,.72);
-  box-shadow:0 0 26px rgba(83,109,255,.46),inset 0 0 18px rgba(255,255,255,.14);
-  font-family:'Orbitron',sans-serif;font-size:31px;font-weight:900;color:#fff;
-  position:relative;
-}
-.profile-avatar:before{content:'♛';position:absolute;top:-24px;left:50%;transform:translateX(-50%);font-size:30px;color:#ffd43b;filter:drop-shadow(0 0 7px rgba(255,212,59,.55))}
-.profile-hero-copy{min-width:0;text-align:left}
-.profile-name{font-size:28px;font-weight:900;color:#fff;line-height:1.05}
-.profile-sub{margin-top:6px;color:#bfc7ff;font-size:11px;font-weight:700}
-.profile-member{display:inline-flex;align-items:center;gap:6px;margin-top:10px;padding:5px 10px;border:1px solid rgba(255,212,59,.75);border-radius:18px;color:#ffd83d;font-size:9px;font-weight:900;background:rgba(255,212,59,.07)}
-.profile-wallet{
-  margin-top:16px;position:relative;z-index:1;
-  background:linear-gradient(105deg,#3478ff,#5146e5 58%,#6952ee);
-  border:1px solid rgba(255,255,255,.2);border-radius:18px;padding:16px 17px;
-  display:flex;align-items:center;justify-content:space-between;gap:12px;
-  box-shadow:0 12px 26px rgba(39,73,214,.24),inset 0 1px 0 rgba(255,255,255,.12);
-}
-.profile-wallet-copy{text-align:left;min-width:0}
-.profile-wallet-label{font-size:10px;color:rgba(255,255,255,.78);font-weight:900;text-transform:uppercase;letter-spacing:.8px}
-.profile-wallet-value{margin-top:4px;font-family:'Orbitron',sans-serif;font-size:25px;font-weight:900;color:#ffe04d;text-shadow:0 0 14px rgba(255,224,77,.18)}
-.profile-wallet-icon{width:50px;height:50px;flex:0 0 50px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.13);border:2px solid rgba(255,255,255,.45);font-size:24px;box-shadow:inset 0 0 14px rgba(255,255,255,.1)}
-.profile-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
-.profile-stat{
-  min-width:0;min-height:126px;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  background:linear-gradient(145deg,rgba(31,42,113,.98),rgba(13,19,61,.98));
-  border:1px solid rgba(91,146,255,.55);border-radius:17px;padding:13px 7px 11px;text-align:center;
-  box-shadow:0 10px 22px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.06);
-  position:relative;overflow:hidden;
-}
-.profile-stat:after{content:'';position:absolute;left:18%;right:18%;bottom:7px;height:3px;border-radius:99px;background:#3478ff;box-shadow:0 0 9px rgba(52,120,255,.3)}
-.profile-stat.winnings:after{background:#ffd43b;box-shadow:0 0 9px rgba(255,212,59,.3)}
-.profile-stat.earnings:after{background:#22d67a;box-shadow:0 0 9px rgba(34,214,122,.3)}
-.profile-stat.gameswon:after{background:#c54cff;box-shadow:0 0 9px rgba(197,76,255,.3)}
-.profile-stat-icon{font-size:27px;line-height:1;margin-bottom:9px;filter:drop-shadow(0 3px 7px rgba(0,0,0,.25))}
-.profile-stat-value{font-family:'Orbitron',sans-serif;font-size:20px;font-weight:900;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.profile-stat.games .profile-stat-value{color:#55dcff}
-.profile-stat.winnings .profile-stat-value{color:#ffe04d}
-.profile-stat.earnings .profile-stat-value{color:#7cffb2}
-.profile-stat.gameswon .profile-stat-value{color:#e39aff}
-.profile-stat-label{margin-top:6px;color:#b9c2f5;font-size:9px;font-weight:900;line-height:1.2;letter-spacing:.15px}
-.profile-status{margin-top:10px;background:linear-gradient(145deg,rgba(31,39,103,.94),rgba(15,20,63,.96));border:1px solid rgba(91,146,255,.42);border-radius:14px;padding:13px 12px;text-align:center;color:#bfc7ff;font-size:11px;font-weight:700}
-@media(max-width:380px){
-  .profile-hero{padding:18px 12px 16px}.profile-hero-row{gap:12px}.profile-avatar{width:76px;height:76px;flex-basis:76px;font-size:27px}.profile-avatar:before{font-size:26px;top:-21px}.profile-name{font-size:23px}.profile-wallet-value{font-size:21px}.profile-stat{min-height:116px}.profile-stat-value{font-size:16px}.profile-stat-icon{font-size:23px}
-}
-
 .form-group{margin-bottom:14px}
 .form-label{font-size:12px;color:var(--gray);margin-bottom:5px;display:block}
 .form-input{width:100%;background:var(--card);border:1px solid #4a2d7a;color:#fff;padding:12px;border-radius:8px;font-size:15px;outline:none;transition:border-color .2s}
@@ -1270,45 +1206,6 @@ body{padding:0!important}
 </div>
 
 
-<div id="screenProfile" class="screen">
-  <div class="profile-page">
-    <div class="profile-hero">
-      <div class="profile-hero-row">
-        <div class="profile-avatar" id="profileAvatar">M</div>
-        <div class="profile-hero-copy">
-          <div class="profile-name" id="profileName">Player</div>
-          <div class="profile-sub">Mela Bingo Player</div>
-          <div class="profile-member">♛ Mela Bingo Member</div>
-        </div>
-      </div>
-      <div class="profile-wallet">
-        <div class="profile-wallet-copy">
-          <div class="profile-wallet-label">Wallet Balance</div>
-          <div class="profile-wallet-value" id="profileBalance">ETB 0.00</div>
-        </div>
-        <div class="profile-wallet-icon" aria-hidden="true">💳</div>
-      </div>
-    </div>
-
-    <div class="profile-stats">
-    
-      <div class="profile-stat winnings">
-        <div class="profile-stat-icon">🏆</div>
-        <div class="profile-stat-value" id="profileWinnings">ETB 0.00</div>
-        <div class="profile-stat-label">TOTAL WINNINGS</div>
-      </div>
-     
-      <div class="profile-stat gameswon">
-        <div class="profile-stat-icon">🏅</div>
-        <div class="profile-stat-value" id="profileWins">0</div>
-        <div class="profile-stat-label">TOTAL GAMES WON</div>
-      </div>
-    </div>
-    <div id="profileStatus" class="profile-status" style="display:none"></div>
-  </div>
-</div>
-
-
 <div class="winner-overlay" id="winnerOverlay">
   <div class="confetti-row" id="resultConfetti">🎊🎉🎊🎉🎊</div>
   <div class="winner-trophy" id="resultTrophy">🏆</div>
@@ -1651,107 +1548,10 @@ function goToGame(){
   if(telegramId) wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
 }
 
-function goToWallet(){gotoProfile();}
-function gotoProfile(){
+function goToWallet(){navGo('screenWallet','navWallet');}
+async function gotoProfile(){
   navGo('screenProfile','navProfile');
-  // Show the profile immediately. The server refresh runs silently in the background.
-  loadUserProfile(false).catch(()=>{});
-}
-
-function renderUserProfile(u, history=[]){
-  const name=String(u?.name||u?.playerName||myName||'Player').trim()||'Player';
-  const balance=Number(u?.balance);
-  const rows=Array.isArray(history)?history:[];
-  const games=Number.isFinite(Number(u?.total_games)) ? Number(u.total_games) : rows.length;
-  const winsFromHistory=rows.filter(g=>g?.won===true || g?.won==='true').length;
-  const wins=Number.isFinite(Number(u?.total_wins)) ? Number(u.total_wins) : winsFromHistory;
-  const winningsFromHistory=rows.reduce((sum,g)=>sum+(Number(g?.amount_won)||0),0);
-  const winnings=Number.isFinite(Number(u?.total_winnings)) ? Number(u.total_winnings) : winningsFromHistory;
-  // Prefer the authoritative latest payout calculated by the server directly
-  // from the finished games table. Keep the history value as a fallback.
-  const historyLatest=rows.find(g=>(Number(g?.amount_won)||0)>0);
-  const historyLatestEarnings=historyLatest ? (Number(historyLatest.amount_won)||0) : 0;
-  const apiLatestEarnings=Number(u?.latest_earnings);
-  const latestEarnings=Number.isFinite(apiLatestEarnings) && apiLatestEarnings>=0
-    ? apiLatestEarnings
-    : historyLatestEarnings;
-  myName=name;
-  if(Number.isFinite(balance) && balance>=0) setBalance(balance);
-  const nameEl=document.getElementById('profileName');
-  const avatarEl=document.getElementById('profileAvatar');
-  const gamesEl=document.getElementById('profileGames');
-  const winsEl=document.getElementById('profileWins');
-  const winningsEl=document.getElementById('profileWinnings');
-  const latestEl=document.getElementById('profileLatestEarnings');
-  const profileBalEl=document.getElementById('profileBalance');
-  if(nameEl) nameEl.innerText=name;
-  if(avatarEl) avatarEl.innerText=name.charAt(0).toUpperCase();
-  if(gamesEl) gamesEl.innerText=Number.isFinite(games)?Math.max(0,Math.trunc(games)).toLocaleString():'0';
-  if(winsEl) winsEl.innerText=Number.isFinite(wins)?Math.max(0,Math.trunc(wins)).toLocaleString():'0';
-  if(winningsEl) winningsEl.innerText=`ETB ${Math.max(0,winnings).toFixed(2)}`;
-  if(latestEl) latestEl.innerText=`ETB ${Math.max(0,latestEarnings).toFixed(2)}`;
-  if(profileBalEl) profileBalEl.innerText=Number.isFinite(balance)&&balance>=0?`ETB ${balance.toFixed(2)}`:'ETB 0.00';
-}
-
-async function loadUserProfile(force=false){
-  if(!telegramId) telegramId=getTelegramId();
-  const status=document.getElementById('profileStatus');
-
-  // Never show a loading screen/message for Profile. If we have a cached account,
-  // render it immediately and then refresh it silently from the server.
-  if(status) status.style.display='none';
-
-  let id=normalizeTelegramId(telegramId);
-  if(!id){
-    try{ id=normalizeTelegramId(localStorage.getItem('melaBingoTelegramId')); }catch(e){}
-  }
-
-  // Render the last successfully loaded profile instantly while the network refreshes.
-  if(id && !force){
-    try{
-      const cached=JSON.parse(localStorage.getItem('melaBingoProfile')||'null');
-      if(cached && cached.telegramId===id && cached.user){
-        renderUserProfile(cached.user,Array.isArray(cached.history)?cached.history:[]);
-      }
-    }catch(e){}
-  }
-
-  if(!id){
-    // The normal app/account flow can still resolve Telegram authentication later.
-    return false;
-  }
-
-  telegramId=id;
-  try{
-    const [userRes,historyRes]=await Promise.all([
-      fetch(`${API_BASE}/api/user/${encodeURIComponent(id)}?_=${Date.now()}`,{cache:'no-store'}),
-      fetch(`${API_BASE}/api/history/${encodeURIComponent(id)}?limit=100&_=${Date.now()}`,{cache:'no-store'})
-    ]);
-    const userData=await userRes.json().catch(()=>({}));
-    const historyData=await historyRes.json().catch(()=>[]);
-    if(!userRes.ok) throw new Error(userData.error||'Profile request failed');
-    const history=Array.isArray(historyData)?historyData:[];
-    renderUserProfile(userData,history);
-
-    // Cache only a successfully loaded server profile. This is UI data only;
-    // Neon/server balance remains authoritative and is never changed here.
-    try{
-      localStorage.setItem('melaBingoProfile',JSON.stringify({
-        telegramId:id,
-        user:userData,
-        history:history,
-        savedAt:Date.now()
-      }));
-    }catch(e){}
-
-    if(status) status.style.display='none';
-    return true;
-  }catch(e){
-    console.error('Profile refresh:',e);
-    // Keep the cached/current profile visible if the background refresh fails.
-    if(status) status.style.display='none';
-    return false;
-  }
+  await loadUserProfile();
 }
 
 function formatHistoryDate(value){
@@ -1761,6 +1561,50 @@ function formatHistoryDate(value){
   return d.toLocaleString();
 }
 
+function loadUserProfile(){
+  const list=document.getElementById('historyList');
+  if(!list) return Promise.resolve();
+  if(!telegramId) telegramId=getTelegramId();
+  if(!telegramId){
+    list.innerHTML='<div class="profile-empty">የTelegram ሂሳብ አልተገናኘም።</div>';
+    return Promise.resolve();
+  }
+  list.innerHTML='<div class="profile-empty">ታሪክ በመጫን ላይ...</div>';
+  return fetch(`${API_BASE}/api/history/${encodeURIComponent(telegramId)}?limit=50`,{cache:'no-store'})
+    .then(async r=>{
+      const data=await r.json().catch(()=>[]);
+      if(!r.ok) throw new Error(data.error||'History request failed');
+      return data;
+    })
+    .then(rows=>{
+      if(!Array.isArray(rows)||!rows.length){
+        list.innerHTML='<div class="profile-empty">📜 እስካሁን የጨዋታ ታሪክ የለዎትም።</div>';
+        return;
+      }
+      list.innerHTML=rows.map(g=>{
+        const won=g.won===true || g.won==='true';
+        const played=Number(g.amount_played)||0;
+        const wonAmount=Number(g.amount_won)||0;
+        const net=wonAmount-played;
+        const stake=Number(g.stake_amount)||0;
+        return `<div class="profile-card">
+          <div class="history-top">
+            <div style="font-weight:900">🎱 ${esc(g.stake_id||('ST'+stake))}</div>
+            <div class="history-result ${won?'win':'loss'}">${won?'🏆 አሸንፈዋል':'— አላሸነፉም'}</div>
+          </div>
+          <div class="history-row"><span class="history-key">ቀን</span><span class="history-value history-date">${esc(formatHistoryDate(g.started_at))}</span></div>
+          <div class="history-row"><span class="history-key">የጨዋታ ዋጋ</span><span class="history-value">${stake.toFixed(2)} ብር</span></div>
+          <div class="history-row"><span class="history-key">የተጫወቱት</span><span class="history-value">-${played.toFixed(2)} ብር</span></div>
+          <div class="history-row"><span class="history-key">ያሸነፉት</span><span class="history-value">${wonAmount>0?'+':''}${wonAmount.toFixed(2)} ብር</span></div>
+          <div class="history-row" style="margin-top:5px;padding-top:7px;border-top:1px solid #2d1b4e"><span class="history-key">የዚህ ጨዋታ ልዩነት</span><span class="history-value" style="color:${net>=0?'var(--green)':'var(--red)'}">${net>=0?'+':''}${net.toFixed(2)} ብር</span></div>
+        </div>`;
+      }).join('');
+    })
+    .catch(e=>{
+      console.error('Profile:',e);
+      list.innerHTML='<div class="profile-empty">የጨዋታ ታሪክን መጫን አልተቻለም።</div>';
+    });
+}
 
 // ─── WEBSOCKET ────────────────────────────────────────────────
 function connect(){
