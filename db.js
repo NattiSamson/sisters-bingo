@@ -76,11 +76,9 @@ function toPositiveAmount(value, field = "amount") {
 }
 
 function amountFromReceipt(receipt) {
-  const raw =
-    receipt?.settledAmount ??
-    receipt?.amount;
+  const raw = receipt?.settledAmount;
 
-  if (raw == null) {
+  if (raw === null || raw === undefined) {
     throw new Error("Deposit amount is missing");
   }
 
@@ -3759,13 +3757,12 @@ async getAllPaymentAccountsForAdmin() {
 
     const receiptNo =
       String(
-        receipt?.receiptNo ??
-        receipt?.invoiceNo ??
+        receipt?.receiptNo ??        
         ""
       ).trim();
 
-    if (!receiptNo) {
-      return -4;
+    if (receiptNo === undefined || receiptNo === "") {
+      return {success:false, errorMessage:"No Receipt"};
     }
 
     const amount =
@@ -3773,11 +3770,19 @@ async getAllPaymentAccountsForAdmin() {
         receipt
       );
 
+    if (amount === undefined || amount === "" || amount < 1) {
+      return {success:false, errorMessage:"No amount"};
+    }
+
     const creditedAccount =
       String(
         receipt?.creditedPartyAccountNo ??
         ""
       ).trim();
+
+    if (creditedAccount === undefined || creditedAccount === "") {
+      return {success:false, errorMessage:"No creditedAccount"};
+    }
 
     const creditedName =
       String(
@@ -3785,11 +3790,19 @@ async getAllPaymentAccountsForAdmin() {
         ""
       ).trim();
 
+    if (creditedName === undefined || creditedName === "") {
+      return {success:false, errorMessage:"No creditedAccount"};
+    }
+
     const payerName =
       String(
         receipt?.payerName ??
         ""
       ).trim() || null;
+
+    if (payerName === undefined || payerName === "" || payerName === null) {
+      return {success:false, errorMessage:"No payerName"};
+    }
 
     const payerAccount =
       String(
@@ -3797,12 +3810,11 @@ async getAllPaymentAccountsForAdmin() {
         ""
       ).trim() || null;
 
-    if (!creditedAccount) {
-      return -2;
+    if (payerAccount === undefined || payerAccount === "" || payerAccount === null) {
+      return {success:false, errorMessage:"No payerAccount"};
     }
 
-    const client =
-      await pool.connect();
+    const client =  await pool.connect();
 
     try {
 
@@ -3829,7 +3841,7 @@ async getAllPaymentAccountsForAdmin() {
           "ROLLBACK"
         );
 
-        return -1;
+        return {success:false, errorMessage:"Used receiptNo"};
       }
 
       const userResult =
@@ -3844,6 +3856,8 @@ async getAllPaymentAccountsForAdmin() {
             is_blocked
           FROM users
           WHERE telegram_id = $1
+          AND is_active = TRUE
+          AND is_blocked = FALSE
           FOR UPDATE
           `,
           [telegramId]
@@ -3851,30 +3865,16 @@ async getAllPaymentAccountsForAdmin() {
 
       if (
         !userResult.rows.length
-      ) {
-
-        throw new Error(
-          "User not found"
-        );
-      }
-
-      const user =
-        userResult.rows[0];
-
-      if (
-        !user.is_active ||
-        user.is_banned ||
-        user.is_blocked
-      ) {
+      ) {       
 
         await client.query(
           "ROLLBACK"
         );
 
-        return -5;
+        return {success:false, errorMessage:"User not be found!"};
       }
 
-      const accountLast4 =
+      const creditedAccountLast4 =
         creditedAccount
           .replace(
             /\D/g,
@@ -3883,14 +3883,14 @@ async getAllPaymentAccountsForAdmin() {
           .slice(-4);
 
       if (
-        accountLast4.length !== 4
+        creditedAccountLast4.length !== 4
       ) {
 
         await client.query(
           "ROLLBACK"
         );
 
-        return -2;
+        return {success:false, errorMessage:"Deposit phone number from list of not removed accounts can not be found!"};
       }
 
       const accountResult =
@@ -3923,7 +3923,7 @@ async getAllPaymentAccountsForAdmin() {
 
           FOR UPDATE
           `,
-          [accountLast4]
+          [creditedAccountLast4]
         );
 
       if (
@@ -3934,7 +3934,7 @@ async getAllPaymentAccountsForAdmin() {
           "ROLLBACK"
         );
 
-        return -2;
+        return {success:false, errorMessage:"Wrong account deposit number!"};
       }
 
       let account =
@@ -3946,7 +3946,7 @@ async getAllPaymentAccountsForAdmin() {
        */
       if (creditedName) {
 
-        const exactName =
+        const exactAccount =
           accountResult.rows.find(
             (a) =>
               String(
@@ -3958,9 +3958,25 @@ async getAllPaymentAccountsForAdmin() {
                 .toLowerCase()
           );
 
-        if (exactName) {
-          account = exactName;
+        if (exactAccount) {
+          account = exactAccount;
         }
+        else
+        {
+           await client.query(
+          "ROLLBACK"
+        );
+
+        return {success:false, errorMessage:"Deposit phone number from list of not removed accounts can not be found!"};
+        }
+      }
+      else
+      {
+        await client.query(
+          "ROLLBACK"
+        );
+
+        return {success:false, errorMessage:"No creditedName!"};
       }
 
       const currentBalance =
@@ -4070,7 +4086,7 @@ async getAllPaymentAccountsForAdmin() {
         "COMMIT"
       );
 
-      return amount;
+      return {success:true, errorMessage:"Successful"};
 
     } catch (err) {
 
@@ -4081,7 +4097,7 @@ async getAllPaymentAccountsForAdmin() {
       if (
         err.code === "23505"
       ) {
-        return -1;
+        return {success:false, errorMessage:"Someting went wrong! error code = "+ err.code};
       }
 
       console.error(
