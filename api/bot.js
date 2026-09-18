@@ -7366,8 +7366,7 @@ bot.on(
                 telegramId
               );
 
-            if (
-              result2 > 0
+            if (result2.success)
             ) {
 
               clearPendingState(
@@ -7378,7 +7377,7 @@ bot.on(
 
                 "✅ *የገቢ ጥያቄዎ ተሳክቷል!*\n\n" +
 
-                `💰 ${result2} ብር ወደ ሂሳብዎ ተጨምሯል።`,
+                `💰 ${receipt.settledAmount} ወደ ሂሳብዎ ተጨምሯል።`,
 
                 {
                   parse_mode:
