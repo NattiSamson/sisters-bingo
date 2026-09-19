@@ -15,7 +15,7 @@ const {  processDeposit } = require("../deposit");
 // CONFIG
 // ============================================================
 const BOT_TOKEN =  process.env.BOT_TOKEN;
-const GAME_URL = "https://game-client-go-two.vercel.app";//process.env.GAME_URL || "https://sisters-bingo.vercel.app";
+const GAME_URL = process.env.GAME_URL || "https://sisters-bingo.vercel.app";
 if (!BOT_TOKEN) 
 {
   throw new Error("BOT_TOKEN environment variable is missing");
@@ -839,8 +839,8 @@ async function showHome(ctx, user)
   const keyboard = [];
   if (user && user.is_active === true && user.is_blocked !== true) 
   {
-    //${telegramId}
-     keyboard.push([{ text: "🎮 Play", web_app: { url: `${GAME_URL}?tid=7891899150`}}]);
+    
+     keyboard.push([{ text: "🎮 Play", web_app: { url: `${GAME_URL}?tid=${telegramId}`}}]);
   }
   keyboard.push([{ text: "💰 Balance", callback_data: "user_balance"}, { text: "📊 Statistics", callback_data: "user_statistics"},],
                 [{ text: "💎 Deposit", callback_data: "user_deposit"}, { text: "🏧 Withdraw", callback_data: "user_withdraw"}],
