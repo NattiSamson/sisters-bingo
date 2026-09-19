@@ -7405,7 +7405,7 @@ bot.on(
 
             }
             let chkUser = db.getUserByTelegramId(telegramId);
-            let mess = "❌ የገቢ ጥያቄዎ አልተሳካም።\n\n" + result2.errorMessage
+            let mess = "❌ የገቢ ጥያቄዎ አልተሳካም።";
             if(chkUser.is_admin === true)
             {
               mess = mess + "\n\n" + result2.errorMessage
