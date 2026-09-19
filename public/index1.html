@@ -816,6 +816,9 @@ body{
 .bottom-nav .nav-item.active .nav-svg svg{stroke:#55dcff!important;filter:drop-shadow(0 0 5px rgba(85,220,255,.3))}
 
 /* Responsive card grid remains 10 columns, but fills the wider panel naturally */
+@media(max-width:420px){
+  #screenCards .pool-btn{border-radius:8px!important}
+}
 
 
 /* ───────── ACTIVE GAME PLAY AREA — BRIGHT COMPACT STYLE ─────────
@@ -1084,17 +1087,14 @@ body{
   width:100%!important;
   box-sizing:border-box!important;
 }
-/* Under 480px: keep exactly 8 cards per row (1-8, 9-16, ...).
-   The pool itself is allowed to become shorter as the viewport gets smaller. */
 #screenCards .pool-grid{
   width:100%!important;
   display:grid!important;
   grid-template-columns:repeat(8,minmax(0,1fr))!important;
-  grid-auto-rows:42px!important;
-  gap:6px!important;
+  gap:8px!important;
   align-content:start!important;
   justify-content:stretch!important;
-  padding:6px!important;
+  padding:8px!important;
   overflow-y:auto!important;
   overflow-x:hidden!important;
   box-sizing:border-box!important;
@@ -1102,9 +1102,9 @@ body{
 #screenCards .pool-btn{
   width:100%!important;
   min-width:0!important;
-  height:42px!important;
-  min-height:42px!important;
-  max-height:42px!important;
+  height:44px!important;
+  min-height:44px!important;
+  max-height:44px!important;
   padding:0!important;
   margin:0!important;
   display:flex!important;
@@ -1112,41 +1112,34 @@ body{
   justify-content:center!important;
   text-align:center!important;
   line-height:1!important;
-  font-size:10px!important;
+  font-size:12px!important;
   font-weight:900!important;
   font-family:'Inter',sans-serif!important;
   box-sizing:border-box!important;
-  border-radius:8px!important;
 }
-/* 480px and above: use the existing responsive wider-screen layout. */
-@media(min-width:480px){
+@media(max-width:480px){
   #screenCards .pool-grid{
-    grid-template-columns:repeat(auto-fit,minmax(46px,1fr))!important;
-    grid-auto-rows:44px!important;
+    grid-template-columns:repeat(5,minmax(0,1fr))!important;
+    gap:8px!important;
+    padding:7px!important;
+  }
+  #screenCards .pool-btn{height:42px!important;min-height:42px!important;max-height:42px!important;font-size:11px!important;border-radius:9px!important}
+}
+@media(min-width:481px) and (max-width:760px){
+  #screenCards .pool-grid{
+    grid-template-columns:repeat(8,minmax(0,1fr))!important;
     gap:8px!important;
     padding:8px!important;
   }
-  #screenCards .pool-btn{
-    height:44px!important;
-    min-height:44px!important;
-    max-height:44px!important;
-    font-size:12px!important;
-    border-radius:9px!important;
-  }
+  #screenCards .pool-btn{height:44px!important;min-height:44px!important;max-height:44px!important;font-size:12px!important}
 }
 @media(min-width:761px){
   #screenCards .pool-grid{
-    grid-template-columns:repeat(auto-fit,minmax(58px,1fr))!important;
-    grid-auto-rows:46px!important;
+    grid-template-columns:repeat(10,minmax(0,1fr))!important;
     gap:9px!important;
     padding:9px!important;
   }
-  #screenCards .pool-btn{
-    height:46px!important;
-    min-height:46px!important;
-    max-height:46px!important;
-    font-size:12px!important;
-  }
+  #screenCards .pool-btn{height:46px!important;min-height:46px!important;max-height:46px!important;font-size:12px!important}
 }
 /* If the active game state does not exist, GAME always returns to the lobby. */
 </style>
@@ -1171,9 +1164,7 @@ body{padding:0!important}
 #screenCards #poolGrid{flex:1 1 auto!important;min-height:0!important;height:auto!important;max-height:none!important;overflow-y:auto!important;overflow-x:hidden!important;align-content:start!important;grid-auto-flow:row!important}
 #screenCards .pool-btn{width:100%!important;min-width:0!important;height:clamp(34px,5.5vh,52px)!important;min-height:34px!important;line-height:1!important;padding:2px!important;font-size:clamp(10px,1.8vh,15px)!important}
 /* Keep rows packed while allowing the number of columns to respond to width. */
-#screenCards #poolGrid{grid-template-columns:repeat(8,minmax(0,1fr))!important;grid-auto-rows:42px!important;gap:6px!important;padding:6px!important}
-@media(min-width:480px){#screenCards #poolGrid{grid-template-columns:repeat(auto-fit,minmax(46px,1fr))!important;grid-auto-rows:44px!important;gap:8px!important;padding:8px!important}}
-@media(min-width:761px){#screenCards #poolGrid{grid-template-columns:repeat(auto-fit,minmax(58px,1fr))!important;grid-auto-rows:46px!important;gap:9px!important;padding:9px!important}}
+#screenCards #poolGrid{grid-template-columns:repeat(auto-fit,minmax(clamp(46px,8vw,72px),1fr))!important;grid-auto-rows:clamp(34px,5.5vh,52px)!important;gap:clamp(5px,1vw,9px)!important;padding:clamp(5px,1vh,9px)!important}
 #screenGame{padding:clamp(6px,1vh,10px) clamp(7px,2vw,12px)!important;overflow:hidden!important}
 #screenGame .game-stats-row{flex:0 0 auto!important}
 #screenGame .claim-bar-wrap{flex:0 0 auto!important}
@@ -1189,8 +1180,8 @@ body{padding:0!important}
  #screenCards #cdPrizePot{padding:4px 8px!important;margin-bottom:4px!important}
 }
 @media(max-width:360px){
- #screenCards #poolGrid{grid-template-columns:repeat(8,minmax(0,1fr))!important;grid-auto-rows:36px!important;gap:4px!important;padding:4px!important}
- #screenCards .pool-btn{height:36px!important;min-height:36px!important;max-height:36px!important;font-size:9px!important}
+ #screenCards #poolGrid{grid-template-columns:repeat(auto-fit,minmax(42px,1fr))!important;gap:4px!important;padding:4px!important}
+ #screenCards .pool-btn{height:32px!important;font-size:9px!important}
 }
 </style>
 </head>
@@ -2516,41 +2507,6 @@ function resetAutomaticGameState(){
 function updateSlotUI(){}
 function resetSlotUI(){}
 
-// ─── CARD POOL RESPONSIVE LAYOUT ─────────────────────────────
-// Below 480px the card order is always 1-8, 9-16, 17-24, ... .
-// JS reinforces the CSS so the row count cannot change because of browser zoom,
-// orientation changes, or late layout recalculation. The pool height shrinks with
-// the available viewport; the number of columns stays fixed at 8.
-function syncCardPoolResponsiveLayout(){
-  const grid=document.getElementById('poolGrid');
-  if(!grid) return;
-  const small=window.innerWidth < 480;
-  grid.style.gridTemplateColumns=small ? 'repeat(8,minmax(0,1fr))' : '';
-  grid.style.gridAutoFlow='row';
-  if(small) grid.style.gridAutoRows = window.innerWidth <= 360 ? '36px' : '42px';
-  else grid.style.gridAutoRows='';
-  // Keep the scroll container inside the fixed top/bottom navigation area.
-  if(small){
-    const rect=grid.getBoundingClientRect();
-    const available=Math.max(120,window.innerHeight-rect.top-8);
-    grid.style.height=available+'px';
-    grid.style.maxHeight=available+'px';
-  }else{
-    grid.style.height='';
-    grid.style.maxHeight='';
-  }
-}
-window.addEventListener('resize',syncCardPoolResponsiveLayout,{passive:true});
-window.addEventListener('orientationchange',()=>setTimeout(syncCardPoolResponsiveLayout,50),{passive:true});
-if(window.ResizeObserver){
-  const _cardPoolObserver=new ResizeObserver(()=>syncCardPoolResponsiveLayout());
-  window.addEventListener('load',()=>{
-    const g=document.getElementById('poolGrid');
-    if(g) _cardPoolObserver.observe(g);
-    syncCardPoolResponsiveLayout();
-  },{once:true});
-}
-
 // ─── CARD POOL ────────────────────────────────────────────────
 function renderCardPool(pool){
   const grid=document.getElementById('poolGrid');
@@ -2566,7 +2522,6 @@ function renderCardPool(pool){
     if(c.id===myCardId2) btn.onclick=()=>deselectCard(2);
     grid.appendChild(btn);
   });
-  syncCardPoolResponsiveLayout();
 }
 // Patch a single card button in place (used by cardPoolDiff) — avoids re-rendering
 // all 400 buttons just because one card's taken/free state changed.
