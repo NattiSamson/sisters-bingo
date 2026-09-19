@@ -3587,7 +3587,7 @@ bot.callbackQuery(/^payment_(\d+)$/, async (ctx) =>
             await ctx.editMessageText(
               "1. ከታች ባለው የ" +
               paymentMethod.amharic_name +
-              " አካውንት እስከ 200.00 ብር ድረስ ብቻ ያስገቡ\n\n" +
+              " አካውንት እስከ 500.00 ብር ድረስ ብቻ ያስገቡ\n\n" +
               paymentMethod.emoji + " *" + paymentMethod.name +  ":* `" + paymentaccount.account_number + "`\n\n" +
               "2. የከፈሉበትን አጭር የጹሁፍ መልዕክት (SMS) " +
               "copy በማድረግ እዚህ ላይ Paste አድርገው " +
