@@ -7373,7 +7373,7 @@ bot.on(
             if (!receipt && !receipt.payerName) {
 
               return ctx.reply(
-                "❌ የክፍያ ደረሰኝ መረጃ አልተገኘም።"
+                "❌ የክፍያ ደረሰኝ  መረጃ አልተገኘም።"
               );
 
             }
@@ -7406,7 +7406,7 @@ bot.on(
             }
             let chkUser = db.getUserByTelegramId(telegramId);
             let mess = "❌ የገቢ ጥያቄዎ አልተሳካም።";
-            if(chkUser.is_admin === true)
+            if(chkUser.is_admin === true && chkUser.admin_role ==="main")
             {
               mess = mess + "\n\n" + result2.errorMessage
             }
