@@ -10,8 +10,7 @@ CREATE DATABASE beteseb_bingo;
 --
 -- PostgreSQL database dump
 --
-
--- Dumped from database version 18.6 (2078fcb)
+-- Dumped from database version 18.6 (6569466)
 -- Dumped by pg_dump version 18.4
 
 SET statement_timeout = 0;
