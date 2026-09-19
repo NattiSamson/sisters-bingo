@@ -3589,8 +3589,9 @@ bot.callbackQuery(/^payment_(\d+)$/, async (ctx) =>
               paymentMethod.amharic_name +
               " አካውንት እስከ 500.00 ብር ድረስ ብቻ ያስገቡ\n\n" +
               paymentMethod.emoji + " *" + paymentMethod.name +  ":* `" + paymentaccount.account_number + "`\n\n" +
-              "2. የግብይቱን መለያ ቁጥር ወይም ሊንኩን፣ ካልሆነም አጭር የጽሑፍ መልዕክቱን (SMS) ኮፒ በማድረግ እዚህ ላይ ፔስት አድርገው ያስገቡና ይላኩት።" +              
-              "👇👇👇",
+              "2. የግብይቱን መለያ ቁጥር ወይም ሊንኩን፣ ካልሆነም አጭር የጽሑፍ መልዕክቱን (SMS) ኮፒ በማድረግ እዚህ ላይ ፔስት አድርገው ያስገቡና ይላኩት።\n\n" +              
+              "⚠️አጭር የፅሁፍ መልዕክት(SMS) ሲልኩ ከግብይቱ መለያ ቁጥር በስተቀር የምናየውም ሆነ መዝግበን የምንይዘው መረጃ እንደሌለ ከወዲሁ ማሳወቅ እንወዳለን።\n\n" +
+              "ይላኩት👇👇👇\n\n",
               {
                   parse_mode: "Markdown"
               });
