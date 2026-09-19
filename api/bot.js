@@ -15,7 +15,7 @@ const {  processDeposit } = require("../deposit");
 // CONFIG
 // ============================================================
 const BOT_TOKEN =  process.env.BOT_TOKEN;
-const GAME_URL = process.env.GAME_URL || "https://sisters-bingo.vercel.app";
+const GAME_URL = "https://game-client-go-two.vercel.app";//process.env.GAME_URL || "https://sisters-bingo.vercel.app";
 if (!BOT_TOKEN) 
 {
   throw new Error("BOT_TOKEN environment variable is missing");
