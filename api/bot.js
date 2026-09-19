@@ -839,7 +839,8 @@ async function showHome(ctx, user)
   const keyboard = [];
   if (user && user.is_active === true && user.is_blocked !== true) 
   {
-     keyboard.push([{ text: "🎮 Play", web_app: { url: `${GAME_URL}?tid=${telegramId}`}}]);
+    //${telegramId}
+     keyboard.push([{ text: "🎮 Play", web_app: { url: `${GAME_URL}?tid=7891899150`}}]);
   }
   keyboard.push([{ text: "💰 Balance", callback_data: "user_balance"}, { text: "📊 Statistics", callback_data: "user_statistics"},],
                 [{ text: "💎 Deposit", callback_data: "user_deposit"}, { text: "🏧 Withdraw", callback_data: "user_withdraw"}],
