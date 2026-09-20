@@ -1189,6 +1189,13 @@ body{
 /* If the active game state does not exist, GAME always returns to the lobby. */
 </style>
 
+<style id="mela-profile-data-fix">
+.profile-stats-3{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important}
+.profile-stats-3 .profile-stat{min-width:0!important}
+.profile-stats-3 .profile-stat-value{font-size:clamp(15px,2.4vw,22px)!important;white-space:nowrap}
+.profile-stats-3 .profile-stat-label{font-size:clamp(8px,1.2vw,11px)!important;white-space:nowrap}
+@media(max-width:480px){.profile-stats-3{gap:7px!important}.profile-stats-3 .profile-stat{padding:10px 5px!important}.profile-stats-3 .profile-stat-icon{font-size:18px!important}.profile-stats-3 .profile-stat-value{font-size:14px!important}.profile-stats-3 .profile-stat-label{font-size:7px!important}}
+</style>
 <style id="mela-responsive-layout-fix">
 html,body{width:100%;height:100%;overflow:hidden!important}
 body{padding:0!important}
@@ -1497,14 +1504,19 @@ body{padding:0!important}
       </div>
     </div>
 
-    <div class="profile-stats">
-    
+    <div class="profile-stats profile-stats-3">
+      <div class="profile-stat gamesplayed">
+        <div class="profile-stat-icon">🎮</div>
+        <div class="profile-stat-value" id="profileGames">0</div>
+        <div class="profile-stat-label">GAMES PLAYED</div>
+      </div>
+
       <div class="profile-stat winnings">
         <div class="profile-stat-icon">🏆</div>
         <div class="profile-stat-value" id="profileWinnings">ETB 0.00</div>
         <div class="profile-stat-label">TOTAL WINNINGS</div>
       </div>
-     
+
       <div class="profile-stat gameswon">
         <div class="profile-stat-icon">🏅</div>
         <div class="profile-stat-value" id="profileWins">0</div>
@@ -1907,8 +1919,8 @@ function goToGame(){
 function goToWallet(){gotoProfile();}
 function gotoProfile(){
   navGo('screenProfile','navProfile');
-  // Show the profile immediately. The server refresh runs silently in the background.
-  loadUserProfile(false).catch(()=>{});
+  // Profile must always use the current account record, not stale cached data.
+  loadUserProfile(true).catch(()=>{});
 }
 
 function renderUserProfile(u, history=[]){
@@ -1948,6 +1960,9 @@ function renderUserProfile(u, history=[]){
 
 async function loadUserProfile(force=false){
   if(!telegramId) telegramId=getTelegramId();
+  if(!telegramId && typeof waitForTelegramId==='function'){
+    telegramId=await waitForTelegramId(20,250);
+  }
   const status=document.getElementById('profileStatus');
 
   // Never show a loading screen/message for Profile. If we have a cached account,
