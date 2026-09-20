@@ -1307,6 +1307,28 @@ body{padding:0!important}
   setTimeout(()=>{fixMelaCardPool();syncLobbyViewportLayout();},100);
 })();
 </script>
+
+<style id="mela-deep-fixes-20260920">
+.dot.offline{width:auto!important;min-width:58px!important;height:18px!important;padding:2px 6px!important;border-radius:10px!important;background:#ef4444!important;color:#fff!important;font-size:7px!important;font-weight:900!important;line-height:14px!important;text-align:center!important;white-space:nowrap!important;box-shadow:0 0 8px rgba(239,68,68,.28)!important;}
+.dot.on{background:var(--green)!important;color:transparent!important;width:8px!important;min-width:8px!important;height:8px!important;padding:0!important;}
+#screenGame.spectator-mode{padding:clamp(5px,1vh,10px) clamp(6px,2vw,12px)!important;overflow:hidden!important;}
+#screenGame.spectator-mode>#spectatorView{height:100%!important;min-height:0!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;gap:0!important;}
+#screenGame.spectator-mode .spectator-stats-row{flex:0 0 auto!important;}
+#screenGame.spectator-mode .spectator-progress{flex:0 0 5px!important;}
+#screenGame.spectator-mode .spectator-bingo-header{flex:0 0 32px!important;}
+#screenGame.spectator-mode .spectator-wait-card{flex:0 1 clamp(112px,22vh,190px)!important;min-height:112px!important;max-height:190px!important;padding:clamp(8px,1.5vh,16px)!important;margin:0 0 7px!important;}
+#screenGame.spectator-mode .spectator-eyes{font-size:clamp(25px,5vh,40px)!important;margin-bottom:clamp(5px,1vh,12px)!important;}
+#screenGame.spectator-mode .spectator-wait-title{font-size:clamp(10px,1.7vh,13px)!important;margin-bottom:5px!important;}
+#screenGame.spectator-mode .spectator-wait-text{font-size:clamp(9px,1.5vh,12px)!important;line-height:1.35!important;}
+#screenGame.spectator-mode .spectator-wait-sub{font-size:9px!important;margin-top:3px!important;}
+#screenGame.spectator-mode .spectator-leave-btn{margin-top:8px!important;padding:7px 14px!important;min-width:150px!important;font-size:10px!important;}
+#screenGame.spectator-mode .spectator-tracker-wrap{flex:1 1 auto!important;min-height:0!important;overflow:hidden!important;margin-top:0!important;padding:6px!important;display:flex!important;flex-direction:column!important;}
+#screenGame.spectator-mode .spectator-tracker-title{flex:0 0 auto!important;padding-bottom:5px!important;}
+#screenGame.spectator-mode .spectator-tracker-grid{flex:1 1 auto!important;min-height:0!important;overflow:hidden!important;align-content:stretch!important;grid-template-rows:repeat(5,minmax(0,1fr))!important;}
+#screenGame.spectator-mode .spectator-tracker-grid .t-ball{min-height:0!important;height:auto!important;padding:1px 0!important;display:flex!important;align-items:center!important;justify-content:center!important;font-size:clamp(6px,1.1vh,8px)!important;}
+@media(max-width:420px){#screenGame.spectator-mode .spectator-wait-card{flex-basis:clamp(100px,19vh,145px)!important;min-height:100px!important;max-height:145px!important;}#screenGame.spectator-mode .spectator-tracker-grid .t-ball{font-size:6px!important;}}
+</style>
+
 </head>
 <body>
 
@@ -1864,14 +1886,17 @@ function goToGame(){
 
   myRoomId=roomId;
   if(saved?.stakeId) myStakeId=saved.stakeId;
-  if(activeGamePhase==='spectating'){
+  if(activeGamePhase==='playing' || activeGamePhase==='countdown'){
+    // Reconnect first. Ownership is resolved by the server using Telegram ID.
+    navGo(activeGamePhase==='countdown'?'screenCards':'screenGame','navGame');
+    setSpectatorMode(false);
+    if(activeGamePhase==='playing' && myCardId && myCardNumbers.length) renderBothCards();
+    if(telegramId) wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
+    refreshCardCells();
+  }else if(activeGamePhase==='spectating'){
     navGo('screenGame','navGame');
     renderSpectatorView({calledNumbers:Array.from(calledNumbersSet||[])});
-  }else if(activeGamePhase==='playing'){
-    navGo('screenGame','navGame');
-    setSpectatorMode(false);
-    if(myCardId && myCardNumbers.length) renderBothCards();
-    refreshCardCells();
+    if(telegramId) wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
   }else{
     navGo('screenCards','navGame');
     if(activeGamePhase==='countdown') showSavedCountdown();
@@ -1934,15 +1959,8 @@ async function loadUserProfile(force=false){
     try{ id=normalizeTelegramId(localStorage.getItem('melaBingoTelegramId')); }catch(e){}
   }
 
-  // Render the last successfully loaded profile instantly while the network refreshes.
-  if(id && !force){
-    try{
-      const cached=JSON.parse(localStorage.getItem('melaBingoProfile')||'null');
-      if(cached && cached.telegramId===id && cached.user){
-        renderUserProfile(cached.user,Array.isArray(cached.history)?cached.history:[]);
-      }
-    }catch(e){}
-  }
+  // Never treat cached profile statistics as authoritative. The first app sync and
+  // every later profile refresh come from the current database response.
 
   if(!id){
     // The normal app/account flow can still resolve Telegram authentication later.
@@ -1994,11 +2012,17 @@ function formatHistoryDate(value){
 function connect(){
   const proto=API_BASE.startsWith('https:')?'wss://':'ws://';
   ws=new WebSocket(proto+new URL(API_BASE).host);
-  ws.onopen=()=>{
-  document.getElementById('connDot').classList.add('on');
-};
-  ws.onclose=()=>{document.getElementById('connDot').classList.remove('on');setTimeout(connect,3000);};
-  ws.onerror=()=>{};
+  const setConnectionStatus=(online)=>{
+    const dot=document.getElementById('connDot');
+    if(!dot) return;
+    dot.classList.toggle('on',!!online);
+    dot.classList.toggle('offline',!online);
+    dot.innerText=online?'':'ከመስመር ውጭ';
+    dot.setAttribute('aria-label',online?'Online':'ከመስመር ውጭ');
+  };
+  ws.onopen=()=>setConnectionStatus(true);
+  ws.onclose=()=>{setConnectionStatus(false);setTimeout(connect,3000);};
+  ws.onerror=()=>setConnectionStatus(false);
   ws.onmessage=e=>{try{handle(JSON.parse(e.data));}catch(err){console.error(err);}};
 }
 function wsSend(obj){if(ws&&ws.readyState===1)ws.send(JSON.stringify(obj));}
@@ -2104,6 +2128,7 @@ function handle(msg){
         // First load the account directly over HTTPS. This breaks the old failure
         // mode where a WebSocket lookup returned a fake zero/unregistered snapshot.
         await refreshAccountProfile(6,500);
+        await loadUserProfile(true).catch(()=>{});
         sendTelegramAuth(tid);
       });
       break;
@@ -2127,7 +2152,7 @@ function handle(msg){
   //document.getElementById('welcomeName').innerText=myName||'Player';
   // Always reconcile from the HTTPS account endpoint as the final authority.
   refreshAccountProfile(10,500);
-
+  loadUserProfile(true).catch(()=>{});
 
   document.getElementById('welcomeName').innerText=myName||'Player';
   //document.getElementById('welcomeStatus').innerText=msg.isRegistered?'Welcome back! 👋':'Registered!';
@@ -2162,21 +2187,25 @@ function handle(msg){
    case 'joinedRoom':
       localStorage.setItem('roomId', msg.roomId);
       myRoomId=msg.roomId; myStakeId=msg.stakeId; localStorage.setItem('roomId',msg.roomId); localStorage.setItem('stakeId',msg.stakeId);
+      // A reconnect can return the existing owner's cards while the room is still
+      // waiting/counting down. Never discard those IDs just because the room is not playing yet.
+      if(msg.cardId){ myCardId=msg.cardId; myCardNumbers=Array.isArray(msg.cardNumbers)?msg.cardNumbers:myCardNumbers; }
+      if(msg.cardId2){ myCardId2=msg.cardId2; myCardNumbers2=Array.isArray(msg.cardNumbers2)?msg.cardNumbers2:myCardNumbers2; }
       if(msg.status==='countdown'){
         activeGamePhase='countdown'; activeCountdownLeft=Number(msg.countdown||msg.countdownLeft||activeCountdownLeft||0);
       }else if(msg.status==='playing'){
         activeGamePhase=(myCardId||myCardId2)?'playing':'spectating';
-      }else if(!myCardId){
+      }else if(myCardId||myCardId2){
+        activeGamePhase='countdown'; activeCountdownLeft=0;
+      }else{
         activeGamePhase='none'; activeCountdownLeft=0;
       }
       saveActiveGameState(activeGamePhase);
-      if(msg.status!=='countdown' && msg.status!=='playing') { myCardId=null; myCardId2=null; }
       resetAutomaticGameState();
       activePlayers=[]; updateActivePlayers(msg.players||msg.activePlayers||[]);
       if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
         setBalance(msg.balance);
       }
-      // Room balance can be stale after a deposit/stake transaction; re-read the Telegram/database account.
       refreshAccountProfile(4,300);
       resetSlotUI();
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
@@ -2184,14 +2213,15 @@ function handle(msg){
       if(msg.status==='playing'){
         if(myCardId||myCardId2){
           activeGamePhase='playing'; saveActiveGameState('playing');
-          navGo('screenGame','navGame'); setSpectatorMode(false);
+          navGo('screenGame','navGame'); setSpectatorMode(false); renderBothCards(); refreshCardCells();
         }else{
           renderSpectatorView({playerCount:msg.playerCount||0,stakeAmount:msg.stakeAmount||0});
           navGo('screenGame','navGame');
         }
       } else {
-        navGo('screenCards','navCards');
+        navGo('screenCards','navGame');
         if(msg.status==='countdown') showSavedCountdown();
+        reapplyMyCardPoolOwnership();
       }
       break;
 

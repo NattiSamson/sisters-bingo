@@ -1056,6 +1056,50 @@ wss.on('connection',(ws)=>{
 
                  await leaveRoom(client);
 
+              // ── Re-link an existing player before spectator handling. ──
+              // A page/app reload creates a new WebSocket/playerId. If this Telegram
+              // account already owns cards in the same stake room, it is the SAME
+              // player and must never be added as a spectator/new player.
+              const reconnectTid=String(client.telegramId||msg.telegramId||'').trim();
+              if(reconnectTid){
+                const existingRoom=Object.values(rooms).find(r=>
+                  r.stakeId===msg.stakeId &&
+                  (r.status==='waiting'||r.status==='countdown'||r.status==='playing') &&
+                  r.players.some(p=>String(p.telegramId||'')===reconnectTid && (p.cardId||p.cardId2||p.hasPaid))
+                );
+                if(existingRoom){
+                  const ep=existingRoom.players.find(p=>String(p.telegramId||'')===reconnectTid);
+                  const oldClient=Object.values(clients).find(c=>c.telegramId===reconnectTid&&c.playerId!==client.playerId);
+                  if(oldClient) delete clients[oldClient.playerId];
+                  ep.playerId=client.playerId;
+                  ep.ws=ws;
+                  ep.telegramId=reconnectTid;
+                  client.telegramId=reconnectTid;
+                  client.roomId=existingRoom.roomId;
+                  await refreshClientBalance(client);
+                  const card=ep.cardId?getCard(ep.cardId):null;
+                  const card2=ep.cardId2?getCard(ep.cardId2):null;
+                  if(existingRoom.status==='playing'){
+                    send(ws,{type:'reconnected',roomId:existingRoom.roomId,stakeId:existingRoom.stakeId,
+                      cardId:ep.cardId,cardNumbers:card?card.numbers:[],
+                      cardId2:ep.cardId2||null,cardNumbers2:card2?card2.numbers:[],
+                      calledNumbers:existingRoom.calledNumbers,pot:existingRoom.pot,
+                      playerCount:existingRoom.players.length,balance:client.balance});
+                  }else{
+                    send(ws,{type:'joinedRoom',roomId:existingRoom.roomId,stakeId:existingRoom.stakeId,
+                      balance:client.balance,status:existingRoom.status,
+                      countdownLeft:existingRoom.status==='countdown'?existingRoom.countdownLeft:0,
+                      countdown:existingRoom.status==='countdown'?existingRoom.countdownLeft:0,
+                      playerCount:existingRoom.players.filter(p=>p.hasPaid).length,
+                      stakeAmount:existingRoom.stake,
+                      cardId:ep.cardId||null,cardNumbers:card?card.numbers:[],
+                      cardId2:ep.cardId2||null,cardNumbers2:card2?card2.numbers:[]});
+                    broadcastCardPool(existingRoom);
+                  }
+                  broadcastLobby();
+                  break;
+                }
+              }
 
               // ── If a game for this stake is already in progress, join as a spectator ──
 

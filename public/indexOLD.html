@@ -87,7 +87,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .bingo-cell.marked{background:var(--purple)!important;color:#fff!important}
 .bingo-cell.called-not-marked{background:#fff8dc!important;color:#8b6914!important}
 .bingo-cell.free{background:var(--purple)!important;color:#fff!important;cursor:default}
-.bingo-btn{display:none!important;align-items:center;justify-content:center;gap:8px;width:100%;background:#271447;border:1px solid #3d226b;color:var(--gray);font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;padding:14px;border-radius:12px;cursor:pointer;margin-top:14px;transition:all .2s}
+.bingo-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:#271447;border:1px solid #3d226b;color:var(--gray);font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;padding:14px;border-radius:12px;cursor:pointer;margin-top:14px;transition:all .2s}
 .bingo-btn.ready{animation:flashPulse .7s infinite alternate;background:var(--green)!important;color:#fff!important;border-color:#fff!important;box-shadow:0 0 22px var(--green)}
 .bingo-btn.locked{background:#1a0a0a!important;color:#666!important;cursor:not-allowed;border-color:#333!important}
 @keyframes flashPulse{0%{transform:scale(1);filter:brightness(1)}100%{transform:scale(1.02);filter:brightness(1.25)}}
@@ -107,6 +107,17 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .wallet-tab.active{background:var(--purple);color:#fff}
 .wallet-section{display:none}
 .wallet-section.active{display:block}
+.profile-list{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.profile-card{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:13px}
+.profile-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:7px}
+.profile-date{font-size:11px;color:var(--gray)}
+.profile-result{font-size:12px;font-weight:900}
+.profile-result.win{color:var(--green)}
+.profile-result.loss{color:var(--red)}
+.profile-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0}
+.profile-key{color:var(--gray)}
+.profile-value{font-weight:700}
+.profile-empty{background:var(--card);border:1px solid #3c2463;border-radius:12px;padding:30px 16px;text-align:center;color:var(--gray);font-size:13px}
 /* ───────── PROFILE — MELA BINGO NEON DASHBOARD ───────── */
 .profile-page{padding:10px 0 24px}
 .profile-hero{
@@ -170,6 +181,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 @media(max-width:380px){
   .profile-hero{padding:18px 12px 16px}.profile-hero-row{gap:12px}.profile-avatar{width:76px;height:76px;flex-basis:76px;font-size:27px}.profile-avatar:before{font-size:26px;top:-21px}.profile-name{font-size:23px}.profile-wallet-value{font-size:21px}.profile-stat{min-height:116px}.profile-stat-value{font-size:16px}.profile-stat-icon{font-size:23px}
 }
+
 .form-group{margin-bottom:14px}
 .form-label{font-size:12px;color:var(--gray);margin-bottom:5px;display:block}
 .form-input{width:100%;background:var(--card);border:1px solid #4a2d7a;color:#fff;padding:12px;border-radius:8px;font-size:15px;outline:none;transition:border-color .2s}
@@ -440,29 +452,6 @@ body{padding-bottom:72px;background:#0b061c;}
   scrollbar-width:thin;
   scrollbar-color:#6d3db7 transparent;
 }
-#screenCards .pool-grid{
-  width:100%!important;
-  box-sizing:border-box!important;
-  grid-template-columns:repeat(auto-fit,minmax(38px,1fr))!important;
-  grid-auto-rows:38px!important;
-  justify-content:stretch!important;
-  align-content:start!important;
-  gap:6px!important;
-  padding:6px!important;
-  height:calc(100dvh - 225px)!important;
-  min-height:0!important;
-  max-height:none!important;
-}
-#screenCards .pool-btn{
-  width:100%!important;
-  min-width:0!important;
-  height:38px!important;
-  padding:0!important;
-  line-height:38px!important;
-  font-size:9px!important;
-  border-radius:9px!important;
-  box-sizing:border-box!important;
-}
 #screenCards .pool-grid::-webkit-scrollbar{width:7px;}
 #screenCards .pool-grid::-webkit-scrollbar-thumb{background:#6d3db7;border-radius:8px;}
 #screenCards .pool-btn{
@@ -620,6 +609,44 @@ body{padding-bottom:72px;background:#0b061c;}
   #screenLobby .stake-copy{margin-left:10px;}
   #screenLobby .stake-etb{font-size:22px;}
 }
+@media(max-width:480px){
+  #screenLobby .lobby-stake-panel{
+    width:100%!important;
+    box-sizing:border-box!important;
+    padding:clamp(7px,2vw,12px)!important;
+    border-radius:16px!important;
+  }
+  #screenLobby .lobby-stake-heading{
+    gap:6px!important;
+    margin-bottom:clamp(6px,1.5vh,10px)!important;
+    font-size:clamp(14px,4vw,18px)!important;
+  }
+  #screenLobby .lobby-stake-heading span{width:24px!important;}
+  #screenLobby .stakes-grid{
+    width:100%!important;
+    gap:clamp(6px,1.8vw,10px)!important;
+  }
+  #screenLobby .stake-card{
+    width:100%!important;
+    min-width:0!important;
+    min-height:clamp(44px,11vw,56px)!important;
+    height:auto!important;
+    padding:clamp(6px,1.8vw,10px) clamp(7px,2vw,12px)!important;
+    border-radius:14px!important;
+    box-sizing:border-box!important;
+  }
+  #screenLobby .stake-play-icon{
+    width:clamp(34px,9vw,42px)!important;
+    height:clamp(34px,9vw,42px)!important;
+    flex-basis:clamp(34px,9vw,42px)!important;
+    font-size:clamp(14px,4vw,17px)!important;
+  }
+  #screenLobby .stake-copy{margin-left:clamp(7px,2vw,10px)!important;}
+  #screenLobby .stake-etb{font-size:clamp(17px,5vw,22px)!important;}
+  #screenLobby .stake-info{font-size:clamp(7px,2.2vw,9px)!important;line-height:1.15!important;}
+  #screenLobby .stake-arrow{font-size:clamp(28px,8vw,38px)!important;margin-right:0!important;}
+}
+
 
 /* ───────── MELA BINGO BRIGHT BLUE/PURPLE DESIGN SYSTEM ─────────
    Visual-only theme layer. Gameplay, balance, card charging and navigation logic remain unchanged. */
@@ -827,9 +854,6 @@ body{
 .bottom-nav .nav-item.active .nav-svg svg{stroke:#55dcff!important;filter:drop-shadow(0 0 5px rgba(85,220,255,.3))}
 
 /* Responsive card grid remains 10 columns, but fills the wider panel naturally */
-@media(max-width:420px){
-  #screenCards .pool-btn{border-radius:8px!important}
-}
 
 
 /* ───────── ACTIVE GAME PLAY AREA — BRIGHT COMPACT STYLE ─────────
@@ -1091,7 +1115,198 @@ body{
   .spectator-wait-card{min-height:245px;}
 }
 
+
+/* FINAL RESPONSIVE CARD GRID + NAVIGATION FIXES */
+#screenCards{
+  max-width:1000px!important;
+  width:100%!important;
+  box-sizing:border-box!important;
+}
+/* Under 480px: keep exactly 8 cards per row (1-8, 9-16, ...).
+   The pool itself is allowed to become shorter as the viewport gets smaller. */
+#screenCards .pool-grid{
+  width:100%!important;
+  display:grid!important;
+  grid-template-columns:repeat(8,minmax(0,1fr))!important;
+  grid-auto-rows:42px!important;
+  gap:6px!important;
+  align-content:start!important;
+  justify-content:stretch!important;
+  padding:6px!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  box-sizing:border-box!important;
+}
+#screenCards .pool-btn{
+  width:100%!important;
+  min-width:0!important;
+  height:42px!important;
+  min-height:42px!important;
+  max-height:42px!important;
+  padding:0!important;
+  margin:0!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  text-align:center!important;
+  line-height:1!important;
+  font-size:10px!important;
+  font-weight:900!important;
+  font-family:'Inter',sans-serif!important;
+  box-sizing:border-box!important;
+  border-radius:8px!important;
+}
+/* 480px and above: use the existing responsive wider-screen layout. */
+@media(min-width:480px){
+  #screenCards .pool-grid{
+    grid-template-columns:repeat(auto-fit,minmax(46px,1fr))!important;
+    grid-auto-rows:44px!important;
+    gap:8px!important;
+    padding:8px!important;
+  }
+  #screenCards .pool-btn{
+    height:44px!important;
+    min-height:44px!important;
+    max-height:44px!important;
+    font-size:12px!important;
+    border-radius:9px!important;
+  }
+}
+@media(min-width:761px){
+  #screenCards .pool-grid{
+    grid-template-columns:repeat(auto-fit,minmax(58px,1fr))!important;
+    grid-auto-rows:46px!important;
+    gap:9px!important;
+    padding:9px!important;
+  }
+  #screenCards .pool-btn{
+    height:46px!important;
+    min-height:46px!important;
+    max-height:46px!important;
+    font-size:12px!important;
+  }
+}
+/* If the active game state does not exist, GAME always returns to the lobby. */
 </style>
+
+<style id="mela-responsive-layout-fix">
+html,body{width:100%;height:100%;overflow:hidden!important}
+body{padding:0!important}
+.navbar{position:fixed!important;top:0;left:0;right:0;height:64px;z-index:1000;flex-shrink:0}
+.bottom-nav{position:fixed!important;left:0;right:0;bottom:0;height:64px;z-index:1000}
+.screen{position:fixed!important;left:0;right:0;top:64px;bottom:64px;width:100%!important;max-width:none!important;margin:0!important;padding:10px 12px!important;overflow:hidden!important;animation:none!important}
+.screen.active{display:flex!important;flex-direction:column!important}
+#screenLobby{background:radial-gradient(circle at 12% 7%,rgba(124,92,255,.35),transparent 32%),radial-gradient(circle at 92% 36%,rgba(56,217,255,.2),transparent 28%),linear-gradient(155deg,#1c236d 0%,#17164f 48%,#0a1030 100%)!important;padding:clamp(8px,2vh,18px) clamp(10px,3vw,22px)!important;gap:clamp(6px,1.4vh,12px)!important;overflow:hidden!important;grid-template-rows:30fr 50fr 20fr!important;align-items:stretch!important}
+#screenLobby.active{display:grid!important}
+#screenLobby .welcome-banner,#screenLobby .lobby-stake-panel,#screenLobby .lobby-players-card{height:100%!important;min-height:0!important;max-height:none!important;overflow:hidden!important;margin:0!important;box-sizing:border-box!important}
+#screenLobby .welcome-banner{padding:clamp(8px,1.8vh,18px) 10px!important}
+#screenLobby .lobby-stake-panel{padding:clamp(7px,1.5vh,14px) 10px!important;display:flex!important;flex-direction:column!important}
+#screenLobby .lobby-stake-heading{flex:0 0 auto!important;margin-bottom:clamp(5px,1vh,10px)!important;font-size:clamp(14px,2.2vh,19px)!important}
+#screenLobby .stakes-grid{flex:1 1 auto!important;min-height:0!important;gap:clamp(5px,1vh,10px)!important;display:flex!important;flex-direction:column!important}
+#screenLobby .stake-card{flex:1 1 0!important;min-height:0!important;height:auto!important;padding:clamp(5px,1vh,10px) 10px!important}
+#screenLobby .lobby-players-card{padding:clamp(7px,1.3vh,13px)!important}
+#screenCards{padding:clamp(6px,1.2vh,12px) clamp(8px,2.5vw,18px)!important;gap:0!important;margin:0 auto!important}
+#screenCards .card-selection-top{flex:0 0 auto!important;min-height:0!important;margin:0 0 clamp(5px,1vh,9px)!important;padding:clamp(4px,.9vh,8px) clamp(6px,1.8vw,12px)!important;border-radius:12px!important}
+#screenCards #cdPrizePot{flex:0 0 auto!important;min-height:0!important;margin:0 0 clamp(5px,1vh,9px)!important;padding:clamp(5px,1vh,9px) 10px!important;font-size:clamp(10px,1.8vh,14px)!important;line-height:1.2!important}
+#screenCards #poolGrid{flex:1 1 auto!important;min-height:0!important;height:auto!important;max-height:none!important;overflow-y:auto!important;overflow-x:hidden!important;align-content:start!important;grid-auto-flow:row!important}
+#screenCards .pool-btn{width:100%!important;min-width:0!important;height:clamp(34px,5.5vh,52px)!important;min-height:34px!important;line-height:1!important;padding:2px!important;font-size:clamp(10px,1.8vh,15px)!important}
+/* Keep rows packed while allowing the number of columns to respond to width. */
+#screenCards #poolGrid{grid-template-columns:repeat(8,minmax(0,1fr))!important;grid-auto-rows:42px!important;gap:6px!important;padding:6px!important}
+@media(min-width:480px){#screenCards #poolGrid{grid-template-columns:repeat(auto-fit,minmax(46px,1fr))!important;grid-auto-rows:44px!important;gap:8px!important;padding:8px!important}}
+@media(min-width:761px){#screenCards #poolGrid{grid-template-columns:repeat(auto-fit,minmax(58px,1fr))!important;grid-auto-rows:46px!important;gap:9px!important;padding:9px!important}}
+#screenGame{padding:clamp(6px,1vh,10px) clamp(7px,2vw,12px)!important;overflow:hidden!important}
+#screenGame .game-stats-row{flex:0 0 auto!important}
+#screenGame .claim-bar-wrap{flex:0 0 auto!important}
+#screenGame #cardsWrap{flex:0 0 auto!important;min-height:0!important}
+#screenGame .tracker-wrap{flex:0 0 auto!important}
+@media(max-height:600px){
+ #screenLobby .welcome-banner{padding:7px!important}
+ #screenLobby .lobby-stake-panel{padding:7px!important}
+ #screenLobby .lobby-stake-heading{margin-bottom:6px!important}
+ #screenLobby .stake-card{min-height:42px!important;padding:6px!important}
+ #screenLobby .lobby-players-card{padding:6px!important}
+ #screenCards .card-selection-top{padding:3px 6px!important;margin-bottom:4px!important}
+ #screenCards #cdPrizePot{padding:4px 8px!important;margin-bottom:4px!important}
+}
+@media(max-width:360px){
+ #screenCards #poolGrid{grid-template-columns:repeat(8,minmax(0,1fr))!important;grid-auto-rows:36px!important;gap:4px!important;padding:4px!important}
+ #screenCards .pool-btn{height:36px!important;min-height:36px!important;max-height:36px!important;font-size:9px!important}
+}
+</style>
+
+<style id="mela-fixed-eight-card-pool">
+/* Card pool: exactly 8 cards per row at every viewport width.
+   On 480px+ screens the pool is capped at 769px and centered. */
+#screenCards #poolGrid{
+  display:grid!important;
+  grid-template-columns:repeat(8,minmax(0,1fr))!important;
+  width:100%!important;
+  max-width:769px!important;
+  margin-left:auto!important;
+  margin-right:auto!important;
+  box-sizing:border-box!important;
+  align-content:start!important;
+  grid-auto-flow:row!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+}
+@media(min-width:480px){
+  #screenCards #poolGrid{
+    width:min(100%,769px)!important;
+    max-width:769px!important;
+    grid-template-columns:repeat(8,minmax(0,1fr))!important;
+    grid-auto-rows:46px!important;
+    gap:9px!important;
+    padding:9px!important;
+    margin-left:auto!important;
+    margin-right:auto!important;
+  }
+}
+@media(max-width:479px){
+  #screenCards #poolGrid{
+    width:100%!important;
+    max-width:769px!important;
+    grid-template-columns:repeat(8,minmax(0,1fr))!important;
+    grid-auto-rows:42px!important;
+    gap:6px!important;
+    padding:6px!important;
+    margin-left:auto!important;
+    margin-right:auto!important;
+  }
+}
+</style>
+<script>
+(function(){
+  function syncLobbyViewportLayout(){
+    const lobby=document.getElementById('screenLobby');
+    if(!lobby) return;
+    const items=lobby.querySelectorAll('.welcome-banner,.lobby-stake-panel,.lobby-players-card');
+    if(items.length!==3) return;
+    const style=getComputedStyle(lobby);
+    const gap=parseFloat(style.rowGap||style.gap)||0;
+    const innerHeight=Math.max(0,lobby.clientHeight);
+    const availableHeight=Math.max(0,innerHeight-gap*2);
+    const rowHeights=[availableHeight*0.30,availableHeight*0.50,availableHeight*0.20];
+    lobby.style.gridTemplateRows=rowHeights.map(h=>`${h}px`).join(' ');
+    items.forEach((el,i)=>{ el.style.height=rowHeights[i]+'px'; el.style.minHeight='0px'; });
+  }
+  function fixMelaCardPool(){
+    const pool=document.getElementById('poolGrid');
+    if(!pool) return;
+    pool.style.gridTemplateColumns='repeat(8,minmax(0,1fr))';
+    pool.style.maxWidth='769px';
+    pool.style.marginLeft='auto';
+    pool.style.marginRight='auto';
+    pool.style.boxSizing='border-box';
+    pool.style.width=window.innerWidth>=480 ? 'min(100%, 769px)' : '100%';
+  }
+  document.addEventListener('DOMContentLoaded',()=>{fixMelaCardPool();syncLobbyViewportLayout();});
+  window.addEventListener('resize',()=>{fixMelaCardPool();syncLobbyViewportLayout();},{passive:true});
+  window.addEventListener('orientationchange',()=>setTimeout(()=>{fixMelaCardPool();syncLobbyViewportLayout();},50),{passive:true});
+  window.addEventListener('load',syncLobbyViewportLayout,{once:true});
+  setTimeout(()=>{fixMelaCardPool();syncLobbyViewportLayout();},100);
+})();
+</script>
 </head>
 <body>
 
@@ -1101,16 +1316,16 @@ body{
   </div>
   <div class="header-actions">
     <button class="sound-btn" id="soundBtn" onclick="toggleSound()" title="Toggle sound">🔊</button>
-    <div class="balance-pill" id="balanceEl" onclick="gotoProfile()">ETB 0.00</div>
+    <div class="balance-pill" id="balanceEl" onclick="goToWallet()">ETB 0.00</div>
   </div>
 </div>
 
-<div id="screenLoading" class="screen active">
+<div id="screenLoading" class="screen">
   <div class="loading-spinner"></div>
   <div class="loading-text" id="loadingText">Connecting...</div>
 </div>
 
-<div id="screenLobby" class="screen">
+<div id="screenLobby" class="screen active">
   <div class="welcome-banner">
     <div class="lobby-hero-art" aria-hidden="true">
       <div class="lobby-crown">♛</div>
@@ -1277,6 +1492,7 @@ body{
     <div id="profileStatus" class="profile-status" style="display:none"></div>
   </div>
 </div>
+
 
 <div class="winner-overlay" id="winnerOverlay">
   <div class="confetti-row" id="resultConfetti">🎊🎉🎊🎉🎊</div>
@@ -1455,20 +1671,38 @@ async function refreshAccountBalance(retries=6, delayMs=500){
   return refreshAccountProfile(retries,delayMs);
 }
 function goScreen(id){
-  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  // Screen visibility and bottom-nav highlighting are separate concerns.
+  // Explicitly hide every screen before showing the requested one so the
+  // lobby can never remain visible behind Profile or another page.
+  document.querySelectorAll('.screen').forEach(s=>{
+    s.classList.remove('active');
+    s.style.display='none';
+  });
   const target=document.getElementById(id);
-  if(target) target.classList.add('active');
-  // A finished-round result is an overlay, not a screen. When switching back
-  // to any normal app screen, force the overlay completely out of the way.
+  if(target){
+    target.classList.add('active');
+    target.style.display='flex';
+  }
   if(id==='screenCards' || id==='screenGame' || id==='screenLobby'){
     const overlay=document.getElementById('winnerOverlay');
     if(overlay){ overlay.classList.remove('show'); overlay.style.display='none'; }
   }
 }
+function setGameNavActive(){
+  document.querySelectorAll('.bottom-nav .nav-item').forEach(el=>el.classList.remove('active'));
+  const gameNav=document.getElementById('navGame');
+  if(gameNav) gameNav.classList.add('active');
+}
+
 function navGo(screen, navId){
+  // Game is active on Lobby and Cards only. Profile always gets Profile active.
+  const effectiveNav = (screen==='screenLobby' || screen==='screenCards')
+    ? 'navGame'
+    : (screen==='screenProfile' ? 'navProfile' : navId);
+
   goScreen(screen);
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  document.getElementById(navId)?.classList.add('active');
+  document.getElementById(effectiveNav)?.classList.add('active');
 
   // Re-apply the known balance after the new screen becomes visible so a
   // screen's default "ETB 0.00" never overwrites the real displayed balance.
@@ -1600,22 +1834,36 @@ function renderSpectatorView(msg={}){
 }
 
 function goToGame(){
+  // GAME is a navigation entry point, not an error state. Keep the Game tab
+  // highlighted even when there is no active round and we return to the lobby.
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('navGame')?.classList.add('active');
+  // GAME is a navigation entry point, not an error state. If the player has
+  // not selected/joined an active game, always return to the normal lobby.
   restoreActiveGameState();
-  // Only an explicitly saved countdown/playing/spectating state is an active game.
-  // A leftover roomId after a finished round must never block the normal stake menu.
-  if(activeGamePhase!=='countdown' && activeGamePhase!=='playing' && activeGamePhase!=='spectating'){
+  let saved=null;
+  try{ saved=JSON.parse(localStorage.getItem('activeGameState')||'null'); }catch(e){ saved=null; }
+  const phase=String(saved?.phase||activeGamePhase||'none');
+  const roomId=saved?.roomId || (phase!=='none' ? (myRoomId||localStorage.getItem('roomId')) : null);
+
+  if(!roomId || !['countdown','playing','spectating'].includes(phase)){
+    activeGamePhase='none';
+    activeCountdownLeft=0;
+    myRoomId=null;
+    myStakeId=null;
+    try{
+      localStorage.removeItem('activeGameState');
+      localStorage.removeItem('activeGamePhase');
+      localStorage.removeItem('activeCountdownLeft');
+      localStorage.removeItem('roomId');
+      localStorage.removeItem('stakeId');
+    }catch(e){}
     navGo('screenLobby','navGame');
     return;
   }
 
-  const roomId=myRoomId||localStorage.getItem('roomId');
-  if(!roomId){
-    clearActiveGameState();
-    navGo('screenLobby','navGame');
-    return;
-  }
   myRoomId=roomId;
-  if(!myStakeId) myStakeId=localStorage.getItem('stakeId');
+  if(saved?.stakeId) myStakeId=saved.stakeId;
   if(activeGamePhase==='spectating'){
     navGo('screenGame','navGame');
     renderSpectatorView({calledNumbers:Array.from(calledNumbersSet||[])});
@@ -1626,7 +1874,7 @@ function goToGame(){
     refreshCardCells();
   }else{
     navGo('screenCards','navGame');
-    showSavedCountdown();
+    if(activeGamePhase==='countdown') showSavedCountdown();
   }
   if(telegramId) wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
 }
@@ -1741,6 +1989,7 @@ function formatHistoryDate(value){
   return d.toLocaleString();
 }
 
+
 // ─── WEBSOCKET ────────────────────────────────────────────────
 function connect(){
   const proto=API_BASE.startsWith('https:')?'wss://':'ws://';
@@ -1839,39 +2088,30 @@ function handle(msg){
 
     case 'connected':
       myPlayerId=msg.playerId;
-      // Render the normal game menu immediately. Account authentication happens
-      // asynchronously and must never leave the app stuck on the loading screen.
+      // Never replace a known balance with the server's initial connection value (0).
       if(msg.stakes) renderStakes(msg.stakes);
+      
       const pageParam = new URLSearchParams(location.search).get('page');
-      if(pageParam !== 'deposit' && pageParam !== 'withdraw') goScreen('screenLobby');
-      document.getElementById('loadingText').innerText='Loading your account...';
       if(pageParam === 'deposit') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('deposit'); }, 1500);
       if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('withdraw'); }, 1500);
-      // Authenticate as soon as the Telegram ID is available. If it was resolved
-      // before connect(), use it immediately; otherwise wait briefly for Telegram.
-      const existingTid=normalizeTelegramId(telegramId)||getTelegramId();
-      if(existingTid){
-        telegramId=existingTid;
-        refreshAccountProfile(6,400).catch(()=>{});
-        sendTelegramAuth(existingTid);
-      }else{
-        waitForTelegramId(40,250).then(async tid=>{
-          if(!tid){
-            // Do not block the lobby waiting for Telegram initialization.
-            setTimeout(()=>{ const retryId=getTelegramId(); if(retryId) sendTelegramAuth(retryId); },1000);
-            return;
-          }
-          telegramId=tid;
-          refreshAccountProfile(6,400).catch(()=>{});
-          sendTelegramAuth(tid);
-        });
-      }
+      waitForTelegramId(40,250).then(async tid=>{
+        if(!tid){
+          
+          setTimeout(()=>{ const retryId=getTelegramId(); if(retryId) sendTelegramAuth(retryId); },1000);
+          return;
+        }
+        telegramId=tid;
+        // First load the account directly over HTTPS. This breaks the old failure
+        // mode where a WebSocket lookup returned a fake zero/unregistered snapshot.
+        await refreshAccountProfile(6,500);
+        sendTelegramAuth(tid);
+      });
       break;
 
     case 'authRetry':
       // A lookup failure is not an unregistered account. Keep the existing balance
       // and retry with the same verified Telegram ID.
-      document.getElementById('loadingText').innerText='Loading your account...';
+      
       setTimeout(()=>{
         const id=getTelegramId();
         if(id) sendTelegramAuth(id);
@@ -1896,9 +2136,7 @@ function handle(msg){
   // waiting/counting down or officially playing; do not assume a selected card
   // means the game has started.
   restoreActiveGameState();
-  const loadingWasActive=document.getElementById('screenLoading').classList.contains('active');
-  const hasRestorableGame=!!myRoomId && !!telegramId && ['countdown','playing','spectating'].includes(activeGamePhase);
-  if(hasRestorableGame){
+  if(myRoomId && telegramId){
     restoringActiveGame=true;
     if(activeGamePhase==='countdown') navGo('screenCards','navGame');
     else if(activeGamePhase==='playing' || activeGamePhase==='spectating') navGo('screenGame','navGame');
@@ -1908,19 +2146,16 @@ function handle(msg){
         restoringActiveGame=false;
         clearActiveGameState();
         myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null;
-        goScreen('screenLobby');
+        navGo('screenLobby','navGame');
       }
     },6000);
-  } else if(loadingWasActive){
-    // Only the initial loading screen should be replaced automatically.
-    // If the user is already on Profile or another screen, authentication must
-    // not unexpectedly navigate them away.
-    goScreen('screenLobby');
+  } else {
+    navGo('screenLobby','navGame');
   }
   break;
 
     case 'reconnectFailed':
-      restoringActiveGame=false; clearActiveGameState(); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardNumbers=[]; myCardNumbers2=[]; goScreen('screenLobby'); break;
+      restoringActiveGame=false; clearActiveGameState(); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardNumbers=[]; myCardNumbers2=[]; navGo('screenLobby','navGame'); break;
 
    case 'lobbyUpdate': renderStakes(msg.stakes); break;
 
@@ -2122,7 +2357,7 @@ function handle(msg){
       if(telegramId) setTimeout(()=>refreshAccountProfile(3,300),100);
       break;
 
-    case 'leftRoom': clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; navGo('screenLobby'); break;
+    case 'leftRoom': clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; navGo('screenLobby','navGame'); break;
 
     case 'notification': showToast(msg.message, msg.message.startsWith('✅')?'':'error'); break;
 
@@ -2417,6 +2652,41 @@ function resetAutomaticGameState(){
 function updateSlotUI(){}
 function resetSlotUI(){}
 
+// ─── CARD POOL RESPONSIVE LAYOUT ─────────────────────────────
+// Below 480px the card order is always 1-8, 9-16, 17-24, ... .
+// JS reinforces the CSS so the row count cannot change because of browser zoom,
+// orientation changes, or late layout recalculation. The pool height shrinks with
+// the available viewport; the number of columns stays fixed at 8.
+function syncCardPoolResponsiveLayout(){
+  const grid=document.getElementById('poolGrid');
+  if(!grid) return;
+  const small=window.innerWidth < 480;
+  grid.style.gridTemplateColumns=small ? 'repeat(8,minmax(0,1fr))' : '';
+  grid.style.gridAutoFlow='row';
+  if(small) grid.style.gridAutoRows = window.innerWidth <= 360 ? '36px' : '42px';
+  else grid.style.gridAutoRows='';
+  // Keep the scroll container inside the fixed top/bottom navigation area.
+  if(small){
+    const rect=grid.getBoundingClientRect();
+    const available=Math.max(120,window.innerHeight-rect.top-8);
+    grid.style.height=available+'px';
+    grid.style.maxHeight=available+'px';
+  }else{
+    grid.style.height='';
+    grid.style.maxHeight='';
+  }
+}
+window.addEventListener('resize',syncCardPoolResponsiveLayout,{passive:true});
+window.addEventListener('orientationchange',()=>setTimeout(syncCardPoolResponsiveLayout,50),{passive:true});
+if(window.ResizeObserver){
+  const _cardPoolObserver=new ResizeObserver(()=>syncCardPoolResponsiveLayout());
+  window.addEventListener('load',()=>{
+    const g=document.getElementById('poolGrid');
+    if(g) _cardPoolObserver.observe(g);
+    syncCardPoolResponsiveLayout();
+  },{once:true});
+}
+
 // ─── CARD POOL ────────────────────────────────────────────────
 function renderCardPool(pool){
   const grid=document.getElementById('poolGrid');
@@ -2432,6 +2702,7 @@ function renderCardPool(pool){
     if(c.id===myCardId2) btn.onclick=()=>deselectCard(2);
     grid.appendChild(btn);
   });
+  syncCardPoolResponsiveLayout();
 }
 // Patch a single card button in place (used by cardPoolDiff) — avoids re-rendering
 // all 400 buttons just because one card's taken/free state changed.
@@ -2544,7 +2815,7 @@ function leaveRoom(){
   clearActiveGameState();
   localStorage.removeItem('roomId'); localStorage.removeItem('stakeId');
   setSpectatorMode(false);
-  navGo('screenLobby','navHome');
+  navGo('screenLobby','navGame');
 }
 
 // ─── AUDIO SYSTEM ────────────────────────────────────────────
@@ -2607,15 +2878,18 @@ function toggleSound(){
 buildTracker();
 buildSpectatorTracker();
 restoreCachedBalance();
-// Resolve the Telegram identity before opening the WebSocket when possible.
-// This lets the account balance load immediately instead of starting from ETB 0.00.
-telegramId=getTelegramId();
-if(telegramId){
-  refreshAccountProfile(6,400).catch(()=>{});
-}
 connect();
 //--------------------------------------------------------------
 
+
+function ensureGameNavForScreens(){
+  const lobby=document.getElementById('screenLobby');
+  const cards=document.getElementById('screenCards');
+  if((lobby && lobby.classList.contains('active')) || (cards && cards.classList.contains('active'))) setGameNavActive();
+}
+
+window.addEventListener('load',ensureGameNavForScreens);
+window.addEventListener('resize',ensureGameNavForScreens);
 </script>
 </body>
 </html>
