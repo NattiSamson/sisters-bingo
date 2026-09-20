@@ -64,7 +64,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .dual-cards-wrap .bingo-body{gap:3px}
 .dual-cards-wrap .bingo-header{margin-bottom:5px}
 
-/* GAME */
+/* GAME3333 */
 .game-stats-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
 .stat-box{background:var(--panel);padding:10px 14px;border-radius:10px;border:1px solid #3c2463;text-align:center;min-width:85px}
 .stat-box .lbl{font-size:10px;color:var(--gray);text-transform:uppercase;margin-bottom:3px}
@@ -609,44 +609,6 @@ body{padding-bottom:72px;background:#0b061c;}
   #screenLobby .stake-copy{margin-left:10px;}
   #screenLobby .stake-etb{font-size:22px;}
 }
-@media(max-width:480px){
-  #screenLobby .lobby-stake-panel{
-    width:100%!important;
-    box-sizing:border-box!important;
-    padding:clamp(7px,2vw,12px)!important;
-    border-radius:16px!important;
-  }
-  #screenLobby .lobby-stake-heading{
-    gap:6px!important;
-    margin-bottom:clamp(6px,1.5vh,10px)!important;
-    font-size:clamp(14px,4vw,18px)!important;
-  }
-  #screenLobby .lobby-stake-heading span{width:24px!important;}
-  #screenLobby .stakes-grid{
-    width:100%!important;
-    gap:clamp(6px,1.8vw,10px)!important;
-  }
-  #screenLobby .stake-card{
-    width:100%!important;
-    min-width:0!important;
-    min-height:clamp(44px,11vw,56px)!important;
-    height:auto!important;
-    padding:clamp(6px,1.8vw,10px) clamp(7px,2vw,12px)!important;
-    border-radius:14px!important;
-    box-sizing:border-box!important;
-  }
-  #screenLobby .stake-play-icon{
-    width:clamp(34px,9vw,42px)!important;
-    height:clamp(34px,9vw,42px)!important;
-    flex-basis:clamp(34px,9vw,42px)!important;
-    font-size:clamp(14px,4vw,17px)!important;
-  }
-  #screenLobby .stake-copy{margin-left:clamp(7px,2vw,10px)!important;}
-  #screenLobby .stake-etb{font-size:clamp(17px,5vw,22px)!important;}
-  #screenLobby .stake-info{font-size:clamp(7px,2.2vw,9px)!important;line-height:1.15!important;}
-  #screenLobby .stake-arrow{font-size:clamp(28px,8vw,38px)!important;margin-right:0!important;}
-}
-
 
 /* ───────── MELA BINGO BRIGHT BLUE/PURPLE DESIGN SYSTEM ─────────
    Visual-only theme layer. Gameplay, balance, card charging and navigation logic remain unchanged. */
@@ -1196,15 +1158,14 @@ body{padding:0!important}
 .bottom-nav{position:fixed!important;left:0;right:0;bottom:0;height:64px;z-index:1000}
 .screen{position:fixed!important;left:0;right:0;top:64px;bottom:64px;width:100%!important;max-width:none!important;margin:0!important;padding:10px 12px!important;overflow:hidden!important;animation:none!important}
 .screen.active{display:flex!important;flex-direction:column!important}
-#screenLobby{background:radial-gradient(circle at 12% 7%,rgba(124,92,255,.35),transparent 32%),radial-gradient(circle at 92% 36%,rgba(56,217,255,.2),transparent 28%),linear-gradient(155deg,#1c236d 0%,#17164f 48%,#0a1030 100%)!important;padding:clamp(8px,2vh,18px) clamp(10px,3vw,22px)!important;gap:clamp(6px,1.4vh,12px)!important;overflow:hidden!important;display:grid!important;grid-template-rows:30fr 50fr 20fr!important;align-items:stretch!important}
-#screenLobby .welcome-banner,#screenLobby .lobby-stake-panel,#screenLobby .lobby-players-card{height:100%!important;min-height:0!important;max-height:none!important;overflow:hidden!important;margin:0!important;box-sizing:border-box!important}
-#screenLobby .welcome-banner{padding:clamp(8px,1.8vh,18px) 10px!important}
-#screenLobby .lobby-stake-panel{padding:clamp(7px,1.5vh,14px) 10px!important;display:flex!important;flex-direction:column!important}
-#screenLobby .lobby-stake-heading{flex:0 0 auto!important;margin-bottom:clamp(5px,1vh,10px)!important;font-size:clamp(14px,2.2vh,19px)!important}
-#screenLobby .stakes-grid{flex:1 1 auto!important;min-height:0!important;gap:clamp(5px,1vh,10px)!important;display:flex!important;flex-direction:column!important}
-#screenLobby .stake-card{flex:1 1 0!important;min-height:0!important;height:auto!important;padding:clamp(5px,1vh,10px) 10px!important}
-#screenLobby .lobby-players-card{padding:clamp(7px,1.3vh,13px)!important}
-#screenCards{padding:clamp(6px,1.2vh,12px) clamp(8px,2.5vw,18px)!important;gap:0!important;margin:0 auto!important}
+#screenLobby{background:radial-gradient(circle at 12% 7%,rgba(124,92,255,.35),transparent 32%),radial-gradient(circle at 92% 36%,rgba(56,217,255,.2),transparent 28%),linear-gradient(155deg,#1c236d 0%,#17164f 48%,#0a1030 100%)!important;padding:clamp(8px,2vh,18px) clamp(10px,3vw,22px)!important;gap:clamp(6px,1.4vh,12px)!important;overflow:hidden!important}
+#screenLobby .welcome-banner{flex:0 1 auto!important;min-height:0!important;margin:0!important;padding:clamp(10px,2vh,22px) 10px!important}
+#screenLobby .lobby-stake-panel{flex:0 1 auto!important;min-height:0!important;padding:clamp(8px,1.6vh,16px) 10px!important}
+#screenLobby .lobby-stake-heading{margin-bottom:clamp(7px,1.2vh,13px)!important;font-size:clamp(15px,2.3vh,19px)!important}
+#screenLobby .stakes-grid{gap:clamp(6px,1.1vh,11px)!important}
+#screenLobby .stake-card{min-height:clamp(48px,7vh,62px)!important;padding:clamp(8px,1.4vh,14px) 12px!important}
+#screenLobby .lobby-players-card{flex:0 1 auto!important;min-height:0!important;padding:clamp(8px,1.5vh,15px)!important;margin:0!important}
+#screenCards{padding:clamp(6px,1.2vh,12px) clamp(8px,2.5vw,18px)!important;gap:0!important ; margin: 0 auto !important;}
 #screenCards .card-selection-top{flex:0 0 auto!important;min-height:0!important;margin:0 0 clamp(5px,1vh,9px)!important;padding:clamp(4px,.9vh,8px) clamp(6px,1.8vw,12px)!important;border-radius:12px!important}
 #screenCards #cdPrizePot{flex:0 0 auto!important;min-height:0!important;margin:0 0 clamp(5px,1vh,9px)!important;padding:clamp(5px,1vh,9px) 10px!important;font-size:clamp(10px,1.8vh,14px)!important;line-height:1.2!important}
 #screenCards #poolGrid{flex:1 1 auto!important;min-height:0!important;height:auto!important;max-height:none!important;overflow-y:auto!important;overflow-x:hidden!important;align-content:start!important;grid-auto-flow:row!important}
@@ -1276,19 +1237,6 @@ body{padding:0!important}
 </style>
 <script>
 (function(){
-  function syncLobbyViewportLayout(){
-    const lobby=document.getElementById('screenLobby');
-    if(!lobby) return;
-    const items=lobby.querySelectorAll('.welcome-banner,.lobby-stake-panel,.lobby-players-card');
-    if(items.length!==3) return;
-    const style=getComputedStyle(lobby);
-    const gap=parseFloat(style.rowGap||style.gap)||0;
-    const innerHeight=Math.max(0,lobby.clientHeight);
-    const availableHeight=Math.max(0,innerHeight-gap*2);
-    const rowHeights=[availableHeight*0.30,availableHeight*0.50,availableHeight*0.20];
-    lobby.style.gridTemplateRows=rowHeights.map(h=>`${h}px`).join(' ');
-    items.forEach((el,i)=>{ el.style.height=rowHeights[i]+'px'; el.style.minHeight='0px'; });
-  }
   function fixMelaCardPool(){
     const pool=document.getElementById('poolGrid');
     if(!pool) return;
@@ -1299,11 +1247,10 @@ body{padding:0!important}
     pool.style.boxSizing='border-box';
     pool.style.width=window.innerWidth>=480 ? 'min(100%, 769px)' : '100%';
   }
-  document.addEventListener('DOMContentLoaded',()=>{fixMelaCardPool();syncLobbyViewportLayout();});
-  window.addEventListener('resize',()=>{fixMelaCardPool();syncLobbyViewportLayout();},{passive:true});
-  window.addEventListener('orientationchange',()=>setTimeout(()=>{fixMelaCardPool();syncLobbyViewportLayout();},50),{passive:true});
-  window.addEventListener('load',syncLobbyViewportLayout,{once:true});
-  setTimeout(()=>{fixMelaCardPool();syncLobbyViewportLayout();},100);
+  document.addEventListener('DOMContentLoaded',fixMelaCardPool);
+  window.addEventListener('resize',fixMelaCardPool,{passive:true});
+  window.addEventListener('orientationchange',fixMelaCardPool,{passive:true});
+  setTimeout(fixMelaCardPool,100);
 })();
 </script>
 </head>
@@ -1531,6 +1478,7 @@ body{padding:0!important}
 
 <script>
 // Mela Bingo API server (Yegara temporary endpoint)
+//const API_BASE = 'https://fecher-api-production.up.railway.app';  
 const API_BASE = 'https://api2.cockpitaviations.com';
 // ─── STATE ────────────────────────────────────────────────────
 let ws, myPlayerId, myName='', myRoomId=localStorage.getItem('roomId')||null, myStakeId=null;
@@ -1680,17 +1628,10 @@ function goScreen(id){
     if(overlay){ overlay.classList.remove('show'); overlay.style.display='none'; }
   }
 }
-function setGameNavActive(){
-  document.querySelectorAll('.bottom-nav .nav-item').forEach(el=>el.classList.remove('active'));
-  const gameNav=document.getElementById('navGame');
-  if(gameNav) gameNav.classList.add('active');
-}
-
 function navGo(screen, navId){
   goScreen(screen);
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById(navId)?.classList.add('active');
-  if(screen==='screenLobby' || screen==='screenCards') setGameNavActive();
 
   // Re-apply the known balance after the new screen becomes visible so a
   // screen's default "ETB 0.00" never overwrites the real displayed balance.
@@ -1822,10 +1763,6 @@ function renderSpectatorView(msg={}){
 }
 
 function goToGame(){
-  // GAME is a navigation entry point, not an error state. Keep the Game tab
-  // highlighted even when there is no active round and we return to the lobby.
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  document.getElementById('navGame')?.classList.add('active');
   // GAME is a navigation entry point, not an error state. If the player has
   // not selected/joined an active game, always return to the normal lobby.
   restoreActiveGameState();
@@ -1846,7 +1783,7 @@ function goToGame(){
       localStorage.removeItem('roomId');
       localStorage.removeItem('stakeId');
     }catch(e){}
-    navGo('screenLobby','navGame');
+    navGo('screenLobby','navHome');
     return;
   }
 
@@ -2134,16 +2071,16 @@ function handle(msg){
         restoringActiveGame=false;
         clearActiveGameState();
         myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null;
-        navGo('screenLobby','navGame');
+        goScreen('screenLobby');
       }
     },6000);
   } else {
-    navGo('screenLobby','navGame');
+    goScreen('screenLobby');
   }
   break;
 
     case 'reconnectFailed':
-      restoringActiveGame=false; clearActiveGameState(); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardNumbers=[]; myCardNumbers2=[]; navGo('screenLobby','navGame'); break;
+      restoringActiveGame=false; clearActiveGameState(); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardNumbers=[]; myCardNumbers2=[]; goScreen('screenLobby'); break;
 
    case 'lobbyUpdate': renderStakes(msg.stakes); break;
 
@@ -2345,7 +2282,7 @@ function handle(msg){
       if(telegramId) setTimeout(()=>refreshAccountProfile(3,300),100);
       break;
 
-    case 'leftRoom': clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; navGo('screenLobby','navGame'); break;
+    case 'leftRoom': clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; navGo('screenLobby'); break;
 
     case 'notification': showToast(msg.message, msg.message.startsWith('✅')?'':'error'); break;
 
@@ -2803,7 +2740,7 @@ function leaveRoom(){
   clearActiveGameState();
   localStorage.removeItem('roomId'); localStorage.removeItem('stakeId');
   setSpectatorMode(false);
-  navGo('screenLobby','navGame');
+  navGo('screenLobby','navHome');
 }
 
 // ─── AUDIO SYSTEM ────────────────────────────────────────────
@@ -2869,15 +2806,6 @@ restoreCachedBalance();
 connect();
 //--------------------------------------------------------------
 
-
-function ensureGameNavForScreens(){
-  const lobby=document.getElementById('screenLobby');
-  const cards=document.getElementById('screenCards');
-  if((lobby && lobby.classList.contains('active')) || (cards && cards.classList.contains('active'))) setGameNavActive();
-}
-
-window.addEventListener('load',ensureGameNavForScreens);
-window.addEventListener('resize',ensureGameNavForScreens);
 </script>
 </body>
 </html>
