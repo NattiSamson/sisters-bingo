@@ -1670,18 +1670,11 @@ async function refreshAccountBalance(retries=6, delayMs=500){
   return refreshAccountProfile(retries,delayMs);
 }
 function goScreen(id){
-  // Screen visibility and bottom-nav highlighting are separate concerns.
-  // Explicitly hide every screen before showing the requested one so the
-  // lobby can never remain visible behind Profile or another page.
-  document.querySelectorAll('.screen').forEach(s=>{
-    s.classList.remove('active');
-    s.style.display='none';
-  });
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   const target=document.getElementById(id);
-  if(target){
-    target.classList.add('active');
-    target.style.display='flex';
-  }
+  if(target) target.classList.add('active');
+  // A finished-round result is an overlay, not a screen. When switching back
+  // to any normal app screen, force the overlay completely out of the way.
   if(id==='screenCards' || id==='screenGame' || id==='screenLobby'){
     const overlay=document.getElementById('winnerOverlay');
     if(overlay){ overlay.classList.remove('show'); overlay.style.display='none'; }
@@ -1694,14 +1687,10 @@ function setGameNavActive(){
 }
 
 function navGo(screen, navId){
-  // Game is active on Lobby and Cards only. Profile always gets Profile active.
-  const effectiveNav = (screen==='screenLobby' || screen==='screenCards')
-    ? 'navGame'
-    : (screen==='screenProfile' ? 'navProfile' : navId);
-
   goScreen(screen);
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  document.getElementById(effectiveNav)?.classList.add('active');
+  document.getElementById(navId)?.classList.add('active');
+  if(screen==='screenLobby' || screen==='screenCards') setGameNavActive();
 
   // Re-apply the known balance after the new screen becomes visible so a
   // screen's default "ETB 0.00" never overwrites the real displayed balance.
