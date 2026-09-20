@@ -1165,7 +1165,7 @@ body{padding:0!important}
 #screenLobby .stakes-grid{gap:clamp(6px,1.1vh,11px)!important}
 #screenLobby .stake-card{min-height:clamp(48px,7vh,62px)!important;padding:clamp(8px,1.4vh,14px) 12px!important}
 #screenLobby .lobby-players-card{flex:0 1 auto!important;min-height:0!important;padding:clamp(8px,1.5vh,15px)!important;margin:0!important}
-#screenCards{padding:clamp(6px,1.2vh,12px) clamp(8px,2.5vw,18px)!important;gap:0!important ; margin: 0 auto !important;}
+#screenCards{padding:clamp(6px,1.2vh,12px) clamp(8px,2.5vw,18px)!important;gap:0!important}
 #screenCards .card-selection-top{flex:0 0 auto!important;min-height:0!important;margin:0 0 clamp(5px,1vh,9px)!important;padding:clamp(4px,.9vh,8px) clamp(6px,1.8vw,12px)!important;border-radius:12px!important}
 #screenCards #cdPrizePot{flex:0 0 auto!important;min-height:0!important;margin:0 0 clamp(5px,1vh,9px)!important;padding:clamp(5px,1vh,9px) 10px!important;font-size:clamp(10px,1.8vh,14px)!important;line-height:1.2!important}
 #screenCards #poolGrid{flex:1 1 auto!important;min-height:0!important;height:auto!important;max-height:none!important;overflow-y:auto!important;overflow-x:hidden!important;align-content:start!important;grid-auto-flow:row!important}
@@ -1193,66 +1193,6 @@ body{padding:0!important}
  #screenCards .pool-btn{height:36px!important;min-height:36px!important;max-height:36px!important;font-size:9px!important}
 }
 </style>
-
-<style id="mela-fixed-eight-card-pool">
-/* Card pool: exactly 8 cards per row at every viewport width.
-   On 480px+ screens the pool is capped at 769px and centered. */
-#screenCards #poolGrid{
-  display:grid!important;
-  grid-template-columns:repeat(8,minmax(0,1fr))!important;
-  width:100%!important;
-  max-width:769px!important;
-  margin-left:auto!important;
-  margin-right:auto!important;
-  box-sizing:border-box!important;
-  align-content:start!important;
-  grid-auto-flow:row!important;
-  overflow-y:auto!important;
-  overflow-x:hidden!important;
-}
-@media(min-width:480px){
-  #screenCards #poolGrid{
-    width:min(100%,769px)!important;
-    max-width:769px!important;
-    grid-template-columns:repeat(8,minmax(0,1fr))!important;
-    grid-auto-rows:46px!important;
-    gap:9px!important;
-    padding:9px!important;
-    margin-left:auto!important;
-    margin-right:auto!important;
-  }
-}
-@media(max-width:479px){
-  #screenCards #poolGrid{
-    width:100%!important;
-    max-width:769px!important;
-    grid-template-columns:repeat(8,minmax(0,1fr))!important;
-    grid-auto-rows:42px!important;
-    gap:6px!important;
-    padding:6px!important;
-    margin-left:auto!important;
-    margin-right:auto!important;
-  }
-}
-</style>
-<script>
-(function(){
-  function fixMelaCardPool(){
-    const pool=document.getElementById('poolGrid');
-    if(!pool) return;
-    pool.style.gridTemplateColumns='repeat(8,minmax(0,1fr))';
-    pool.style.maxWidth='769px';
-    pool.style.marginLeft='auto';
-    pool.style.marginRight='auto';
-    pool.style.boxSizing='border-box';
-    pool.style.width=window.innerWidth>=480 ? 'min(100%, 769px)' : '100%';
-  }
-  document.addEventListener('DOMContentLoaded',fixMelaCardPool);
-  window.addEventListener('resize',fixMelaCardPool,{passive:true});
-  window.addEventListener('orientationchange',fixMelaCardPool,{passive:true});
-  setTimeout(fixMelaCardPool,100);
-})();
-</script>
 </head>
 <body>
 
