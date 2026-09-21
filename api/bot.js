@@ -3859,28 +3859,42 @@ bot.callbackQuery(
         );
 
       }
-
-
-     pendingWithdrawal[telegramId] = { step: "account", paymentMethodId: methodId ,paymentMethod};
-
-
-      await ctx.editMessageText(
-
-        "🏧 *የወጪ አካውንት*\n\n" +
-
-        `💳 የክፍያ መንገድ፦ *${paymentMethod.amharic_name}*\n\n` +
-
-        "📱 ብር የሚቀበሉበትን የአካውንት ቁጥር ያስገቡ።\n\n" +
-
-        "ምሳሌ፦ `0912345678`",
-
+      const paymentType = await db.getPaymentMethodTypesById(paymentMethod.type_id);
+        if (!paymentType) 
+        {
+            return ctx.reply("❌ የክፍያ አማራጭ አልተገኘም።");
+        }
+      const paymentaccount = await db.getPaymentAccount(paymentMethod.id);
+        if (paymentaccount)
         {
 
-          parse_mode:
-            "Markdown"
-
+             pendingWithdrawal[telegramId] = { step: "account", paymentMethodId: methodId ,paymentMethod};
+        
+        
+              await ctx.editMessageText(
+        
+                "🏧 *የወጪ አካውንት*\n\n" +
+        
+                `💳 የክፍያ መንገድ፦ *${paymentMethod.amharic_name}*\n\n` +
+        
+                "📱 ብር የሚቀበሉበትን የአካውንት ቁጥር ያስገቡ።\n\n" +
+        
+                "ምሳሌ፦ `0912345678`",
+        
+                {
+        
+                  parse_mode:
+                    "Markdown"
+        
+                }
+        
+              );
         }
 
+      await ctx.editMessageText(
+        `${paymentMethod.emoji || "💳"} ` +
+        `${paymentMethod.amharic_name}\n\n` +
+        `ይህ የክፍያ መንገድ በቅርቡ ይጀምራል။`
       );
 
     } catch (err) {
