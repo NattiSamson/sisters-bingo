@@ -1330,64 +1330,11 @@ body{padding:0!important}
 #screenGame.spectator-mode .spectator-wait-text{font-size:clamp(9px,1.5vh,12px)!important;line-height:1.35!important;}
 #screenGame.spectator-mode .spectator-wait-sub{font-size:9px!important;margin-top:3px!important;}
 #screenGame.spectator-mode .spectator-leave-btn{margin-top:8px!important;padding:7px 14px!important;min-width:150px!important;font-size:10px!important;}
-/* Spectator tracker: exact same card dimensions and responsive behavior as the main tracker. */
-#screenGame.spectator-mode .spectator-tracker-wrap{
-  flex:0 0 auto!important;
-  min-height:0!important;
-  overflow:hidden!important;
-  margin:0 0 2px!important;
-  padding:7px!important;
-  width:100%!important;
-  box-sizing:border-box!important;
-  border-radius:13px!important;
-  background:linear-gradient(145deg,#1c2669,#101642)!important;
-  border:1px solid rgba(83,165,255,.34)!important;
-}
-#screenGame.spectator-mode .spectator-tracker-title{
-  flex:0 0 auto!important;
-  padding:0 2px 7px!important;
-}
-#screenGame.spectator-mode .spectator-tracker-grid{
-  flex:0 0 auto!important;
-  min-height:0!important;
-  overflow:hidden!important;
-  align-content:normal!important;
-  grid-template-columns:repeat(15,minmax(0,1fr))!important;
-  grid-template-rows:none!important;
-  gap:2px!important;
-}
-#screenGame.spectator-mode .spectator-tracker-grid .t-ball{
-  min-width:0!important;
-  min-height:0!important;
-  height:auto!important;
-  padding:3px 0!important;
-  border-radius:4px!important;
-  font-size:8px!important;
-  line-height:1.05!important;
-  display:flex!important;
-  align-items:center!important;
-  justify-content:center!important;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.035)!important;
-}
-#screenGame.spectator-mode .spectator-tracker-grid .t-ball.latest{
-  transform:scale(1.08)!important;
-  z-index:2!important;
-}
-@media(max-width:420px){
-  #screenGame.spectator-mode .spectator-tracker-wrap{padding:6px!important;}
-  #screenGame.spectator-mode .spectator-tracker-grid{gap:1.5px!important;}
-  #screenGame.spectator-mode .spectator-tracker-grid .t-ball{
-    font-size:7px!important;
-    padding:2.5px 0!important;
-  }
-}
-@media(max-width:360px){
-  #screenGame.spectator-mode .spectator-tracker-grid{gap:1.5px!important;}
-  #screenGame.spectator-mode .spectator-tracker-grid .t-ball{
-    font-size:7px!important;
-    padding:2.5px 0!important;
-  }
-}
+#screenGame.spectator-mode .spectator-tracker-wrap{flex:1 1 auto!important;min-height:0!important;overflow:hidden!important;margin-top:0!important;padding:6px!important;display:flex!important;flex-direction:column!important;}
+#screenGame.spectator-mode .spectator-tracker-title{flex:0 0 auto!important;padding-bottom:5px!important;}
+#screenGame.spectator-mode .spectator-tracker-grid{flex:1 1 auto!important;min-height:0!important;overflow:hidden!important;align-content:stretch!important;grid-template-rows:repeat(5,minmax(0,1fr))!important;}
+#screenGame.spectator-mode .spectator-tracker-grid .t-ball{min-height:0!important;height:auto!important;padding:1px 0!important;display:flex!important;align-items:center!important;justify-content:center!important;font-size:clamp(6px,1.1vh,8px)!important;}
+@media(max-width:420px){#screenGame.spectator-mode .spectator-wait-card{flex-basis:clamp(100px,19vh,145px)!important;min-height:100px!important;max-height:145px!important;}#screenGame.spectator-mode .spectator-tracker-grid .t-ball{font-size:6px!important;}}
 </style>
 
 </head>
@@ -1562,7 +1509,7 @@ body{padding:0!important}
       <div class="profile-stat gamesplayed">
         <div class="profile-stat-icon">🎮</div>
         <div class="profile-stat-value" id="profileGames">0</div>
-        <div class="profile-stat-label">GAMES PLAYED</div>
+        <div class="profile-stat-label">TOTAL WINNINGS</div>
       </div>
 
       <div class="profile-stat gameswon">
@@ -1991,6 +1938,7 @@ function renderUserProfile(u, history=[]){
   const apiGames=Number(u?.total_games);
   const apiWins=Number(u?.total_wins);
   const games=Number.isFinite(apiGames) ? Math.max(0,Math.trunc(apiGames),historyGames) : historyGames;
+  const totalWinnings=Number.isFinite(Number(u?.total_winnings)) ? Math.max(0,Number(u.total_winnings)) : 0;
   const wins=Number.isFinite(apiWins) ? Math.max(0,Math.trunc(apiWins),historyWins) : historyWins;
   const winningsFromHistory=rows.reduce((sum,g)=>sum+(Number(g?.amount_won)||0),0);
   const winnings=Number.isFinite(Number(u?.total_winnings)) ? Number(u.total_winnings) : winningsFromHistory;
@@ -2013,7 +1961,7 @@ function renderUserProfile(u, history=[]){
   const profileBalEl=document.getElementById('profileBalance');
   if(nameEl) nameEl.innerText=name;
   if(avatarEl) avatarEl.innerText=name.charAt(0).toUpperCase();
-  if(gamesEl) gamesEl.innerText=Number.isFinite(games)?Math.max(0,Math.trunc(games)).toLocaleString():'0';
+  if(gamesEl) gamesEl.innerText=`ETB ${totalWinnings.toFixed(2)}`;
   if(winsEl) winsEl.innerText=Number.isFinite(wins)?Math.max(0,Math.trunc(wins)).toLocaleString():'0';
   if(winningsEl) winningsEl.innerText=`ETB ${Math.max(0,winnings).toFixed(2)}`;
   if(latestEl) latestEl.innerText=`ETB ${Math.max(0,latestEarnings).toFixed(2)}`;
