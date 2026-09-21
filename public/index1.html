@@ -1191,7 +1191,6 @@ body{
 
 <style id="mela-profile-data-fix">
 .profile-stats-3{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important}
-.profile-stats-2{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
 .profile-stats-3 .profile-stat{min-width:0!important}
 .profile-stats-3 .profile-stat-value{font-size:clamp(15px,2.4vw,22px)!important;white-space:nowrap}
 .profile-stats-3 .profile-stat-label{font-size:clamp(8px,1.2vw,11px)!important;white-space:nowrap}
@@ -1505,17 +1504,23 @@ body{padding:0!important}
       </div>
     </div>
 
-    <div class="profile-stats profile-stats-2">
+    <div class="profile-stats profile-stats-3">
       <div class="profile-stat gamesplayed">
         <div class="profile-stat-icon">🎮</div>
         <div class="profile-stat-value" id="profileGames">0</div>
         <div class="profile-stat-label">GAMES PLAYED</div>
       </div>
 
+      <div class="profile-stat winnings">
+        <div class="profile-stat-icon">🏆</div>
+        <div class="profile-stat-value" id="profileWinnings">ETB 0.00</div>
+        <div class="profile-stat-label">TOTAL WINNINGS</div>
+      </div>
+
       <div class="profile-stat gameswon">
         <div class="profile-stat-icon">🏅</div>
         <div class="profile-stat-value" id="profileWins">0</div>
-        <div class="profile-stat-label">GAMES WON</div>
+        <div class="profile-stat-label">TOTAL GAMES WON</div>
       </div>
     </div>
     <div id="profileStatus" class="profile-status" style="display:none"></div>
@@ -1650,10 +1655,8 @@ function setBalance(amt){
   const f=`ETB ${currentBalance.toFixed(2)}`;
   const balanceEl=document.getElementById('balanceEl');
   const walletEl=document.getElementById('walletBalAmt');
-  const profileBalEl=document.getElementById('profileBalance');
   if(balanceEl) balanceEl.innerText=f;
   if(walletEl) walletEl.innerText=f;
-  if(profileBalEl) profileBalEl.innerText=f;
 }
 
 function restoreCachedBalance(){
@@ -1678,18 +1681,12 @@ async function refreshAccountProfile(retries=10, delayMs=600){
       if(res.ok){
         const u=await res.json();
         const balance=Number(u?.balance);
-        const totalGames=Number(u?.total_games);
-        const totalWins=Number(u?.total_wins);
         const name=String(u?.name || u?.playerName || '').trim();
-        // Use the same authoritative account response that drives the working top balance.
+        // Only accept a balance that came back from the account endpoint.
         if(Number.isFinite(balance) && balance>=0){
           setBalance(balance);
           accountLoaded=true;
         }
-        const gamesEl=document.getElementById('profileGames');
-        const winsEl=document.getElementById('profileWins');
-        if(gamesEl && Number.isFinite(totalGames)) gamesEl.innerText=Math.max(0,Math.trunc(totalGames)).toLocaleString();
-        if(winsEl && Number.isFinite(totalWins)) winsEl.innerText=Math.max(0,Math.trunc(totalWins)).toLocaleString();
         if(name){
           myName=name;
           const welcome=document.getElementById('welcomeName');
