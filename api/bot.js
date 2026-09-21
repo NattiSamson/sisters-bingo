@@ -3889,6 +3889,7 @@ bot.callbackQuery(
                 }
         
               );
+          return;
         }
 
       await ctx.editMessageText(
