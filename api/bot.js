@@ -3867,8 +3867,10 @@ bot.callbackQuery(
       const paymentaccount = await db.getPaymentAccount(paymentMethod.id);
         if (paymentaccount)
         {
-
+            
              pendingWithdrawal[telegramId] = { step: "account", paymentMethodId: methodId ,paymentMethod};
+          pendingWithdrawal[ctx.from.id] = true;
+          
         
         
               await ctx.editMessageText(
