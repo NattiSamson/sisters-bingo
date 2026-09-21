@@ -3865,11 +3865,11 @@ bot.callbackQuery(
             return ctx.reply("❌ የክፍያ አማራጭ አልተገኘም።");
         }
       const paymentaccount = await db.getPaymentAccount(paymentMethod.id);
-        if (paymentaccount)
+      //  if (paymentaccount)
         {
             
              pendingWithdrawal[telegramId] = { step: "account", paymentMethodId: methodId ,paymentMethod};
-          pendingWithdrawal[ctx.from.id] = true;
+          //pendingWithdrawal[ctx.from.id] = true;
           
         
         
@@ -3893,13 +3893,13 @@ bot.callbackQuery(
               );
           
         }
-      else
+     // else
         {
-      await ctx.editMessageText(
+     /* await ctx.editMessageText(
         `${paymentMethod.emoji || "💳"} ` +
         `${paymentMethod.amharic_name}\n\n` +
         `ይህ የክፍያ መንገድ በቅርቡ ይጀምራል။`
-      );
+      );*/
         }
     } catch (err) {
 
