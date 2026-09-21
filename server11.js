@@ -1778,12 +1778,6 @@ app.get('/api/user/:tid', async(req,res)=>{
             )
         ),0)::int AS computed_total_games,
         COALESCE((
-          SELECT COUNT(*)
-          FROM games g
-          WHERE g.status='finished'
-            AND $1 = ANY(COALESCE(g.winner_ids, ARRAY[]::text[]))
-        ),0)::int AS computed_total_wins,
-        COALESCE((
           SELECT g.win_amount
           FROM games g
           WHERE g.status='finished'
@@ -1806,20 +1800,13 @@ app.get('/api/user/:tid', async(req,res)=>{
       catch(e){ console.error('Profile total_games sync:',e.message); }
     }
 
-    // Profile stats: use the finished-game winner records directly. This is
-    // independent of the users-table counter, so old accounts with total_wins=0
-    // still show the real number of games won.
-    const storedWins=Math.max(0,Number(u.total_wins)||0);
-    const computedWins=Math.max(0,Number(u.computed_total_wins)||0);
-    const totalWins=Math.max(storedWins,computedWins);
-
     const user={
       telegramId:String(u.telegram_id),
       name:u.name||'',
       phone:u.phone||'',
       balance:Number.parseFloat(u.balance)||0,
       total_games:totalGames,
-      total_wins:totalWins,
+      total_wins:Math.max(0,Number(u.total_wins)||0),
       total_winnings:Math.max(0,Number(u.total_winnings)||0),
       latest_earnings:Math.max(0,Number(u.latest_earnings)||0),
       isAdmin:u.is_admin===true || isAdminPhone(u.phone)
