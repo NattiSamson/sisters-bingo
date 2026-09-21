@@ -1930,15 +1930,9 @@ function renderUserProfile(u, history=[]){
   const name=String(u?.name||u?.playerName||myName||'Player').trim()||'Player';
   const balance=Number(u?.balance);
   const rows=Array.isArray(history)?history:[];
-  // The profile API may still return the users-table counters as 0 on an
-  // older deployed server. The finished-game history is tied to the same
-  // Telegram ID and is the reliable fallback for these two display values.
-  const historyGames=rows.length;
-  const historyWins=rows.filter(g=>g?.won===true || g?.won==='true' || Number(g?.amount_won)>0).length;
-  const apiGames=Number(u?.total_games);
-  const apiWins=Number(u?.total_wins);
-  const games=Number.isFinite(apiGames) ? Math.max(0,Math.trunc(apiGames),historyGames) : historyGames;
-  const wins=Number.isFinite(apiWins) ? Math.max(0,Math.trunc(apiWins),historyWins) : historyWins;
+  const games=Number.isFinite(Number(u?.total_games)) ? Number(u.total_games) : rows.length;
+  const winsFromHistory=rows.filter(g=>g?.won===true || g?.won==='true').length;
+  const wins=Number.isFinite(Number(u?.total_wins)) ? Number(u.total_wins) : winsFromHistory;
   const winningsFromHistory=rows.reduce((sum,g)=>sum+(Number(g?.amount_won)||0),0);
   const winnings=Number.isFinite(Number(u?.total_winnings)) ? Number(u.total_winnings) : winningsFromHistory;
   // Prefer the authoritative latest payout calculated by the server directly
