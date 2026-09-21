@@ -3889,15 +3889,16 @@ bot.callbackQuery(
                 }
         
               );
-          return;
+          
         }
-
+      else
+        {
       await ctx.editMessageText(
         `${paymentMethod.emoji || "💳"} ` +
         `${paymentMethod.amharic_name}\n\n` +
         `ይህ የክፍያ መንገድ በቅርቡ ይጀምራል။`
       );
-
+        }
     } catch (err) {
 
       console.error(
