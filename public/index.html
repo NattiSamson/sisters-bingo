@@ -1509,7 +1509,7 @@ body{padding:0!important}
       <div class="profile-stat gamesplayed">
         <div class="profile-stat-icon">🎮</div>
         <div class="profile-stat-value" id="profileGames">0</div>
-        <div class="profile-stat-label">GAMES PLAYED</div>
+        <div class="profile-stat-label">TOTAL WINNINGS</div>
       </div>
 
       <div class="profile-stat gameswon">
@@ -1938,6 +1938,7 @@ function renderUserProfile(u, history=[]){
   const apiGames=Number(u?.total_games);
   const apiWins=Number(u?.total_wins);
   const games=Number.isFinite(apiGames) ? Math.max(0,Math.trunc(apiGames),historyGames) : historyGames;
+  const totalWinnings=Number.isFinite(Number(u?.total_winnings)) ? Math.max(0,Number(u.total_winnings)) : 0;
   const wins=Number.isFinite(apiWins) ? Math.max(0,Math.trunc(apiWins),historyWins) : historyWins;
   const winningsFromHistory=rows.reduce((sum,g)=>sum+(Number(g?.amount_won)||0),0);
   const winnings=Number.isFinite(Number(u?.total_winnings)) ? Number(u.total_winnings) : winningsFromHistory;
@@ -1960,7 +1961,7 @@ function renderUserProfile(u, history=[]){
   const profileBalEl=document.getElementById('profileBalance');
   if(nameEl) nameEl.innerText=name;
   if(avatarEl) avatarEl.innerText=name.charAt(0).toUpperCase();
-  if(gamesEl) gamesEl.innerText=Number.isFinite(games)?Math.max(0,Math.trunc(games)).toLocaleString():'0';
+  if(gamesEl) gamesEl.innerText=`ETB ${totalWinnings.toFixed(2)}`;
   if(winsEl) winsEl.innerText=Number.isFinite(wins)?Math.max(0,Math.trunc(wins)).toLocaleString():'0';
   if(winningsEl) winningsEl.innerText=`ETB ${Math.max(0,winnings).toFixed(2)}`;
   if(latestEl) latestEl.innerText=`ETB ${Math.max(0,latestEarnings).toFixed(2)}`;
