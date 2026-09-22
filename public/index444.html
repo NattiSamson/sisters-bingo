@@ -1234,29 +1234,6 @@ body{padding:0!important}
     margin-right:auto!important;
   }
 }
-
-/* FINAL CALLED-CARD TRACKER STATE: only the most recently called number is green.
-   All older called numbers return to the default orange. */
-#screenGame .tracker-wrap .t-ball.called{
-  background:#ff650f!important;
-  color:#fff!important;
-  outline:none!important;
-  box-shadow:0 0 7px rgba(255,101,15,.22),inset 0 1px 0 rgba(255,255,255,.20)!important;
-}
-#screenGame .tracker-wrap .t-ball.called.latest,
-#screenGame .spectator-tracker-grid .t-ball.called.latest{
-  background:#22c55e!important;
-  color:#fff!important;
-  outline:2px solid #86efac!important;
-  box-shadow:0 0 12px rgba(34,197,94,.55),inset 0 1px 0 rgba(255,255,255,.22)!important;
-  transform:scale(1.07)!important;
-  z-index:3;
-}
-#screenGame .spectator-tracker-grid .t-ball.called{
-  background:#ff650f!important;
-  color:#fff!important;
-  outline:none!important;
-}
 </style>
 <script>
 (function(){
@@ -1871,29 +1848,60 @@ function renderUserProfile(u, history=[]){
 async function loadUserProfile(force=false){
   if(!telegramId) telegramId=getTelegramId();
   const status=document.getElementById('profileStatus');
+
+  // Never show a loading screen/message for Profile. If we have a cached account,
+  // render it immediately and then refresh it silently from the server.
   if(status) status.style.display='none';
 
   let id=normalizeTelegramId(telegramId);
   if(!id){
     try{ id=normalizeTelegramId(localStorage.getItem('melaBingoTelegramId')); }catch(e){}
   }
-  if(!id) return false;
+
+  // Render the last successfully loaded profile instantly while the network refreshes.
+  if(id && !force){
+    try{
+      const cached=JSON.parse(localStorage.getItem('melaBingoProfile')||'null');
+      if(cached && cached.telegramId===id && cached.user){
+        renderUserProfile(cached.user,Array.isArray(cached.history)?cached.history:[]);
+      }
+    }catch(e){}
+  }
+
+  if(!id){
+    // The normal app/account flow can still resolve Telegram authentication later.
+    return false;
+  }
 
   telegramId=id;
   try{
-    // IMPORTANT: Profile must NOT call /api/history/:telegramId.
-    // The history endpoint caused repeated 403/request errors. Profile uses only
-    // the authoritative user endpoint; database totals are already returned there.
-    const userRes=await fetch(`${API_BASE}/api/user/${encodeURIComponent(id)}?_=${Date.now()}`,{cache:'no-store'});
+    const [userRes,historyRes]=await Promise.all([
+      fetch(`${API_BASE}/api/user/${encodeURIComponent(id)}?_=${Date.now()}`,{cache:'no-store'}),
+      fetch(`${API_BASE}/api/history/${encodeURIComponent(id)}?limit=100&_=${Date.now()}`,{cache:'no-store'})
+    ]);
     const userData=await userRes.json().catch(()=>({}));
+    const historyData=await historyRes.json().catch(()=>[]);
     if(!userRes.ok) throw new Error(userData.error||'Profile request failed');
-    renderUserProfile(userData,[]);
+    const history=Array.isArray(historyData)?historyData:[];
+    renderUserProfile(userData,history);
+
+    // Cache only a successfully loaded server profile. This is UI data only;
+    // Neon/server balance remains authoritative and is never changed here.
     try{
-      localStorage.setItem('melaBingoProfile',JSON.stringify({telegramId:id,user:userData,history:[],savedAt:Date.now()}));
+      localStorage.setItem('melaBingoProfile',JSON.stringify({
+        telegramId:id,
+        user:userData,
+        history:history,
+        savedAt:Date.now()
+      }));
     }catch(e){}
+
+    if(status) status.style.display='none';
     return true;
   }catch(e){
     console.error('Profile refresh:',e);
+    // Keep the cached/current profile visible if the background refresh fails.
+    if(status) status.style.display='none';
     return false;
   }
 }
@@ -2553,18 +2561,6 @@ function resetAutomaticGameState(){
   autoClaimSent=false;
   markedIndices=new Set([12]);
   markedIndices2=new Set([12]);
-}
-
-// Compatibility helper: older round-reset code calls setBingoBtn().
-// The manual BINGO button is intentionally hidden/removed from the user flow,
-// so this function safely keeps that old call from throwing a ReferenceError.
-function setBingoBtn(state='idle'){
-  const btn=document.getElementById('bingoBtn');
-  if(btn){
-    btn.style.display='none';
-    btn.disabled=true;
-    btn.setAttribute('aria-hidden','true');
-  }
 }
 
 // ─── SLOT UI (card selection indicators) ──────────────────────

@@ -1324,17 +1324,70 @@ body{padding:0!important}
 #screenGame.spectator-mode .spectator-stats-row{flex:0 0 auto!important;}
 #screenGame.spectator-mode .spectator-progress{flex:0 0 5px!important;}
 #screenGame.spectator-mode .spectator-bingo-header{flex:0 0 32px!important;}
-#screenGame.spectator-mode .spectator-wait-card{flex:0 1 clamp(112px,22vh,190px)!important;min-height:112px!important;max-height:190px!important;padding:clamp(8px,1.5vh,16px)!important;margin:0 0 7px!important;}
+#screenGame.spectator-mode .spectator-wait-card{flex:0 1 clamp(112px,100vh,190px)!important;min-height:112px!important;max-height:190px!important;padding:clamp(8px,1.5vh,16px)!important;margin:0 0 7px!important;}
 #screenGame.spectator-mode .spectator-eyes{font-size:clamp(25px,5vh,40px)!important;margin-bottom:clamp(5px,1vh,12px)!important;}
 #screenGame.spectator-mode .spectator-wait-title{font-size:clamp(10px,1.7vh,13px)!important;margin-bottom:5px!important;}
 #screenGame.spectator-mode .spectator-wait-text{font-size:clamp(9px,1.5vh,12px)!important;line-height:1.35!important;}
 #screenGame.spectator-mode .spectator-wait-sub{font-size:9px!important;margin-top:3px!important;}
 #screenGame.spectator-mode .spectator-leave-btn{margin-top:8px!important;padding:7px 14px!important;min-width:150px!important;font-size:10px!important;}
-#screenGame.spectator-mode .spectator-tracker-wrap{flex:1 1 auto!important;min-height:0!important;overflow:hidden!important;margin-top:0!important;padding:6px!important;display:flex!important;flex-direction:column!important;}
-#screenGame.spectator-mode .spectator-tracker-title{flex:0 0 auto!important;padding-bottom:5px!important;}
-#screenGame.spectator-mode .spectator-tracker-grid{flex:1 1 auto!important;min-height:0!important;overflow:hidden!important;align-content:stretch!important;grid-template-rows:repeat(5,minmax(0,1fr))!important;}
-#screenGame.spectator-mode .spectator-tracker-grid .t-ball{min-height:0!important;height:auto!important;padding:1px 0!important;display:flex!important;align-items:center!important;justify-content:center!important;font-size:clamp(6px,1.1vh,8px)!important;}
-@media(max-width:420px){#screenGame.spectator-mode .spectator-wait-card{flex-basis:clamp(100px,19vh,145px)!important;min-height:100px!important;max-height:145px!important;}#screenGame.spectator-mode .spectator-tracker-grid .t-ball{font-size:6px!important;}}
+/* Spectator tracker: exact same card dimensions and responsive behavior as the main tracker. */
+#screenGame.spectator-mode .spectator-tracker-wrap{
+  flex:0 0 auto!important;
+  min-height:0!important;
+  overflow:hidden!important;
+  margin:0 0 2px!important;
+  padding:7px!important;
+  width:100%!important;
+  box-sizing:border-box!important;
+  border-radius:13px!important;
+  background:linear-gradient(145deg,#1c2669,#101642)!important;
+  border:1px solid rgba(83,165,255,.34)!important;
+}
+#screenGame.spectator-mode .spectator-tracker-title{
+  flex:0 0 auto!important;
+  padding:0 2px 7px!important;
+}
+#screenGame.spectator-mode .spectator-tracker-grid{
+  flex:0 0 auto!important;
+  min-height:0!important;
+  overflow:hidden!important;
+  align-content:normal!important;
+  grid-template-columns:repeat(15,minmax(0,1fr))!important;
+  grid-template-rows:none!important;
+  gap:2px!important;
+}
+#screenGame.spectator-mode .spectator-tracker-grid .t-ball{
+  min-width:0!important;
+  min-height:0!important;
+  height:auto!important;
+  padding:3px 0!important;
+  border-radius:4px!important;
+  font-size:8px!important;
+  line-height:1.05!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.035)!important;
+}
+#screenGame.spectator-mode .spectator-tracker-grid .t-ball.latest{
+  transform:scale(1.08)!important;
+  z-index:2!important;
+}
+@media(max-width:420px){
+  #screenGame.spectator-mode .spectator-tracker-wrap{padding:6px!important;}
+  #screenGame.spectator-mode .spectator-tracker-grid{gap:1.5px!important;}
+  #screenGame.spectator-mode .spectator-tracker-grid .t-ball{
+    font-size:7px!important;
+    padding:2.5px 0!important;
+  }
+}
+@media(max-width:360px){
+  #screenGame.spectator-mode .spectator-tracker-grid{gap:1.5px!important;}
+  #screenGame.spectator-mode .spectator-tracker-grid .t-ball{
+    font-size:7px!important;
+    padding:2.5px 0!important;
+  }
+}
 </style>
 
 </head>
@@ -1506,9 +1559,9 @@ body{padding:0!important}
     </div>
 
     <div class="profile-stats profile-stats-2">
-      <div class="profile-stat gamesplayed">
-        <div class="profile-stat-icon">🎮</div>
-        <div class="profile-stat-value" id="profileGames">0</div>
+      <div class="profile-stat winnings">
+        <div class="profile-stat-icon">💰</div>
+        <div class="profile-stat-value" id="profileWinnings">ETB 0.00</div>
         <div class="profile-stat-label">TOTAL WINNINGS</div>
       </div>
 
@@ -1938,7 +1991,6 @@ function renderUserProfile(u, history=[]){
   const apiGames=Number(u?.total_games);
   const apiWins=Number(u?.total_wins);
   const games=Number.isFinite(apiGames) ? Math.max(0,Math.trunc(apiGames),historyGames) : historyGames;
-  const totalWinnings=Number.isFinite(Number(u?.total_winnings)) ? Math.max(0,Number(u.total_winnings)) : 0;
   const wins=Number.isFinite(apiWins) ? Math.max(0,Math.trunc(apiWins),historyWins) : historyWins;
   const winningsFromHistory=rows.reduce((sum,g)=>sum+(Number(g?.amount_won)||0),0);
   const winnings=Number.isFinite(Number(u?.total_winnings)) ? Number(u.total_winnings) : winningsFromHistory;
@@ -1961,7 +2013,7 @@ function renderUserProfile(u, history=[]){
   const profileBalEl=document.getElementById('profileBalance');
   if(nameEl) nameEl.innerText=name;
   if(avatarEl) avatarEl.innerText=name.charAt(0).toUpperCase();
-  if(gamesEl) gamesEl.innerText=`ETB ${totalWinnings.toFixed(2)}`;
+  if(gamesEl) gamesEl.innerText=Number.isFinite(games)?Math.max(0,Math.trunc(games)).toLocaleString():'0';
   if(winsEl) winsEl.innerText=Number.isFinite(wins)?Math.max(0,Math.trunc(wins)).toLocaleString():'0';
   if(winningsEl) winningsEl.innerText=`ETB ${Math.max(0,winnings).toFixed(2)}`;
   if(latestEl) latestEl.innerText=`ETB ${Math.max(0,latestEarnings).toFixed(2)}`;
@@ -1994,15 +2046,10 @@ async function loadUserProfile(force=false){
 
   telegramId=id;
   try{
-    const [userRes,historyRes]=await Promise.all([
-      fetch(`${API_BASE}/api/user/${encodeURIComponent(id)}?_=${Date.now()}`,{cache:'no-store'}),
-      fetch(`${API_BASE}/api/history/${encodeURIComponent(id)}?limit=100&_=${Date.now()}`,{cache:'no-store'})
-    ]);
+    const userRes=await fetch(`${API_BASE}/api/user/${encodeURIComponent(id)}?_=${Date.now()}`,{cache:'no-store'});
     const userData=await userRes.json().catch(()=>({}));
-    const historyData=await historyRes.json().catch(()=>[]);
     if(!userRes.ok) throw new Error(userData.error||'Profile request failed');
-    const history=Array.isArray(historyData)?historyData:[];
-    renderUserProfile(userData,history);
+    renderUserProfile(userData,[]);
 
     // Cache only a successfully loaded server profile. This is UI data only;
     // Neon/server balance remains authoritative and is never changed here.
@@ -2010,7 +2057,6 @@ async function loadUserProfile(force=false){
       localStorage.setItem('melaBingoProfile',JSON.stringify({
         telegramId:id,
         user:userData,
-        history:history,
         savedAt:Date.now()
       }));
     }catch(e){}
@@ -2743,6 +2789,15 @@ if(window.ResizeObserver){
 }
 
 // ─── CARD POOL ────────────────────────────────────────────────
+function reapplyMyCardPoolOwnership(){
+  const grid=document.getElementById('poolGrid');
+  if(!grid) return;
+  if(!Array.isArray(cardPool)) return;
+  cardPool.forEach(c=>{
+    const btn=document.getElementById('cardbtn-'+c.id);
+    if(btn) applyCardOwnership(btn,c);
+  });
+}
 function renderCardPool(pool){
   const grid=document.getElementById('poolGrid');
   grid.innerHTML='';

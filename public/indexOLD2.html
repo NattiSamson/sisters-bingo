@@ -96,7 +96,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .t-ball{font-size:10px;background:var(--card);color:#7d64b5;text-align:center;padding:4px 0;border-radius:4px;font-weight:700;transition:background .2s,color .2s}
 .t-ball.cb{background:var(--b)!important;color:#fff!important}.t-ball.ci{background:var(--i)!important;color:#fff!important}
 .t-ball.cn{background:var(--n)!important;color:#fff!important}.t-ball.cg{background:var(--g)!important;color:#fff!important}
-.t-ball.co{background:var(--o)!important;color:#fff!important}.t-ball.latest{outline:2px solid #fff;transform:scale(1.1)} .t-ball.called{background:#ff650f!important;color:#fff!important;} .t-ball.called.latest{background:#22c55e!important;color:#fff!important;outline:2px solid #86efac!important;box-shadow:0 0 12px rgba(34,197,94,.55)!important;}
+.t-ball.co{background:var(--o)!important;color:#fff!important}.t-ball.latest{outline:2px solid #fff;transform:scale(1.1)}
 
 /* ── WALLET SCREEN ─────────────────────────── */
 .wallet-balance-card{background:linear-gradient(135deg,#2d1b4e,#1a0a3e);border:1px solid #6d28d9;border-radius:16px;padding:22px;text-align:center;margin-bottom:20px}
@@ -609,6 +609,44 @@ body{padding-bottom:72px;background:#0b061c;}
   #screenLobby .stake-copy{margin-left:10px;}
   #screenLobby .stake-etb{font-size:22px;}
 }
+@media(max-width:480px){
+  #screenLobby .lobby-stake-panel{
+    width:100%!important;
+    box-sizing:border-box!important;
+    padding:clamp(7px,2vw,12px)!important;
+    border-radius:16px!important;
+  }
+  #screenLobby .lobby-stake-heading{
+    gap:6px!important;
+    margin-bottom:clamp(6px,1.5vh,10px)!important;
+    font-size:clamp(14px,4vw,18px)!important;
+  }
+  #screenLobby .lobby-stake-heading span{width:24px!important;}
+  #screenLobby .stakes-grid{
+    width:100%!important;
+    gap:clamp(6px,1.8vw,10px)!important;
+  }
+  #screenLobby .stake-card{
+    width:100%!important;
+    min-width:0!important;
+    min-height:clamp(44px,11vw,56px)!important;
+    height:auto!important;
+    padding:clamp(6px,1.8vw,10px) clamp(7px,2vw,12px)!important;
+    border-radius:14px!important;
+    box-sizing:border-box!important;
+  }
+  #screenLobby .stake-play-icon{
+    width:clamp(34px,9vw,42px)!important;
+    height:clamp(34px,9vw,42px)!important;
+    flex-basis:clamp(34px,9vw,42px)!important;
+    font-size:clamp(14px,4vw,17px)!important;
+  }
+  #screenLobby .stake-copy{margin-left:clamp(7px,2vw,10px)!important;}
+  #screenLobby .stake-etb{font-size:clamp(17px,5vw,22px)!important;}
+  #screenLobby .stake-info{font-size:clamp(7px,2.2vw,9px)!important;line-height:1.15!important;}
+  #screenLobby .stake-arrow{font-size:clamp(28px,8vw,38px)!important;margin-right:0!important;}
+}
+
 
 /* ───────── MELA BINGO BRIGHT BLUE/PURPLE DESIGN SYSTEM ─────────
    Visual-only theme layer. Gameplay, balance, card charging and navigation logic remain unchanged. */
@@ -1151,6 +1189,14 @@ body{
 /* If the active game state does not exist, GAME always returns to the lobby. */
 </style>
 
+<style id="mela-profile-data-fix">
+.profile-stats-3{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important}
+.profile-stats-2{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
+.profile-stats-3 .profile-stat{min-width:0!important}
+.profile-stats-3 .profile-stat-value{font-size:clamp(15px,2.4vw,22px)!important;white-space:nowrap}
+.profile-stats-3 .profile-stat-label{font-size:clamp(8px,1.2vw,11px)!important;white-space:nowrap}
+@media(max-width:480px){.profile-stats-3{gap:7px!important}.profile-stats-3 .profile-stat{padding:10px 5px!important}.profile-stats-3 .profile-stat-icon{font-size:18px!important}.profile-stats-3 .profile-stat-value{font-size:14px!important}.profile-stats-3 .profile-stat-label{font-size:7px!important}}
+</style>
 <style id="mela-responsive-layout-fix">
 html,body{width:100%;height:100%;overflow:hidden!important}
 body{padding:0!important}
@@ -1158,14 +1204,16 @@ body{padding:0!important}
 .bottom-nav{position:fixed!important;left:0;right:0;bottom:0;height:64px;z-index:1000}
 .screen{position:fixed!important;left:0;right:0;top:64px;bottom:64px;width:100%!important;max-width:none!important;margin:0!important;padding:10px 12px!important;overflow:hidden!important;animation:none!important}
 .screen.active{display:flex!important;flex-direction:column!important}
-#screenLobby{background:radial-gradient(circle at 12% 7%,rgba(124,92,255,.35),transparent 32%),radial-gradient(circle at 92% 36%,rgba(56,217,255,.2),transparent 28%),linear-gradient(155deg,#1c236d 0%,#17164f 48%,#0a1030 100%)!important;padding:clamp(8px,2vh,18px) clamp(10px,3vw,22px)!important;gap:clamp(6px,1.4vh,12px)!important;overflow:hidden!important}
-#screenLobby .welcome-banner{flex:0 1 auto!important;min-height:0!important;margin:0!important;padding:clamp(10px,2vh,22px) 10px!important}
-#screenLobby .lobby-stake-panel{flex:0 1 auto!important;min-height:0!important;padding:clamp(8px,1.6vh,16px) 10px!important}
-#screenLobby .lobby-stake-heading{margin-bottom:clamp(7px,1.2vh,13px)!important;font-size:clamp(15px,2.3vh,19px)!important}
-#screenLobby .stakes-grid{gap:clamp(6px,1.1vh,11px)!important}
-#screenLobby .stake-card{min-height:clamp(48px,7vh,62px)!important;padding:clamp(8px,1.4vh,14px) 12px!important}
-#screenLobby .lobby-players-card{flex:0 1 auto!important;min-height:0!important;padding:clamp(8px,1.5vh,15px)!important;margin:0!important}
-#screenCards{padding:clamp(6px,1.2vh,12px) clamp(8px,2.5vw,18px)!important;gap:0!important}
+#screenLobby{background:radial-gradient(circle at 12% 7%,rgba(124,92,255,.35),transparent 32%),radial-gradient(circle at 92% 36%,rgba(56,217,255,.2),transparent 28%),linear-gradient(155deg,#1c236d 0%,#17164f 48%,#0a1030 100%)!important;padding:clamp(8px,2vh,18px) clamp(10px,3vw,22px)!important;gap:clamp(6px,1.4vh,12px)!important;overflow:hidden!important;grid-template-rows:30fr 50fr 20fr!important;align-items:stretch!important}
+#screenLobby.active{display:grid!important}
+#screenLobby .welcome-banner,#screenLobby .lobby-stake-panel,#screenLobby .lobby-players-card{height:100%!important;min-height:0!important;max-height:none!important;overflow:hidden!important;margin:0!important;box-sizing:border-box!important}
+#screenLobby .welcome-banner{padding:clamp(8px,1.8vh,18px) 10px!important}
+#screenLobby .lobby-stake-panel{padding:clamp(7px,1.5vh,14px) 10px!important;display:flex!important;flex-direction:column!important}
+#screenLobby .lobby-stake-heading{flex:0 0 auto!important;margin-bottom:clamp(5px,1vh,10px)!important;font-size:clamp(14px,2.2vh,19px)!important}
+#screenLobby .stakes-grid{flex:1 1 auto!important;min-height:0!important;gap:clamp(5px,1vh,10px)!important;display:flex!important;flex-direction:column!important}
+#screenLobby .stake-card{flex:1 1 0!important;min-height:0!important;height:auto!important;padding:clamp(5px,1vh,10px) 10px!important}
+#screenLobby .lobby-players-card{padding:clamp(7px,1.3vh,13px)!important}
+#screenCards{padding:clamp(6px,1.2vh,12px) clamp(8px,2.5vw,18px)!important;gap:0!important;margin:0 auto!important}
 #screenCards .card-selection-top{flex:0 0 auto!important;min-height:0!important;margin:0 0 clamp(5px,1vh,9px)!important;padding:clamp(4px,.9vh,8px) clamp(6px,1.8vw,12px)!important;border-radius:12px!important}
 #screenCards #cdPrizePot{flex:0 0 auto!important;min-height:0!important;margin:0 0 clamp(5px,1vh,9px)!important;padding:clamp(5px,1vh,9px) 10px!important;font-size:clamp(10px,1.8vh,14px)!important;line-height:1.2!important}
 #screenCards #poolGrid{flex:1 1 auto!important;min-height:0!important;height:auto!important;max-height:none!important;overflow-y:auto!important;overflow-x:hidden!important;align-content:start!important;grid-auto-flow:row!important}
@@ -1234,32 +1282,22 @@ body{padding:0!important}
     margin-right:auto!important;
   }
 }
-
-/* FINAL CALLED-CARD TRACKER STATE: only the most recently called number is green.
-   All older called numbers return to the default orange. */
-#screenGame .tracker-wrap .t-ball.called{
-  background:#ff650f!important;
-  color:#fff!important;
-  outline:none!important;
-  box-shadow:0 0 7px rgba(255,101,15,.22),inset 0 1px 0 rgba(255,255,255,.20)!important;
-}
-#screenGame .tracker-wrap .t-ball.called.latest,
-#screenGame .spectator-tracker-grid .t-ball.called.latest{
-  background:#22c55e!important;
-  color:#fff!important;
-  outline:2px solid #86efac!important;
-  box-shadow:0 0 12px rgba(34,197,94,.55),inset 0 1px 0 rgba(255,255,255,.22)!important;
-  transform:scale(1.07)!important;
-  z-index:3;
-}
-#screenGame .spectator-tracker-grid .t-ball.called{
-  background:#ff650f!important;
-  color:#fff!important;
-  outline:none!important;
-}
 </style>
 <script>
 (function(){
+  function syncLobbyViewportLayout(){
+    const lobby=document.getElementById('screenLobby');
+    if(!lobby) return;
+    const items=lobby.querySelectorAll('.welcome-banner,.lobby-stake-panel,.lobby-players-card');
+    if(items.length!==3) return;
+    const style=getComputedStyle(lobby);
+    const gap=parseFloat(style.rowGap||style.gap)||0;
+    const innerHeight=Math.max(0,lobby.clientHeight);
+    const availableHeight=Math.max(0,innerHeight-gap*2);
+    const rowHeights=[availableHeight*0.30,availableHeight*0.50,availableHeight*0.20];
+    lobby.style.gridTemplateRows=rowHeights.map(h=>`${h}px`).join(' ');
+    items.forEach((el,i)=>{ el.style.height=rowHeights[i]+'px'; el.style.minHeight='0px'; });
+  }
   function fixMelaCardPool(){
     const pool=document.getElementById('poolGrid');
     if(!pool) return;
@@ -1270,12 +1308,88 @@ body{padding:0!important}
     pool.style.boxSizing='border-box';
     pool.style.width=window.innerWidth>=480 ? 'min(100%, 769px)' : '100%';
   }
-  document.addEventListener('DOMContentLoaded',fixMelaCardPool);
-  window.addEventListener('resize',fixMelaCardPool,{passive:true});
-  window.addEventListener('orientationchange',fixMelaCardPool,{passive:true});
-  setTimeout(fixMelaCardPool,100);
+  document.addEventListener('DOMContentLoaded',()=>{fixMelaCardPool();syncLobbyViewportLayout();});
+  window.addEventListener('resize',()=>{fixMelaCardPool();syncLobbyViewportLayout();},{passive:true});
+  window.addEventListener('orientationchange',()=>setTimeout(()=>{fixMelaCardPool();syncLobbyViewportLayout();},50),{passive:true});
+  window.addEventListener('load',syncLobbyViewportLayout,{once:true});
+  setTimeout(()=>{fixMelaCardPool();syncLobbyViewportLayout();},100);
 })();
 </script>
+
+<style id="mela-deep-fixes-20260920">
+.dot.offline{width:auto!important;min-width:58px!important;height:18px!important;padding:2px 6px!important;border-radius:10px!important;background:#ef4444!important;color:#fff!important;font-size:7px!important;font-weight:900!important;line-height:14px!important;text-align:center!important;white-space:nowrap!important;box-shadow:0 0 8px rgba(239,68,68,.28)!important;}
+.dot.on{background:var(--green)!important;color:transparent!important;width:8px!important;min-width:8px!important;height:8px!important;padding:0!important;}
+#screenGame.spectator-mode{padding:clamp(5px,1vh,10px) clamp(6px,2vw,12px)!important;overflow:hidden!important;}
+#screenGame.spectator-mode>#spectatorView{height:100%!important;min-height:0!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;gap:0!important;}
+#screenGame.spectator-mode .spectator-stats-row{flex:0 0 auto!important;}
+#screenGame.spectator-mode .spectator-progress{flex:0 0 5px!important;}
+#screenGame.spectator-mode .spectator-bingo-header{flex:0 0 32px!important;}
+#screenGame.spectator-mode .spectator-wait-card{flex:0 1 clamp(112px,100vh,190px)!important;min-height:112px!important;max-height:190px!important;padding:clamp(8px,1.5vh,16px)!important;margin:0 0 7px!important;}
+#screenGame.spectator-mode .spectator-eyes{font-size:clamp(25px,5vh,40px)!important;margin-bottom:clamp(5px,1vh,12px)!important;}
+#screenGame.spectator-mode .spectator-wait-title{font-size:clamp(10px,1.7vh,13px)!important;margin-bottom:5px!important;}
+#screenGame.spectator-mode .spectator-wait-text{font-size:clamp(9px,1.5vh,12px)!important;line-height:1.35!important;}
+#screenGame.spectator-mode .spectator-wait-sub{font-size:9px!important;margin-top:3px!important;}
+#screenGame.spectator-mode .spectator-leave-btn{margin-top:8px!important;padding:7px 14px!important;min-width:150px!important;font-size:10px!important;}
+/* Spectator tracker: exact same card dimensions and responsive behavior as the main tracker. */
+#screenGame.spectator-mode .spectator-tracker-wrap{
+  flex:0 0 auto!important;
+  min-height:0!important;
+  overflow:hidden!important;
+  margin:0 0 2px!important;
+  padding:7px!important;
+  width:100%!important;
+  box-sizing:border-box!important;
+  border-radius:13px!important;
+  background:linear-gradient(145deg,#1c2669,#101642)!important;
+  border:1px solid rgba(83,165,255,.34)!important;
+}
+#screenGame.spectator-mode .spectator-tracker-title{
+  flex:0 0 auto!important;
+  padding:0 2px 7px!important;
+}
+#screenGame.spectator-mode .spectator-tracker-grid{
+  flex:0 0 auto!important;
+  min-height:0!important;
+  overflow:hidden!important;
+  align-content:normal!important;
+  grid-template-columns:repeat(15,minmax(0,1fr))!important;
+  grid-template-rows:none!important;
+  gap:2px!important;
+}
+#screenGame.spectator-mode .spectator-tracker-grid .t-ball{
+  min-width:0!important;
+  min-height:0!important;
+  height:auto!important;
+  padding:3px 0!important;
+  border-radius:4px!important;
+  font-size:8px!important;
+  line-height:1.05!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.035)!important;
+}
+#screenGame.spectator-mode .spectator-tracker-grid .t-ball.latest{
+  transform:scale(1.08)!important;
+  z-index:2!important;
+}
+@media(max-width:420px){
+  #screenGame.spectator-mode .spectator-tracker-wrap{padding:6px!important;}
+  #screenGame.spectator-mode .spectator-tracker-grid{gap:1.5px!important;}
+  #screenGame.spectator-mode .spectator-tracker-grid .t-ball{
+    font-size:7px!important;
+    padding:2.5px 0!important;
+  }
+}
+@media(max-width:360px){
+  #screenGame.spectator-mode .spectator-tracker-grid{gap:1.5px!important;}
+  #screenGame.spectator-mode .spectator-tracker-grid .t-ball{
+    font-size:7px!important;
+    padding:2.5px 0!important;
+  }
+}
+</style>
+
 </head>
 <body>
 
@@ -1444,18 +1558,17 @@ body{padding:0!important}
       </div>
     </div>
 
-    <div class="profile-stats">
-    
+    <div class="profile-stats profile-stats-2">
       <div class="profile-stat winnings">
-        <div class="profile-stat-icon">🏆</div>
+        <div class="profile-stat-icon">💰</div>
         <div class="profile-stat-value" id="profileWinnings">ETB 0.00</div>
         <div class="profile-stat-label">TOTAL WINNINGS</div>
       </div>
-     
+
       <div class="profile-stat gameswon">
         <div class="profile-stat-icon">🏅</div>
         <div class="profile-stat-value" id="profileWins">0</div>
-        <div class="profile-stat-label">TOTAL GAMES WON</div>
+        <div class="profile-stat-label">GAMES WON</div>
       </div>
     </div>
     <div id="profileStatus" class="profile-status" style="display:none"></div>
@@ -1590,8 +1703,10 @@ function setBalance(amt){
   const f=`ETB ${currentBalance.toFixed(2)}`;
   const balanceEl=document.getElementById('balanceEl');
   const walletEl=document.getElementById('walletBalAmt');
+  const profileBalEl=document.getElementById('profileBalance');
   if(balanceEl) balanceEl.innerText=f;
   if(walletEl) walletEl.innerText=f;
+  if(profileBalEl) profileBalEl.innerText=f;
 }
 
 function restoreCachedBalance(){
@@ -1616,12 +1731,18 @@ async function refreshAccountProfile(retries=10, delayMs=600){
       if(res.ok){
         const u=await res.json();
         const balance=Number(u?.balance);
+        const totalGames=Number(u?.total_games);
+        const totalWins=Number(u?.total_wins);
         const name=String(u?.name || u?.playerName || '').trim();
-        // Only accept a balance that came back from the account endpoint.
+        // Use the same authoritative account response that drives the working top balance.
         if(Number.isFinite(balance) && balance>=0){
           setBalance(balance);
           accountLoaded=true;
         }
+        const gamesEl=document.getElementById('profileGames');
+        const winsEl=document.getElementById('profileWins');
+        if(gamesEl && Number.isFinite(totalGames)) gamesEl.innerText=Math.max(0,Math.trunc(totalGames)).toLocaleString();
+        if(winsEl && Number.isFinite(totalWins)) winsEl.innerText=Math.max(0,Math.trunc(totalWins)).toLocaleString();
         if(name){
           myName=name;
           const welcome=document.getElementById('welcomeName');
@@ -1640,20 +1761,38 @@ async function refreshAccountBalance(retries=6, delayMs=500){
   return refreshAccountProfile(retries,delayMs);
 }
 function goScreen(id){
-  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  // Screen visibility and bottom-nav highlighting are separate concerns.
+  // Explicitly hide every screen before showing the requested one so the
+  // lobby can never remain visible behind Profile or another page.
+  document.querySelectorAll('.screen').forEach(s=>{
+    s.classList.remove('active');
+    s.style.display='none';
+  });
   const target=document.getElementById(id);
-  if(target) target.classList.add('active');
-  // A finished-round result is an overlay, not a screen. When switching back
-  // to any normal app screen, force the overlay completely out of the way.
+  if(target){
+    target.classList.add('active');
+    target.style.display='flex';
+  }
   if(id==='screenCards' || id==='screenGame' || id==='screenLobby'){
     const overlay=document.getElementById('winnerOverlay');
     if(overlay){ overlay.classList.remove('show'); overlay.style.display='none'; }
   }
 }
+function setGameNavActive(){
+  document.querySelectorAll('.bottom-nav .nav-item').forEach(el=>el.classList.remove('active'));
+  const gameNav=document.getElementById('navGame');
+  if(gameNav) gameNav.classList.add('active');
+}
+
 function navGo(screen, navId){
+  // Game is active on Lobby and Cards only. Profile always gets Profile active.
+  const effectiveNav = (screen==='screenLobby' || screen==='screenCards')
+    ? 'navGame'
+    : (screen==='screenProfile' ? 'navProfile' : navId);
+
   goScreen(screen);
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  document.getElementById(navId)?.classList.add('active');
+  document.getElementById(effectiveNav)?.classList.add('active');
 
   // Re-apply the known balance after the new screen becomes visible so a
   // screen's default "ETB 0.00" never overwrites the real displayed balance.
@@ -1737,7 +1876,7 @@ function updateSpectatorTracker(numbers){
   const set=new Set((numbers||[]).map(Number));
   for(let i=1;i<=75;i++){
     const el=document.getElementById('stb'+i);
-    if(el) el.className='t-ball'+(set.has(i)?' called':'');
+    if(el) el.className='t-ball'+(set.has(i)?' '+colClass(i):'');
   }
   const last=(numbers||[]).length?(numbers||[])[(numbers||[]).length-1]:null;
   if(last){const el=document.getElementById('stb'+Number(last));if(el)el.classList.add('latest');}
@@ -1785,6 +1924,10 @@ function renderSpectatorView(msg={}){
 }
 
 function goToGame(){
+  // GAME is a navigation entry point, not an error state. Keep the Game tab
+  // highlighted even when there is no active round and we return to the lobby.
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('navGame')?.classList.add('active');
   // GAME is a navigation entry point, not an error state. If the player has
   // not selected/joined an active game, always return to the normal lobby.
   restoreActiveGameState();
@@ -1805,20 +1948,23 @@ function goToGame(){
       localStorage.removeItem('roomId');
       localStorage.removeItem('stakeId');
     }catch(e){}
-    navGo('screenLobby','navHome');
+    navGo('screenLobby','navGame');
     return;
   }
 
   myRoomId=roomId;
   if(saved?.stakeId) myStakeId=saved.stakeId;
-  if(activeGamePhase==='spectating'){
+  if(activeGamePhase==='playing' || activeGamePhase==='countdown'){
+    // Reconnect first. Ownership is resolved by the server using Telegram ID.
+    navGo(activeGamePhase==='countdown'?'screenCards':'screenGame','navGame');
+    setSpectatorMode(false);
+    if(activeGamePhase==='playing' && myCardId && myCardNumbers.length) renderBothCards();
+    if(telegramId) wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
+    refreshCardCells();
+  }else if(activeGamePhase==='spectating'){
     navGo('screenGame','navGame');
     renderSpectatorView({calledNumbers:Array.from(calledNumbersSet||[])});
-  }else if(activeGamePhase==='playing'){
-    navGo('screenGame','navGame');
-    setSpectatorMode(false);
-    if(myCardId && myCardNumbers.length) renderBothCards();
-    refreshCardCells();
+    if(telegramId) wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
   }else{
     navGo('screenCards','navGame');
     if(activeGamePhase==='countdown') showSavedCountdown();
@@ -1829,17 +1975,23 @@ function goToGame(){
 function goToWallet(){gotoProfile();}
 function gotoProfile(){
   navGo('screenProfile','navProfile');
-  // Show the profile immediately. The server refresh runs silently in the background.
-  loadUserProfile(false).catch(()=>{});
+  // Profile must always use the current account record, not stale cached data.
+  loadUserProfile(true).catch(()=>{});
 }
 
 function renderUserProfile(u, history=[]){
   const name=String(u?.name||u?.playerName||myName||'Player').trim()||'Player';
   const balance=Number(u?.balance);
   const rows=Array.isArray(history)?history:[];
-  const games=Number.isFinite(Number(u?.total_games)) ? Number(u.total_games) : rows.length;
-  const winsFromHistory=rows.filter(g=>g?.won===true || g?.won==='true').length;
-  const wins=Number.isFinite(Number(u?.total_wins)) ? Number(u.total_wins) : winsFromHistory;
+  // The profile API may still return the users-table counters as 0 on an
+  // older deployed server. The finished-game history is tied to the same
+  // Telegram ID and is the reliable fallback for these two display values.
+  const historyGames=rows.length;
+  const historyWins=rows.filter(g=>g?.won===true || g?.won==='true' || Number(g?.amount_won)>0).length;
+  const apiGames=Number(u?.total_games);
+  const apiWins=Number(u?.total_wins);
+  const games=Number.isFinite(apiGames) ? Math.max(0,Math.trunc(apiGames),historyGames) : historyGames;
+  const wins=Number.isFinite(apiWins) ? Math.max(0,Math.trunc(apiWins),historyWins) : historyWins;
   const winningsFromHistory=rows.reduce((sum,g)=>sum+(Number(g?.amount_won)||0),0);
   const winnings=Number.isFinite(Number(u?.total_winnings)) ? Number(u.total_winnings) : winningsFromHistory;
   // Prefer the authoritative latest payout calculated by the server directly
@@ -1870,30 +2022,51 @@ function renderUserProfile(u, history=[]){
 
 async function loadUserProfile(force=false){
   if(!telegramId) telegramId=getTelegramId();
+  if(!telegramId && typeof waitForTelegramId==='function'){
+    telegramId=await waitForTelegramId(20,250);
+  }
   const status=document.getElementById('profileStatus');
+
+  // Never show a loading screen/message for Profile. If we have a cached account,
+  // render it immediately and then refresh it silently from the server.
   if(status) status.style.display='none';
 
   let id=normalizeTelegramId(telegramId);
   if(!id){
     try{ id=normalizeTelegramId(localStorage.getItem('melaBingoTelegramId')); }catch(e){}
   }
-  if(!id) return false;
+
+  // Never treat cached profile statistics as authoritative. The first app sync and
+  // every later profile refresh come from the current database response.
+
+  if(!id){
+    // The normal app/account flow can still resolve Telegram authentication later.
+    return false;
+  }
 
   telegramId=id;
   try{
-    // IMPORTANT: Profile must NOT call /api/history/:telegramId.
-    // The history endpoint caused repeated 403/request errors. Profile uses only
-    // the authoritative user endpoint; database totals are already returned there.
     const userRes=await fetch(`${API_BASE}/api/user/${encodeURIComponent(id)}?_=${Date.now()}`,{cache:'no-store'});
     const userData=await userRes.json().catch(()=>({}));
     if(!userRes.ok) throw new Error(userData.error||'Profile request failed');
     renderUserProfile(userData,[]);
+
+    // Cache only a successfully loaded server profile. This is UI data only;
+    // Neon/server balance remains authoritative and is never changed here.
     try{
-      localStorage.setItem('melaBingoProfile',JSON.stringify({telegramId:id,user:userData,history:[],savedAt:Date.now()}));
+      localStorage.setItem('melaBingoProfile',JSON.stringify({
+        telegramId:id,
+        user:userData,
+        savedAt:Date.now()
+      }));
     }catch(e){}
+
+    if(status) status.style.display='none';
     return true;
   }catch(e){
     console.error('Profile refresh:',e);
+    // Keep the cached/current profile visible if the background refresh fails.
+    if(status) status.style.display='none';
     return false;
   }
 }
@@ -1910,17 +2083,32 @@ function formatHistoryDate(value){
 function connect(){
   const proto=API_BASE.startsWith('https:')?'wss://':'ws://';
   ws=new WebSocket(proto+new URL(API_BASE).host);
-  ws.onopen=()=>{
-  document.getElementById('connDot').classList.add('on');
-};
-  ws.onclose=()=>{document.getElementById('connDot').classList.remove('on');setTimeout(connect,3000);};
-  ws.onerror=()=>{};
+  const setConnectionStatus=(online)=>{
+    const dot=document.getElementById('connDot');
+    if(!dot) return;
+    dot.classList.toggle('on',!!online);
+    dot.classList.toggle('offline',!online);
+    dot.innerText=online?'':'ከመስመር ውጭ';
+    dot.setAttribute('aria-label',online?'Online':'ከመስመር ውጭ');
+  };
+  ws.onopen=()=>setConnectionStatus(true);
+  ws.onclose=()=>{setConnectionStatus(false);setTimeout(connect,3000);};
+  ws.onerror=()=>setConnectionStatus(false);
   ws.onmessage=e=>{try{handle(JSON.parse(e.data));}catch(err){console.error(err);}};
 }
 function wsSend(obj){if(ws&&ws.readyState===1)ws.send(JSON.stringify(obj));}
 
 // ─── POST-GAME RESET / SAME-STAKE RETURN ───────────────────────
 let postGameAutoRefreshTimer=null;
+
+function setBingoBtn(state){
+  const btn=document.getElementById('bingoBtn');
+  // Manual Bingo UI may be removed; game logic can still safely call this helper.
+  if(!btn) return;
+  btn.className='bingo-btn';
+  if(state==='ready') btn.classList.add('ready');
+  if(state==='locked') btn.classList.add('locked');
+}
 
 function refreshCardsForNewRound(){
   if(postGameAutoRefreshTimer){
@@ -2020,6 +2208,7 @@ function handle(msg){
         // First load the account directly over HTTPS. This breaks the old failure
         // mode where a WebSocket lookup returned a fake zero/unregistered snapshot.
         await refreshAccountProfile(6,500);
+        await loadUserProfile(true).catch(()=>{});
         sendTelegramAuth(tid);
       });
       break;
@@ -2043,7 +2232,7 @@ function handle(msg){
   //document.getElementById('welcomeName').innerText=myName||'Player';
   // Always reconcile from the HTTPS account endpoint as the final authority.
   refreshAccountProfile(10,500);
-
+  loadUserProfile(true).catch(()=>{});
 
   document.getElementById('welcomeName').innerText=myName||'Player';
   //document.getElementById('welcomeStatus').innerText=msg.isRegistered?'Welcome back! 👋':'Registered!';
@@ -2062,37 +2251,41 @@ function handle(msg){
         restoringActiveGame=false;
         clearActiveGameState();
         myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null;
-        goScreen('screenLobby');
+        navGo('screenLobby','navGame');
       }
     },6000);
   } else {
-    goScreen('screenLobby');
+    navGo('screenLobby','navGame');
   }
   break;
 
     case 'reconnectFailed':
-      restoringActiveGame=false; clearActiveGameState(); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardNumbers=[]; myCardNumbers2=[]; goScreen('screenLobby'); break;
+      restoringActiveGame=false; clearActiveGameState(); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardNumbers=[]; myCardNumbers2=[]; navGo('screenLobby','navGame'); break;
 
    case 'lobbyUpdate': renderStakes(msg.stakes); break;
 
    case 'joinedRoom':
       localStorage.setItem('roomId', msg.roomId);
       myRoomId=msg.roomId; myStakeId=msg.stakeId; localStorage.setItem('roomId',msg.roomId); localStorage.setItem('stakeId',msg.stakeId);
+      // A reconnect can return the existing owner's cards while the room is still
+      // waiting/counting down. Never discard those IDs just because the room is not playing yet.
+      if(msg.cardId){ myCardId=msg.cardId; myCardNumbers=Array.isArray(msg.cardNumbers)?msg.cardNumbers:myCardNumbers; }
+      if(msg.cardId2){ myCardId2=msg.cardId2; myCardNumbers2=Array.isArray(msg.cardNumbers2)?msg.cardNumbers2:myCardNumbers2; }
       if(msg.status==='countdown'){
         activeGamePhase='countdown'; activeCountdownLeft=Number(msg.countdown||msg.countdownLeft||activeCountdownLeft||0);
       }else if(msg.status==='playing'){
         activeGamePhase=(myCardId||myCardId2)?'playing':'spectating';
-      }else if(!myCardId){
+      }else if(myCardId||myCardId2){
+        activeGamePhase='countdown'; activeCountdownLeft=0;
+      }else{
         activeGamePhase='none'; activeCountdownLeft=0;
       }
       saveActiveGameState(activeGamePhase);
-      if(msg.status!=='countdown' && msg.status!=='playing') { myCardId=null; myCardId2=null; }
       resetAutomaticGameState();
       activePlayers=[]; updateActivePlayers(msg.players||msg.activePlayers||[]);
       if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
         setBalance(msg.balance);
       }
-      // Room balance can be stale after a deposit/stake transaction; re-read the Telegram/database account.
       refreshAccountProfile(4,300);
       resetSlotUI();
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
@@ -2100,14 +2293,15 @@ function handle(msg){
       if(msg.status==='playing'){
         if(myCardId||myCardId2){
           activeGamePhase='playing'; saveActiveGameState('playing');
-          navGo('screenGame','navGame'); setSpectatorMode(false);
+          navGo('screenGame','navGame'); setSpectatorMode(false); renderBothCards(); refreshCardCells();
         }else{
           renderSpectatorView({playerCount:msg.playerCount||0,stakeAmount:msg.stakeAmount||0});
           navGo('screenGame','navGame');
         }
       } else {
-        navGo('screenCards','navCards');
+        navGo('screenCards','navGame');
         if(msg.status==='countdown') showSavedCountdown();
+        reapplyMyCardPoolOwnership();
       }
       break;
 
@@ -2207,10 +2401,7 @@ function handle(msg){
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
       document.getElementById('playerCountVal').innerText=msg.playerCount||0;
       updateActivePlayers(msg.players||msg.activePlayers||[]);
-      (msg.calledNumbers||[]).forEach(n=>{const el=document.getElementById('tb'+n);if(el)el.className='t-ball called';});
-       const initialCalled=msg.calledNumbers||[];
-       const initialLast=initialCalled.length?Number(initialCalled[initialCalled.length-1]):null;
-       if(initialLast){const latestEl=document.getElementById('tb'+initialLast);if(latestEl)latestEl.classList.add('latest');prevLastCalled=initialLast;}
+      (msg.calledNumbers||[]).forEach(n=>{const el=document.getElementById('tb'+n);if(el)el.className='t-ball '+colClass(n);});
       renderBothCards();
       refreshCardCells();
       navGo('screenGame','navGame'); break;
@@ -2276,7 +2467,7 @@ function handle(msg){
       if(telegramId) setTimeout(()=>refreshAccountProfile(3,300),100);
       break;
 
-    case 'leftRoom': clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; navGo('screenLobby'); break;
+    case 'leftRoom': clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; navGo('screenLobby','navGame'); break;
 
     case 'notification': showToast(msg.message, msg.message.startsWith('✅')?'':'error'); break;
 
@@ -2323,7 +2514,7 @@ function onNumberCalled(msg){
     if(p)p.classList.remove('latest');
   }
   const tb=document.getElementById('tb'+n);
-  if(tb) tb.className='t-ball called latest';
+  if(tb) tb.className='t-ball '+cfg.cls+' latest';
   prevLastCalled=n;
 
   playBallAudio(n);
@@ -2555,18 +2746,6 @@ function resetAutomaticGameState(){
   markedIndices2=new Set([12]);
 }
 
-// Compatibility helper: older round-reset code calls setBingoBtn().
-// The manual BINGO button is intentionally hidden/removed from the user flow,
-// so this function safely keeps that old call from throwing a ReferenceError.
-function setBingoBtn(state='idle'){
-  const btn=document.getElementById('bingoBtn');
-  if(btn){
-    btn.style.display='none';
-    btn.disabled=true;
-    btn.setAttribute('aria-hidden','true');
-  }
-}
-
 // ─── SLOT UI (card selection indicators) ──────────────────────
  function updatePrizePot(cardCount, stakeAmount){
   const el=document.getElementById('cdPrizePot');
@@ -2619,6 +2798,15 @@ if(window.ResizeObserver){
 }
 
 // ─── CARD POOL ────────────────────────────────────────────────
+function reapplyMyCardPoolOwnership(){
+  const grid=document.getElementById('poolGrid');
+  if(!grid) return;
+  if(!Array.isArray(cardPool)) return;
+  cardPool.forEach(c=>{
+    const btn=document.getElementById('cardbtn-'+c.id);
+    if(btn) applyCardOwnership(btn,c);
+  });
+}
 function renderCardPool(pool){
   const grid=document.getElementById('poolGrid');
   grid.innerHTML='';
@@ -2746,7 +2934,7 @@ function leaveRoom(){
   clearActiveGameState();
   localStorage.removeItem('roomId'); localStorage.removeItem('stakeId');
   setSpectatorMode(false);
-  navGo('screenLobby','navHome');
+  navGo('screenLobby','navGame');
 }
 
 // ─── AUDIO SYSTEM ────────────────────────────────────────────
@@ -2812,6 +3000,15 @@ restoreCachedBalance();
 connect();
 //--------------------------------------------------------------
 
+
+function ensureGameNavForScreens(){
+  const lobby=document.getElementById('screenLobby');
+  const cards=document.getElementById('screenCards');
+  if((lobby && lobby.classList.contains('active')) || (cards && cards.classList.contains('active'))) setGameNavActive();
+}
+
+window.addEventListener('load',ensureGameNavForScreens);
+window.addEventListener('resize',ensureGameNavForScreens);
 </script>
 </body>
 </html>
