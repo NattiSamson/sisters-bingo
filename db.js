@@ -4022,7 +4022,7 @@ async getAllPaymentAccountsForAdmin() {
 			}
 			
 			const currentBalance = Number(
-			  walletResult.rows[0].total_balance || 0
+			  walletResult.rows[0].play_balance || 0
 			);
 			
 			const amountAfter = currentBalance + amount;
