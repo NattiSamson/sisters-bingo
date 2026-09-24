@@ -2518,11 +2518,15 @@ async rejectWithdrawal(
      */
     const adminResult = await client.query(
       `
-      SELECT id, telegram_id, name
+      SELECT
+        id,
+        telegram_id,
+        name
       FROM users
       WHERE telegram_id = $1
         AND is_admin = TRUE
-        AND is_active = TRUE        
+        AND is_active = TRUE
+        AND is_banned = FALSE
         AND is_blocked = FALSE
       LIMIT 1
       `,
@@ -2541,15 +2545,17 @@ async rejectWithdrawal(
     const admin = adminResult.rows[0];
 
     /*
-     * Lock withdrawal + user.
+     * Lock the withdrawal and its user.
+     *
+     * We need the transaction_id because the refund
+     * must reverse the original withdrawal transaction.
      */
     const withdrawalResult = await client.query(
       `
       SELECT
         w.*,
         u.telegram_id,
-        u.name,
-        u.balance
+        u.name
       FROM withdrawals w
       JOIN users u
         ON u.id = w.user_id
@@ -2571,6 +2577,10 @@ async rejectWithdrawal(
     const withdrawal =
       withdrawalResult.rows[0];
 
+    /*
+     * A withdrawal can only be rejected while it
+     * is actively assigned to an admin.
+     */
     if (withdrawal.status !== "processing") {
       await client.query("ROLLBACK");
 
@@ -2581,6 +2591,9 @@ async rejectWithdrawal(
       };
     }
 
+    /*
+     * Make sure this admin owns the claim.
+     */
     if (
       Number(withdrawal.claimed_by_id) !==
       Number(admin.id)
@@ -2596,6 +2609,8 @@ async rejectWithdrawal(
 
     /*
      * Check claim lease.
+     *
+     * Keep the existing 5-minute claim rule.
      */
     const claimedAt =
       withdrawal.claimed_at
@@ -2617,32 +2632,58 @@ async rejectWithdrawal(
     }
 
     /*
-     * Refund user's original withdrawal amount.
+     * The withdrawal must have an original financial
+     * transaction because the refund is now handled
+     * by the wallet/ledger system.
      */
-    const balanceResult = await client.query(
-      `
-      UPDATE users
-      SET balance = balance + $1
-      WHERE id = $2
-      RETURNING balance
-      `,
-      [
-        withdrawal.amount,
-        withdrawal.user_id
-      ]
-    );
-
-    if (!balanceResult.rows.length) {
+    if (!withdrawal.transaction_id) {
       throw new Error(
-        "Could not refund user balance."
+        "Withdrawal has no financial transaction to refund."
       );
     }
 
-    const balanceAfter =
-      Number(balanceResult.rows[0].balance);
+    /*
+     * Refund the original withdrawal through the
+     * wallet ledger.
+     *
+     * This reverses the original Main-wallet debit.
+     *
+     * Idempotency key prevents the same withdrawal
+     * from being refunded twice.
+     */
+    const refundResult = await client.query(
+      `
+      SELECT refund_withdrawal(
+        $1,
+        $2,
+        $3,
+        $4,
+        $5
+      ) AS transaction_id
+      `,
+      [
+        withdrawal.user_id,
+        withdrawal.id,
+        withdrawal.transaction_id,
+        `withdrawal:refund:${withdrawal.id}`,
+        `Withdrawal #${withdrawal.id} rejected`
+      ]
+    );
+
+    const refundTransactionId =
+      refundResult.rows[0]?.transaction_id;
+
+    if (!refundTransactionId) {
+      throw new Error(
+        "Could not create withdrawal refund transaction."
+      );
+    }
 
     /*
-     * Mark withdrawal rejected.
+     * Mark the withdrawal as rejected.
+     *
+     * Clear the claim because the withdrawal is no
+     * longer being processed.
      */
     const updateResult = await client.query(
       `
@@ -2675,40 +2716,40 @@ async rejectWithdrawal(
     }
 
     /*
-     * Financial audit trail.
+     * Get the user's current wallet balances.
+     *
+     * users.balance is no longer used as the source
+     * of truth for financial accounting.
      */
-    await client.query(
+    const walletResult = await client.query(
       `
-      INSERT INTO transactions (
-        user_id,
-        type,
-        amount,
-        balance_after,
-        reference
-      )
-      VALUES (
-        $1,
-        'withdrawal_refund',
-        $2,
-        $3,
-        $4
-      )
+      SELECT
+        main_balance,
+        play_balance,
+        total_balance
+      FROM user_wallet_balances
+      WHERE user_id = $1
       `,
-      [
-        withdrawal.user_id,
-        withdrawal.amount,
-        balanceAfter,
-        `withdrawal-refund:${withdrawalIdNum}`
-      ]
+      [withdrawal.user_id]
     );
 
+    const walletBalances =
+      walletResult.rows[0] || {
+        main_balance: 0,
+        play_balance: 0,
+        total_balance: 0
+      };
+
     await client.query("COMMIT");
+
+    const rejectedWithdrawal =
+      updateResult.rows[0];
 
     return {
       success: true,
 
       withdrawal_id:
-        withdrawal.id,
+        rejectedWithdrawal.id,
 
       telegram_id:
         withdrawal.telegram_id,
@@ -2723,13 +2764,25 @@ async rejectWithdrawal(
         Number(withdrawal.amount),
 
       balance_after:
-        balanceAfter,
+        Number(walletBalances.total_balance || 0),
+
+      main_balance:
+        Number(walletBalances.main_balance || 0),
+
+      play_balance:
+        Number(walletBalances.play_balance || 0),
+
+      total_balance:
+        Number(walletBalances.total_balance || 0),
 
       rejection_reason:
         cleanReason,
 
+      refund_transaction_id:
+        refundTransactionId,
+
       withdrawal:
-        updateResult.rows[0]
+        rejectedWithdrawal
     };
 
   } catch (err) {
