@@ -1,3 +1,12 @@
+-- ════════════════════════════════════════════════════════════════
+--  BETESEB BINGO — PostgreSQL Database Schema
+--  Run this file once to set up all tables
+--  Command: psql -U postgres -d beteseb_bingo -f database.sql
+-- ════════════════════════════════════════════════════════════════
+
+CREATE DATABASE beteseb_bingo;
+\c beteseb_bingo;
+
 --
 -- PostgreSQL database dump
 --
@@ -16,32 +25,6 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
-
---
--- Name: award_win(integer, numeric, integer); Type: FUNCTION; Schema: public; Owner: neondb_owner
---
-
-CREATE FUNCTION public.award_win(p_user_id integer, p_amount numeric, p_game_id integer) RETURNS numeric
-    LANGUAGE plpgsql
-    AS $$
-DECLARE v_new_balance NUMERIC;
-BEGIN
-  UPDATE users
-  SET balance = balance + p_amount,
-      total_wins = total_wins + 1,
-      total_winnings = total_winnings + p_amount
-  WHERE id = p_user_id
-  RETURNING balance INTO v_new_balance;
-
-  INSERT INTO transactions(user_id, type, amount, balance_after, reference)
-  VALUES(p_user_id, 'win', p_amount, v_new_balance, p_game_id::TEXT);
-
-  RETURN v_new_balance;
-END;
-$$;
-
-
-ALTER FUNCTION public.award_win(p_user_id integer, p_amount numeric, p_game_id integer) OWNER TO neondb_owner;
 
 --
 -- Name: create_financial_transaction(integer, character varying, character varying, bigint, character varying, character varying, character varying, text, jsonb); Type: FUNCTION; Schema: public; Owner: neondb_owner
@@ -278,33 +261,6 @@ $$;
 
 
 ALTER FUNCTION public.credit_deposit_to_wallet(p_user_id integer, p_amount numeric, p_deposit_id bigint, p_idempotency_key character varying, p_game_system_id bigint, p_description text) OWNER TO neondb_owner;
-
---
--- Name: deduct_stake(integer, numeric, integer); Type: FUNCTION; Schema: public; Owner: neondb_owner
---
-
-CREATE FUNCTION public.deduct_stake(p_user_id integer, p_amount numeric, p_game_id integer) RETURNS numeric
-    LANGUAGE plpgsql
-    AS $$
-DECLARE v_new_balance NUMERIC;
-BEGIN
-  UPDATE users SET balance = balance - p_amount
-  WHERE id = p_user_id AND balance >= p_amount
-  RETURNING balance INTO v_new_balance;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Insufficient balance';
-  END IF;
-
-  INSERT INTO transactions(user_id, type, amount, balance_after, reference)
-  VALUES(p_user_id, 'stake', -p_amount, v_new_balance, p_game_id::TEXT);
-
-  RETURN v_new_balance;
-END;
-$$;
-
-
-ALTER FUNCTION public.deduct_stake(p_user_id integer, p_amount numeric, p_game_id integer) OWNER TO neondb_owner;
 
 --
 -- Name: generate_bingo_game_code(); Type: FUNCTION; Schema: public; Owner: neondb_owner
