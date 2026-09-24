@@ -1867,7 +1867,6 @@ async getPendingWithdrawals(
       u.telegram_id,
       u.name,
       u.phone,
-      u.balance,
 
       pm.name AS payment_method,
       pm.amharic_name AS payment_method_amharic,
@@ -2173,8 +2172,7 @@ async getWithdrawalHistory(
       SELECT
         w.*,
         u.telegram_id,
-        u.name,
-        u.balance
+        u.name        
       FROM withdrawals w
       JOIN users u
         ON u.id = w.user_id
@@ -5476,6 +5474,41 @@ async getAllPaymentAccountsForAdmin() {
   );
 
   return rows[0]?.transaction_id ?? null;
+},
+
+	async getWalletTransactionHistory(userId, limit = 50) {
+  const id = toPositiveInteger(userId, "userId");
+
+  const safeLimit = Math.min(
+    Math.max(Number(limit) || 50, 1),
+    200
+  );
+
+  const result = await pool.query(
+    `
+    SELECT
+      ft.id AS transaction_id,
+      ft.type,
+      ft.status,
+      ft.description,
+      ft.created_at,
+      w.wallet_type,
+      le.amount
+    FROM financial_transactions ft
+    JOIN ledger_entries le
+      ON le.transaction_id = ft.id
+    JOIN wallets w
+      ON w.id = le.wallet_id
+    WHERE w.user_id = $1
+    ORDER BY
+      ft.created_at DESC,
+      ft.id DESC
+    LIMIT $2
+    `,
+    [id, safeLimit]
+  );
+
+  return result.rows;
 }
   
 };
