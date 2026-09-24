@@ -3878,8 +3878,7 @@ async getAllPaymentAccountsForAdmin() {
           `
           SELECT
             id,
-            telegram_id,
-            balance,
+            telegram_id,            
             is_active,
             is_banned,
             is_blocked
@@ -4009,14 +4008,24 @@ async getAllPaymentAccountsForAdmin() {
         return {success:false, errorMessage:"No creditedName!"};
       }
 
-      const currentBalance =
-        Number(
-          user.balance || 0
-        );
-
-      const amountAfter =
-        currentBalance +
-        amount;
+		const walletResult = await client.query(
+			  `
+			  SELECT main_balance, play_balance, total_balance
+			  FROM user_wallet_balances
+			  WHERE user_id = $1
+			  `,
+			  [user.id]
+			);
+			
+			if (walletResult.rows.length === 0) {
+			  throw new Error('User wallets not found');
+			}
+			
+			const currentBalance = Number(
+			  walletResult.rows[0].total_balance || 0
+			);
+			
+			const amountAfter = currentBalance + amount;
 
       const depositResult =
         await client.query(
@@ -4058,9 +4067,12 @@ async getAllPaymentAccountsForAdmin() {
             receiptNo
           ]
         );
-      
+
+    const depositId =
+      depositResult.rows[0]?.id;
+		
   const depositvalues = depositResult.rows[0];
-      pool.query(
+      client.query(
     `
     SELECT credit_deposit_to_wallet(
       $1,
@@ -4075,7 +4087,7 @@ async getAllPaymentAccountsForAdmin() {
       user.id,
       amount,
       depositvalues.id,
-      `deposit:credit:${game}`,
+      `deposit:credit:${depositId}`,
 	  null,
 	  null
     ]
