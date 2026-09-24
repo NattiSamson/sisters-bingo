@@ -4024,7 +4024,29 @@ async getAllPaymentAccountsForAdmin() {
             receiptNo
           ]
         );
-
+      
+  const depositvalues = depositResult.rows[0];
+      pool.query(
+    `
+    SELECT credit_deposit_to_wallet(
+      $1,
+      $2,
+      $3,      
+      $4,
+      $5,
+	    $6,
+    ) AS transaction_id
+    `,
+    [
+      user.id,
+      amount,
+      depositvalues.id,
+      `deposit:credit:${game}`,
+	  null,
+	  null
+    ]
+  );
+/*
       await client.query(
         `
         UPDATE users
@@ -4038,7 +4060,7 @@ async getAllPaymentAccountsForAdmin() {
           user.id
         ]
       );
-
+*/
       await client.query(
         `
         UPDATE payment_accounts
@@ -4183,6 +4205,227 @@ async getAllPaymentAccountsForAdmin() {
     );
 
   return rows[0] || null;
+},
+
+  async getBingoParticipant(
+  gameId,
+  userId,
+  cardId
+) {
+  const game = toPositiveInteger(
+    gameId,
+    "gameId"
+  );
+
+  const user = toPositiveInteger(
+    userId,
+    "userId"
+  );
+
+  const card = toPositiveInteger(
+    cardId,
+    "cardId"
+  );
+
+  const { rows } =
+    await pool.query(
+      `
+      SELECT
+        bp.*,
+        g.game_code,
+        g.status AS game_status
+      FROM bingo_participants bp
+      JOIN bingo_games g
+        ON g.id = bp.game_id
+      WHERE bp.game_id = $1
+        AND bp.user_id = $2
+        AND bp.card_id = $3
+      LIMIT 1
+      `,
+      [
+        game,
+        user,
+        card
+      ]
+    );
+
+  return rows[0] || null;
+},
+
+  async getBingoUserParticipants(
+  gameId,
+  userId
+) {
+  const game = toPositiveInteger(
+    gameId,
+    "gameId"
+  );
+
+  const user = toPositiveInteger(
+    userId,
+    "userId"
+  );
+
+  const { rows } =
+    await pool.query(
+      `
+      SELECT
+        id,
+        game_id,
+        user_id,
+        card_id,
+        card_data,
+        transaction_id,
+        amount,
+        status,
+        is_winner,
+        is_disqualified,
+        amount_won,
+        joined_at
+      FROM bingo_participants
+      WHERE game_id = $1
+        AND user_id = $2
+      ORDER BY card_id
+      `,
+      [
+        game,
+        user
+      ]
+    );
+
+  return rows;
+},
+
+  async getActiveBingoParticipants(
+  gameId
+) {
+  const game = toPositiveInteger(
+    gameId,
+    "gameId"
+  );
+
+  const { rows } =
+    await pool.query(
+      `
+      SELECT
+        id,
+        game_id,
+        user_id,
+        card_id,
+        card_data,
+        transaction_id,
+        amount,
+        status,
+        is_winner,
+        is_disqualified,
+        amount_won,
+        joined_at
+      FROM bingo_participants
+      WHERE game_id = $1
+        AND status = 'active'
+        AND is_disqualified = FALSE
+      ORDER BY id
+      `,
+      [game]
+    );
+
+  return rows;
+},
+
+  async markBingoWinningCards(
+  gameId,
+  winningCards,
+  amountWonPerCard = 0
+) {
+  const game = toPositiveInteger(
+    gameId,
+    "gameId"
+  );
+
+  if (!Array.isArray(winningCards)) {
+    throw new Error(
+      "winningCards must be an array."
+    );
+  }
+
+  const client =
+    await pool.connect();
+
+  try {
+    await client.query(
+      "BEGIN"
+    );
+
+    const updated = [];
+
+    for (
+      const winningCard
+      of winningCards
+    ) {
+      const userId =
+        toPositiveInteger(
+          winningCard.userId,
+          "winningCard.userId"
+        );
+
+      const cardId =
+        toPositiveInteger(
+          winningCard.cardId,
+          "winningCard.cardId"
+        );
+
+      const result =
+        await client.query(
+          `
+          UPDATE bingo_participants
+          SET
+            is_winner = TRUE,
+            amount_won = $1
+          WHERE game_id = $2
+            AND user_id = $3
+            AND card_id = $4
+            AND status = 'active'
+            AND is_disqualified = FALSE
+          RETURNING *
+          `,
+          [
+            amountWonPerCard,
+            game,
+            userId,
+            cardId
+          ]
+        );
+
+      if (!result.rows.length) {
+        throw new Error(
+          `Winning card ${cardId} was not found or is not eligible.`
+        );
+      }
+
+      updated.push(
+        result.rows[0]
+      );
+    }
+
+    await client.query(
+      "COMMIT"
+    );
+
+    return updated;
+
+  } catch (err) {
+
+    await safeRollback(
+      client
+    );
+
+    throw err;
+
+  } finally {
+
+    client.release();
+
+  }
 },
 
  async addBingoParticipant(
