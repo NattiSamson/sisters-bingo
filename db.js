@@ -1473,7 +1473,7 @@ async createWithdrawal(
 
       return {
         success: false,
-        message: "Account not found or inactive."
+        message: "Account not found or blocked."
       };
     }
 
@@ -1578,7 +1578,7 @@ async createWithdrawal(
           user.id,
           withdrawalAmount,
           withdrawal.id,
-          `withdrawal:${withdrawal.id}`,
+          `withdrawal:reserve:${withdrawal.id}`,
           `Withdrawal request #${withdrawal.id}`
         ]
       );
@@ -2110,8 +2110,7 @@ async getWithdrawalHistory(
       FROM users
       WHERE telegram_id = $1
         AND is_admin = TRUE
-        AND is_active = TRUE
-        AND is_banned = FALSE
+        AND is_active = TRUE        
         AND is_blocked = FALSE
       LIMIT 1
       `,
