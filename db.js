@@ -4115,396 +4115,954 @@ async getAllPaymentAccountsForAdmin() {
   // GAMES
   // ============================================================
 
-  async createGame(
-    roomId,
-    stakeId,
-    stakeAmount
-  ) {
+  async createBingoGame(
+  roomId,
+  stakeId,
+  stakeAmount
+) {
+  const amount = toPositiveAmount(
+    stakeAmount,
+    "stakeAmount"
+  );
 
-    const amount =
+  const { rows } = await pool.query(
+    `
+    INSERT INTO bingo_games (
+      game_code,
+      room_id,
+      stake_id,
+      stake_amount,
+      pot,
+      status,
+      started_at
+    )
+    VALUES (
+      generate_bingo_game_code(),
+      $1,
+      $2,
+      $3,
+      0,
+      'waiting',
+      NOW()
+    )
+    RETURNING *
+    `,
+    [
+      roomId,
+      stakeId,
+      amount
+    ]
+  );
+
+  return rows[0] || null;
+},
+
+  async getBingoGameByCode(
+  gameCode
+) {
+  const code =
+    String(gameCode || "")
+      .trim()
+      .toUpperCase();
+
+  if (!code) {
+    throw new Error(
+      "gameCode is required."
+    );
+  }
+
+  const { rows } =
+    await pool.query(
+      `
+      SELECT *
+      FROM bingo_games
+      WHERE game_code = $1
+      LIMIT 1
+      `,
+      [code]
+    );
+
+  return rows[0] || null;
+},
+
+ async addBingoParticipant(
+  gameId,
+  userId,
+  cardId,
+  cardData
+) {
+  const game = toPositiveInteger(
+    gameId,
+    "gameId"
+  );
+
+  const user = toPositiveInteger(
+    userId,
+    "userId"
+  );
+
+  const card = toPositiveInteger(
+    cardId,
+    "cardId"
+  );
+
+  if (!Array.isArray(cardData)) {
+    throw new Error(
+      "cardData must be an array."
+    );
+  }
+
+  const client =
+    await pool.connect();
+
+  try {
+    await client.query(
+      "BEGIN"
+    );
+
+    /*
+     * Lock the Bingo game so two users/cards
+     * cannot modify the pot concurrently.
+     */
+    const gameResult =
+      await client.query(
+        `
+        SELECT
+          id,
+          stake_amount,
+          pot,
+          status
+        FROM bingo_games
+        WHERE id = $1
+        FOR UPDATE
+        `,
+        [game]
+      );
+
+    if (!gameResult.rows.length) {
+      throw new Error(
+        "Bingo game not found."
+      );
+    }
+
+    const bingoGame =
+      gameResult.rows[0];
+
+    /*
+     * Only allow cards to be purchased
+     * while the game is accepting players.
+     */
+    if (
+      ![
+        "waiting",
+        "playing"
+      ].includes(
+        String(bingoGame.status)
+      )
+    ) {
+      throw new Error(
+        "This Bingo game is no longer accepting cards."
+      );
+    }
+
+    /*
+     * A user may have multiple cards,
+     * but the SAME card cannot be entered twice
+     * into the same game.
+     */
+    const existingCard =
+      await client.query(
+        `
+        SELECT
+          id,
+          user_id,
+          card_id,
+          transaction_id,
+          amount,
+          status
+        FROM bingo_participants
+        WHERE game_id = $1
+          AND card_id = $2
+        FOR UPDATE
+        `,
+        [
+          game,
+          card
+        ]
+      );
+
+    if (existingCard.rows.length) {
+      await client.query(
+        "ROLLBACK"
+      );
+
+      return {
+        success: false,
+        alreadyJoined: true,
+        participant:
+          existingCard.rows[0]
+      };
+    }
+
+    const stakeAmount =
       toPositiveAmount(
-        stakeAmount,
+        bingoGame.stake_amount,
         "stakeAmount"
       );
 
-    const { rows } =
-      await pool.query(
+    /*
+     * Idempotency is per GAME + CARD + USER.
+     *
+     * This is important because the same user
+     * is allowed to purchase multiple cards.
+     */
+    const idempotencyKey =
+      `bingo:stake:${game}:${card}:${user}`;
+
+    /*
+     * Move money through the wallet/ledger.
+     *
+     * The core wallet does not know anything
+     * about bingo_participants.
+     */
+    const walletResult =
+      await client.query(
         `
-        INSERT INTO games (
-          room_id,
-          stake_id,
-          stake_amount,
-          pot,
-          started_at
+        SELECT place_stake(
+          $1,
+          $2,
+          (
+            SELECT id
+            FROM game_systems
+            WHERE code = 'bingo'
+              AND status = 'active'
+            LIMIT 1
+          ),
+          $3,
+          $4,
+          $5,
+          $6,
+          $7::jsonb
+        ) AS transaction_id
+        `,
+        [
+          user,
+          stakeAmount,
+          "bingo_game",
+          String(game),
+          idempotencyKey,
+          `Bingo game #${game} card #${card} stake`,
+          JSON.stringify({
+            game_id: game,
+            game_system: "bingo",
+            card_id: card
+          })
+        ]
+      );
+
+    const transactionId =
+      walletResult.rows[0]?.transaction_id;
+
+    if (!transactionId) {
+      throw new Error(
+        "Bingo stake transaction was not created."
+      );
+    }
+
+    /*
+     * Save the actual card used for this game.
+     *
+     * JSONB gives us a historical snapshot.
+     */
+    const participantResult =
+      await client.query(
+        `
+        INSERT INTO bingo_participants (
+          game_id,
+          user_id,
+          card_id,
+          card_data,
+          transaction_id,
+          amount,
+          status
         )
         VALUES (
           $1,
           $2,
           $3,
-          0,
-          NOW()
+          $4::jsonb,
+          $5,
+          $6,
+          'active'
         )
         RETURNING *
         `,
         [
-          roomId,
-          stakeId,
-          amount
+          game,
+          user,
+          card,
+          JSON.stringify(cardData),
+          transactionId,
+          stakeAmount
         ]
       );
 
-    return rows[0];
-  },
-
-  async addParticipant(
-    gameId,
-    userId,
-    cardId
-  ) {
-
-    const { rows } =
-      await pool.query(
-        `
-        INSERT INTO game_participants (
-          game_id,
-          user_id,
-          card_id
-        )
-        VALUES (
-          $1,
-          $2,
-          $3
-        )
-        ON CONFLICT (
-          game_id,
-          user_id
-        )
-        DO NOTHING
-        RETURNING *
-        `,
-        [
-          gameId,
-          userId,
-          cardId
-        ]
-      );
-
-    return rows[0] || null;
-  },
-
-  async updateGamePot(
-    gameId,
-    pot
-  ) {
-
-    const { rows } =
-      await pool.query(
-        `
-        UPDATE games
-        SET pot = $1
-        WHERE id = $2
-        RETURNING *
-        `,
-        [
-          pot,
-          gameId
-        ]
-      );
-
-    return rows[0] || null;
-  },
-
-  async updateCalledNumbers(
-    gameId,
-    calledNumbers
-  ) {
-
-    const { rows } =
-      await pool.query(
-        `
-        UPDATE games
-        SET called_numbers = $1
-        WHERE id = $2
-        RETURNING *
-        `,
-        [
-          calledNumbers,
-          gameId
-        ]
-      );
-
-    return rows[0] || null;
-  },
-
-  async endGame(
-    gameId,
-    winnerUserIds = [],
-    winAmount = 0,
-    isSplit = false
-  ) {
-console.error("Inside db.endGame");
-    const winners =
-      Array.isArray(
-        winnerUserIds
-      )
-        ? winnerUserIds
-            .map(Number)
-            .filter(
-              Number.isInteger
-            )
-        : [];
-
-    const totalWin =
-      Math.max(
-        Number(winAmount) || 0,
-        0
-      );
-
-    const client =
-      await pool.connect();
-
-    try {
-
+    /*
+     * Add this card's stake to the Bingo pot.
+     */
+    const updatedGame =
       await client.query(
-        "BEGIN"
+        `
+        UPDATE bingo_games
+        SET pot = pot + $1
+        WHERE id = $2
+        RETURNING *
+        `,
+        [
+          stakeAmount,
+          game
+        ]
       );
 
-      /*
-       * Prevent the same game from paying
-       * winners twice if endGame is called twice.
-       */
+    if (!updatedGame.rows.length) {
+      throw new Error(
+        "Bingo game could not be updated."
+      );
+    }
 
-      const gameUpdate =
+    await client.query(
+      "COMMIT"
+    );
+
+    return {
+      success: true,
+      alreadyJoined: false,
+      game: updatedGame.rows[0],
+      participant:
+        participantResult.rows[0],
+      transactionId
+    };
+
+  } catch (err) {
+
+    await safeRollback(
+      client
+    );
+
+    throw err;
+
+  } finally {
+
+    client.release();
+
+  }
+},
+
+  async updateBingoGamePot(
+  gameId,
+  pot
+) {
+  const game = toPositiveInteger(
+    gameId,
+    "gameId"
+  );
+
+  const amount = Number(pot);
+
+  if (
+    !Number.isFinite(amount) ||
+    amount < 0
+  ) {
+    throw new Error(
+      "Invalid pot"
+    );
+  }
+
+  const { rows } = await pool.query(
+    `
+    UPDATE bingo_games
+    SET pot = $1
+    WHERE id = $2
+    RETURNING *
+    `,
+    [
+      amount,
+      game
+    ]
+  );
+
+  return rows[0] || null;
+},
+
+  async updateCalledBingoNumbers(
+  gameId,
+  calledNumbers
+) {
+  const game = toPositiveInteger(
+    gameId,
+    "gameId"
+  );
+
+  if (!Array.isArray(calledNumbers)) {
+    throw new Error(
+      "calledNumbers must be an array."
+    );
+  }
+
+  const { rows } = await pool.query(
+    `
+    UPDATE bingo_games
+    SET called_numbers = $1
+    WHERE id = $2
+    RETURNING *
+    `,
+    [
+      calledNumbers,
+      game
+    ]
+  );
+
+  return rows[0] || null;
+},
+
+  async endBingoGame(
+  gameId,
+  winnerCards = [],
+  winAmount = 0,
+  isSplit = false
+) {
+  const game = toPositiveInteger(
+    gameId,
+    "gameId"
+  );
+
+  const totalWin = Math.max(
+    Number(winAmount) || 0,
+    0
+  );
+
+  /*
+   * Expected:
+   *
+   * [
+   *   { userId: 25, cardId: 17 },
+   *   { userId: 38, cardId: 42 }
+   * ]
+   */
+  if (!Array.isArray(winnerCards)) {
+    throw new Error(
+      "winnerCards must be an array."
+    );
+  }
+
+  const normalizedWinnerCards =
+    winnerCards.map((winner) => ({
+      userId: toPositiveInteger(
+        winner.userId,
+        "winner.userId"
+      ),
+      cardId: toPositiveInteger(
+        winner.cardId,
+        "winner.cardId"
+      )
+    }));
+
+  /*
+   * A user may theoretically have multiple
+   * winning cards, but we pay the USER once.
+   */
+  const winnerUserIds = [
+    ...new Set(
+      normalizedWinnerCards.map(
+        (winner) => winner.userId
+      )
+    )
+  ];
+
+  const client =
+    await pool.connect();
+
+  try {
+    await client.query(
+      "BEGIN"
+    );
+
+    /*
+     * Lock the game.
+     *
+     * This makes endGame() safe against
+     * two simultaneous calls.
+     */
+    const gameResult =
+      await client.query(
+        `
+        SELECT
+          id,
+          status,
+          pot,
+          winner_ids,
+          win_amount,
+          is_split
+        FROM bingo_games
+        WHERE id = $1
+        FOR UPDATE
+        `,
+        [game]
+      );
+
+    if (!gameResult.rows.length) {
+      throw new Error(
+        "Bingo game not found."
+      );
+    }
+
+    const bingoGame =
+      gameResult.rows[0];
+
+    /*
+     * Do not pay a finished game twice.
+     */
+    if (
+      String(bingoGame.status) ===
+      "finished"
+    ) {
+      await client.query(
+        "ROLLBACK"
+      );
+
+      return {
+        success: true,
+        alreadyFinished: true,
+        game: bingoGame
+      };
+    }
+
+    /*
+     * No duplicate winning cartela records.
+     */
+    const uniqueWinnerCards = [];
+    const seenCards = new Set();
+
+    for (
+      const winner
+      of normalizedWinnerCards
+    ) {
+      const key =
+        `${winner.userId}:${winner.cardId}`;
+
+      if (seenCards.has(key)) {
+        continue;
+      }
+
+      seenCards.add(key);
+      uniqueWinnerCards.push(
+        winner
+      );
+    }
+
+    /*
+     * Verify every winning cartela actually
+     * belongs to this game and user.
+     */
+    for (
+      const winner
+      of uniqueWinnerCards
+    ) {
+      const participantResult =
         await client.query(
           `
-          UPDATE games
-
-          SET
-            status = 'finished',
-            winner_ids = $1,
-            win_amount = $2,
-            is_split = $3,
-            ended_at = NOW()
-
-          WHERE id = $4
-            AND status <> 'finished'
-
-          RETURNING id
+          SELECT
+            id,
+            user_id,
+            card_id,
+            status,
+            is_disqualified
+          FROM bingo_participants
+          WHERE game_id = $1
+            AND user_id = $2
+            AND card_id = $3
+          FOR UPDATE
           `,
           [
-            winners,
-            totalWin,
-            Boolean(isSplit),
-            gameId
+            game,
+            winner.userId,
+            winner.cardId
           ]
         );
 
       if (
-        !gameUpdate.rows.length
+        !participantResult.rows.length
       ) {
-
-        await client.query(
-          "ROLLBACK"
+        throw new Error(
+          `Winning card ${winner.cardId} does not belong to user ${winner.userId} in game ${game}.`
         );
+      }
 
-        return;
+      const participant =
+        participantResult.rows[0];
+
+      if (
+        participant.status !==
+        "active"
+      ) {
+        throw new Error(
+          `Winning card ${winner.cardId} is not active.`
+        );
       }
 
       if (
-        winners.length
+        participant.is_disqualified
       ) {
+        throw new Error(
+          `Winning card ${winner.cardId} is disqualified.`
+        );
+      }
+    }
 
-        const perWinner =
-          isSplit
-            ? totalWin /
-              winners.length
-            : totalWin;
+    /*
+     * If there are winners, calculate the
+     * payout per USER.
+     *
+     * Important:
+     *
+     * 1 user with 3 winning cards
+     * still receives one user payout.
+     */
+    const perWinner =
+      winnerUserIds.length > 0 &&
+      totalWin > 0
+        ? (
+            Boolean(isSplit)
+              ? totalWin /
+                winnerUserIds.length
+              : totalWin
+          )
+        : 0;
 
+    /*
+     * Mark the game finished.
+     *
+     * winner_ids stores USERS, not cards.
+     */
+    const gameUpdate =
+      await client.query(
+        `
+        UPDATE bingo_games
+        SET
+          status = 'finished',
+          winner_ids = $1::integer[],
+          win_amount = $2,
+          is_split = $3,
+          ended_at = NOW()
+        WHERE id = $4
+        RETURNING *
+        `,
+        [
+          winnerUserIds,
+          totalWin,
+          Boolean(isSplit),
+          game
+        ]
+      );
+
+    if (
+      !gameUpdate.rows.length
+    ) {
+      throw new Error(
+        "Bingo game could not be finished."
+      );
+    }
+
+    /*
+     * Mark ONLY the actual winning cards.
+     */
+    for (
+      const winner
+      of uniqueWinnerCards
+    ) {
+      await client.query(
+        `
+        UPDATE bingo_participants
+        SET
+          is_winner = TRUE,
+          amount_won = $1
+        WHERE game_id = $2
+          AND user_id = $3
+          AND card_id = $4
+        `,
+        [
+          perWinner,
+          game,
+          winner.userId,
+          winner.cardId
+        ]
+      );
+    }
+
+    /*
+     * Pay each winning USER exactly once.
+     *
+     * Never update users.balance directly.
+     * Never insert into transactions here.
+     */
+    const winnerTransactions = [];
+
+    for (
+      const userId
+      of winnerUserIds
+    ) {
+      if (perWinner <= 0) {
+        continue;
+      }
+
+      const idempotencyKey =
+        `bingo:win:${game}:${userId}`;
+
+      const walletResult =
         await client.query(
           `
-          UPDATE game_participants
-
-          SET
-            is_winner = TRUE,
-            amount_won = $1
-
-          WHERE game_id = $2
-            AND user_id =
-                ANY($3::int[])
+          SELECT record_game_win(
+            $1,
+            $2,
+            (
+              SELECT id
+              FROM game_systems
+              WHERE code = 'bingo'
+                AND status = 'active'
+              LIMIT 1
+            ),
+            $3,
+            $4,
+            $5,
+            $6,
+            $7::jsonb
+          ) AS transaction_id
           `,
           [
+            userId,
             perWinner,
-            gameId,
-            winners
+            "bingo_game",
+            String(game),
+            idempotencyKey,
+            `Bingo game #${game} win`,
+            JSON.stringify({
+              game_id: game,
+              game_system: "bingo",
+              winner_user_id: userId,
+              winning_cards:
+                uniqueWinnerCards
+                  .filter(
+                    (winner) =>
+                      winner.userId ===
+                      userId
+                  )
+                  .map(
+                    (winner) =>
+                      winner.cardId
+                  ),
+              is_split:
+                Boolean(isSplit),
+              winner_count:
+                winnerUserIds.length
+            })
           ]
         );
 
-        /*
-         * Credit winners here.
-         * Do not call awardWin() again for these
-         * same winners after calling endGame().
-         */
+      const transactionId =
+        walletResult.rows[0]
+          ?.transaction_id;
 
-        for (
-          const userId of winners
-        ) {
-
-          const balance =
-            await client.query(
-              `
-              UPDATE users
-
-              SET
-                balance =
-                  balance + $1,
-                total_wins =
-                  total_wins + 1,
-                total_winnings =
-                  total_winnings + $1
-
-              WHERE id = $2
-
-              RETURNING balance
-              `,
-              [
-                perWinner,
-                userId
-              ]
-            );
-
-          if (
-            !balance.rows.length
-          ) {
-
-            throw new Error(
-              `Winner user ${userId} not found`
-            );
-          }
-
-          await client.query(
-            `
-            INSERT INTO transactions (
-              user_id,
-              type,
-              amount,
-              balance_after,
-              reference
-            )
-            VALUES (
-              $1,
-              'win',
-              $2,
-              $3,
-              $4
-            )
-            `,
-            [
-              userId,
-              perWinner,
-              balance.rows[0].balance,
-              String(gameId)
-            ]
-          );
-        }
+      if (!transactionId) {
+        throw new Error(
+          `Win transaction was not created for winner ${userId}.`
+        );
       }
 
+      winnerTransactions.push({
+        userId,
+        amount: perWinner,
+        transactionId
+      });
+    }
+
+    /*
+     * Update player statistics.
+     *
+     * total_wins is per winning USER,
+     * not per winning CARD.
+     */
+    if (winnerUserIds.length) {
       await client.query(
         `
         UPDATE users
-
         SET
-          total_games =
-            total_games + 1
-
-        WHERE id IN (
-          SELECT user_id
-          FROM game_participants
-          WHERE game_id = $1
-        )
-        `,
-        [gameId]
-      );
-
-      await client.query(
-        "COMMIT"
-      );
-
-    } catch (err) {
-
-      await safeRollback(
-        client
-      );
-
-      throw err;
-
-    } finally {
-
-      client.release();
-
-    }
-  },
-
-  async disqualifyParticipant(
-    gameId,
-    userId
-  ) {
-
-    const { rows } =
-      await pool.query(
-        `
-        UPDATE game_participants
-
-        SET
-          is_disqualified = TRUE
-
-        WHERE game_id = $1
-          AND user_id = $2
-
-        RETURNING *
+          total_wins =
+            total_wins + 1,
+          total_winnings =
+            total_winnings + $1
+        WHERE id = ANY($2::integer[])
         `,
         [
-          gameId,
-          userId
+          perWinner,
+          winnerUserIds
         ]
       );
+    }
 
-    return rows[0] || null;
-  },
+    /*
+     * Count one game per unique USER,
+     * even if they bought multiple cards.
+     */
+    await client.query(
+      `
+      UPDATE users
+      SET
+        total_games =
+          total_games + 1
+      WHERE id IN (
+        SELECT DISTINCT user_id
+        FROM bingo_participants
+        WHERE game_id = $1
+      )
+      `,
+      [game]
+    );
 
-  async getActiveGame(
-    roomId
-  ) {
+    await client.query(
+      "COMMIT"
+    );
 
-    const { rows } =
-      await pool.query(
-        `
-        SELECT
-          g.*,
+    return {
+      success: true,
+      alreadyFinished: false,
+      game:
+        gameUpdate.rows[0],
+      winners:
+        uniqueWinnerCards,
+      winnerTransactions
+    };
 
-          json_agg(
-            json_build_object(
-              'user_id',
-              gp.user_id,
-              'card_id',
-              gp.card_id
-            )
-          ) AS participants
+  } catch (err) {
 
-        FROM games g
+    await safeRollback(
+      client
+    );
 
-        JOIN game_participants gp
-          ON gp.game_id = g.id
+    throw err;
 
-        WHERE g.room_id = $1
-          AND g.status = 'playing'
+  } finally {
 
-        GROUP BY g.id
-        `,
-        [roomId]
-      );
+    client.release();
 
-    return rows[0] || null;
-  },
+  }
+},
+
+  async disqualifyBingoParticipant(
+  gameId,
+  userId
+) {
+  const game = toPositiveInteger(
+    gameId,
+    "gameId"
+  );
+
+  const user = toPositiveInteger(
+    userId,
+    "userId"
+  );
+
+  const { rows } = await pool.query(
+    `
+    UPDATE bingo_participants
+    SET
+      is_disqualified = TRUE
+    WHERE game_id = $1
+      AND user_id = $2
+      AND status = 'active'
+    RETURNING *
+    `,
+    [
+      game,
+      user
+    ]
+  );
+
+  return rows;
+},
+
+  async getActiveBingoGame(
+  roomId
+) {
+  const { rows } = await pool.query(
+    `
+    SELECT
+      g.*,
+
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'id',
+            bp.id,
+
+            'user_id',
+            bp.user_id,
+
+            'card_id',
+            bp.card_id,
+
+            'card_data',
+            bp.card_data,
+
+            'transaction_id',
+            bp.transaction_id,
+
+            'amount',
+            bp.amount,
+
+            'status',
+            bp.status,
+
+            'is_winner',
+            bp.is_winner,
+
+            'is_disqualified',
+            bp.is_disqualified,
+
+            'amount_won',
+            bp.amount_won,
+
+            'joined_at',
+            bp.joined_at
+          )
+          ORDER BY bp.id
+        ) FILTER (
+          WHERE bp.id IS NOT NULL
+        ),
+        '[]'::json
+      ) AS participants
+
+    FROM bingo_games g
+
+    LEFT JOIN bingo_participants bp
+      ON bp.game_id = g.id
+
+    WHERE g.room_id = $1
+      AND g.status IN (
+        'waiting',
+        'playing'
+      )
+
+    GROUP BY g.id
+
+    ORDER BY g.created_at DESC
+
+    LIMIT 1
+    `,
+    [roomId]
+  );
+
+  return rows[0] || null;
+},
 
 
 
@@ -4542,34 +5100,73 @@ console.error("Inside db.endGame");
 
     return rows;
   },
-  async deductStake(
+  
+ async deductStake(
   userId,
   amount,
   gameId
 ) {
-  const n = toPositiveAmount(amount);
-  const game = toPositiveInteger(gameId, "gameId");
+  const user = toPositiveInteger(
+    userId,
+    "userId"
+  );
+
+  const stakeAmount = toPositiveAmount(
+    amount,
+    "amount"
+  );
+
+  const game = toPositiveInteger(
+    gameId,
+    "gameId"
+  );
+
+  const idempotencyKey =
+    `bingo:stake:${game}:${user}`;
 
   const { rows } = await pool.query(
     `
     SELECT place_stake(
       $1,
       $2,
-      'bingo',
-      'bingo_game',
+      (
+        SELECT id
+        FROM game_systems
+        WHERE code = 'bingo'
+          AND status = 'active'
+        LIMIT 1
+      ),
       $3,
-      $4
+      $4,
+      $5,
+      $6,
+      $7::jsonb
     ) AS transaction_id
     `,
     [
-      userId,
-      n,
-      game,
-      `bingo:stake:${game}:${userId}`
+      user,
+      stakeAmount,
+      "bingo_game",
+      String(game),
+      idempotencyKey,
+      `Bingo game #${game} stake`,
+      JSON.stringify({
+        game_id: game,
+        game_system: "bingo"
+      })
     ]
   );
 
-  return rows[0]?.transaction_id ?? null;
+  const transactionId =
+    rows[0]?.transaction_id;
+
+  if (!transactionId) {
+    throw new Error(
+      "Stake transaction was not created."
+    );
+  }
+
+  return transactionId;
 },
 
   async awardWin(
