@@ -1493,18 +1493,20 @@ async createWithdrawal(
     "paymentMethodId"
   );
 
-  const withdrawalAmount = toPositiveAmount(amount);
+  const withdrawalAmount =
+    toPositiveAmount(amount);
 
-  if (!Number.isFinite(withdrawalAmount) || withdrawalAmount < 10) {
+  if (withdrawalAmount < 10) {
     return {
       success: false,
       message: "Withdrawal amount must be at least 10 ETB."
     };
   }
 
-  const cleanAccount = String(accountNumber ?? "")
-    .trim()
-    .replace(/[\s\-()]/g, "");
+  const cleanAccount =
+    String(accountNumber ?? "")
+      .trim()
+      .replace(/[\s\-()]/g, "");
 
   if (!/^\d{1,50}$/.test(cleanAccount)) {
     return {
@@ -1519,22 +1521,19 @@ async createWithdrawal(
     await client.query("BEGIN");
 
     /*
-     * Lock the user.
+     * Find user.
      *
-     * This prevents two withdrawals from spending the same
-     * balance concurrently.
+     * Do NOT use users.balance for financial authorization.
      */
     const userResult = await client.query(
       `
       SELECT
         id,
         telegram_id,
-        name,
-        balance
+        name
       FROM users
       WHERE telegram_id = $1
-        AND is_active = TRUE
-        AND is_banned = FALSE
+        AND is_active = TRUE        
         AND is_blocked = FALSE
       FOR UPDATE
       `,
@@ -1551,18 +1550,6 @@ async createWithdrawal(
     }
 
     const user = userResult.rows[0];
-
-    const currentBalance = Number(user.balance || 0);
-
-    if (currentBalance < withdrawalAmount) {
-      await client.query("ROLLBACK");
-
-      return {
-        success: false,
-        message:
-          `Insufficient balance. Available: ${currentBalance} ETB`
-      };
-    }
 
     /*
      * Verify payment method.
@@ -1591,126 +1578,141 @@ async createWithdrawal(
     }
 
     /*
-     * Deduct the user's balance immediately.
+     * Create withdrawal request first.
+     *
+     * Financial transaction is attached immediately afterward.
      */
-    const balanceResult = await client.query(
-      `
-      UPDATE users
-      SET balance = balance - $1
-      WHERE id = $2
-        AND balance >= $1
-      RETURNING balance
-      `,
-      [
-        withdrawalAmount,
-        user.id
-      ]
-    );
-
-    if (!balanceResult.rows.length) {
-      throw new Error(
-        "Balance changed before withdrawal could be created."
+    const withdrawalResult =
+      await client.query(
+        `
+        INSERT INTO withdrawals (
+          user_id,
+          payment_method_id,
+          payment_account_id,
+          approved_by_id,
+          rejected_by_id,
+          account_number,
+          amount,
+          status,
+          rejection_reason,
+          claimed_by_id,
+          claimed_at,
+          processed_at,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          $1,
+          $2,
+          NULL,
+          NULL,
+          NULL,
+          $3,
+          $4,
+          'pending',
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NOW(),
+          NOW()
+        )
+        RETURNING *
+        `,
+        [
+          user.id,
+          methodId,
+          cleanAccount,
+          withdrawalAmount
+        ]
       );
-    }
 
-    const balanceAfter =
-      Number(balanceResult.rows[0].balance);
+    const withdrawal =
+      withdrawalResult.rows[0];
 
     /*
-     * Create the withdrawal in the queue.
+     * New wallet accounting.
+     *
+     * This locks Main wallet and guarantees sufficient funds.
      */
-    const withdrawalResult = await client.query(
-      `
-      INSERT INTO withdrawals (
-        user_id,
-        payment_method_id,
-        payment_account_id,
-        approved_by_id,
-        rejected_by_id,
-        account_number,
-        amount,
-        status,
-        rejection_reason,
-        claimed_by_id,
-        claimed_at,
-        processed_at,
-        created_at,
-        updated_at
-      )
-      VALUES (
-        $1,
-        $2,
-        NULL,
-        NULL,
-        NULL,
-        $3,
-        $4,
-        'pending',
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NOW(),
-        NOW()
-      )
-      RETURNING *
-      `,
-      [
-        user.id,
-        methodId,
-        cleanAccount,
-        withdrawalAmount
-      ]
-    );
+    const transactionResult =
+      await client.query(
+        `
+        SELECT reserve_withdrawal_from_main(
+          $1,
+          $2,
+          $3,
+          $4,
+          $5
+        ) AS transaction_id
+        `,
+        [
+          user.id,
+          withdrawalAmount,
+          withdrawal.id,
+          `withdrawal:${withdrawal.id}`,
+          `Withdrawal request #${withdrawal.id}`
+        ]
+      );
 
-    const withdrawal = withdrawalResult.rows[0];
+    const transactionId =
+      transactionResult.rows[0]
+        ?.transaction_id;
 
     /*
-     * Financial audit record.
+     * Connect withdrawal request to ledger transaction.
      */
     await client.query(
       `
-      INSERT INTO transactions (
-        user_id,
-        type,
-        amount,
-        balance_after,
-        reference
-      )
-      VALUES (
-        $1,
-        'withdrawal',
-        $2,
-        $3,
-        $4
-      )
+      UPDATE withdrawals
+      SET transaction_id = $1,
+          updated_at = NOW()
+      WHERE id = $2
       `,
       [
-        user.id,
-        -withdrawalAmount,
-        balanceAfter,
-        `withdrawal:${withdrawal.id}`
+        transactionId,
+        withdrawal.id
       ]
     );
+
+    /*
+     * Read new Main balance.
+     */
+    const balanceResult =
+      await client.query(
+        `
+        SELECT wb.balance
+        FROM wallet_balances wb
+        JOIN wallets w
+          ON w.id = wb.wallet_id
+        WHERE w.user_id = $1
+          AND w.wallet_type = 'main'
+        `,
+        [user.id]
+      );
+
+    const balanceAfter =
+      Number(
+        balanceResult.rows[0]?.balance || 0
+      );
 
     await client.query("COMMIT");
 
     return {
       success: true,
-
-      withdrawal,
-
+      withdrawal: {
+        ...withdrawal,
+        transaction_id: transactionId
+      },
       user_id: user.id,
       telegram_id: user.telegram_id,
       user_name: user.name,
-
       amount: withdrawalAmount,
-
-      balance_before: currentBalance,
       balance_after: balanceAfter
     };
 
   } catch (err) {
+
     await safeRollback(client);
 
     console.error(
@@ -1720,7 +1722,9 @@ async createWithdrawal(
 
     return {
       success: false,
-      message: "Could not create withdrawal request."
+      message:
+        err.message ||
+        "Could not create withdrawal request."
     };
 
   } finally {
@@ -2518,8 +2522,7 @@ async rejectWithdrawal(
       FROM users
       WHERE telegram_id = $1
         AND is_admin = TRUE
-        AND is_active = TRUE
-        AND is_banned = FALSE
+        AND is_active = TRUE        
         AND is_blocked = FALSE
       LIMIT 1
       `,
@@ -4557,5 +4560,65 @@ console.error("Inside db.endGame");
       );
 
     return rows;
-  }
+  },
+  async deductStake(
+  userId,
+  amount,
+  gameId
+) {
+  const n = toPositiveAmount(amount);
+  const game = toPositiveInteger(gameId, "gameId");
+
+  const { rows } = await pool.query(
+    `
+    SELECT place_stake(
+      $1,
+      $2,
+      'bingo',
+      'bingo_game',
+      $3,
+      $4
+    ) AS transaction_id
+    `,
+    [
+      userId,
+      n,
+      game,
+      `bingo:stake:${game}:${userId}`
+    ]
+  );
+
+  return rows[0]?.transaction_id ?? null;
+},
+
+  async awardWin(
+  userId,
+  amount,
+  gameId
+) {
+  const n = toPositiveAmount(amount);
+  const game = toPositiveInteger(gameId, "gameId");
+
+  const { rows } = await pool.query(
+    `
+    SELECT record_game_win(
+      $1,
+      $2,
+      'bingo',
+      'bingo_game',
+      $3,
+      $4
+    ) AS transaction_id
+    `,
+    [
+      userId,
+      n,
+      game,
+      `bingo:win:${game}:${userId}`
+    ]
+  );
+
+  return rows[0]?.transaction_id ?? null;
+}
+  
 };
