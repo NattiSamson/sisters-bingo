@@ -10,6 +10,9 @@ CREATE DATABASE beteseb_bingo;
 --
 -- PostgreSQL database dump
 --
+
+
+
 -- Dumped from database version 18.6 (6569466)
 -- Dumped by pg_dump version 18.4
 
@@ -26,7 +29,7 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- Name: award_win(integer, numeric, integer); Type: FUNCTION; Schema: public; Owner: -
+-- Name: award_win(integer, numeric, integer); Type: FUNCTION; Schema: public; Owner: neondb_owner
 --
 
 CREATE FUNCTION public.award_win(p_user_id integer, p_amount numeric, p_game_id integer) RETURNS numeric
@@ -49,8 +52,64 @@ END;
 $$;
 
 
+ALTER FUNCTION public.award_win(p_user_id integer, p_amount numeric, p_game_id integer) OWNER TO neondb_owner;
+
 --
--- Name: deduct_stake(integer, numeric, integer); Type: FUNCTION; Schema: public; Owner: -
+-- Name: create_user_wallets(); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.create_user_wallets() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    main_wallet_id BIGINT;
+    play_wallet_id BIGINT;
+BEGIN
+
+    INSERT INTO wallets (
+        user_id,
+        wallet_type,
+        currency
+    )
+    VALUES (
+        NEW.id,
+        'main',
+        'ETB'
+    )
+    RETURNING id INTO main_wallet_id;
+
+
+    INSERT INTO wallets (
+        user_id,
+        wallet_type,
+        currency
+    )
+    VALUES (
+        NEW.id,
+        'play',
+        'ETB'
+    )
+    RETURNING id INTO play_wallet_id;
+
+
+    INSERT INTO wallet_balances (
+        wallet_id,
+        balance
+    )
+    VALUES
+        (main_wallet_id, 0),
+        (play_wallet_id, 0);
+
+
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.create_user_wallets() OWNER TO neondb_owner;
+
+--
+-- Name: deduct_stake(integer, numeric, integer); Type: FUNCTION; Schema: public; Owner: neondb_owner
 --
 
 CREATE FUNCTION public.deduct_stake(p_user_id integer, p_amount numeric, p_game_id integer) RETURNS numeric
@@ -74,12 +133,14 @@ END;
 $$;
 
 
+ALTER FUNCTION public.deduct_stake(p_user_id integer, p_amount numeric, p_game_id integer) OWNER TO neondb_owner;
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
 
 --
--- Name: users; Type: TABLE; Schema: public; Owner: -
+-- Name: users; Type: TABLE; Schema: public; Owner: neondb_owner
 --
 
 CREATE TABLE public.users (
@@ -102,8 +163,10 @@ CREATE TABLE public.users (
 );
 
 
+ALTER TABLE public.users OWNER TO neondb_owner;
+
 --
--- Name: register_user(bigint, character varying, character varying); Type: FUNCTION; Schema: public; Owner: -
+-- Name: register_user(bigint, character varying, character varying); Type: FUNCTION; Schema: public; Owner: neondb_owner
 --
 
 CREATE FUNCTION public.register_user(p_telegram_id bigint, p_name character varying, p_phone character varying) RETURNS public.users
@@ -120,8 +183,49 @@ END;
 $$;
 
 
+ALTER FUNCTION public.register_user(p_telegram_id bigint, p_name character varying, p_phone character varying) OWNER TO neondb_owner;
+
 --
--- Name: broadcast_drafts; Type: TABLE; Schema: public; Owner: -
+-- Name: set_updated_at(); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.set_updated_at() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.set_updated_at() OWNER TO neondb_owner;
+
+--
+-- Name: bingo_games; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.bingo_games (
+    id integer CONSTRAINT games_id_not_null NOT NULL,
+    room_id uuid CONSTRAINT games_room_id_not_null NOT NULL,
+    stake_id character varying(10) CONSTRAINT games_stake_id_not_null NOT NULL,
+    stake_amount numeric(10,2) CONSTRAINT games_stake_amount_not_null NOT NULL,
+    pot numeric(10,2) CONSTRAINT games_pot_not_null NOT NULL,
+    status character varying(20) DEFAULT 'waiting'::character varying,
+    called_numbers integer[] DEFAULT '{}'::integer[],
+    winner_ids integer[] DEFAULT '{}'::integer[],
+    win_amount numeric(10,2) DEFAULT 0,
+    is_split boolean DEFAULT false,
+    started_at timestamp with time zone,
+    ended_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.bingo_games OWNER TO neondb_owner;
+
+--
+-- Name: broadcast_drafts; Type: TABLE; Schema: public; Owner: neondb_owner
 --
 
 CREATE TABLE public.broadcast_drafts (
@@ -137,8 +241,10 @@ CREATE TABLE public.broadcast_drafts (
 );
 
 
+ALTER TABLE public.broadcast_drafts OWNER TO neondb_owner;
+
 --
--- Name: payment_accounts; Type: TABLE; Schema: public; Owner: -
+-- Name: payment_accounts; Type: TABLE; Schema: public; Owner: neondb_owner
 --
 
 CREATE TABLE public.payment_accounts (
@@ -146,15 +252,17 @@ CREATE TABLE public.payment_accounts (
     payment_method_id integer CONSTRAINT deposit_accounts_payment_method_id_not_null NOT NULL,
     account_name character varying(100),
     account_number character varying(100),
-    balance numeric(10,2) DEFAULT 0.00 NOT NULL,
+    balance numeric(18,2) DEFAULT 0.00 NOT NULL,
     is_active boolean DEFAULT true NOT NULL,
     is_removed boolean DEFAULT false CONSTRAINT payment_accounts_permanently_removed_not_null NOT NULL,
     created_at timestamp with time zone DEFAULT now()
 );
 
 
+ALTER TABLE public.payment_accounts OWNER TO neondb_owner;
+
 --
--- Name: deposit_accounts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: deposit_accounts_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
 --
 
 CREATE SEQUENCE public.deposit_accounts_id_seq
@@ -166,15 +274,17 @@ CREATE SEQUENCE public.deposit_accounts_id_seq
     CACHE 1;
 
 
+ALTER SEQUENCE public.deposit_accounts_id_seq OWNER TO neondb_owner;
+
 --
--- Name: deposit_accounts_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: deposit_accounts_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
 --
 
 ALTER SEQUENCE public.deposit_accounts_id_seq OWNED BY public.payment_accounts.id;
 
 
 --
--- Name: deposits; Type: TABLE; Schema: public; Owner: -
+-- Name: deposits; Type: TABLE; Schema: public; Owner: neondb_owner
 --
 
 CREATE TABLE public.deposits (
@@ -191,8 +301,10 @@ CREATE TABLE public.deposits (
 );
 
 
+ALTER TABLE public.deposits OWNER TO neondb_owner;
+
 --
--- Name: deposit_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: deposit_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
 --
 
 CREATE SEQUENCE public.deposit_id_seq
@@ -204,72 +316,17 @@ CREATE SEQUENCE public.deposit_id_seq
     CACHE 1;
 
 
+ALTER SEQUENCE public.deposit_id_seq OWNER TO neondb_owner;
+
 --
--- Name: deposit_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: deposit_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
 --
 
 ALTER SEQUENCE public.deposit_id_seq OWNED BY public.deposits.id;
 
 
 --
--- Name: game_participants; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.game_participants (
-    id integer NOT NULL,
-    game_id integer,
-    user_id integer,
-    card_id integer NOT NULL,
-    is_winner boolean DEFAULT false,
-    is_disqualified boolean DEFAULT false,
-    amount_won numeric(10,2) DEFAULT 0,
-    joined_at timestamp with time zone DEFAULT now()
-);
-
-
---
--- Name: game_participants_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.game_participants_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: game_participants_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.game_participants_id_seq OWNED BY public.game_participants.id;
-
-
---
--- Name: games; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.games (
-    id integer NOT NULL,
-    room_id uuid NOT NULL,
-    stake_id character varying(10) NOT NULL,
-    stake_amount numeric(10,2) NOT NULL,
-    pot numeric(10,2) NOT NULL,
-    status character varying(20) DEFAULT 'waiting'::character varying,
-    called_numbers integer[] DEFAULT '{}'::integer[],
-    winner_ids integer[] DEFAULT '{}'::integer[],
-    win_amount numeric(10,2) DEFAULT 0,
-    is_split boolean DEFAULT false,
-    started_at timestamp with time zone,
-    ended_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now()
-);
-
-
---
--- Name: games_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: games_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
 --
 
 CREATE SEQUENCE public.games_id_seq
@@ -281,15 +338,17 @@ CREATE SEQUENCE public.games_id_seq
     CACHE 1;
 
 
---
--- Name: games_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.games_id_seq OWNED BY public.games.id;
-
+ALTER SEQUENCE public.games_id_seq OWNER TO neondb_owner;
 
 --
--- Name: leaderboard; Type: VIEW; Schema: public; Owner: -
+-- Name: games_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
+--
+
+ALTER SEQUENCE public.games_id_seq OWNED BY public.bingo_games.id;
+
+
+--
+-- Name: leaderboard; Type: VIEW; Schema: public; Owner: neondb_owner
 --
 
 CREATE VIEW public.leaderboard AS
@@ -304,8 +363,10 @@ CREATE VIEW public.leaderboard AS
   ORDER BY total_winnings DESC;
 
 
+ALTER VIEW public.leaderboard OWNER TO neondb_owner;
+
 --
--- Name: payment_methods; Type: TABLE; Schema: public; Owner: -
+-- Name: payment_methods; Type: TABLE; Schema: public; Owner: neondb_owner
 --
 
 CREATE TABLE public.payment_methods (
@@ -319,8 +380,10 @@ CREATE TABLE public.payment_methods (
 );
 
 
+ALTER TABLE public.payment_methods OWNER TO neondb_owner;
+
 --
--- Name: payment_methods_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: payment_methods_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
 --
 
 CREATE SEQUENCE public.payment_methods_id_seq
@@ -332,15 +395,17 @@ CREATE SEQUENCE public.payment_methods_id_seq
     CACHE 1;
 
 
+ALTER SEQUENCE public.payment_methods_id_seq OWNER TO neondb_owner;
+
 --
--- Name: payment_methods_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: payment_methods_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
 --
 
 ALTER SEQUENCE public.payment_methods_id_seq OWNED BY public.payment_methods.id;
 
 
 --
--- Name: payment_types; Type: TABLE; Schema: public; Owner: -
+-- Name: payment_types; Type: TABLE; Schema: public; Owner: neondb_owner
 --
 
 CREATE TABLE public.payment_types (
@@ -354,8 +419,10 @@ CREATE TABLE public.payment_types (
 );
 
 
+ALTER TABLE public.payment_types OWNER TO neondb_owner;
+
 --
--- Name: payment_type_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: payment_type_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
 --
 
 CREATE SEQUENCE public.payment_type_id_seq
@@ -367,15 +434,17 @@ CREATE SEQUENCE public.payment_type_id_seq
     CACHE 1;
 
 
+ALTER SEQUENCE public.payment_type_id_seq OWNER TO neondb_owner;
+
 --
--- Name: payment_type_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: payment_type_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
 --
 
 ALTER SEQUENCE public.payment_type_id_seq OWNED BY public.payment_types.id;
 
 
 --
--- Name: settings; Type: TABLE; Schema: public; Owner: -
+-- Name: settings; Type: TABLE; Schema: public; Owner: neondb_owner
 --
 
 CREATE TABLE public.settings (
@@ -384,43 +453,10 @@ CREATE TABLE public.settings (
 );
 
 
---
--- Name: transactions; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.transactions (
-    id integer NOT NULL,
-    user_id integer,
-    type character varying(20) NOT NULL,
-    amount numeric(10,2) NOT NULL,
-    balance_after numeric(10,2) NOT NULL,
-    reference character varying(100),
-    created_at timestamp with time zone DEFAULT now()
-);
-
+ALTER TABLE public.settings OWNER TO neondb_owner;
 
 --
--- Name: transactions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.transactions_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: transactions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.transactions_id_seq OWNED BY public.transactions.id;
-
-
---
--- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
 --
 
 CREATE SEQUENCE public.users_id_seq
@@ -432,15 +468,17 @@ CREATE SEQUENCE public.users_id_seq
     CACHE 1;
 
 
+ALTER SEQUENCE public.users_id_seq OWNER TO neondb_owner;
+
 --
--- Name: users_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: users_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
 --
 
 ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id;
 
 
 --
--- Name: withdrawals; Type: TABLE; Schema: public; Owner: -
+-- Name: withdrawals; Type: TABLE; Schema: public; Owner: neondb_owner
 --
 
 CREATE TABLE public.withdrawals (
@@ -463,8 +501,10 @@ CREATE TABLE public.withdrawals (
 );
 
 
+ALTER TABLE public.withdrawals OWNER TO neondb_owner;
+
 --
--- Name: withdrawals _id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: withdrawals _id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
 --
 
 CREATE SEQUENCE public."withdrawals _id_seq"
@@ -476,78 +516,66 @@ CREATE SEQUENCE public."withdrawals _id_seq"
     CACHE 1;
 
 
+ALTER SEQUENCE public."withdrawals _id_seq" OWNER TO neondb_owner;
+
 --
--- Name: withdrawals _id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: withdrawals _id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
 --
 
 ALTER SEQUENCE public."withdrawals _id_seq" OWNED BY public.withdrawals.id;
 
 
 --
--- Name: deposits id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: bingo_games id; Type: DEFAULT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_games ALTER COLUMN id SET DEFAULT nextval('public.games_id_seq'::regclass);
+
+
+--
+-- Name: deposits id; Type: DEFAULT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.deposits ALTER COLUMN id SET DEFAULT nextval('public.deposit_id_seq'::regclass);
 
 
 --
--- Name: game_participants id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.game_participants ALTER COLUMN id SET DEFAULT nextval('public.game_participants_id_seq'::regclass);
-
-
---
--- Name: games id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.games ALTER COLUMN id SET DEFAULT nextval('public.games_id_seq'::regclass);
-
-
---
--- Name: payment_accounts id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: payment_accounts id; Type: DEFAULT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.payment_accounts ALTER COLUMN id SET DEFAULT nextval('public.deposit_accounts_id_seq'::regclass);
 
 
 --
--- Name: payment_methods id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: payment_methods id; Type: DEFAULT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.payment_methods ALTER COLUMN id SET DEFAULT nextval('public.payment_methods_id_seq'::regclass);
 
 
 --
--- Name: payment_types id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: payment_types id; Type: DEFAULT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.payment_types ALTER COLUMN id SET DEFAULT nextval('public.payment_type_id_seq'::regclass);
 
 
 --
--- Name: transactions id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.transactions ALTER COLUMN id SET DEFAULT nextval('public.transactions_id_seq'::regclass);
-
-
---
--- Name: users id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: users id; Type: DEFAULT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_id_seq'::regclass);
 
 
 --
--- Name: withdrawals id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: withdrawals id; Type: DEFAULT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.withdrawals ALTER COLUMN id SET DEFAULT nextval('public."withdrawals _id_seq"'::regclass);
 
 
 --
--- Name: broadcast_drafts broadcast_drafts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: broadcast_drafts broadcast_drafts_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.broadcast_drafts
@@ -555,7 +583,7 @@ ALTER TABLE ONLY public.broadcast_drafts
 
 
 --
--- Name: payment_accounts deposit_accounts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: payment_accounts deposit_accounts_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.payment_accounts
@@ -563,7 +591,7 @@ ALTER TABLE ONLY public.payment_accounts
 
 
 --
--- Name: deposits deposit_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: deposits deposit_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.deposits
@@ -571,31 +599,15 @@ ALTER TABLE ONLY public.deposits
 
 
 --
--- Name: game_participants game_participants_game_id_user_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: bingo_games games_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
-ALTER TABLE ONLY public.game_participants
-    ADD CONSTRAINT game_participants_game_id_user_id_key UNIQUE (game_id, user_id);
-
-
---
--- Name: game_participants game_participants_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.game_participants
-    ADD CONSTRAINT game_participants_pkey PRIMARY KEY (id);
-
-
---
--- Name: games games_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.games
+ALTER TABLE ONLY public.bingo_games
     ADD CONSTRAINT games_pkey PRIMARY KEY (id);
 
 
 --
--- Name: payment_methods payment_methods_amharic_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: payment_methods payment_methods_amharic_name_key; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.payment_methods
@@ -603,7 +615,7 @@ ALTER TABLE ONLY public.payment_methods
 
 
 --
--- Name: payment_methods payment_methods_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: payment_methods payment_methods_name_key; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.payment_methods
@@ -611,7 +623,7 @@ ALTER TABLE ONLY public.payment_methods
 
 
 --
--- Name: payment_methods payment_methods_order_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: payment_methods payment_methods_order_key; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.payment_methods
@@ -619,7 +631,7 @@ ALTER TABLE ONLY public.payment_methods
 
 
 --
--- Name: payment_methods payment_methods_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: payment_methods payment_methods_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.payment_methods
@@ -627,7 +639,7 @@ ALTER TABLE ONLY public.payment_methods
 
 
 --
--- Name: payment_types payment_type_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: payment_types payment_type_name_key; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.payment_types
@@ -635,7 +647,7 @@ ALTER TABLE ONLY public.payment_types
 
 
 --
--- Name: payment_types payment_type_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: payment_types payment_type_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.payment_types
@@ -643,7 +655,7 @@ ALTER TABLE ONLY public.payment_types
 
 
 --
--- Name: settings settings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: settings settings_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.settings
@@ -651,15 +663,7 @@ ALTER TABLE ONLY public.settings
 
 
 --
--- Name: transactions transactions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.transactions
-    ADD CONSTRAINT transactions_pkey PRIMARY KEY (id);
-
-
---
--- Name: users users_phone_unique; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: users users_phone_unique; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.users
@@ -667,7 +671,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.users
@@ -675,7 +679,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- Name: users users_telegram_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: users users_telegram_id_key; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.users
@@ -683,7 +687,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- Name: withdrawals withdrawals _pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: withdrawals withdrawals _pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.withdrawals
@@ -691,126 +695,133 @@ ALTER TABLE ONLY public.withdrawals
 
 
 --
--- Name: deposits_reference_unique_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: deposits_reference_unique_idx; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
 CREATE UNIQUE INDEX deposits_reference_unique_idx ON public.deposits USING btree (reference) WHERE (reference IS NOT NULL);
 
 
 --
--- Name: idx_deposits_created_at; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_deposits_created_at; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
 CREATE INDEX idx_deposits_created_at ON public.deposits USING btree (created_at DESC);
 
 
 --
--- Name: idx_deposits_payment_account_id; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_deposits_payment_account_id; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
 CREATE INDEX idx_deposits_payment_account_id ON public.deposits USING btree (payment_account_id);
 
 
 --
--- Name: idx_deposits_user_id; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_deposits_user_id; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
 CREATE INDEX idx_deposits_user_id ON public.deposits USING btree (user_id);
 
 
 --
--- Name: idx_games_room; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_games_room; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
-CREATE INDEX idx_games_room ON public.games USING btree (room_id);
-
-
---
--- Name: idx_games_status; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_games_status ON public.games USING btree (status);
+CREATE INDEX idx_games_room ON public.bingo_games USING btree (room_id);
 
 
 --
--- Name: idx_participants_game; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_games_status; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
-CREATE INDEX idx_participants_game ON public.game_participants USING btree (game_id);
-
-
---
--- Name: idx_participants_user; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_participants_user ON public.game_participants USING btree (user_id);
+CREATE INDEX idx_games_status ON public.bingo_games USING btree (status);
 
 
 --
--- Name: idx_payment_accounts_method_active; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_payment_accounts_method_active; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
 CREATE INDEX idx_payment_accounts_method_active ON public.payment_accounts USING btree (payment_method_id, is_active, is_removed);
 
 
 --
--- Name: idx_transactions_user; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_transactions_user ON public.transactions USING btree (user_id);
-
-
---
--- Name: idx_users_admin_role_active; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_users_admin_role_active; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
 CREATE INDEX idx_users_admin_role_active ON public.users USING btree (admin_role, is_active, is_banned, is_blocked) WHERE (is_admin = true);
 
 
 --
--- Name: idx_users_phone; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_users_phone; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
 CREATE INDEX idx_users_phone ON public.users USING btree (phone);
 
 
 --
--- Name: idx_users_telegram; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_users_telegram; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
 CREATE INDEX idx_users_telegram ON public.users USING btree (telegram_id);
 
 
 --
--- Name: idx_withdrawals_claimed; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_withdrawals_claimed; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
 CREATE INDEX idx_withdrawals_claimed ON public.withdrawals USING btree (claimed_by_id, claimed_at) WHERE ((status)::text = 'processing'::text);
 
 
 --
--- Name: idx_withdrawals_queue; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_withdrawals_queue; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
 CREATE INDEX idx_withdrawals_queue ON public.withdrawals USING btree (payment_method_id, created_at, id) WHERE ((status)::text = 'pending'::text);
 
 
 --
--- Name: idx_withdrawals_user; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_withdrawals_user; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
 CREATE INDEX idx_withdrawals_user ON public.withdrawals USING btree (user_id, created_at DESC);
 
 
 --
--- Name: idx_withdrawals_user_id; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_withdrawals_user_id; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
 CREATE INDEX idx_withdrawals_user_id ON public.withdrawals USING btree (user_id);
 
 
 --
--- Name: payment_accounts deposit_accounts_payment_method_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: deposits deposits_set_updated_at; Type: TRIGGER; Schema: public; Owner: neondb_owner
+--
+
+CREATE TRIGGER deposits_set_updated_at BEFORE UPDATE ON public.deposits FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+
+--
+-- Name: users users_create_wallets; Type: TRIGGER; Schema: public; Owner: neondb_owner
+--
+
+CREATE TRIGGER users_create_wallets AFTER INSERT ON public.users FOR EACH ROW EXECUTE FUNCTION public.create_user_wallets();
+
+
+--
+-- Name: users users_set_updated_at; Type: TRIGGER; Schema: public; Owner: neondb_owner
+--
+
+CREATE TRIGGER users_set_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+
+--
+-- Name: withdrawals withdrawals_set_updated_at; Type: TRIGGER; Schema: public; Owner: neondb_owner
+--
+
+CREATE TRIGGER withdrawals_set_updated_at BEFORE UPDATE ON public.withdrawals FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+
+--
+-- Name: payment_accounts deposit_accounts_payment_method_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.payment_accounts
@@ -818,7 +829,7 @@ ALTER TABLE ONLY public.payment_accounts
 
 
 --
--- Name: deposits deposit_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: deposits deposit_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.deposits
@@ -826,7 +837,7 @@ ALTER TABLE ONLY public.deposits
 
 
 --
--- Name: deposits deposits_payment_account_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: deposits deposits_payment_account_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.deposits
@@ -834,7 +845,7 @@ ALTER TABLE ONLY public.deposits
 
 
 --
--- Name: deposits deposits_payment_method_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: deposits deposits_payment_method_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.deposits
@@ -842,7 +853,7 @@ ALTER TABLE ONLY public.deposits
 
 
 --
--- Name: withdrawals fk_withdrawals_approved_by; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: withdrawals fk_withdrawals_approved_by; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.withdrawals
@@ -850,7 +861,7 @@ ALTER TABLE ONLY public.withdrawals
 
 
 --
--- Name: withdrawals fk_withdrawals_claimed_by; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: withdrawals fk_withdrawals_claimed_by; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.withdrawals
@@ -858,7 +869,7 @@ ALTER TABLE ONLY public.withdrawals
 
 
 --
--- Name: withdrawals fk_withdrawals_payment_account; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: withdrawals fk_withdrawals_payment_account; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.withdrawals
@@ -866,7 +877,7 @@ ALTER TABLE ONLY public.withdrawals
 
 
 --
--- Name: withdrawals fk_withdrawals_payment_method; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: withdrawals fk_withdrawals_payment_method; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.withdrawals
@@ -874,7 +885,7 @@ ALTER TABLE ONLY public.withdrawals
 
 
 --
--- Name: withdrawals fk_withdrawals_rejected_by; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: withdrawals fk_withdrawals_rejected_by; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.withdrawals
@@ -882,7 +893,7 @@ ALTER TABLE ONLY public.withdrawals
 
 
 --
--- Name: withdrawals fk_withdrawals_user; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: withdrawals fk_withdrawals_user; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.withdrawals
@@ -890,23 +901,7 @@ ALTER TABLE ONLY public.withdrawals
 
 
 --
--- Name: game_participants game_participants_game_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.game_participants
-    ADD CONSTRAINT game_participants_game_id_fkey FOREIGN KEY (game_id) REFERENCES public.games(id) ON DELETE CASCADE;
-
-
---
--- Name: game_participants game_participants_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.game_participants
-    ADD CONSTRAINT game_participants_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-
-
---
--- Name: payment_methods payment_methods_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: payment_methods payment_methods_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.payment_methods
@@ -914,16 +909,12 @@ ALTER TABLE ONLY public.payment_methods
 
 
 --
--- Name: transactions transactions_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.transactions
-    ADD CONSTRAINT transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-
-
---
 -- PostgreSQL database dump complete
 --
+
+
+
+
 
 
 
