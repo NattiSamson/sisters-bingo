@@ -2,7 +2,6 @@
 -- PostgreSQL database dump
 --
 
-
 -- Dumped from database version 18.6 (6569466)
 -- Dumped by pg_dump version 18.4
 
@@ -43,69 +42,6 @@ $$;
 
 
 ALTER FUNCTION public.award_win(p_user_id integer, p_amount numeric, p_game_id integer) OWNER TO neondb_owner;
-
---
--- Name: create_financial_transaction(integer, character varying, bigint, character varying, character varying, character varying, text, jsonb); Type: FUNCTION; Schema: public; Owner: neondb_owner
---
-
-CREATE FUNCTION public.create_financial_transaction(p_user_id integer, p_type character varying, p_game_system_id bigint DEFAULT NULL::bigint, p_source_type character varying DEFAULT NULL::character varying, p_source_id character varying DEFAULT NULL::character varying, p_idempotency_key character varying DEFAULT NULL::character varying, p_description text DEFAULT NULL::text, p_metadata jsonb DEFAULT '{}'::jsonb) RETURNS bigint
-    LANGUAGE plpgsql
-    AS $$
-DECLARE
-    v_transaction_id BIGINT;
-BEGIN
-
-    -- Return existing transaction when the same idempotency
-    -- key has already been processed.
-    IF p_idempotency_key IS NOT NULL THEN
-
-        SELECT id
-        INTO v_transaction_id
-        FROM financial_transactions
-        WHERE idempotency_key = p_idempotency_key;
-
-        IF FOUND THEN
-            RETURN v_transaction_id;
-        END IF;
-
-    END IF;
-
-
-    INSERT INTO financial_transactions (
-        user_id,
-        type,
-        status,
-        game_system_id,
-        source_type,
-        source_id,
-        idempotency_key,
-        description,
-        metadata,
-        completed_at
-    )
-    VALUES (
-        p_user_id,
-        p_type,
-        'completed',
-        p_game_system_id,
-        p_source_type,
-        p_source_id,
-        p_idempotency_key,
-        p_description,
-        COALESCE(p_metadata, '{}'::JSONB),
-        NOW()
-    )
-    RETURNING id
-    INTO v_transaction_id;
-
-
-    RETURN v_transaction_id;
-
-END;
-$$;
-
-
-ALTER FUNCTION public.create_financial_transaction(p_user_id integer, p_type character varying, p_game_system_id bigint, p_source_type character varying, p_source_id character varying, p_idempotency_key character varying, p_description text, p_metadata jsonb) OWNER TO neondb_owner;
 
 --
 -- Name: create_financial_transaction(integer, character varying, character varying, bigint, character varying, character varying, character varying, text, jsonb); Type: FUNCTION; Schema: public; Owner: neondb_owner
@@ -369,6 +305,44 @@ $$;
 
 
 ALTER FUNCTION public.deduct_stake(p_user_id integer, p_amount numeric, p_game_id integer) OWNER TO neondb_owner;
+
+--
+-- Name: generate_bingo_game_code(); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.generate_bingo_game_code() RETURNS character varying
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_code VARCHAR(32);
+BEGIN
+    LOOP
+        v_code :=
+            'BB' ||
+            upper(
+                substr(
+                    md5(
+                        random()::text ||
+                        clock_timestamp()::text
+                    ),
+                    1,
+                    6
+                )
+            );
+
+        EXIT WHEN NOT EXISTS (
+            SELECT 1
+            FROM bingo_games
+            WHERE game_code = v_code
+        );
+    END LOOP;
+
+    RETURN v_code;
+END;
+$$;
+
+
+ALTER FUNCTION public.generate_bingo_game_code() OWNER TO neondb_owner;
 
 SET default_tablespace = '';
 
@@ -645,189 +619,6 @@ $$;
 ALTER FUNCTION public.lock_wallet(p_wallet_id bigint) OWNER TO neondb_owner;
 
 --
--- Name: place_stake(integer, numeric, bigint, character varying, character varying, character varying, text); Type: FUNCTION; Schema: public; Owner: neondb_owner
---
-
-CREATE FUNCTION public.place_stake(p_user_id integer, p_amount numeric, p_game_system_id bigint, p_source_type character varying, p_source_id character varying, p_idempotency_key character varying, p_description text DEFAULT NULL::text) RETURNS bigint
-    LANGUAGE plpgsql
-    AS $$
-DECLARE
-    v_play_wallet BIGINT;
-    v_main_wallet BIGINT;
-
-    v_play_balance NUMERIC(18,2);
-    v_main_balance NUMERIC(18,2);
-
-    v_play_debit NUMERIC(18,2);
-    v_main_debit NUMERIC(18,2);
-
-    v_transaction_id BIGINT;
-BEGIN
-
-    -- --------------------------------------------------------
-    -- Validate amount
-    -- --------------------------------------------------------
-
-    IF p_amount IS NULL OR p_amount <= 0 THEN
-        RAISE EXCEPTION
-            'Stake amount must be greater than zero';
-    END IF;
-
-
-    -- --------------------------------------------------------
-    -- Get wallets
-    -- --------------------------------------------------------
-
-    v_play_wallet :=
-        get_user_wallet_id(
-            p_user_id,
-            'play'
-        );
-
-    v_main_wallet :=
-        get_user_wallet_id(
-            p_user_id,
-            'main'
-        );
-
-
-    -- --------------------------------------------------------
-    -- Lock both wallets in deterministic order
-    -- --------------------------------------------------------
-
-    IF v_play_wallet < v_main_wallet THEN
-
-        PERFORM lock_wallet(v_play_wallet);
-        PERFORM lock_wallet(v_main_wallet);
-
-    ELSE
-
-        PERFORM lock_wallet(v_main_wallet);
-        PERFORM lock_wallet(v_play_wallet);
-
-    END IF;
-
-
-    -- --------------------------------------------------------
-    -- Read balances
-    -- --------------------------------------------------------
-
-    SELECT balance
-    INTO v_play_balance
-    FROM wallet_balances
-    WHERE wallet_id = v_play_wallet;
-
-
-    SELECT balance
-    INTO v_main_balance
-    FROM wallet_balances
-    WHERE wallet_id = v_main_wallet;
-
-
-    -- --------------------------------------------------------
-    -- Check total funds
-    -- --------------------------------------------------------
-
-    IF (v_play_balance + v_main_balance) < p_amount THEN
-        RAISE EXCEPTION
-            'Insufficient balance for user %',
-            p_user_id;
-    END IF;
-
-
-    -- --------------------------------------------------------
-    -- Calculate allocation
-    -- --------------------------------------------------------
-
-    v_play_debit :=
-        LEAST(
-            v_play_balance,
-            p_amount
-        );
-
-    v_main_debit :=
-        p_amount - v_play_debit;
-
-
-    -- --------------------------------------------------------
-    -- Create transaction
-    -- --------------------------------------------------------
-
-    v_transaction_id :=
-        create_financial_transaction(
-            p_user_id,
-            'stake',
-            p_game_system_id,
-            p_source_type,
-            p_source_id,
-            p_idempotency_key,
-            p_description
-        );
-
-
-    -- --------------------------------------------------------
-    -- PLAY wallet debit
-    -- --------------------------------------------------------
-
-    IF v_play_debit > 0 THEN
-
-        INSERT INTO ledger_entries (
-            transaction_id,
-            wallet_id,
-            amount
-        )
-        VALUES (
-            v_transaction_id,
-            v_play_wallet,
-            -v_play_debit
-        );
-
-
-        UPDATE wallet_balances
-        SET
-            balance = balance - v_play_debit,
-            updated_at = NOW()
-        WHERE wallet_id = v_play_wallet;
-
-    END IF;
-
-
-    -- --------------------------------------------------------
-    -- MAIN wallet debit
-    -- --------------------------------------------------------
-
-    IF v_main_debit > 0 THEN
-
-        INSERT INTO ledger_entries (
-            transaction_id,
-            wallet_id,
-            amount
-        )
-        VALUES (
-            v_transaction_id,
-            v_main_wallet,
-            -v_main_debit
-        );
-
-
-        UPDATE wallet_balances
-        SET
-            balance = balance - v_main_debit,
-            updated_at = NOW()
-        WHERE wallet_id = v_main_wallet;
-
-    END IF;
-
-
-    RETURN v_transaction_id;
-
-END;
-$$;
-
-
-ALTER FUNCTION public.place_stake(p_user_id integer, p_amount numeric, p_game_system_id bigint, p_source_type character varying, p_source_id character varying, p_idempotency_key character varying, p_description text) OWNER TO neondb_owner;
-
---
 -- Name: place_stake(integer, numeric, bigint, character varying, character varying, character varying, text, jsonb); Type: FUNCTION; Schema: public; Owner: neondb_owner
 --
 
@@ -1028,97 +819,6 @@ $$;
 ALTER FUNCTION public.place_stake(p_user_id integer, p_amount numeric, p_game_system_id bigint, p_source_type character varying, p_source_id character varying, p_idempotency_key character varying, p_description text, p_metadata jsonb) OWNER TO neondb_owner;
 
 --
--- Name: record_game_win(integer, numeric, bigint, character varying, character varying, character varying, text); Type: FUNCTION; Schema: public; Owner: neondb_owner
---
-
-CREATE FUNCTION public.record_game_win(p_user_id integer, p_amount numeric, p_game_system_id bigint, p_source_type character varying, p_source_id character varying, p_idempotency_key character varying, p_description text DEFAULT NULL::text) RETURNS bigint
-    LANGUAGE plpgsql
-    AS $$
-DECLARE
-    v_main_wallet BIGINT;
-    v_transaction_id BIGINT;
-BEGIN
-
-    -- --------------------------------------------------------
-    -- Validate amount
-    -- --------------------------------------------------------
-
-    IF p_amount IS NULL OR p_amount <= 0 THEN
-        RAISE EXCEPTION
-            'Win amount must be greater than zero';
-    END IF;
-
-
-    -- --------------------------------------------------------
-    -- Get Main wallet
-    -- --------------------------------------------------------
-
-    v_main_wallet :=
-        get_user_wallet_id(
-            p_user_id,
-            'main'
-        );
-
-
-    -- --------------------------------------------------------
-    -- Lock Main wallet
-    -- --------------------------------------------------------
-
-    PERFORM lock_wallet(v_main_wallet);
-
-
-    -- --------------------------------------------------------
-    -- Create transaction
-    -- --------------------------------------------------------
-
-    v_transaction_id :=
-        create_financial_transaction(
-            p_user_id,
-            'win',
-            p_game_system_id,
-            p_source_type,
-            p_source_id,
-            p_idempotency_key,
-            p_description
-        );
-
-
-    -- --------------------------------------------------------
-    -- Ledger entry
-    -- --------------------------------------------------------
-
-    INSERT INTO ledger_entries (
-        transaction_id,
-        wallet_id,
-        amount
-    )
-    VALUES (
-        v_transaction_id,
-        v_main_wallet,
-        p_amount
-    );
-
-
-    -- --------------------------------------------------------
-    -- Update Main balance
-    -- --------------------------------------------------------
-
-    UPDATE wallet_balances
-    SET
-        balance = balance + p_amount,
-        updated_at = NOW()
-    WHERE wallet_id = v_main_wallet;
-
-
-    RETURN v_transaction_id;
-
-END;
-$$;
-
-
-ALTER FUNCTION public.record_game_win(p_user_id integer, p_amount numeric, p_game_system_id bigint, p_source_type character varying, p_source_id character varying, p_idempotency_key character varying, p_description text) OWNER TO neondb_owner;
-
---
 -- Name: record_game_win(integer, numeric, bigint, character varying, character varying, character varying, text, jsonb); Type: FUNCTION; Schema: public; Owner: neondb_owner
 --
 
@@ -1220,165 +920,6 @@ $$;
 
 
 ALTER FUNCTION public.record_game_win(p_user_id integer, p_amount numeric, p_game_system_id bigint, p_source_type character varying, p_source_id character varying, p_idempotency_key character varying, p_description text, p_metadata jsonb) OWNER TO neondb_owner;
-
---
--- Name: refund_stake(integer, bigint, character varying, text); Type: FUNCTION; Schema: public; Owner: neondb_owner
---
-
-CREATE FUNCTION public.refund_stake(p_user_id integer, p_original_transaction_id bigint, p_idempotency_key character varying, p_description text DEFAULT NULL::text) RETURNS bigint
-    LANGUAGE plpgsql
-    AS $$
-DECLARE
-    v_original_user_id INTEGER;
-    v_original_type VARCHAR(30);
-    v_original_status VARCHAR(20);
-    v_game_system_id BIGINT;
-
-    v_refund_transaction_id BIGINT;
-
-    v_wallet_id BIGINT;
-    v_original_amount NUMERIC(18,2);
-BEGIN
-
-    -- --------------------------------------------------------
-    -- Get original transaction
-    -- --------------------------------------------------------
-
-    SELECT
-        user_id,
-        type,
-        status,
-        game_system_id
-    INTO
-        v_original_user_id,
-        v_original_type,
-        v_original_status,
-        v_game_system_id
-    FROM financial_transactions
-    WHERE id = p_original_transaction_id
-    FOR SHARE;
-
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION
-            'Original transaction % not found',
-            p_original_transaction_id;
-    END IF;
-
-
-    -- --------------------------------------------------------
-    -- Validate owner
-    -- --------------------------------------------------------
-
-    IF v_original_user_id <> p_user_id THEN
-        RAISE EXCEPTION
-            'Transaction % does not belong to user %',
-            p_original_transaction_id,
-            p_user_id;
-    END IF;
-
-
-    -- --------------------------------------------------------
-    -- Validate transaction type
-    -- --------------------------------------------------------
-
-    IF v_original_type <> 'stake' THEN
-        RAISE EXCEPTION
-            'Transaction % is not a stake',
-            p_original_transaction_id;
-    END IF;
-
-
-    -- --------------------------------------------------------
-    -- Validate status
-    -- --------------------------------------------------------
-
-    IF v_original_status <> 'completed' THEN
-        RAISE EXCEPTION
-            'Stake transaction % is not completed',
-            p_original_transaction_id;
-    END IF;
-
-
-    -- --------------------------------------------------------
-    -- Lock original wallets in deterministic order
-    -- --------------------------------------------------------
-
-    FOR v_wallet_id IN
-        SELECT DISTINCT wallet_id
-        FROM ledger_entries
-        WHERE transaction_id = p_original_transaction_id
-        ORDER BY wallet_id
-    LOOP
-
-        PERFORM lock_wallet(v_wallet_id);
-
-    END LOOP;
-
-
-    -- --------------------------------------------------------
-    -- Create refund transaction
-    --
-    -- Inherits the original game system.
-    -- --------------------------------------------------------
-
-    v_refund_transaction_id :=
-        create_financial_transaction(
-            p_user_id,
-            'refund',
-            v_game_system_id,
-            'financial_transaction',
-            p_original_transaction_id::VARCHAR,
-            p_idempotency_key,
-            p_description,
-            jsonb_build_object(
-                'original_transaction_id',
-                p_original_transaction_id
-            )
-        );
-
-
-    -- --------------------------------------------------------
-    -- Reverse each original ledger entry
-    -- --------------------------------------------------------
-
-    FOR v_wallet_id, v_original_amount IN
-        SELECT
-            wallet_id,
-            amount
-        FROM ledger_entries
-        WHERE transaction_id = p_original_transaction_id
-        ORDER BY wallet_id
-    LOOP
-
-        INSERT INTO ledger_entries (
-            transaction_id,
-            wallet_id,
-            amount
-        )
-        VALUES (
-            v_refund_transaction_id,
-            v_wallet_id,
-            -v_original_amount
-        );
-
-
-        UPDATE wallet_balances
-        SET
-            balance = balance - v_original_amount,
-            updated_at = NOW()
-        WHERE wallet_id = v_wallet_id;
-
-    END LOOP;
-
-
-    RETURN v_refund_transaction_id;
-
-END;
-$$;
-
-
-ALTER FUNCTION public.refund_stake(p_user_id integer, p_original_transaction_id bigint, p_idempotency_key character varying, p_description text) OWNER TO neondb_owner;
 
 --
 -- Name: refund_stake(integer, bigint, character varying, text, jsonb); Type: FUNCTION; Schema: public; Owner: neondb_owner
@@ -1937,11 +1478,59 @@ CREATE TABLE public.bingo_games (
     is_split boolean DEFAULT false,
     started_at timestamp with time zone,
     ended_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now()
+    created_at timestamp with time zone DEFAULT now(),
+    game_code character varying(32) NOT NULL
 );
 
 
 ALTER TABLE public.bingo_games OWNER TO neondb_owner;
+
+--
+-- Name: bingo_participants; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.bingo_participants (
+    id bigint NOT NULL,
+    game_id integer NOT NULL,
+    user_id integer NOT NULL,
+    card_id integer NOT NULL,
+    card_data jsonb NOT NULL,
+    transaction_id bigint NOT NULL,
+    amount numeric(18,2) NOT NULL,
+    status character varying(20) DEFAULT 'active'::character varying NOT NULL,
+    is_winner boolean DEFAULT false NOT NULL,
+    is_disqualified boolean DEFAULT false NOT NULL,
+    amount_won numeric(18,2) DEFAULT 0 NOT NULL,
+    joined_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT bingo_participants_amount_positive CHECK ((amount > (0)::numeric)),
+    CONSTRAINT bingo_participants_amount_won_non_negative CHECK ((amount_won >= (0)::numeric)),
+    CONSTRAINT bingo_participants_card_id_positive CHECK ((card_id > 0)),
+    CONSTRAINT bingo_participants_status_check CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'refunded'::character varying, 'cancelled'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.bingo_participants OWNER TO neondb_owner;
+
+--
+-- Name: bingo_participants_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
+--
+
+CREATE SEQUENCE public.bingo_participants_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.bingo_participants_id_seq OWNER TO neondb_owner;
+
+--
+-- Name: bingo_participants_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
+--
+
+ALTER SEQUENCE public.bingo_participants_id_seq OWNED BY public.bingo_participants.id;
+
 
 --
 -- Name: broadcast_drafts; Type: TABLE; Schema: public; Owner: neondb_owner
@@ -2601,6 +2190,13 @@ ALTER TABLE ONLY public.bingo_games ALTER COLUMN id SET DEFAULT nextval('public.
 
 
 --
+-- Name: bingo_participants id; Type: DEFAULT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_participants ALTER COLUMN id SET DEFAULT nextval('public.bingo_participants_id_seq'::regclass);
+
+
+--
 -- Name: deposit_rules id; Type: DEFAULT; Schema: public; Owner: neondb_owner
 --
 
@@ -2689,6 +2285,22 @@ ALTER TABLE ONLY public.withdrawal_rules ALTER COLUMN id SET DEFAULT nextval('pu
 --
 
 ALTER TABLE ONLY public.withdrawals ALTER COLUMN id SET DEFAULT nextval('public."withdrawals _id_seq"'::regclass);
+
+
+--
+-- Name: bingo_participants bingo_participants_game_card_unique; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_participants
+    ADD CONSTRAINT bingo_participants_game_card_unique UNIQUE (game_id, card_id);
+
+
+--
+-- Name: bingo_participants bingo_participants_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_participants
+    ADD CONSTRAINT bingo_participants_pkey PRIMARY KEY (id);
 
 
 --
@@ -2884,6 +2496,14 @@ ALTER TABLE ONLY public.wallets
 
 
 --
+-- Name: wallets wallets_user_wallet_type_unique; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.wallets
+    ADD CONSTRAINT wallets_user_wallet_type_unique UNIQUE (user_id, wallet_type);
+
+
+--
 -- Name: withdrawal_rules withdrawal_rules_code_key; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
@@ -2912,6 +2532,13 @@ ALTER TABLE ONLY public.withdrawals
 --
 
 CREATE UNIQUE INDEX deposits_reference_unique_idx ON public.deposits USING btree (reference) WHERE (reference IS NOT NULL);
+
+
+--
+-- Name: idx_bingo_games_game_code; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE UNIQUE INDEX idx_bingo_games_game_code ON public.bingo_games USING btree (game_code);
 
 
 --
@@ -3188,6 +2815,13 @@ CREATE UNIQUE INDEX uq_financial_transactions_idempotency ON public.financial_tr
 
 
 --
+-- Name: ux_bingo_games_game_code; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE UNIQUE INDEX ux_bingo_games_game_code ON public.bingo_games USING btree (game_code);
+
+
+--
 -- Name: ux_deposits_transaction; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
@@ -3241,6 +2875,30 @@ CREATE TRIGGER withdrawal_rules_set_updated_at BEFORE UPDATE ON public.withdrawa
 --
 
 CREATE TRIGGER withdrawals_set_updated_at BEFORE UPDATE ON public.withdrawals FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+
+--
+-- Name: bingo_participants bingo_participants_game_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_participants
+    ADD CONSTRAINT bingo_participants_game_id_fkey FOREIGN KEY (game_id) REFERENCES public.bingo_games(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: bingo_participants bingo_participants_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_participants
+    ADD CONSTRAINT bingo_participants_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES public.financial_transactions(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: bingo_participants bingo_participants_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_participants
+    ADD CONSTRAINT bingo_participants_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
 
 
 --
