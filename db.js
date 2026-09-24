@@ -1587,6 +1587,43 @@ async createWithdrawal(
       transactionResult.rows[0]
         ?.transaction_id;
 
+	transactionResult = await client.query(
+			  `
+			  SELECT
+			    id,
+			    type,
+			    status,
+			    amount,
+			    source_type,
+			    source_id
+			  FROM financial_transactions
+			  WHERE id = $1
+			  FOR UPDATE
+			  `,
+			  [transactionId]
+			);
+			
+			if (!transactionResult.rows.length) {
+			  throw new Error(
+			    "Withdrawal reservation transaction not found."
+			  );
+			}
+			
+			const financialTransaction =
+			  transactionResult.rows[0];
+			
+			if (financialTransaction.type !== "withdrawal") {
+			  throw new Error(
+			    "Withdrawal transaction has an invalid transaction type."
+			  );
+			}
+			
+			if (financialTransaction.status !== "completed") {
+			  throw new Error(
+			    "Withdrawal reservation transaction is not completed."
+			  );
+			}
+
     /*
      * Connect withdrawal request to ledger transaction.
      */
