@@ -4419,6 +4419,31 @@ async getAllPaymentAccountsForAdmin() {
       );
     }
 
+	          /*
+         * 3. Require an active Bingo game system.
+         *
+         * Do NOT pass a nullable subquery into place_stake().
+         * The financial transaction must always know which
+         * game system owns the stake.
+         */
+        const systemResult = await client.query(
+            `
+            SELECT id
+            FROM game_systems
+            WHERE code = 'bingo'
+              AND status = 'active'
+            LIMIT 1
+            `
+        );
+
+        if (systemResult.rowCount !== 1) {
+            throw new Error(
+                'Bingo game system is not configured or is not active'
+            );
+        }
+
+        const gameSystemId = systemResult.rows[0].id;
+
     /*
      * A user may have multiple cards,
      * but the SAME card cannot be entered twice
@@ -4485,23 +4510,18 @@ async getAllPaymentAccountsForAdmin() {
         SELECT place_stake(
           $1,
           $2,
-          (
-            SELECT id
-            FROM game_systems
-            WHERE code = 'bingo'
-              AND status = 'active'
-            LIMIT 1
-          ),
           $3,
           $4,
           $5,
           $6,
-          $7::jsonb
+          $7,
+          $8::jsonb
         ) AS transaction_id
         `,
         [
           user,
           stakeAmount,
+		  gameSystemId,
           "bingo_game",
           String(game),
           idempotencyKey,
