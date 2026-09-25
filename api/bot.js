@@ -3340,7 +3340,7 @@ async function showBalance(
   }
 
 
-  await ctx.reply(
+ /* await ctx.reply(
 
     `Main Wallet: *${userwallets.main_balance} ETB*\n\n` + 
     `Play Wallet: *${userwallets.play_balance} ETB*\n\n` + 
@@ -3353,7 +3353,40 @@ async function showBalance(
 
     }
 
-  );
+  );*/
+
+  const text = `
+💼 <b>Account Info</b>
+
+<pre>Name:     ${userwallets.name}
+Phone:         ${userwallets.phone}
+Main wallet:   ${userwallets.main_balance}
+Play wallet:   ${userwallets.play_balance}
+Total Balance: ${userwallets.total_balance}</pre>`;
+
+  await ctx.reply(text, {
+    parse_mode: "HTML",
+    reply_markup: {
+      inline_keyboard: [
+        [
+          {
+            text: "▣  COPY CODE",
+            callback_data: `copy_${userwallets.id}`
+          }
+        ],
+        [
+          {
+            text: "💵 Deposit",
+            callback_data: "user_deposit"
+          },
+          {
+            text: "🤑 Withdraw",
+            callback_data: "user_withdraw"
+          }
+        ]
+      ]
+    }
+  });
 
 }
 
