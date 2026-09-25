@@ -4085,7 +4085,7 @@ async getAllPaymentAccountsForAdmin() {
   );
 }
 
-		if (checkTransactionResult.type !== 'deposit' || checkTransactionResult.status !== 'completed') 
+		if (checktransactionresult.type !== 'deposit' || checktransactionresult.status !== 'completed') 
 		{
   			throw new Error('Invalid or incomplete deposit transaction');
 		}
