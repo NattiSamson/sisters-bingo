@@ -4084,13 +4084,13 @@ async getAllPaymentAccountsForAdmin() {
     "Could not finalize deposit. No transaction"
   );
 }
-		if(checktransactionresult.type != 'deposit')
+		if(checktransactionresult.type !== 'deposit')
 		{
 			throw new Error(
     "Could not finalize deposit. type not deposit"
   );
 		}
-		else if(checktransactionresult.status != 'completed')
+		else if(checktransactionresult.status !== 'completed')
 		{
 			throw new Error(
     "Could not finalize deposit. type not completed"
