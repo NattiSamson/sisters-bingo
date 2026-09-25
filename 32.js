@@ -1753,65 +1753,85 @@ app.get('/api/user/:tid', async(req,res)=>{
   const tid=String(req.params.tid||'').trim();
   if(!tid) return res.status(400).json({error:'Missing Telegram ID'});
   if(!db) return res.status(503).json({error:'Database unavailable'});
+
   try{
-    // Keep the existing users balance/win totals authoritative, but compute
-    // games played from finished-game participation as a safe fallback.
-    // Also calculate the latest actual payout directly from finished games.
-    // This avoids relying on the history transaction join for the Profile UI.
-    const rows=await db.q(`
-      SELECT u.*,
-        COALESCE((
-          SELECT COUNT(DISTINCT g.id)
-          FROM games g
-          WHERE g.status='finished'
-            AND (
-              EXISTS (
-                SELECT 1 FROM game_participants gp
-                WHERE gp.game_id=g.id AND gp.user_id=u.id
-              )
-              OR EXISTS (
-                SELECT 1 FROM transactions t
-                WHERE t.user_id=u.id
-                  AND t.reference=g.room_id
-                  AND t.type='stake'
-              )
-            )
-        ),0)::int AS computed_total_games,
-        COALESCE((
-          SELECT COUNT(*)
-          FROM games g
-          WHERE g.status='finished'
-            AND $1 = ANY(COALESCE(g.winner_ids, ARRAY[]::text[]))
-        ),0)::int AS computed_total_wins,
-        COALESCE((
-          SELECT g.win_amount
-          FROM games g
-          WHERE g.status='finished'
-            AND $1 = ANY(COALESCE(g.winner_ids, ARRAY[]::text[]))
-          ORDER BY g.ended_at DESC NULLS LAST, g.id DESC
-          LIMIT 1
-        ),0)::numeric AS latest_earnings
-      FROM users u
-      WHERE u.telegram_id=$1
-      LIMIT 1
-    `,[tid]);
+    // Keep the basic account query completely independent from game/statistics
+    // queries. A statistics query must never prevent login/profile from loading.
+    const rows=await db.q(
+      `SELECT * FROM users WHERE telegram_id=$1 LIMIT 1`,
+      [tid]
+    );
     const u=rows[0]||null;
     if(!u) return res.status(404).json({error:'Not found'});
 
-    const storedGames=Math.max(0,Number(u.total_games)||0);
-    const computedGames=Math.max(0,Number(u.computed_total_games)||0);
-    const totalGames=Math.max(storedGames,computedGames);
-    if(totalGames!==storedGames){
-      try{ await db.q('UPDATE users SET total_games=$1 WHERE id=$2',[totalGames,u.id]); }
-      catch(e){ console.error('Profile total_games sync:',e.message); }
+    // Always keep the database user's stored counters as the safe fallback.
+    let totalGames=Math.max(0,Number(u.total_games)||0);
+    let totalWins=Math.max(0,Number(u.total_wins)||0);
+    let latestEarnings=0;
+
+    // Calculate games played independently through stake transactions. This is
+    // the same relationship used by the existing game-history endpoint and does
+    // not depend on game_participants being present/correct.
+    try{
+      const r=await db.q(`
+        SELECT COUNT(DISTINCT g.id)::int AS total_games
+        FROM games g
+        JOIN transactions t ON t.reference=g.room_id
+        JOIN users tu ON tu.id=t.user_id
+        WHERE tu.telegram_id=$1
+          AND g.status='finished'
+          AND t.type='stake'
+      `,[tid]);
+      const computed=Math.max(0,Number(r[0]?.total_games)||0);
+      totalGames=Math.max(totalGames,computed);
+    }catch(e){
+      console.error('Profile games query:',e.message);
     }
 
-    // Profile stats: use the finished-game winner records directly. This is
-    // independent of the users-table counter, so old accounts with total_wins=0
-    // still show the real number of games won.
-    const storedWins=Math.max(0,Number(u.total_wins)||0);
-    const computedWins=Math.max(0,Number(u.computed_total_wins)||0);
-    const totalWins=Math.max(storedWins,computedWins);
+    // Calculate wins directly from finished games. If the winner column cannot
+    // be queried for any reason, retain the authoritative users.total_wins value.
+    try{
+      const r=await db.q(`
+        SELECT COUNT(*)::int AS total_wins
+        FROM games
+        WHERE status='finished'
+          AND $1 = ANY(winner_ids)
+      `,[tid]);
+      const computed=Math.max(0,Number(r[0]?.total_wins)||0);
+      totalWins=Math.max(totalWins,computed);
+    }catch(e){
+      console.error('Profile wins query:',e.message);
+    }
+
+    try{
+      const r=await db.q(`
+        SELECT win_amount
+        FROM games
+        WHERE status='finished'
+          AND $1 = ANY(winner_ids)
+        ORDER BY ended_at DESC NULLS LAST, id DESC
+        LIMIT 1
+      `,[tid]);
+      latestEarnings=Math.max(0,Number(r[0]?.win_amount)||0);
+    }catch(e){
+      console.error('Profile latest earnings query:',e.message);
+    }
+
+    // Keep stored totals synchronized when our safe calculations find more data.
+    if(totalGames !== Math.max(0,Number(u.total_games)||0)){
+      try{
+        await db.q('UPDATE users SET total_games=$1 WHERE id=$2',[totalGames,u.id]);
+      }catch(e){
+        console.error('Profile total_games sync:',e.message);
+      }
+    }
+    if(totalWins !== Math.max(0,Number(u.total_wins)||0)){
+      try{
+        await db.q('UPDATE users SET total_wins=$1 WHERE id=$2',[totalWins,u.id]);
+      }catch(e){
+        console.error('Profile total_wins sync:',e.message);
+      }
+    }
 
     const user={
       telegramId:String(u.telegram_id),
@@ -1821,13 +1841,14 @@ app.get('/api/user/:tid', async(req,res)=>{
       total_games:totalGames,
       total_wins:totalWins,
       total_winnings:Math.max(0,Number(u.total_winnings)||0),
-      latest_earnings:Math.max(0,Number(u.latest_earnings)||0),
+      latest_earnings:latestEarnings,
       isAdmin:u.is_admin===true || isAdminPhone(u.phone)
     };
+
     userCache[tid]={...(userCache[tid]||{}),...user};
     res.json(user);
   }catch(e){
-    console.error('GET /api/user error:',e.message);
+    console.error('GET /api/user error:',e.stack||e.message);
     res.status(500).json({error:'Database query failed'});
   }
 });
