@@ -1,7 +1,6 @@
 --
 -- PostgreSQL database dump
 --
-
 -- Dumped from database version 18.6 (6569466)
 -- Dumped by pg_dump version 18.4
 
@@ -24,34 +23,29 @@ SET row_security = off;
 CREATE FUNCTION public.create_financial_transaction(p_user_id integer, p_type character varying, p_status character varying DEFAULT 'completed'::character varying, p_game_system_id bigint DEFAULT NULL::bigint, p_source_type character varying DEFAULT NULL::character varying, p_source_id character varying DEFAULT NULL::character varying, p_idempotency_key character varying DEFAULT NULL::character varying, p_description text DEFAULT NULL::text, p_metadata jsonb DEFAULT '{}'::jsonb) RETURNS TABLE(transaction_id bigint, created boolean)
     LANGUAGE plpgsql
     AS $$
+DECLARE
+    v_existing financial_transactions%ROWTYPE;
 BEGIN
-
-    -- --------------------------------------------------------
-    -- Validate required fields
-    -- --------------------------------------------------------
-
+    /*
+     * Basic validation
+     */
     IF p_user_id IS NULL THEN
-        RAISE EXCEPTION
-            'Financial transaction user_id is required';
+        RAISE EXCEPTION 'Financial transaction user_id is required';
     END IF;
 
     IF p_type IS NULL OR BTRIM(p_type) = '' THEN
-        RAISE EXCEPTION
-            'Financial transaction type is required';
+        RAISE EXCEPTION 'Financial transaction type is required';
     END IF;
 
     IF p_status IS NULL OR BTRIM(p_status) = '' THEN
-        RAISE EXCEPTION
-            'Financial transaction status is required';
+        RAISE EXCEPTION 'Financial transaction status is required';
     END IF;
 
 
-    -- --------------------------------------------------------
-    -- No idempotency key
-    --
-    -- Every call creates a new transaction.
-    -- --------------------------------------------------------
-
+    /*
+     * No idempotency key:
+     * Always create a new transaction.
+     */
     IF p_idempotency_key IS NULL THEN
 
         INSERT INTO financial_transactions (
@@ -91,23 +85,15 @@ BEGIN
 
         RETURN NEXT;
         RETURN;
-
     END IF;
 
 
-    -- --------------------------------------------------------
-    -- Atomic idempotent creation
-    --
-    -- DO NOTHING is important here.
-    --
-    -- We do NOT use:
-    --
-    --   ON CONFLICT DO UPDATE
-    --
-    -- because we need to know whether this call actually
-    -- created the transaction.
-    -- --------------------------------------------------------
-
+    /*
+     * Idempotent creation.
+     *
+     * The unique partial index on idempotency_key guarantees
+     * that only one transaction can win the insert race.
+     */
     INSERT INTO financial_transactions (
         user_id,
         type,
@@ -145,10 +131,9 @@ BEGIN
     INTO transaction_id;
 
 
-    -- --------------------------------------------------------
-    -- This request won the race.
-    -- --------------------------------------------------------
-
+    /*
+     * Insert succeeded.
+     */
     IF FOUND THEN
         created := TRUE;
 
@@ -157,34 +142,53 @@ BEGIN
     END IF;
 
 
-    -- --------------------------------------------------------
-    -- Another request already created this transaction.
-    --
-    -- The INSERT has waited for the conflicting transaction
-    -- if necessary, so the existing row should now be visible.
-    --
-    -- Lock the existing transaction while returning it.
-    -- --------------------------------------------------------
-
-    SELECT ft.id
-    INTO transaction_id
-    FROM financial_transactions ft
+    /*
+     * Transaction already exists for this idempotency key.
+     *
+     * Lock the existing transaction before validating it.
+     */
+    SELECT ft.*
+    INTO v_existing
+    FROM financial_transactions AS ft
     WHERE ft.idempotency_key = p_idempotency_key
     FOR UPDATE;
 
 
-    IF transaction_id IS NULL THEN
+    IF NOT FOUND THEN
         RAISE EXCEPTION
             'Idempotency conflict occurred but existing transaction was not found for key: %',
             p_idempotency_key;
     END IF;
 
 
+    /*
+     * An idempotency key must represent exactly one logical
+     * financial operation.
+     *
+     * Reusing the same key with different parameters is an error.
+     */
+    IF v_existing.user_id IS DISTINCT FROM p_user_id
+       OR v_existing.type IS DISTINCT FROM p_type
+       OR v_existing.status IS DISTINCT FROM p_status
+       OR v_existing.game_system_id IS DISTINCT FROM p_game_system_id
+       OR v_existing.source_type IS DISTINCT FROM p_source_type
+       OR v_existing.source_id IS DISTINCT FROM p_source_id
+    THEN
+        RAISE EXCEPTION
+            'Idempotency key "%" already belongs to a different financial transaction',
+            p_idempotency_key;
+    END IF;
+
+
+    /*
+     * Existing transaction is the result of this idempotent
+     * operation.
+     */
+    transaction_id := v_existing.id;
     created := FALSE;
 
     RETURN NEXT;
     RETURN;
-
 END;
 $$;
 
