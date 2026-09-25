@@ -7423,9 +7423,7 @@ bot.on(
                 "❌ የክፍያ ደረሰኝ  መረጃ አልተገኘም።"
               );
 
-            }
-
-            receipt.settledAmount = 20000;
+            }            
 
             const result2 =
               await db.approveDeposit(
