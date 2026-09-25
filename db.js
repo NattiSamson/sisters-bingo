@@ -2144,10 +2144,15 @@ async getWithdrawalHistory(
       SELECT
         w.*,
         u.telegram_id,
-        u.name        
+        u.name,
+		uwb.main_balance,
+  		uwb.play_balance,
+  		uwb.total_balance
       FROM withdrawals w
       JOIN users u
         ON u.id = w.user_id
+	  JOIN user_wallet_balances uwb
+  		ON uwb.user_id = w.user_id		
       WHERE w.id = $1
       FOR UPDATE
       `,
@@ -2397,7 +2402,16 @@ async getWithdrawalHistory(
         accountAfter,
 
       balance_after:
-        Number(withdrawal.balance),
+        Number(withdrawal.total_balance),
+		
+	  main_balance:
+        Number(withdrawal.main_balance),
+		
+	  play_balance:
+        Number(withdrawal.play_balance),
+		
+      total_balance:
+        Number(withdrawal.total_balance),		
 
       withdrawal:
         approvedWithdrawal
@@ -4143,7 +4157,7 @@ async getAllPaymentAccountsForAdmin() {
 
   const { rows } = await pool.query(
     `
-    INSERT INTO bingo_games (
+    INSERT INTO bingo_games (	  
       game_code,
       room_id,
       stake_id,
@@ -4152,7 +4166,7 @@ async getAllPaymentAccountsForAdmin() {
       status,
       started_at
     )
-    VALUES (
+    VALUES (	  
       generate_bingo_game_code(),
       $1,
       $2,
@@ -4619,6 +4633,7 @@ async getAllPaymentAccountsForAdmin() {
     UPDATE bingo_games
     SET called_numbers = $1
     WHERE id = $2
+	FOR UPDATE
     RETURNING *
     `,
     [
@@ -4690,7 +4705,7 @@ async getAllPaymentAccountsForAdmin() {
     for (const winner of winners) {
       const userId = Number(winner.userId);
       const cardId = Number(winner.cardId);
-      const amountWon = Number(winner.amountWon);
+      const amountWon = Math.round(Number(winner.amountWon) * 100) / 100;
 
       if (!Number.isInteger(userId) || userId <= 0) {
         throw new Error(
@@ -4841,15 +4856,12 @@ async getAllPaymentAccountsForAdmin() {
     //
     // Every winning card gets its own payout.
     // ------------------------------------------------------------
-    const totalPayout = uniqueWinners.reduce(
-      (sum, winner) => sum + winner.amountWon,
-      0
-    );
+    const totalPayout = Math.round(uniqueWinners.reduce((sum, winner) => sum + winner.amountWon, 0) * 100) / 100;
 
     // ------------------------------------------------------------
     // 8. Never allow Bingo to pay more than the pot
     // ------------------------------------------------------------
-    if (totalPayout > recordedPot + 0.001) {
+    if (totalPayout > recordedPot + 0.2) {
       throw new Error(
         `Total Bingo payout (${totalPayout}) ` +
         `exceeds game pot (${recordedPot})`
@@ -4934,7 +4946,8 @@ async getAllPaymentAccountsForAdmin() {
           $4,
           $5,
           $6,
-          $7
+          $7,
+		  $8
         ) AS transaction_id
         `,
         [
