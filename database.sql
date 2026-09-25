@@ -21,19 +21,93 @@ SET row_security = off;
 -- Name: create_financial_transaction(integer, character varying, character varying, bigint, character varying, character varying, character varying, text, jsonb); Type: FUNCTION; Schema: public; Owner: neondb_owner
 --
 
-CREATE FUNCTION public.create_financial_transaction(p_user_id integer, p_type character varying, p_status character varying DEFAULT 'completed'::character varying, p_game_system_id bigint DEFAULT NULL::bigint, p_source_type character varying DEFAULT NULL::character varying, p_source_id character varying DEFAULT NULL::character varying, p_idempotency_key character varying DEFAULT NULL::character varying, p_description text DEFAULT NULL::text, p_metadata jsonb DEFAULT '{}'::jsonb) RETURNS bigint
+CREATE FUNCTION public.create_financial_transaction(p_user_id integer, p_type character varying, p_status character varying DEFAULT 'completed'::character varying, p_game_system_id bigint DEFAULT NULL::bigint, p_source_type character varying DEFAULT NULL::character varying, p_source_id character varying DEFAULT NULL::character varying, p_idempotency_key character varying DEFAULT NULL::character varying, p_description text DEFAULT NULL::text, p_metadata jsonb DEFAULT '{}'::jsonb) RETURNS TABLE(transaction_id bigint, created boolean)
     LANGUAGE plpgsql
     AS $$
-DECLARE
-    v_transaction_id BIGINT;
 BEGIN
 
-    /*
-     * Atomic idempotency.
-     *
-     * If another request already created the same transaction,
-     * return that transaction instead of creating another one.
-     */
+    -- --------------------------------------------------------
+    -- Validate required fields
+    -- --------------------------------------------------------
+
+    IF p_user_id IS NULL THEN
+        RAISE EXCEPTION
+            'Financial transaction user_id is required';
+    END IF;
+
+    IF p_type IS NULL OR BTRIM(p_type) = '' THEN
+        RAISE EXCEPTION
+            'Financial transaction type is required';
+    END IF;
+
+    IF p_status IS NULL OR BTRIM(p_status) = '' THEN
+        RAISE EXCEPTION
+            'Financial transaction status is required';
+    END IF;
+
+
+    -- --------------------------------------------------------
+    -- No idempotency key
+    --
+    -- Every call creates a new transaction.
+    -- --------------------------------------------------------
+
+    IF p_idempotency_key IS NULL THEN
+
+        INSERT INTO financial_transactions (
+            user_id,
+            type,
+            status,
+            game_system_id,
+            source_type,
+            source_id,
+            idempotency_key,
+            description,
+            metadata,
+            created_at,
+            completed_at
+        )
+        VALUES (
+            p_user_id,
+            p_type,
+            p_status,
+            p_game_system_id,
+            p_source_type,
+            p_source_id,
+            NULL,
+            p_description,
+            COALESCE(p_metadata, '{}'::jsonb),
+            NOW(),
+            CASE
+                WHEN p_status = 'completed'
+                THEN NOW()
+                ELSE NULL
+            END
+        )
+        RETURNING id
+        INTO transaction_id;
+
+        created := TRUE;
+
+        RETURN NEXT;
+        RETURN;
+
+    END IF;
+
+
+    -- --------------------------------------------------------
+    -- Atomic idempotent creation
+    --
+    -- DO NOTHING is important here.
+    --
+    -- We do NOT use:
+    --
+    --   ON CONFLICT DO UPDATE
+    --
+    -- because we need to know whether this call actually
+    -- created the transaction.
+    -- --------------------------------------------------------
+
     INSERT INTO financial_transactions (
         user_id,
         type,
@@ -64,16 +138,53 @@ BEGIN
             ELSE NULL
         END
     )
-
     ON CONFLICT (idempotency_key)
     WHERE idempotency_key IS NOT NULL
-    DO UPDATE SET
-        id = financial_transactions.id
-
+    DO NOTHING
     RETURNING id
-    INTO v_transaction_id;
+    INTO transaction_id;
 
-    RETURN v_transaction_id;
+
+    -- --------------------------------------------------------
+    -- This request won the race.
+    -- --------------------------------------------------------
+
+    IF FOUND THEN
+        created := TRUE;
+
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+
+    -- --------------------------------------------------------
+    -- Another request already created this transaction.
+    --
+    -- The INSERT has waited for the conflicting transaction
+    -- if necessary, so the existing row should now be visible.
+    --
+    -- Lock the existing transaction while returning it.
+    -- --------------------------------------------------------
+
+    SELECT ft.id
+    INTO transaction_id
+    FROM financial_transactions ft
+    WHERE ft.idempotency_key = p_idempotency_key
+    FOR UPDATE;
+
+
+    IF transaction_id IS NULL THEN
+        RAISE EXCEPTION
+            'Idempotency conflict occurred but existing transaction was not found for key: %',
+            p_idempotency_key;
+    END IF;
+
+
+    created := FALSE;
+
+    RETURN NEXT;
+    RETURN;
+
 END;
 $$;
 
@@ -172,33 +283,28 @@ CREATE FUNCTION public.credit_deposit_to_wallet(p_user_id integer, p_amount nume
     AS $$
 DECLARE
     v_wallet_id BIGINT;
+
     v_transaction_id BIGINT;
-    v_existing_transaction BIGINT;
+    v_transaction_created BOOLEAN;
+
     v_amount NUMERIC(18,2);
 BEGIN
+
+    -- --------------------------------------------------------
+    -- Validate amount
+    -- --------------------------------------------------------
 
     v_amount := ROUND(p_amount, 2);
 
     IF v_amount <= 0 THEN
-        RAISE EXCEPTION 'Deposit amount must be greater than zero';
+        RAISE EXCEPTION
+            'Deposit amount must be greater than zero';
     END IF;
 
 
-    -- Idempotency
-    IF p_idempotency_key IS NOT NULL THEN
-
-        SELECT id
-        INTO v_existing_transaction
-        FROM financial_transactions
-        WHERE idempotency_key = p_idempotency_key
-        LIMIT 1;
-
-        IF v_existing_transaction IS NOT NULL THEN
-            RETURN v_existing_transaction;
-        END IF;
-
-    END IF;
-
+    -- --------------------------------------------------------
+    -- Get Play wallet
+    -- --------------------------------------------------------
 
     v_wallet_id :=
         get_user_wallet_id(
@@ -207,26 +313,55 @@ BEGIN
         );
 
 
-    -- Lock wallet balance
+    -- --------------------------------------------------------
+    -- Lock wallet
+    -- --------------------------------------------------------
+
     PERFORM lock_wallet(v_wallet_id);
 
 
-    v_transaction_id :=
-        create_financial_transaction(
-            p_user_id,
-            'deposit',
-            'completed',
-            p_game_system_id,
-            'deposit',
-            p_deposit_id::VARCHAR,
-            p_idempotency_key,
-            p_description,
-            jsonb_build_object(
-                'deposit_id',
-                p_deposit_id
-            )
-        );
+    -- --------------------------------------------------------
+    -- Create / retrieve financial transaction atomically
+    -- --------------------------------------------------------
 
+    SELECT
+        t.transaction_id,
+        t.created
+    INTO
+        v_transaction_id,
+        v_transaction_created
+    FROM create_financial_transaction(
+        p_user_id,
+        'deposit',
+        'completed',
+        p_game_system_id,
+        'deposit',
+        p_deposit_id::VARCHAR,
+        p_idempotency_key,
+        p_description,
+        jsonb_build_object(
+            'deposit_id',
+            p_deposit_id
+        )
+    ) AS t;
+
+
+    -- --------------------------------------------------------
+    -- Existing idempotent transaction.
+    --
+    -- CRITICAL:
+    -- Do NOT insert another ledger entry.
+    -- Do NOT update wallet balance.
+    -- --------------------------------------------------------
+
+    IF NOT v_transaction_created THEN
+        RETURN v_transaction_id;
+    END IF;
+
+
+    -- --------------------------------------------------------
+    -- Ledger
+    -- --------------------------------------------------------
 
     INSERT INTO ledger_entries (
         transaction_id,
@@ -240,13 +375,19 @@ BEGIN
     );
 
 
+    -- --------------------------------------------------------
+    -- Balance
+    -- --------------------------------------------------------
+
     UPDATE wallet_balances
-    SET balance = balance + v_amount,
+    SET
+        balance = balance + v_amount,
         updated_at = NOW()
     WHERE wallet_id = v_wallet_id;
 
 
     RETURN v_transaction_id;
+
 END;
 $$;
 
@@ -1051,8 +1192,7 @@ DECLARE
     v_main_charge NUMERIC(18,2);
 
     v_transaction_id BIGINT;
-
-    v_existing_transaction financial_transactions%ROWTYPE;
+    v_transaction_created BOOLEAN;
 BEGIN
 
     -- --------------------------------------------------------
@@ -1060,26 +1200,8 @@ BEGIN
     -- --------------------------------------------------------
 
     IF p_amount IS NULL OR p_amount <= 0 THEN
-        RAISE EXCEPTION 'Stake amount must be greater than zero';
-    END IF;
-
-
-    -- --------------------------------------------------------
-    -- Check idempotency BEFORE changing anything
-    -- --------------------------------------------------------
-
-    IF p_idempotency_key IS NOT NULL THEN
-
-        SELECT *
-        INTO v_existing_transaction
-        FROM financial_transactions
-        WHERE idempotency_key = p_idempotency_key
-        FOR UPDATE;
-
-        IF FOUND THEN
-            RETURN v_existing_transaction.id;
-        END IF;
-
+        RAISE EXCEPTION
+            'Stake amount must be greater than zero';
     END IF;
 
 
@@ -1088,14 +1210,20 @@ BEGIN
     -- --------------------------------------------------------
 
     v_play_wallet_id :=
-        get_user_wallet_id(p_user_id, 'play');
+        get_user_wallet_id(
+            p_user_id,
+            'play'
+        );
 
     v_main_wallet_id :=
-        get_user_wallet_id(p_user_id, 'main');
+        get_user_wallet_id(
+            p_user_id,
+            'main'
+        );
 
 
     -- --------------------------------------------------------
-    -- Lock wallets in deterministic order
+    -- Lock wallets deterministically
     -- --------------------------------------------------------
 
     IF v_play_wallet_id < v_main_wallet_id THEN
@@ -1112,6 +1240,43 @@ BEGIN
 
 
     -- --------------------------------------------------------
+    -- Create / retrieve transaction atomically
+    --
+    -- IMPORTANT:
+    -- This happens BEFORE calculating/debiting balances.
+    -- --------------------------------------------------------
+
+    SELECT
+        t.transaction_id,
+        t.created
+    INTO
+        v_transaction_id,
+        v_transaction_created
+    FROM create_financial_transaction(
+        p_user_id,
+        'stake',
+        'completed',
+        p_game_system_id,
+        p_source_type,
+        p_source_id,
+        p_idempotency_key,
+        p_description,
+        p_metadata
+    ) AS t;
+
+
+    -- --------------------------------------------------------
+    -- Existing idempotent stake.
+    --
+    -- Do NOT debit wallets again.
+    -- --------------------------------------------------------
+
+    IF NOT v_transaction_created THEN
+        RETURN v_transaction_id;
+    END IF;
+
+
+    -- --------------------------------------------------------
     -- Read locked balances
     -- --------------------------------------------------------
 
@@ -1119,6 +1284,7 @@ BEGIN
     INTO v_play_balance
     FROM wallet_balances
     WHERE wallet_id = v_play_wallet_id;
+
 
     SELECT balance
     INTO v_main_balance
@@ -1141,37 +1307,22 @@ BEGIN
 
 
     -- --------------------------------------------------------
-    -- Calculate PLAY charge
+    -- PLAY first
     -- --------------------------------------------------------
 
     v_play_charge :=
-        LEAST(v_play_balance, p_amount);
+        LEAST(
+            v_play_balance,
+            p_amount
+        );
 
 
     -- --------------------------------------------------------
-    -- Calculate MAIN charge
+    -- MAIN remainder
     -- --------------------------------------------------------
 
     v_main_charge :=
         p_amount - v_play_charge;
-
-
-    -- --------------------------------------------------------
-    -- Create transaction
-    -- --------------------------------------------------------
-
-    v_transaction_id :=
-        create_financial_transaction(
-            p_user_id,
-            'stake',
-            'completed',
-            p_game_system_id,
-            p_source_type,
-            p_source_id,
-            p_idempotency_key,
-            p_description,
-            p_metadata
-        );
 
 
     -- --------------------------------------------------------
@@ -1193,7 +1344,8 @@ BEGIN
 
 
         UPDATE wallet_balances
-        SET balance = balance - v_play_charge,
+        SET
+            balance = balance - v_play_charge,
             updated_at = NOW()
         WHERE wallet_id = v_play_wallet_id;
 
@@ -1219,7 +1371,8 @@ BEGIN
 
 
         UPDATE wallet_balances
-        SET balance = balance - v_main_charge,
+        SET
+            balance = balance - v_main_charge,
             updated_at = NOW()
         WHERE wallet_id = v_main_wallet_id;
 
@@ -1243,40 +1396,30 @@ CREATE FUNCTION public.record_game_win(p_user_id integer, p_amount numeric, p_ga
     AS $$
 DECLARE
     v_main_wallet_id BIGINT;
+
     v_transaction_id BIGINT;
-    v_existing_transaction financial_transactions%ROWTYPE;
+    v_transaction_created BOOLEAN;
 BEGIN
 
+    -- --------------------------------------------------------
+    -- Validate amount
+    -- --------------------------------------------------------
+
     IF p_amount IS NULL OR p_amount <= 0 THEN
-        RAISE EXCEPTION 'Win amount must be greater than zero';
+        RAISE EXCEPTION
+            'Win amount must be greater than zero';
     END IF;
 
 
     -- --------------------------------------------------------
-    -- Idempotency
-    -- --------------------------------------------------------
-
-    IF p_idempotency_key IS NOT NULL THEN
-
-        SELECT *
-        INTO v_existing_transaction
-        FROM financial_transactions
-        WHERE idempotency_key = p_idempotency_key
-        FOR UPDATE;
-
-        IF FOUND THEN
-            RETURN v_existing_transaction.id;
-        END IF;
-
-    END IF;
-
-
-    -- --------------------------------------------------------
-    -- Main wallet
+    -- Get Main wallet
     -- --------------------------------------------------------
 
     v_main_wallet_id :=
-        get_user_wallet_id(p_user_id, 'main');
+        get_user_wallet_id(
+            p_user_id,
+            'main'
+        );
 
 
     -- --------------------------------------------------------
@@ -1287,21 +1430,37 @@ BEGIN
 
 
     -- --------------------------------------------------------
-    -- Create transaction
+    -- Create / retrieve transaction atomically
     -- --------------------------------------------------------
 
-    v_transaction_id :=
-        create_financial_transaction(
-            p_user_id,
-            'win',
-            'completed',
-            p_game_system_id,
-            p_source_type,
-            p_source_id,
-            p_idempotency_key,
-            p_description,
-            p_metadata
-        );
+    SELECT
+        t.transaction_id,
+        t.created
+    INTO
+        v_transaction_id,
+        v_transaction_created
+    FROM create_financial_transaction(
+        p_user_id,
+        'win',
+        'completed',
+        p_game_system_id,
+        p_source_type,
+        p_source_id,
+        p_idempotency_key,
+        p_description,
+        p_metadata
+    ) AS t;
+
+
+    -- --------------------------------------------------------
+    -- Existing idempotent win.
+    --
+    -- Do NOT credit Main again.
+    -- --------------------------------------------------------
+
+    IF NOT v_transaction_created THEN
+        RETURN v_transaction_id;
+    END IF;
 
 
     -- --------------------------------------------------------
@@ -1316,7 +1475,7 @@ BEGIN
     VALUES (
         v_transaction_id,
         v_main_wallet_id,
-        p_amount
+        ROUND(p_amount, 2)
     );
 
 
@@ -1325,7 +1484,8 @@ BEGIN
     -- --------------------------------------------------------
 
     UPDATE wallet_balances
-    SET balance = balance + p_amount,
+    SET
+        balance = balance + ROUND(p_amount, 2),
         updated_at = NOW()
     WHERE wallet_id = v_main_wallet_id;
 
@@ -1347,9 +1507,13 @@ CREATE FUNCTION public.refund_stake(p_user_id integer, p_original_transaction_id
     AS $$
 DECLARE
     v_original financial_transactions%ROWTYPE;
+
     v_refund_transaction_id BIGINT;
+    v_transaction_created BOOLEAN;
+
     v_wallet_id BIGINT;
     v_refund_amount NUMERIC(18,2);
+
     v_wallet_ids BIGINT[];
 BEGIN
 
@@ -1363,7 +1527,9 @@ BEGIN
     WHERE id = p_original_transaction_id
       AND user_id = p_user_id
       AND type = 'stake'
-      AND status = 'completed';
+      AND status = 'completed'
+    FOR UPDATE;
+
 
     IF NOT FOUND THEN
         RAISE EXCEPTION
@@ -1373,31 +1539,15 @@ BEGIN
 
 
     -- --------------------------------------------------------
-    -- Idempotency
-    -- --------------------------------------------------------
-
-    IF p_idempotency_key IS NOT NULL THEN
-
-        SELECT id
-        INTO v_refund_transaction_id
-        FROM financial_transactions
-        WHERE idempotency_key = p_idempotency_key;
-
-        IF FOUND THEN
-            RETURN v_refund_transaction_id;
-        END IF;
-
-    END IF;
-
-
-    -- --------------------------------------------------------
-    -- Lock every wallet involved in original transaction.
+    -- Find every wallet receiving a reversal.
     --
-    -- First retrieve wallet IDs and sort them so all callers
-    -- lock them in the same order.
+    -- Sort IDs so every caller locks in deterministic order.
     -- --------------------------------------------------------
 
-    SELECT ARRAY_AGG(wallet_id ORDER BY wallet_id)
+    SELECT ARRAY_AGG(
+        wallet_id
+        ORDER BY wallet_id
+    )
     INTO v_wallet_ids
     FROM ledger_entries
     WHERE transaction_id = p_original_transaction_id
@@ -1413,37 +1563,59 @@ BEGIN
     END IF;
 
 
+    -- --------------------------------------------------------
+    -- Lock every involved wallet
+    -- --------------------------------------------------------
+
     FOREACH v_wallet_id IN ARRAY v_wallet_ids
     LOOP
+
         PERFORM lock_wallet(v_wallet_id);
+
     END LOOP;
 
 
     -- --------------------------------------------------------
-    -- Create refund transaction
+    -- Create / retrieve refund transaction atomically
     -- --------------------------------------------------------
 
-    v_refund_transaction_id :=
-        create_financial_transaction(
-            p_user_id,
-            'refund',
-            'completed',
-            v_original.game_system_id,
-            'stake_refund',
-            p_original_transaction_id::TEXT,
-            p_idempotency_key,
-            p_description,
-            COALESCE(p_metadata, '{}'::jsonb)
-            ||
-            jsonb_build_object(
-                'original_transaction_id',
-                p_original_transaction_id
-            )
-        );
+    SELECT
+        t.transaction_id,
+        t.created
+    INTO
+        v_refund_transaction_id,
+        v_transaction_created
+    FROM create_financial_transaction(
+        p_user_id,
+        'refund',
+        'completed',
+        v_original.game_system_id,
+        'stake_refund',
+        p_original_transaction_id::TEXT,
+        p_idempotency_key,
+        p_description,
+        COALESCE(p_metadata, '{}'::jsonb)
+        ||
+        jsonb_build_object(
+            'original_transaction_id',
+            p_original_transaction_id
+        )
+    ) AS t;
 
 
     -- --------------------------------------------------------
-    -- Reverse each original debit.
+    -- Existing idempotent refund.
+    --
+    -- Do NOT create another reversal.
+    -- --------------------------------------------------------
+
+    IF NOT v_transaction_created THEN
+        RETURN v_refund_transaction_id;
+    END IF;
+
+
+    -- --------------------------------------------------------
+    -- Reverse every original debit.
     -- --------------------------------------------------------
 
     FOR v_wallet_id, v_refund_amount IN
@@ -1469,7 +1641,8 @@ BEGIN
 
 
         UPDATE wallet_balances
-        SET balance = balance + v_refund_amount,
+        SET
+            balance = balance + v_refund_amount,
             updated_at = NOW()
         WHERE wallet_id = v_wallet_id;
 
@@ -1493,26 +1666,39 @@ CREATE FUNCTION public.refund_withdrawal(p_user_id integer, p_withdrawal_id bigi
     AS $$
 DECLARE
     v_wallet_id BIGINT;
+
     v_transaction_id BIGINT;
-    v_existing_transaction BIGINT;
+    v_transaction_created BOOLEAN;
+
     v_amount NUMERIC(18,2);
+
+    v_original financial_transactions%ROWTYPE;
 BEGIN
 
-    -- Idempotency
-    IF p_idempotency_key IS NOT NULL THEN
+    -- --------------------------------------------------------
+    -- Validate original transaction
+    -- --------------------------------------------------------
 
-        SELECT id
-        INTO v_existing_transaction
-        FROM financial_transactions
-        WHERE idempotency_key = p_idempotency_key
-        LIMIT 1;
+    SELECT *
+    INTO v_original
+    FROM financial_transactions
+    WHERE id = p_original_transaction_id
+      AND user_id = p_user_id
+      AND type = 'withdrawal'
+      AND status = 'completed'
+    FOR UPDATE;
 
-        IF v_existing_transaction IS NOT NULL THEN
-            RETURN v_existing_transaction;
-        END IF;
 
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Original withdrawal transaction not found: %',
+            p_original_transaction_id;
     END IF;
 
+
+    -- --------------------------------------------------------
+    -- Validate original withdrawal ledger
+    -- --------------------------------------------------------
 
     SELECT ABS(SUM(le.amount))
     INTO v_amount
@@ -1527,6 +1713,13 @@ BEGIN
     END IF;
 
 
+    v_amount := ROUND(v_amount, 2);
+
+
+    -- --------------------------------------------------------
+    -- Get Main wallet
+    -- --------------------------------------------------------
+
     v_wallet_id :=
         get_user_wallet_id(
             p_user_id,
@@ -1534,27 +1727,55 @@ BEGIN
         );
 
 
+    -- --------------------------------------------------------
+    -- Lock Main
+    -- --------------------------------------------------------
+
     PERFORM lock_wallet(v_wallet_id);
 
 
-    v_transaction_id :=
-        create_financial_transaction(
-            p_user_id,
-            'refund',
-            'completed',
-            NULL,
-            'withdrawal_refund',
-            p_withdrawal_id::VARCHAR,
-            p_idempotency_key,
-            p_description,
-            jsonb_build_object(
-                'withdrawal_id',
-                p_withdrawal_id,
-                'original_transaction_id',
-                p_original_transaction_id
-            )
-        );
+    -- --------------------------------------------------------
+    -- Create / retrieve refund transaction atomically
+    -- --------------------------------------------------------
 
+    SELECT
+        t.transaction_id,
+        t.created
+    INTO
+        v_transaction_id,
+        v_transaction_created
+    FROM create_financial_transaction(
+        p_user_id,
+        'refund',
+        'completed',
+        v_original.game_system_id,
+        'withdrawal_refund',
+        p_withdrawal_id::VARCHAR,
+        p_idempotency_key,
+        p_description,
+        jsonb_build_object(
+            'withdrawal_id',
+            p_withdrawal_id,
+            'original_transaction_id',
+            p_original_transaction_id
+        )
+    ) AS t;
+
+
+    -- --------------------------------------------------------
+    -- Existing idempotent refund.
+    --
+    -- Do NOT credit Main again.
+    -- --------------------------------------------------------
+
+    IF NOT v_transaction_created THEN
+        RETURN v_transaction_id;
+    END IF;
+
+
+    -- --------------------------------------------------------
+    -- Ledger
+    -- --------------------------------------------------------
 
     INSERT INTO ledger_entries (
         transaction_id,
@@ -1568,13 +1789,19 @@ BEGIN
     );
 
 
+    -- --------------------------------------------------------
+    -- Balance
+    -- --------------------------------------------------------
+
     UPDATE wallet_balances
-    SET balance = balance + v_amount,
+    SET
+        balance = balance + v_amount,
         updated_at = NOW()
     WHERE wallet_id = v_wallet_id;
 
 
     RETURN v_transaction_id;
+
 END;
 $$;
 
@@ -1876,34 +2103,29 @@ CREATE FUNCTION public.reserve_withdrawal_from_main(p_user_id integer, p_amount 
     AS $$
 DECLARE
     v_wallet_id BIGINT;
+
     v_transaction_id BIGINT;
-    v_existing_transaction BIGINT;
+    v_transaction_created BOOLEAN;
+
     v_balance NUMERIC(18,2);
     v_amount NUMERIC(18,2);
 BEGIN
 
+    -- --------------------------------------------------------
+    -- Validate amount
+    -- --------------------------------------------------------
+
     v_amount := ROUND(p_amount, 2);
 
     IF v_amount <= 0 THEN
-        RAISE EXCEPTION 'Withdrawal amount must be greater than zero';
+        RAISE EXCEPTION
+            'Withdrawal amount must be greater than zero';
     END IF;
 
 
-    -- Idempotency
-    IF p_idempotency_key IS NOT NULL THEN
-
-        SELECT id
-        INTO v_existing_transaction
-        FROM financial_transactions
-        WHERE idempotency_key = p_idempotency_key
-        LIMIT 1;
-
-        IF v_existing_transaction IS NOT NULL THEN
-            RETURN v_existing_transaction;
-        END IF;
-
-    END IF;
-
+    -- --------------------------------------------------------
+    -- Get Main wallet
+    -- --------------------------------------------------------
 
     v_wallet_id :=
         get_user_wallet_id(
@@ -1912,9 +2134,59 @@ BEGIN
         );
 
 
+    -- --------------------------------------------------------
     -- Lock Main wallet
+    -- --------------------------------------------------------
+
     PERFORM lock_wallet(v_wallet_id);
 
+
+    -- --------------------------------------------------------
+    -- Create / retrieve transaction atomically
+    --
+    -- This is deliberately BEFORE the balance check.
+    --
+    -- If this is an idempotent retry, we return the existing
+    -- transaction rather than failing because the current balance
+    -- has changed since the original request.
+    -- --------------------------------------------------------
+
+    SELECT
+        t.transaction_id,
+        t.created
+    INTO
+        v_transaction_id,
+        v_transaction_created
+    FROM create_financial_transaction(
+        p_user_id,
+        'withdrawal',
+        'completed',
+        NULL,
+        'withdrawal',
+        p_withdrawal_id::VARCHAR,
+        p_idempotency_key,
+        p_description,
+        jsonb_build_object(
+            'withdrawal_id',
+            p_withdrawal_id
+        )
+    ) AS t;
+
+
+    -- --------------------------------------------------------
+    -- Existing idempotent withdrawal.
+    --
+    -- Do NOT debit Main again.
+    -- --------------------------------------------------------
+
+    IF NOT v_transaction_created THEN
+        RETURN v_transaction_id;
+    END IF;
+
+
+    -- --------------------------------------------------------
+    -- Read locked balance
+    -- --------------------------------------------------------
 
     SELECT balance
     INTO v_balance
@@ -1922,30 +2194,23 @@ BEGIN
     WHERE wallet_id = v_wallet_id;
 
 
+    -- --------------------------------------------------------
+    -- Check balance
+    -- --------------------------------------------------------
+
     IF v_balance < v_amount THEN
+
         RAISE EXCEPTION
             'Insufficient Main wallet balance. Available: %, requested: %',
             v_balance,
             v_amount;
+
     END IF;
 
 
-    v_transaction_id :=
-        create_financial_transaction(
-            p_user_id,
-            'withdrawal',
-            'completed',
-            NULL,
-            'withdrawal',
-            p_withdrawal_id::VARCHAR,
-            p_idempotency_key,
-            p_description,
-            jsonb_build_object(
-                'withdrawal_id',
-                p_withdrawal_id
-            )
-        );
-
+    -- --------------------------------------------------------
+    -- Ledger
+    -- --------------------------------------------------------
 
     INSERT INTO ledger_entries (
         transaction_id,
@@ -1959,13 +2224,19 @@ BEGIN
     );
 
 
+    -- --------------------------------------------------------
+    -- Balance
+    -- --------------------------------------------------------
+
     UPDATE wallet_balances
-    SET balance = balance - v_amount,
+    SET
+        balance = balance - v_amount,
         updated_at = NOW()
     WHERE wallet_id = v_wallet_id;
 
 
     RETURN v_transaction_id;
+
 END;
 $$;
 
