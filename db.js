@@ -4927,5 +4927,17 @@ async removeBingoParticipant(
       );
 
     return rows;
-  } 
+  },
+
+	async function getUserWalletBalances(telegramId) {
+    const result = await pool.query(
+        `
+        SELECT *
+        FROM get_user_wallet_balances($1)
+        `,
+        [telegramId]
+    );
+
+    return result.rows;
+}
 };
