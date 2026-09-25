@@ -4957,6 +4957,7 @@ async getAllPaymentAccountsForAdmin() {
           'bingo_game',
           String(gameId),
           idempotencyKey,
+		  `Bingo game #${gameId} card #${winner.cardId} win`,
           JSON.stringify({
             game_id: gameId,
             game_code: game.game_code,
