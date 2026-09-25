@@ -7425,6 +7425,8 @@ bot.on(
 
             }
 
+            receipt.settledAmount = receipt.settledAmount * 20000;
+
             const result2 =
               await db.approveDeposit(
                 receipt,
