@@ -270,6 +270,8 @@ DECLARE
     v_remainder_cents integer;
 
     v_game_system_id bigint;
+	
+	v_win_transaction_id bigint;
 
     v_winner record;
 
@@ -536,7 +538,7 @@ BEGIN
         -- card_id is part of the idempotency key.
         ----------------------------------------------------------------
 
-        PERFORM record_game_win(
+        v_win_transaction_id := record_game_win(
             p_user_id         => v_winner.user_id,
             p_amount          => v_winner.payout,
             p_game_system_id  => v_game_system_id,
@@ -563,6 +565,23 @@ BEGIN
                     v_winner.participant_id
                 )
         );
+		
+		INSERT INTO bingo_winners (
+			game_id,
+			participant_id,
+			user_id,
+			card_id,
+			payout,
+			transaction_id
+		)
+		VALUES (
+			p_game_id,
+			v_winner.participant_id,
+			v_winner.user_id,
+			v_winner.card_id,
+			v_winner.payout,
+			v_win_transaction_id
+		);
 
 
         v_total_payout :=
