@@ -3325,13 +3325,13 @@ async function showBalance(
   ctx
 ) {
 
-  const wallets =
+  const userwallets =
     await db.getUserWalletBalances(
       ctx.from.id
     );
-  const user = wallets[0];
+  
 
-  if (!user) {
+  if (!userwallets) {
 
     return ctx.reply(
       "Please /start to register first."
@@ -3342,9 +3342,9 @@ async function showBalance(
 
   await ctx.reply(
 
-    `Main Wallet: *${user.main_balance} ETB*\n\n` + 
-    `Play Wallet: *${user.play_balance} ETB*\n\n` + 
-    `Total Balance: *${user.total_balance} ETB*\n\n`,
+    `Main Wallet: *${userwallets.main_balance} ETB*\n\n` + 
+    `Play Wallet: *${userwallets.play_balance} ETB*\n\n` + 
+    `Total Balance: *${userwallets.total_balance} ETB*\n\n`,
 
     {
 
