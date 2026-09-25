@@ -91,7 +91,7 @@ function amountFromReceipt(receipt) {
     !Number.isFinite(amount) ||
     amount <= 0
   ) {
-    throw new Error("Invalid deposit amount");
+    throw new Error("Invalid deposit amount amount = " + amount);
   }
 
   return amount;
