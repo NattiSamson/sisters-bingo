@@ -4786,7 +4786,7 @@ async getAllPaymentAccountsForAdmin() {
   return rows[0] || null;
 },
 
-  async function endBingoGame(gameId, winners) {
+  async endBingoGame(gameId, winners) {
   const client = await pool.connect();
 
   try {
