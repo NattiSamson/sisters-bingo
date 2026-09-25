@@ -1610,6 +1610,245 @@ $$;
 ALTER FUNCTION public.register_user(p_telegram_id bigint, p_name character varying, p_phone character varying) OWNER TO neondb_owner;
 
 --
+-- Name: remove_bingo_participant(integer, integer, integer); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.remove_bingo_participant(p_game_id integer, p_user_id integer, p_card_id integer) RETURNS jsonb
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_game bingo_games%ROWTYPE;
+    v_participant bingo_participants%ROWTYPE;
+
+    v_stake numeric(18,2);
+    v_refund_transaction_id bigint;
+    v_new_pot numeric(18,2);
+    v_calculated_pot numeric(18,2);
+BEGIN
+
+    ----------------------------------------------------------------
+    -- 1. Validate input
+    ----------------------------------------------------------------
+
+    IF p_game_id IS NULL OR p_game_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid Bingo game ID';
+    END IF;
+
+    IF p_user_id IS NULL OR p_user_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid user ID';
+    END IF;
+
+    IF p_card_id IS NULL OR p_card_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid card ID';
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 2. Lock the Bingo game
+    --
+    -- This prevents two requests from changing the pot
+    -- simultaneously.
+    ----------------------------------------------------------------
+
+    SELECT *
+    INTO v_game
+    FROM bingo_games
+    WHERE id = p_game_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Bingo game % not found',
+            p_game_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 3. Card can only be removed while the game is active
+    ----------------------------------------------------------------
+
+    IF v_game.status NOT IN ('waiting', 'playing') THEN
+        RAISE EXCEPTION
+            'Bingo game % is no longer accepting card changes',
+            p_game_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 4. Find the EXACT user's card
+    --
+    -- A user may have multiple cards.
+    -- We must only remove the requested card.
+    ----------------------------------------------------------------
+
+    SELECT *
+    INTO v_participant
+    FROM bingo_participants
+    WHERE game_id = p_game_id
+      AND user_id = p_user_id
+      AND card_id = p_card_id
+      AND status = 'active'
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'User % has not selected card % in Bingo game %',
+            p_user_id,
+            p_card_id,
+            p_game_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 5. Never allow a winning card to be removed
+    ----------------------------------------------------------------
+
+    IF v_participant.is_winner = TRUE THEN
+        RAISE EXCEPTION
+            'Winning card % cannot be removed',
+            p_card_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 6. Use the ACTUAL amount charged for this card
+    --
+    -- Do not use bingo_games.stake_amount here.
+    -- The participant amount is the amount actually charged.
+    ----------------------------------------------------------------
+
+    v_stake := ROUND(v_participant.amount, 2);
+
+    IF v_stake <= 0 THEN
+        RAISE EXCEPTION
+            'Invalid stake amount for participant %',
+            v_participant.id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 7. Validate current pot before changing it
+    ----------------------------------------------------------------
+
+    IF ROUND(v_game.pot, 2) < v_stake THEN
+        RAISE EXCEPTION
+            'Invalid Bingo pot. Pot: %, participant stake: %',
+            v_game.pot,
+            v_stake;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 8. Refund the original stake
+    --
+    -- refund_stake():
+    --   - validates the original stake transaction
+    --   - reverses the ledger debit
+    --   - credits the wallet
+    --   - creates a refund transaction
+    --
+    -- Everything remains inside this database transaction.
+    ----------------------------------------------------------------
+
+    v_refund_transaction_id :=
+        refund_stake(
+            p_user_id,
+            v_participant.transaction_id,
+            format(
+                'bingo:card-remove:%s:%s:%s',
+                p_game_id,
+                p_user_id,
+                p_card_id
+            ),
+            format(
+                'Bingo card %s deselected from game %s',
+                p_card_id,
+                p_game_id
+            ),
+            jsonb_build_object(
+                'game_id', p_game_id,
+                'user_id', p_user_id,
+                'card_id', p_card_id,
+                'participant_id', v_participant.id,
+                'original_transaction_id',
+                    v_participant.transaction_id,
+                'reason', 'card_deselected'
+            )
+        );
+
+
+    ----------------------------------------------------------------
+    -- 9. Remove the participant/card
+    ----------------------------------------------------------------
+
+    DELETE FROM bingo_participants
+    WHERE id = v_participant.id;
+
+
+    ----------------------------------------------------------------
+    -- 10. Decrease the Bingo pot
+    ----------------------------------------------------------------
+
+    UPDATE bingo_games
+    SET pot = ROUND(pot - v_stake, 2)
+    WHERE id = p_game_id
+    RETURNING pot
+    INTO v_new_pot;
+
+
+    IF v_new_pot IS NULL THEN
+        RAISE EXCEPTION
+            'Failed to update Bingo game pot';
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 11. Final consistency check
+    --
+    -- The pot must equal the total amount of all remaining
+    -- active Bingo cards.
+    ----------------------------------------------------------------
+
+    SELECT ROUND(
+        COALESCE(SUM(amount), 0),
+        2
+    )
+    INTO v_calculated_pot
+    FROM bingo_participants
+    WHERE game_id = p_game_id
+      AND status = 'active';
+
+
+    IF v_new_pot <> v_calculated_pot THEN
+        RAISE EXCEPTION
+            'Bingo pot mismatch after card removal. Game pot: %, calculated pot: %',
+            v_new_pot,
+            v_calculated_pot;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 12. Return result
+    ----------------------------------------------------------------
+
+    RETURN jsonb_build_object(
+        'success', TRUE,
+        'game_id', p_game_id,
+        'user_id', p_user_id,
+        'card_id', p_card_id,
+        'participant_id', v_participant.id,
+        'refunded_amount', v_stake,
+        'refund_transaction_id', v_refund_transaction_id,
+        'new_pot', v_new_pot
+    );
+
+END;
+$$;
+
+
+ALTER FUNCTION public.remove_bingo_participant(p_game_id integer, p_user_id integer, p_card_id integer) OWNER TO neondb_owner;
+
+--
 -- Name: reserve_withdrawal_from_main(integer, numeric, bigint, character varying, text); Type: FUNCTION; Schema: public; Owner: neondb_owner
 --
 
