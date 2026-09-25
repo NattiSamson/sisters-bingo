@@ -254,6 +254,455 @@ $$;
 ALTER FUNCTION public.credit_deposit_to_wallet(p_user_id integer, p_amount numeric, p_deposit_id bigint, p_idempotency_key character varying, p_game_system_id bigint, p_description text) OWNER TO neondb_owner;
 
 --
+-- Name: end_bingo_game(integer, integer[]); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.end_bingo_game(p_game_id integer, p_winner_card_ids integer[]) RETURNS jsonb
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_game bingo_games%ROWTYPE;
+
+    v_winner_count integer;
+    v_pot numeric(18,2);
+
+    v_base_payout numeric(18,2);
+    v_remainder_cents integer;
+
+    v_game_system_id bigint;
+
+    v_winner record;
+
+    v_winner_user_ids integer[];
+
+    v_total_payout numeric(18,2) := 0;
+BEGIN
+
+    ----------------------------------------------------------------
+    -- 1. Validate input
+    ----------------------------------------------------------------
+
+    IF p_game_id IS NULL OR p_game_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid Bingo game ID';
+    END IF;
+
+    IF p_winner_card_ids IS NULL
+       OR cardinality(p_winner_card_ids) = 0 THEN
+        RAISE EXCEPTION
+            'At least one winning card is required';
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 2. Remove duplicate card IDs
+    --
+    -- Duplicate cards should never be processed twice.
+    ----------------------------------------------------------------
+
+    p_winner_card_ids := ARRAY(
+        SELECT DISTINCT card_id
+        FROM unnest(p_winner_card_ids) AS card_id
+        WHERE card_id IS NOT NULL
+          AND card_id > 0
+        ORDER BY card_id
+    );
+
+    IF cardinality(p_winner_card_ids) = 0 THEN
+        RAISE EXCEPTION
+            'No valid winning card IDs supplied';
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 3. Lock the game
+    ----------------------------------------------------------------
+
+    SELECT *
+    INTO v_game
+    FROM bingo_games
+    WHERE id = p_game_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Bingo game % not found',
+            p_game_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 4. Game must still be active
+    ----------------------------------------------------------------
+
+    IF v_game.status = 'completed' THEN
+        RAISE EXCEPTION
+            'Bingo game % has already ended',
+            p_game_id;
+    END IF;
+
+    IF v_game.status NOT IN ('waiting', 'playing') THEN
+        RAISE EXCEPTION
+            'Cannot end Bingo game % with status %',
+            p_game_id,
+            v_game.status;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 5. Game must have participants
+    ----------------------------------------------------------------
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM bingo_participants
+        WHERE game_id = p_game_id
+    ) THEN
+        RAISE EXCEPTION
+            'Cannot end Bingo game % without participants',
+            p_game_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 6. Validate winning cards
+    --
+    -- Every supplied card:
+    --   - must belong to this game
+    --   - must be active
+    --   - must not be disqualified
+    --   - must not already be a winner
+    ----------------------------------------------------------------
+
+    IF EXISTS (
+        SELECT 1
+        FROM unnest(p_winner_card_ids) AS x(card_id)
+        LEFT JOIN bingo_participants bp
+          ON bp.game_id = p_game_id
+         AND bp.card_id = x.card_id
+        WHERE bp.id IS NULL
+           OR bp.status <> 'active'
+           OR bp.is_disqualified = TRUE
+           OR bp.is_winner = TRUE
+    ) THEN
+        RAISE EXCEPTION
+            'One or more winning cards are invalid for Bingo game %',
+            p_game_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 7. Lock all participants
+    ----------------------------------------------------------------
+
+    PERFORM 1
+    FROM bingo_participants
+    WHERE game_id = p_game_id
+    FOR UPDATE;
+
+
+    ----------------------------------------------------------------
+    -- 8. Validate the pot
+    --
+    -- Only active cards contribute to the pot.
+    ----------------------------------------------------------------
+
+    SELECT COALESCE(
+        SUM(amount),
+        0
+    )
+    INTO v_pot
+    FROM bingo_participants
+    WHERE game_id = p_game_id
+      AND status = 'active';
+
+    v_pot := ROUND(v_pot, 2);
+
+    IF v_pot <> ROUND(v_game.pot, 2) THEN
+        RAISE EXCEPTION
+            'Bingo pot mismatch. Game pot: %, calculated pot: %',
+            v_game.pot,
+            v_pot;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 9. Count winning cards
+    ----------------------------------------------------------------
+
+    SELECT cardinality(p_winner_card_ids)
+    INTO v_winner_count;
+
+
+    IF v_winner_count <= 0 THEN
+        RAISE EXCEPTION
+            'Winning card count must be greater than zero';
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 10. Calculate equal payout per winning card
+    --
+    -- Work in cents to guarantee that:
+    --
+    -- SUM(all payouts) = exact pot
+    --
+    -- Example:
+    --
+    -- 100 / 3
+    --
+    -- Base = 33.33
+    -- Remainder = 1 cent
+    --
+    -- First card gets 33.34
+    -- Remaining cards get 33.33
+    ----------------------------------------------------------------
+
+    v_base_payout :=
+        FLOOR(
+            (v_pot * 100)
+            / v_winner_count
+        ) / 100;
+
+    v_remainder_cents :=
+        ROUND(v_pot * 100)
+        -
+        (
+            ROUND(v_base_payout * 100)
+            * v_winner_count
+        );
+
+
+    ----------------------------------------------------------------
+    -- 11. Find Bingo game system
+    ----------------------------------------------------------------
+
+    SELECT id
+    INTO v_game_system_id
+    FROM game_systems
+    WHERE code = 'bingo'
+      AND status = 'active'
+    LIMIT 1;
+
+    IF v_game_system_id IS NULL THEN
+        RAISE EXCEPTION
+            'Active Bingo game system is not configured';
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 12. Settle every winning CARD
+    ----------------------------------------------------------------
+
+    FOR v_winner IN
+        SELECT
+            bp.id AS participant_id,
+            bp.user_id,
+            bp.card_id,
+
+            (
+                v_base_payout
+                +
+                CASE
+                    WHEN ROW_NUMBER() OVER (
+                        ORDER BY bp.card_id
+                    ) <= v_remainder_cents
+                    THEN 0.01
+                    ELSE 0
+                END
+            )::numeric(18,2) AS payout
+
+        FROM bingo_participants bp
+        WHERE bp.game_id = p_game_id
+          AND bp.card_id = ANY(p_winner_card_ids)
+
+        ORDER BY bp.card_id
+    LOOP
+
+        ----------------------------------------------------------------
+        -- 12a. Mark card as winner
+        ----------------------------------------------------------------
+
+        UPDATE bingo_participants
+        SET
+            is_winner = TRUE,
+            amount_won = v_winner.payout
+        WHERE id = v_winner.participant_id;
+
+
+        ----------------------------------------------------------------
+        -- 12b. Credit winner wallet
+        --
+        -- IMPORTANT:
+        -- card_id is part of the idempotency key.
+        ----------------------------------------------------------------
+
+        PERFORM record_game_win(
+            p_user_id         => v_winner.user_id,
+            p_amount          => v_winner.payout,
+            p_game_system_id  => v_game_system_id,
+            p_source_type     => 'bingo_game',
+            p_source_id       => p_game_id::text,
+            p_idempotency_key =>
+                'bingo:win:'
+                || p_game_id
+                || ':card:'
+                || v_winner.card_id,
+            p_description =>
+                'Bingo game #'
+                || p_game_id
+                || ' card #'
+                || v_winner.card_id
+                || ' win',
+            p_metadata =>
+                jsonb_build_object(
+                    'game_id',
+                    p_game_id,
+                    'card_id',
+                    v_winner.card_id,
+                    'participant_id',
+                    v_winner.participant_id
+                )
+        );
+
+
+        v_total_payout :=
+            v_total_payout + v_winner.payout;
+
+    END LOOP;
+
+
+    ----------------------------------------------------------------
+    -- 13. Safety check
+    ----------------------------------------------------------------
+
+    IF v_total_payout <> v_pot THEN
+        RAISE EXCEPTION
+            'Payout mismatch. Pot: %, total payout: %',
+            v_pot,
+            v_total_payout;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 14. Update user statistics
+    --
+    -- A user can win multiple cards.
+    ----------------------------------------------------------------
+
+    UPDATE users u
+    SET
+        total_wins =
+            COALESCE(u.total_wins, 0)
+            + winner_stats.winning_cards,
+
+        total_winnings =
+            COALESCE(u.total_winnings, 0)
+            + winner_stats.total_winnings
+
+    FROM (
+        SELECT
+            bp.user_id,
+            COUNT(*) AS winning_cards,
+            SUM(bp.amount_won) AS total_winnings
+        FROM bingo_participants bp
+        WHERE bp.game_id = p_game_id
+          AND bp.is_winner = TRUE
+        GROUP BY bp.user_id
+    ) AS winner_stats
+
+    WHERE u.id = winner_stats.user_id;
+
+
+    ----------------------------------------------------------------
+    -- 15. Every participating USER gets one game played
+    ----------------------------------------------------------------
+
+    UPDATE users u
+    SET total_games =
+        COALESCE(u.total_games, 0) + 1
+    WHERE u.id IN (
+        SELECT DISTINCT user_id
+        FROM bingo_participants
+        WHERE game_id = p_game_id
+    );
+
+
+    ----------------------------------------------------------------
+    -- 16. Get distinct winning USER IDs
+    ----------------------------------------------------------------
+
+    SELECT ARRAY_AGG(
+        DISTINCT bp.user_id
+        ORDER BY bp.user_id
+    )
+    INTO v_winner_user_ids
+    FROM bingo_participants bp
+    WHERE bp.game_id = p_game_id
+      AND bp.is_winner = TRUE;
+
+
+    ----------------------------------------------------------------
+    -- 17. Complete the game
+    ----------------------------------------------------------------
+
+    UPDATE bingo_games
+    SET
+        status = 'completed',
+
+        -- These are CARD IDs, not user IDs.
+        winner_ids = p_winner_card_ids,
+
+        win_amount = v_total_payout,
+
+        -- Multiple winning cards = split
+        is_split = v_winner_count > 1,
+
+        ended_at = NOW()
+
+    WHERE id = p_game_id;
+
+
+    ----------------------------------------------------------------
+    -- 18. Return complete settlement result
+    ----------------------------------------------------------------
+
+    RETURN jsonb_build_object(
+        'game_id',
+        p_game_id,
+
+        'status',
+        'completed',
+
+        'pot',
+        v_pot,
+
+        'total_payout',
+        v_total_payout,
+
+        'winner_card_count',
+        v_winner_count,
+
+        'winner_card_ids',
+        to_jsonb(p_winner_card_ids),
+
+        'winner_user_ids',
+        to_jsonb(v_winner_user_ids),
+
+        'payout_per_card',
+        CASE
+            WHEN v_winner_count = 1
+            THEN v_pot
+            ELSE v_base_payout
+        END
+    );
+
+END;
+$$;
+
+
+ALTER FUNCTION public.end_bingo_game(p_game_id integer, p_winner_card_ids integer[]) OWNER TO neondb_owner;
+
+--
 -- Name: generate_bingo_game_code(); Type: FUNCTION; Schema: public; Owner: neondb_owner
 --
 
@@ -1422,7 +1871,7 @@ CREATE TABLE public.bingo_games (
     pot numeric(18,2) CONSTRAINT games_pot_not_null NOT NULL,
     status character varying(20) DEFAULT 'waiting'::character varying,
     called_numbers integer[] DEFAULT '{}'::integer[],
-    winner_ids integer[] DEFAULT '{}'::integer[],
+    winner_card_ids integer[] DEFAULT '{}'::integer[],
     win_amount numeric(18,2) DEFAULT 0,
     is_split boolean DEFAULT false,
     started_at timestamp with time zone,
@@ -1504,6 +1953,46 @@ ALTER SEQUENCE public.bingo_participants_id_seq OWNED BY public.bingo_participan
 
 
 --
+-- Name: bingo_winners; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.bingo_winners (
+    id bigint NOT NULL,
+    game_id integer NOT NULL,
+    participant_id bigint NOT NULL,
+    user_id integer NOT NULL,
+    card_id integer NOT NULL,
+    payout numeric(18,2) NOT NULL,
+    transaction_id bigint NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT bingo_winners_payout_check CHECK ((payout > (0)::numeric))
+);
+
+
+ALTER TABLE public.bingo_winners OWNER TO neondb_owner;
+
+--
+-- Name: bingo_winners_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
+--
+
+CREATE SEQUENCE public.bingo_winners_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.bingo_winners_id_seq OWNER TO neondb_owner;
+
+--
+-- Name: bingo_winners_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
+--
+
+ALTER SEQUENCE public.bingo_winners_id_seq OWNED BY public.bingo_winners.id;
+
+
+--
 -- Name: broadcast_drafts; Type: TABLE; Schema: public; Owner: neondb_owner
 --
 
@@ -1574,7 +2063,6 @@ CREATE TABLE public.deposits (
     depositor_name character varying(100),
     depositor_account character varying(20),
     amount numeric(18,2),
-    amount_after numeric(18,2),
     reference character varying(100),
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -2169,6 +2657,13 @@ ALTER TABLE ONLY public.bingo_participants ALTER COLUMN id SET DEFAULT nextval('
 
 
 --
+-- Name: bingo_winners id; Type: DEFAULT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_winners ALTER COLUMN id SET DEFAULT nextval('public.bingo_winners_id_seq'::regclass);
+
+
+--
 -- Name: deposit_rules id; Type: DEFAULT; Schema: public; Owner: neondb_owner
 --
 
@@ -2273,6 +2768,30 @@ ALTER TABLE ONLY public.bingo_participants
 
 ALTER TABLE ONLY public.bingo_participants
     ADD CONSTRAINT bingo_participants_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bingo_winners bingo_winners_game_id_card_id_key; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_winners
+    ADD CONSTRAINT bingo_winners_game_id_card_id_key UNIQUE (game_id, card_id);
+
+
+--
+-- Name: bingo_winners bingo_winners_game_id_participant_id_key; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_winners
+    ADD CONSTRAINT bingo_winners_game_id_participant_id_key UNIQUE (game_id, participant_id);
+
+
+--
+-- Name: bingo_winners bingo_winners_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_winners
+    ADD CONSTRAINT bingo_winners_pkey PRIMARY KEY (id);
 
 
 --
@@ -2465,14 +2984,6 @@ ALTER TABLE ONLY public.wallets
 
 ALTER TABLE ONLY public.wallets
     ADD CONSTRAINT wallets_user_type_unique UNIQUE (user_id, wallet_type);
-
-
---
--- Name: wallets wallets_user_wallet_type_unique; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
---
-
-ALTER TABLE ONLY public.wallets
-    ADD CONSTRAINT wallets_user_wallet_type_unique UNIQUE (user_id, wallet_type);
 
 
 --
@@ -2794,13 +3305,6 @@ CREATE UNIQUE INDEX uq_financial_transactions_reversal ON public.financial_trans
 
 
 --
--- Name: ux_bingo_games_game_code; Type: INDEX; Schema: public; Owner: neondb_owner
---
-
-CREATE UNIQUE INDEX ux_bingo_games_game_code ON public.bingo_games USING btree (game_code);
-
-
---
 -- Name: ux_deposits_transaction; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
@@ -2878,6 +3382,38 @@ ALTER TABLE ONLY public.bingo_participants
 
 ALTER TABLE ONLY public.bingo_participants
     ADD CONSTRAINT bingo_participants_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: bingo_winners bingo_winners_game_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_winners
+    ADD CONSTRAINT bingo_winners_game_id_fkey FOREIGN KEY (game_id) REFERENCES public.bingo_games(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: bingo_winners bingo_winners_participant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_winners
+    ADD CONSTRAINT bingo_winners_participant_id_fkey FOREIGN KEY (participant_id) REFERENCES public.bingo_participants(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: bingo_winners bingo_winners_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_winners
+    ADD CONSTRAINT bingo_winners_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES public.financial_transactions(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: bingo_winners bingo_winners_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_winners
+    ADD CONSTRAINT bingo_winners_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
 
 
 --
@@ -3147,5 +3683,4 @@ ALTER TABLE ONLY public.withdrawals
 --
 -- PostgreSQL database dump complete
 --
-
 
