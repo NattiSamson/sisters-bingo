@@ -4050,11 +4050,16 @@ async getAllPaymentAccountsForAdmin() {
         await client.query(
           `
           UPDATE deposits
-		  SET transaction_id = $1,
-		  	updated_at = now()
+			SET
+			    transaction_id = $1,
+			    status = 'completed',
+			    approved_at = NOW(),
+			    updated_at = NOW()
+			WHERE id = $2
           `,
           [
-            transactionId
+            transactionId,
+			depositId
           ]
         );
 
@@ -5428,7 +5433,13 @@ async getAllPaymentAccountsForAdmin() {
     SELECT record_game_win(
       $1,
       $2,
-      'bingo',
+      (
+        SELECT id
+        FROM game_systems
+        WHERE code = 'bingo'
+          AND status = 'active'
+        LIMIT 1
+      ),
       'bingo_game',
       $3,
       $4
