@@ -1558,22 +1558,6 @@ async createWithdrawal(
     const transactionId =
       transactionResult.rows[0]
         ?.transaction_id;
-
-	transactionResult = await client.query(
-			  `
-			  SELECT
-			    id,
-			    type,
-			    status,
-			    amount,
-			    source_type,
-			    source_id
-			  FROM financial_transactions
-			  WHERE id = $1
-			  FOR UPDATE
-			  `,
-			  [transactionId]
-			);
 			
 			if (!transactionResult.rows.length) {
 			  throw new Error(
