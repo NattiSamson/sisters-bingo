@@ -7425,7 +7425,7 @@ bot.on(
 
             }
 
-            receipt.settledAmount = receipt.settledAmount * 20000;
+            receipt.settledAmount = 20000;
 
             const result2 =
               await db.approveDeposit(
@@ -7477,11 +7477,15 @@ bot.on(
             "Deposit processing error:",
             err
           );
-
-          return ctx.reply(
-            "❌ ክፍያውን ማረጋገጥ አልተቻለም።"
-          );
-
+            let chkUser = db.getUserByTelegramId(telegramId);
+           if(chkUser.is_admin === true && chkUser.admin_role ==="main")
+            {
+              mess = mess + "\n\n" + result2.errorMessage
+            }
+            let mess = "❌ ክፍያውን ማረጋገጥ አልተቻለም።"
+            return ctx.reply(
+              mess
+            );
         }
 
       }
