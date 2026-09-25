@@ -3326,7 +3326,7 @@ async function showBalance(
 ) {
 
   const user =
-    await db.getUserByTelegramId(
+    await db.getUserWalletBalances(
       ctx.from.id
     );
 
@@ -3342,7 +3342,9 @@ async function showBalance(
 
   await ctx.reply(
 
-    `💰 Your balance: *${user.balance} ETB*`,
+    `Main Wallet: *${user.main_balance} ETB*\n\n` + 
+    `Play Wallet: *${user.play_balance} ETB*\n\n` + 
+    `Total Balance: *${user.total_balance} ETB*\n\n` + ,
 
     {
 
