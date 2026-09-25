@@ -3980,25 +3980,6 @@ async getAllPaymentAccountsForAdmin() {
         return {success:false, errorMessage:"No creditedName!"};
       }
 
-		const walletResult = await client.query(
-			  `
-			  SELECT main_balance, play_balance, total_balance
-			  FROM user_wallet_balances
-			  WHERE user_id = $1
-			  `,
-			  [user.id]
-			);
-			
-			if (walletResult.rows.length === 0) {
-			  throw new Error('User wallets not found');
-			}
-			
-			const currentBalance = Number(
-			  walletResult.rows[0].play_balance || 0
-			);
-			
-			const amountAfter = currentBalance + amount;
-
       const depositResult =
         await client.query(
           `
@@ -4008,8 +3989,7 @@ async getAllPaymentAccountsForAdmin() {
             deposit_method_id,
             depositor_name,
             depositor_account,
-            amount,
-            amount_after,
+            amount,            
             reference,
             created_at
           )
@@ -4019,8 +3999,7 @@ async getAllPaymentAccountsForAdmin() {
             $3,
             $4,
             $5,
-            $6,
-            $7,
+            $6,            
             $8,
             NOW()
           )
@@ -4034,8 +4013,7 @@ async getAllPaymentAccountsForAdmin() {
             account.payment_method_id,
             payerName,
             payerAccount,
-            amount,
-            amountAfter,
+            amount,            
             receiptNo
           ]
         );
@@ -4044,7 +4022,7 @@ async getAllPaymentAccountsForAdmin() {
       depositResult.rows[0]?.id;
 		
   const depositvalues = depositResult.rows[0];
-      client.query(
+  const walletResult = await client.query(
     `
     SELECT credit_deposit_to_wallet(
       $1,
@@ -4052,7 +4030,7 @@ async getAllPaymentAccountsForAdmin() {
       $3,      
       $4,
       $5,
-	    $6,
+	  $6
     ) AS transaction_id
     `,
     [
@@ -4064,6 +4042,22 @@ async getAllPaymentAccountsForAdmin() {
 	  null
     ]
   );
+
+  const transactionId =
+  walletResult.rows[0]?.transaction_id;
+
+		
+        await client.query(
+          `
+          UPDATE deposits
+		  SET transaction_id = $1,
+		  	updated_at = now()
+          `,
+          [
+            transactionId
+          ]
+        );
+
 /*
       await client.query(
         `
@@ -4093,30 +4087,7 @@ async getAllPaymentAccountsForAdmin() {
         ]
       );
 
-      await client.query(
-        `
-        INSERT INTO transactions (
-          user_id,
-          type,
-          amount,
-          balance_after,
-          reference
-        )
-        VALUES (
-          $1,
-          'deposit',
-          $2,
-          $3,
-          $4
-        )
-        `,
-        [
-          user.id,
-          amount,
-          amountAfter,
-          `deposit:${depositResult.rows[0].id}`
-        ]
-      );
+     
 
       await client.query(
         "COMMIT"
