@@ -4929,7 +4929,7 @@ async removeBingoParticipant(
     return rows;
   },
 
-	async function getUserWalletBalances(telegramId) {
+	async getUserWalletBalances(telegramId) {
     const result = await pool.query(
         `
         SELECT *
