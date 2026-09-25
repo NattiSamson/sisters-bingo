@@ -1,6 +1,7 @@
 --
 -- PostgreSQL database dump
 --
+
 -- Dumped from database version 18.6 (6569466)
 -- Dumped by pg_dump version 18.4
 
@@ -1390,6 +1391,25 @@ $$;
 
 
 ALTER FUNCTION public.place_stake(p_user_id integer, p_amount numeric, p_game_system_id bigint, p_source_type character varying, p_source_id character varying, p_idempotency_key character varying, p_description text, p_metadata jsonb) OWNER TO neondb_owner;
+
+--
+-- Name: prevent_ledger_entries_mutation(); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.prevent_ledger_entries_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    RAISE EXCEPTION
+        'ledger_entries is immutable: % operations are not allowed. Create a reversal/adjustment transaction instead.',
+        TG_OP;
+
+    RETURN NULL;
+END;
+$$;
+
+
+ALTER FUNCTION public.prevent_ledger_entries_mutation() OWNER TO neondb_owner;
 
 --
 -- Name: record_game_win(integer, numeric, bigint, character varying, character varying, character varying, text, jsonb); Type: FUNCTION; Schema: public; Owner: neondb_owner
@@ -3864,6 +3884,13 @@ CREATE TRIGGER deposit_rules_set_updated_at BEFORE UPDATE ON public.deposit_rule
 --
 
 CREATE TRIGGER deposits_set_updated_at BEFORE UPDATE ON public.deposits FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+
+--
+-- Name: ledger_entries ledger_entries_immutable; Type: TRIGGER; Schema: public; Owner: neondb_owner
+--
+
+CREATE TRIGGER ledger_entries_immutable BEFORE DELETE OR UPDATE ON public.ledger_entries FOR EACH ROW EXECUTE FUNCTION public.prevent_ledger_entries_mutation();
 
 
 --
