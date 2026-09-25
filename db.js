@@ -1559,26 +1559,29 @@ async createWithdrawal(
       transactionResult.rows[0]
         ?.transaction_id;
 
-	  const finantialTransactionResult =
-      await client.query(
-        `
-       SELECT id, type, status
-		FROM financial_transactions
-		WHERE id = $1
-        `,
-        [
-          transactionId
-        ]
-      );
+	  if (!transactionId) {
+			  throw new Error(
+			    "Withdrawal reservation transaction was not created."
+			  );
+			}
 			
-			if (!finantialTransactionResult.rows.length) {
+			const financialTransactionResult = await client.query(
+			  `
+			  SELECT id, type, status
+			  FROM financial_transactions
+			  WHERE id = $1
+			  `,
+			  [transactionId]
+			);
+			
+			const financialTransaction =
+			  financialTransactionResult.rows[0];
+			
+			if (!financialTransaction) {
 			  throw new Error(
 			    "Withdrawal reservation transaction not found."
 			  );
 			}
-			
-			const financialTransaction =
-			  finantialTransactionResult.rows[0];
 			
 			if (financialTransaction.type !== "withdrawal") {
 			  throw new Error(
