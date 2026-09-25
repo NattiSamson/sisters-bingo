@@ -3325,11 +3325,11 @@ async function showBalance(
   ctx
 ) {
 
-  const user =
+  const wallets =
     await db.getUserWalletBalances(
       ctx.from.id
     );
-
+  const user = wallets[0];
 
   if (!user) {
 
