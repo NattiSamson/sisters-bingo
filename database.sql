@@ -696,6 +696,7 @@ BEGIN
         create_financial_transaction(
             p_user_id,
             'stake',
+            'completed',
             p_game_system_id,
             p_source_type,
             p_source_id,
@@ -825,6 +826,7 @@ BEGIN
         create_financial_transaction(
             p_user_id,
             'win',
+            'completed',
             p_game_system_id,
             p_source_type,
             p_source_id,
@@ -3145,4 +3147,5 @@ ALTER TABLE ONLY public.withdrawals
 --
 -- PostgreSQL database dump complete
 --
+
 
