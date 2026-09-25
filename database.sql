@@ -1,6 +1,7 @@
 --
 -- PostgreSQL database dump
 --
+
 -- Dumped from database version 18.6 (6569466)
 -- Dumped by pg_dump version 18.4
 
@@ -1530,20 +1531,20 @@ CREATE FUNCTION public.refund_stake(p_user_id integer, p_original_transaction_id
     AS $$
 DECLARE
     v_original financial_transactions%ROWTYPE;
+    v_refund_transaction_id bigint;
+    v_transaction_created boolean;
 
-    v_refund_transaction_id BIGINT;
-    v_transaction_created BOOLEAN;
+    v_wallet_id bigint;
+    v_original_ledger RECORD;
 
-    v_wallet_id BIGINT;
-    v_refund_amount NUMERIC(18,2);
-
-    v_wallet_ids BIGINT[];
+    v_total_refund numeric(18,2) := 0;
 BEGIN
-
-    -- --------------------------------------------------------
-    -- Validate original transaction
-    -- --------------------------------------------------------
-
+    /*
+     * 1. Lock and validate the original stake transaction.
+     *
+     * Locking the original transaction also serializes multiple attempts
+     * to refund the same stake.
+     */
     SELECT *
     INTO v_original
     FROM financial_transactions
@@ -1553,98 +1554,121 @@ BEGIN
       AND status = 'completed'
     FOR UPDATE;
 
-
     IF NOT FOUND THEN
         RAISE EXCEPTION
-            'Original stake transaction not found: %',
-            p_original_transaction_id;
+            'Completed stake transaction % for user % was not found',
+            p_original_transaction_id,
+            p_user_id;
     END IF;
 
 
-    -- --------------------------------------------------------
-    -- Find every wallet receiving a reversal.
-    --
-    -- Sort IDs so every caller locks in deterministic order.
-    -- --------------------------------------------------------
-
-    SELECT ARRAY_AGG(
-        wallet_id
+    /*
+     * 2. Lock all wallets involved in the original stake.
+     *
+     * Lock in deterministic wallet_id order to reduce deadlock risk.
+     */
+    FOR v_wallet_id IN
+        SELECT DISTINCT wallet_id
+        FROM ledger_entries
+        WHERE transaction_id = p_original_transaction_id
+          AND amount < 0
         ORDER BY wallet_id
-    )
-    INTO v_wallet_ids
-    FROM ledger_entries
-    WHERE transaction_id = p_original_transaction_id
-      AND amount < 0;
-
-
-    IF v_wallet_ids IS NULL
-       OR array_length(v_wallet_ids, 1) IS NULL THEN
-
-        RAISE EXCEPTION
-            'Original stake has no debit ledger entries';
-
-    END IF;
-
-
-    -- --------------------------------------------------------
-    -- Lock every involved wallet
-    -- --------------------------------------------------------
-
-    FOREACH v_wallet_id IN ARRAY v_wallet_ids
     LOOP
-
-        PERFORM lock_wallet(v_wallet_id);
-
+        PERFORM 1
+        FROM wallets
+        WHERE id = v_wallet_id
+        FOR UPDATE;
     END LOOP;
 
 
-    -- --------------------------------------------------------
-    -- Create / retrieve refund transaction atomically
-    -- --------------------------------------------------------
-
-    SELECT
-        t.transaction_id,
-        t.created
-    INTO
-        v_refund_transaction_id,
-        v_transaction_created
+    /*
+     * 3. Create/retrieve the refund transaction.
+     *
+     * create_financial_transaction() is idempotent when an
+     * idempotency_key is supplied.
+     */
+    SELECT transaction_id, created
+    INTO v_refund_transaction_id, v_transaction_created
     FROM create_financial_transaction(
         p_user_id,
         'refund',
         'completed',
         v_original.game_system_id,
         'stake_refund',
-        p_original_transaction_id::TEXT,
+        p_original_transaction_id::text,
         p_idempotency_key,
         p_description,
         COALESCE(p_metadata, '{}'::jsonb)
-        ||
-        jsonb_build_object(
-            'original_transaction_id',
-            p_original_transaction_id
-        )
-    ) AS t;
+            || jsonb_build_object(
+                'original_transaction_id',
+                p_original_transaction_id
+            )
+    );
 
 
-    -- --------------------------------------------------------
-    -- Existing idempotent refund.
-    --
-    -- Do NOT create another reversal.
-    -- --------------------------------------------------------
-
+    /*
+     * 4. If this is an idempotent retry, return the existing refund.
+     *
+     * This must happen BEFORE the reversal check below so a legitimate
+     * retry returns successfully.
+     */
     IF NOT v_transaction_created THEN
         RETURN v_refund_transaction_id;
     END IF;
 
 
-    -- --------------------------------------------------------
-    -- Reverse every original debit.
-    -- --------------------------------------------------------
+    /*
+     * 5. Prevent a stake from being reversed more than once.
+     *
+     * The original transaction is already locked above, so another
+     * refund_stake() call for the same stake cannot pass this point
+     * concurrently.
+     */
+    IF EXISTS (
+        SELECT 1
+        FROM financial_transactions
+        WHERE reversed_transaction_id = p_original_transaction_id
+    ) THEN
+        RAISE EXCEPTION
+            'Stake transaction % has already been reversed',
+            p_original_transaction_id;
+    END IF;
 
-    FOR v_wallet_id, v_refund_amount IN
+
+    /*
+     * 6. Link the newly-created refund transaction to the original
+     * stake transaction.
+     *
+     * This is the structured relationship. It is in addition to the
+     * source_type/source_id and metadata fields.
+     */
+    UPDATE financial_transactions
+    SET reversed_transaction_id = p_original_transaction_id
+    WHERE id = v_refund_transaction_id
+      AND reversed_transaction_id IS NULL;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Failed to link refund transaction % to original stake transaction %',
+            v_refund_transaction_id,
+            p_original_transaction_id;
+    END IF;
+
+
+    /*
+     * 7. Reverse every original wallet movement.
+     *
+     * Original stake entries are negative.
+     * Refund entries are therefore positive.
+     *
+     * Process in wallet_id order for deterministic locking.
+     */
+    FOR v_original_ledger IN
         SELECT
             wallet_id,
-            ABS(amount)
+            amount,
+            description,
+            metadata
         FROM ledger_entries
         WHERE transaction_id = p_original_transaction_id
           AND amount < 0
@@ -1654,26 +1678,60 @@ BEGIN
         INSERT INTO ledger_entries (
             transaction_id,
             wallet_id,
-            amount
+            amount,
+            description,
+            metadata
         )
         VALUES (
             v_refund_transaction_id,
-            v_wallet_id,
-            v_refund_amount
+            v_original_ledger.wallet_id,
+            -v_original_ledger.amount,
+            COALESCE(
+                p_description,
+                'Refund of stake transaction '
+                    || p_original_transaction_id::text
+            ),
+            COALESCE(v_original_ledger.metadata, '{}'::jsonb)
+                || jsonb_build_object(
+                    'refund_of_transaction_id',
+                    p_original_transaction_id
+                )
         );
 
-
-        UPDATE wallet_balances
-        SET
-            balance = balance + v_refund_amount,
+        /*
+         * Credit the exact wallet that was originally debited.
+         */
+        UPDATE wallets
+        SET balance = balance - v_original_ledger.amount,
             updated_at = NOW()
-        WHERE wallet_id = v_wallet_id;
+        WHERE id = v_original_ledger.wallet_id;
 
+        IF NOT FOUND THEN
+            RAISE EXCEPTION
+                'Wallet % not found while refunding stake transaction %',
+                v_original_ledger.wallet_id,
+                p_original_transaction_id;
+        END IF;
+
+        v_total_refund := v_total_refund - v_original_ledger.amount;
     END LOOP;
 
 
-    RETURN v_refund_transaction_id;
+    /*
+     * 8. A completed stake must have produced at least one negative
+     * ledger entry.
+     */
+    IF v_total_refund <= 0 THEN
+        RAISE EXCEPTION
+            'Stake transaction % has no refundable ledger entries',
+            p_original_transaction_id;
+    END IF;
 
+
+    /*
+     * 9. Return the refund transaction ID.
+     */
+    RETURN v_refund_transaction_id;
 END;
 $$;
 
@@ -1688,20 +1746,36 @@ CREATE FUNCTION public.refund_withdrawal(p_user_id integer, p_withdrawal_id bigi
     LANGUAGE plpgsql
     AS $$
 DECLARE
-    v_wallet_id BIGINT;
-
-    v_transaction_id BIGINT;
-    v_transaction_created BOOLEAN;
-
-    v_amount NUMERIC(18,2);
-
+    v_withdrawal withdrawals%ROWTYPE;
     v_original financial_transactions%ROWTYPE;
+
+    v_refund_transaction_id bigint;
+    v_transaction_created boolean;
+
+    v_main_wallet_id bigint;
+    v_refund_amount numeric(18,2);
 BEGIN
+    /*
+     * 1. Lock and validate the withdrawal.
+     */
+    SELECT *
+    INTO v_withdrawal
+    FROM withdrawals
+    WHERE id = p_withdrawal_id
+      AND user_id = p_user_id
+    FOR UPDATE;
 
-    -- --------------------------------------------------------
-    -- Validate original transaction
-    -- --------------------------------------------------------
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Withdrawal % for user % was not found',
+            p_withdrawal_id,
+            p_user_id;
+    END IF;
 
+
+    /*
+     * 2. Lock and validate the original withdrawal transaction.
+     */
     SELECT *
     INTO v_original
     FROM financial_transactions
@@ -1711,120 +1785,187 @@ BEGIN
       AND status = 'completed'
     FOR UPDATE;
 
-
     IF NOT FOUND THEN
         RAISE EXCEPTION
-            'Original withdrawal transaction not found: %',
+            'Completed withdrawal transaction % for user % was not found',
+            p_original_transaction_id,
+            p_user_id;
+    END IF;
+
+
+    /*
+     * 3. Make sure this withdrawal actually belongs to the supplied
+     * financial transaction.
+     *
+     * withdrawals.transaction_id should point to the original
+     * withdrawal transaction.
+     */
+    IF v_withdrawal.transaction_id IS DISTINCT FROM p_original_transaction_id THEN
+        RAISE EXCEPTION
+            'Withdrawal % is not linked to withdrawal transaction %',
+            p_withdrawal_id,
             p_original_transaction_id;
     END IF;
 
 
-    -- --------------------------------------------------------
-    -- Validate original withdrawal ledger
-    -- --------------------------------------------------------
+    /*
+     * 4. Find the exact amount that was originally withdrawn.
+     *
+     * Withdrawal transactions should contain negative ledger entries.
+     * Sum the negative entries and convert them to a positive refund.
+     */
+    SELECT COALESCE(-SUM(amount), 0)
+    INTO v_refund_amount
+    FROM ledger_entries
+    WHERE transaction_id = p_original_transaction_id
+      AND amount < 0;
 
-    SELECT ABS(SUM(le.amount))
-    INTO v_amount
-    FROM ledger_entries le
-    WHERE le.transaction_id = p_original_transaction_id
-      AND le.amount < 0;
-
-
-    IF v_amount IS NULL OR v_amount <= 0 THEN
+    IF v_refund_amount <= 0 THEN
         RAISE EXCEPTION
-            'Original withdrawal transaction has no valid debit';
+            'Withdrawal transaction % has no refundable ledger entries',
+            p_original_transaction_id;
     END IF;
 
 
-    v_amount := ROUND(v_amount, 2);
+    /*
+     * 5. Lock the Main wallet.
+     *
+     * Withdrawals originate from Main, so the refund goes back to Main.
+     */
+    SELECT id
+    INTO v_main_wallet_id
+    FROM wallets
+    WHERE user_id = p_user_id
+      AND wallet_type = 'main'
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Main wallet for user % was not found',
+            p_user_id;
+    END IF;
 
 
-    -- --------------------------------------------------------
-    -- Get Main wallet
-    -- --------------------------------------------------------
-
-    v_wallet_id :=
-        get_user_wallet_id(
-            p_user_id,
-            'main'
-        );
-
-
-    -- --------------------------------------------------------
-    -- Lock Main
-    -- --------------------------------------------------------
-
-    PERFORM lock_wallet(v_wallet_id);
-
-
-    -- --------------------------------------------------------
-    -- Create / retrieve refund transaction atomically
-    -- --------------------------------------------------------
-
-    SELECT
-        t.transaction_id,
-        t.created
-    INTO
-        v_transaction_id,
-        v_transaction_created
+    /*
+     * 6. Create/retrieve the refund transaction.
+     */
+    SELECT transaction_id, created
+    INTO v_refund_transaction_id, v_transaction_created
     FROM create_financial_transaction(
         p_user_id,
         'refund',
         'completed',
         v_original.game_system_id,
         'withdrawal_refund',
-        p_withdrawal_id::VARCHAR,
+        p_withdrawal_id::text,
         p_idempotency_key,
-        p_description,
+        COALESCE(
+            p_description,
+            'Refund of withdrawal ' || p_withdrawal_id::text
+        ),
         jsonb_build_object(
             'withdrawal_id',
             p_withdrawal_id,
             'original_transaction_id',
             p_original_transaction_id
         )
-    ) AS t;
-
-
-    -- --------------------------------------------------------
-    -- Existing idempotent refund.
-    --
-    -- Do NOT credit Main again.
-    -- --------------------------------------------------------
-
-    IF NOT v_transaction_created THEN
-        RETURN v_transaction_id;
-    END IF;
-
-
-    -- --------------------------------------------------------
-    -- Ledger
-    -- --------------------------------------------------------
-
-    INSERT INTO ledger_entries (
-        transaction_id,
-        wallet_id,
-        amount
-    )
-    VALUES (
-        v_transaction_id,
-        v_wallet_id,
-        v_amount
     );
 
 
-    -- --------------------------------------------------------
-    -- Balance
-    -- --------------------------------------------------------
+    /*
+     * 7. Idempotent retry:
+     * if the refund already exists, return it without creating
+     * another ledger entry or changing the balance again.
+     */
+    IF NOT v_transaction_created THEN
+        RETURN v_refund_transaction_id;
+    END IF;
 
-    UPDATE wallet_balances
-    SET
-        balance = balance + v_amount,
+
+    /*
+     * 8. Prevent the same withdrawal transaction from being reversed
+     * more than once.
+     *
+     * The original transaction is locked above, so concurrent refund
+     * attempts for the same withdrawal are serialized.
+     */
+    IF EXISTS (
+        SELECT 1
+        FROM financial_transactions
+        WHERE reversed_transaction_id = p_original_transaction_id
+    ) THEN
+        RAISE EXCEPTION
+            'Withdrawal transaction % has already been reversed',
+            p_original_transaction_id;
+    END IF;
+
+
+    /*
+     * 9. Link the refund transaction to the original withdrawal.
+     */
+    UPDATE financial_transactions
+    SET reversed_transaction_id = p_original_transaction_id
+    WHERE id = v_refund_transaction_id
+      AND reversed_transaction_id IS NULL;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Failed to link refund transaction % to original withdrawal transaction %',
+            v_refund_transaction_id,
+            p_original_transaction_id;
+    END IF;
+
+
+    /*
+     * 10. Create the positive refund ledger entry in Main.
+     *
+     * Ledger entries are immutable, so we create a new entry instead
+     * of modifying the original withdrawal entry.
+     */
+    INSERT INTO ledger_entries (
+        transaction_id,
+        wallet_id,
+        amount,
+        description,
+        metadata
+    )
+    VALUES (
+        v_refund_transaction_id,
+        v_main_wallet_id,
+        v_refund_amount,
+        COALESCE(
+            p_description,
+            'Refund of withdrawal ' || p_withdrawal_id::text
+        ),
+        jsonb_build_object(
+            'withdrawal_id',
+            p_withdrawal_id,
+            'refund_of_transaction_id',
+            p_original_transaction_id
+        )
+    );
+
+
+    /*
+     * 11. Credit Main with the exact withdrawn amount.
+     */
+    UPDATE wallets
+    SET balance = balance + v_refund_amount,
         updated_at = NOW()
-    WHERE wallet_id = v_wallet_id;
+    WHERE id = v_main_wallet_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Main wallet % disappeared while refunding withdrawal %',
+            v_main_wallet_id,
+            p_withdrawal_id;
+    END IF;
 
 
-    RETURN v_transaction_id;
-
+    /*
+     * 12. Return the refund transaction ID.
+     */
+    RETURN v_refund_transaction_id;
 END;
 $$;
 
@@ -2740,7 +2881,6 @@ CREATE TABLE public.game_systems (
 
 ALTER TABLE public.game_systems OWNER TO neondb_owner;
 
-
 -- ============================================================
 -- SEED: Bingo game system
 -- ============================================================
@@ -2763,8 +2903,6 @@ DO UPDATE SET
     status = EXCLUDED.status,
     metadata = EXCLUDED.metadata,
     updated_at = NOW();
-
-
 
 --
 -- Name: game_systems_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
@@ -4247,3 +4385,4 @@ ALTER TABLE ONLY public.withdrawals
 --
 -- PostgreSQL database dump complete
 --
+
