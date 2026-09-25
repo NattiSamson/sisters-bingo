@@ -1408,6 +1408,7 @@ BEGIN
         create_financial_transaction(
             p_user_id,
             'refund',
+            'completed',
             v_original.game_system_id,
             'stake_refund',
             p_original_transaction_id::TEXT,
@@ -3683,4 +3684,3 @@ ALTER TABLE ONLY public.withdrawals
 --
 -- PostgreSQL database dump complete
 --
-
