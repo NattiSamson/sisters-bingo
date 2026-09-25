@@ -4014,7 +4014,7 @@ async getAllPaymentAccountsForAdmin() {
             $4,
             $5,
             $6,            
-            $8,
+            $7,
             NOW()
           )
           RETURNING
