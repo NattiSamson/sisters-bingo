@@ -1,12 +1,3 @@
--- ════════════════════════════════════════════════════════════════
---  BETESEB BINGO — PostgreSQL Database Schema
---  Run this file once to set up all tables
---  Command: psql -U postgres -d beteseb_bingo -f database.sql
--- ════════════════════════════════════════════════════════════════
-
-CREATE DATABASE beteseb_bingo;
-\c beteseb_bingo;
-
 --
 -- PostgreSQL database dump
 --
@@ -705,7 +696,6 @@ BEGIN
         create_financial_transaction(
             p_user_id,
             'stake',
-            'completed',
             p_game_system_id,
             p_source_type,
             p_source_id,
@@ -835,7 +825,6 @@ BEGIN
         create_financial_transaction(
             p_user_id,
             'win',
-            'completed',
             p_game_system_id,
             p_source_type,
             p_source_id,
@@ -968,7 +957,6 @@ BEGIN
         create_financial_transaction(
             p_user_id,
             'refund',
-            'completed',
             v_original.game_system_id,
             'stake_refund',
             p_original_transaction_id::TEXT,
@@ -1428,12 +1416,12 @@ CREATE TABLE public.bingo_games (
     id integer CONSTRAINT games_id_not_null NOT NULL,
     room_id uuid CONSTRAINT games_room_id_not_null NOT NULL,
     stake_id character varying(10) CONSTRAINT games_stake_id_not_null NOT NULL,
-    stake_amount numeric(10,2) CONSTRAINT games_stake_amount_not_null NOT NULL,
-    pot numeric(10,2) CONSTRAINT games_pot_not_null NOT NULL,
+    stake_amount numeric(18,2) CONSTRAINT games_stake_amount_not_null NOT NULL,
+    pot numeric(18,2) CONSTRAINT games_pot_not_null NOT NULL,
     status character varying(20) DEFAULT 'waiting'::character varying,
     called_numbers integer[] DEFAULT '{}'::integer[],
     winner_ids integer[] DEFAULT '{}'::integer[],
-    win_amount numeric(10,2) DEFAULT 0,
+    win_amount numeric(18,2) DEFAULT 0,
     is_split boolean DEFAULT false,
     started_at timestamp with time zone,
     ended_at timestamp with time zone,
@@ -1443,6 +1431,28 @@ CREATE TABLE public.bingo_games (
 
 
 ALTER TABLE public.bingo_games OWNER TO neondb_owner;
+
+--
+-- Name: bingo_games_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
+--
+
+CREATE SEQUENCE public.bingo_games_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.bingo_games_id_seq OWNER TO neondb_owner;
+
+--
+-- Name: bingo_games_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
+--
+
+ALTER SEQUENCE public.bingo_games_id_seq OWNED BY public.bingo_games.id;
+
 
 --
 -- Name: bingo_participants; Type: TABLE; Schema: public; Owner: neondb_owner
@@ -1640,6 +1650,7 @@ CREATE TABLE public.financial_transactions (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     completed_at timestamp with time zone,
+    reversed_transaction_id bigint,
     CONSTRAINT financial_transactions_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'processing'::character varying, 'completed'::character varying, 'failed'::character varying, 'cancelled'::character varying, 'reversed'::character varying])::text[]))),
     CONSTRAINT financial_transactions_type_check CHECK (((type)::text = ANY ((ARRAY['deposit'::character varying, 'withdrawal'::character varying, 'stake'::character varying, 'win'::character varying, 'refund'::character varying, 'transfer'::character varying, 'bonus'::character varying, 'referral'::character varying, 'cashback'::character varying, 'adjustment'::character varying, 'reversal'::character varying])::text[])))
 );
@@ -2145,7 +2156,7 @@ ALTER SEQUENCE public."withdrawals _id_seq" OWNED BY public.withdrawals.id;
 -- Name: bingo_games id; Type: DEFAULT; Schema: public; Owner: neondb_owner
 --
 
-ALTER TABLE ONLY public.bingo_games ALTER COLUMN id SET DEFAULT nextval('public.games_id_seq'::regclass);
+ALTER TABLE ONLY public.bingo_games ALTER COLUMN id SET DEFAULT nextval('public.bingo_games_id_seq'::regclass);
 
 
 --
@@ -2774,6 +2785,13 @@ CREATE UNIQUE INDEX uq_financial_transactions_idempotency ON public.financial_tr
 
 
 --
+-- Name: uq_financial_transactions_reversal; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE UNIQUE INDEX uq_financial_transactions_reversal ON public.financial_transactions USING btree (reversed_transaction_id) WHERE (reversed_transaction_id IS NOT NULL);
+
+
+--
 -- Name: ux_bingo_games_game_code; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
@@ -2954,6 +2972,14 @@ ALTER TABLE ONLY public.deposits
 
 ALTER TABLE ONLY public.financial_transactions
     ADD CONSTRAINT financial_transactions_game_system_id_fkey FOREIGN KEY (game_system_id) REFERENCES public.game_systems(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: financial_transactions financial_transactions_reversed_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.financial_transactions
+    ADD CONSTRAINT financial_transactions_reversed_transaction_id_fkey FOREIGN KEY (reversed_transaction_id) REFERENCES public.financial_transactions(id) ON DELETE RESTRICT;
 
 
 --
