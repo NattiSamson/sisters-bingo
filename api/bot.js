@@ -3344,7 +3344,7 @@ async function showBalance(
 
     `Main Wallet: *${user.main_balance} ETB*\n\n` + 
     `Play Wallet: *${user.play_balance} ETB*\n\n` + 
-    `Total Balance: *${user.total_balance} ETB*\n\n` + ,
+    `Total Balance: *${user.total_balance} ETB*\n\n`,
 
     {
 
