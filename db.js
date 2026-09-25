@@ -4059,8 +4059,45 @@ async getAllPaymentAccountsForAdmin() {
   const transactionId =
   walletResult.rows[0]?.transaction_id;
 
+		if (!transactionId) {
+  throw new Error(
+    "Deposit wallet transaction was not created."
+  );
+}
+
+		const checktransactionresult = await client.query(
+          `
+          SELECT id, type, status
+			FROM financial_transactions
+			WHERE id = $1
+          `,
+          [
+            transactionId			
+          ]
+        );
+
+		const newtransactionId =
+  checktransactionresult.rows[0]?.transaction_id;
+
+		if (checktransactionresult.rowCount !== 1) {
+  throw new Error(
+    "Could not finalize deposit. No transaction"
+  );
+}
+		if(checktransactionresult.type != 'deposit')
+		{
+			throw new Error(
+    "Could not finalize deposit. type not deposit"
+  );
+		}
+		else if(checktransactionresult.status != 'completed')
+		{
+			throw new Error(
+    "Could not finalize deposit. type not completed"
+  );
+		}
 		
-        await client.query(
+        const updateDepositResult = await client.query(
           `
           UPDATE deposits
 			SET
@@ -4075,6 +4112,11 @@ async getAllPaymentAccountsForAdmin() {
 			depositId
           ]
         );
+		if (updateDepositResult.rowCount !== 1) {
+  throw new Error(
+    "Could not finalize deposit. can not update deposit"
+  );
+}
 
 /*
       await client.query(
@@ -4091,7 +4133,7 @@ async getAllPaymentAccountsForAdmin() {
         ]
       );
 */
-      await client.query(
+      const updatePaymentAccountsResult = await client.query(
         `
         UPDATE payment_accounts
         SET
@@ -4104,7 +4146,11 @@ async getAllPaymentAccountsForAdmin() {
           account.id
         ]
       );
-
+if (updatePaymentAccountsResult.rowCount !== 1) {
+  throw new Error(
+    "Could not finalize deposit. can not update payment_accounts"
+  );
+}
      
 
       await client.query(
