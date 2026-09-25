@@ -3779,10 +3779,10 @@ async getAllPaymentAccountsForAdmin() {
       return {success:false, errorMessage:"No amount"};
     }
 
-    if (amount > 500) {
+    /*if (amount > 500) {
       console.log(`db.aproveDeposit amount > 500`);
       return {success:false, errorMessage:"Amount is greaterthan 500"};
-    }
+    }*/
 
     const creditedAccount =
       String(
