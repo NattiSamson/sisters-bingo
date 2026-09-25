@@ -4083,10 +4083,10 @@ async getAllPaymentAccountsForAdmin() {
     "Could not finalize deposit. No transaction"
   );
 }
-		checktransactionresult = checktransactionresult.rows[0];
-		if (checktransactionresult.type !== 'deposit' || checktransactionresult.status !== 'completed') 
+		const transresult = checktransactionresult.rows[0];
+		if (transresult.type !== 'deposit' || transresult.status !== 'completed') 
 		{
-  			throw new Error('Invalid or incomplete deposit transaction' + checktransactionresult.type + ' ' + checktransactionresult.status);
+  			throw new Error('Invalid or incomplete deposit transaction');
 		}
 		
         const updateDepositResult = await client.query(
