@@ -1,7 +1,6 @@
 --
 -- PostgreSQL database dump
 --
-
 -- Dumped from database version 18.6 (6569466)
 -- Dumped by pg_dump version 18.4
 
@@ -1106,6 +1105,111 @@ $$;
 ALTER FUNCTION public.get_active_withdrawal_rule(p_payment_method_id integer, p_payment_account_id integer, p_amount numeric) OWNER TO neondb_owner;
 
 --
+-- Name: users; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.users (
+    id integer NOT NULL,
+    telegram_id bigint NOT NULL,
+    name character varying(50) NOT NULL,
+    phone character varying(20),
+    balance numeric(18,2),
+    total_games integer DEFAULT 0,
+    total_wins integer DEFAULT 0,
+    total_winnings numeric(10,2) DEFAULT 0,
+    is_banned boolean DEFAULT false,
+    created_at timestamp with time zone DEFAULT now(),
+    last_seen timestamp with time zone DEFAULT now(),
+    is_active boolean DEFAULT true,
+    is_admin boolean DEFAULT false NOT NULL,
+    admin_role character varying(20),
+    is_blocked boolean DEFAULT false NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT users_admin_role_check CHECK (((admin_role IS NULL) OR ((admin_role)::text = ANY ((ARRAY['main'::character varying, 'statistics'::character varying, 'withdrawal'::character varying, 'broadcast'::character varying])::text[]))))
+);
+
+
+ALTER TABLE public.users OWNER TO neondb_owner;
+
+--
+-- Name: wallet_balances; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.wallet_balances (
+    wallet_id bigint NOT NULL,
+    balance numeric(18,2) DEFAULT 0 NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT wallet_balances_non_negative CHECK ((balance >= (0)::numeric))
+);
+
+
+ALTER TABLE public.wallet_balances OWNER TO neondb_owner;
+
+--
+-- Name: wallets; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.wallets (
+    id bigint NOT NULL,
+    user_id integer NOT NULL,
+    wallet_type character varying(20) NOT NULL,
+    currency character(3) DEFAULT 'ETB'::bpchar NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT wallets_type_check CHECK (((wallet_type)::text = ANY ((ARRAY['main'::character varying, 'play'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.wallets OWNER TO neondb_owner;
+
+--
+-- Name: user_wallet_balances; Type: VIEW; Schema: public; Owner: neondb_owner
+--
+
+CREATE VIEW public.user_wallet_balances AS
+ SELECT u.id AS user_id,
+    u.telegram_id,
+    u.name,
+    u.phone,
+    main.wallet_id AS main_wallet_id,
+    main.balance AS main_balance,
+    play.wallet_id AS play_wallet_id,
+    play.balance AS play_balance,
+    (COALESCE(main.balance, (0)::numeric) + COALESCE(play.balance, (0)::numeric)) AS total_balance
+   FROM ((public.users u
+     LEFT JOIN ( SELECT w.user_id,
+            w.id AS wallet_id,
+            wb.balance
+           FROM (public.wallets w
+             JOIN public.wallet_balances wb ON ((wb.wallet_id = w.id)))
+          WHERE ((w.wallet_type)::text = 'main'::text)) main ON ((main.user_id = u.id)))
+     LEFT JOIN ( SELECT w.user_id,
+            w.id AS wallet_id,
+            wb.balance
+           FROM (public.wallets w
+             JOIN public.wallet_balances wb ON ((wb.wallet_id = w.id)))
+          WHERE ((w.wallet_type)::text = 'play'::text)) play ON ((play.user_id = u.id)));
+
+
+ALTER VIEW public.user_wallet_balances OWNER TO neondb_owner;
+
+--
+-- Name: get_user_wallet_balances(bigint); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.get_user_wallet_balances(p_telegram_id bigint) RETURNS SETOF public.user_wallet_balances
+    LANGUAGE sql STABLE
+    AS $$
+    SELECT *
+    FROM public.user_wallet_balances
+    WHERE telegram_id = p_telegram_id;
+$$;
+
+
+ALTER FUNCTION public.get_user_wallet_balances(p_telegram_id bigint) OWNER TO neondb_owner;
+
+--
 -- Name: get_user_wallet_id(integer, character varying); Type: FUNCTION; Schema: public; Owner: neondb_owner
 --
 
@@ -1135,20 +1239,6 @@ $$;
 
 
 ALTER FUNCTION public.get_user_wallet_id(p_user_id integer, p_wallet_type character varying) OWNER TO neondb_owner;
-
---
--- Name: wallet_balances; Type: TABLE; Schema: public; Owner: neondb_owner
---
-
-CREATE TABLE public.wallet_balances (
-    wallet_id bigint NOT NULL,
-    balance numeric(18,2) DEFAULT 0 NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT wallet_balances_non_negative CHECK ((balance >= (0)::numeric))
-);
-
-
-ALTER TABLE public.wallet_balances OWNER TO neondb_owner;
 
 --
 -- Name: lock_wallet(bigint); Type: FUNCTION; Schema: public; Owner: neondb_owner
@@ -1971,33 +2061,6 @@ $$;
 
 
 ALTER FUNCTION public.refund_withdrawal(p_user_id integer, p_withdrawal_id bigint, p_original_transaction_id bigint, p_idempotency_key character varying, p_description text) OWNER TO neondb_owner;
-
---
--- Name: users; Type: TABLE; Schema: public; Owner: neondb_owner
---
-
-CREATE TABLE public.users (
-    id integer NOT NULL,
-    telegram_id bigint NOT NULL,
-    name character varying(50) NOT NULL,
-    phone character varying(20),
-    balance numeric(18,2),
-    total_games integer DEFAULT 0,
-    total_wins integer DEFAULT 0,
-    total_winnings numeric(10,2) DEFAULT 0,
-    is_banned boolean DEFAULT false,
-    created_at timestamp with time zone DEFAULT now(),
-    last_seen timestamp with time zone DEFAULT now(),
-    is_active boolean DEFAULT true,
-    is_admin boolean DEFAULT false NOT NULL,
-    admin_role character varying(20),
-    is_blocked boolean DEFAULT false NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT users_admin_role_check CHECK (((admin_role IS NULL) OR ((admin_role)::text = ANY ((ARRAY['main'::character varying, 'statistics'::character varying, 'withdrawal'::character varying, 'broadcast'::character varying])::text[]))))
-);
-
-
-ALTER TABLE public.users OWNER TO neondb_owner;
 
 --
 -- Name: register_user(bigint, character varying, character varying); Type: FUNCTION; Schema: public; Owner: neondb_owner
@@ -2881,6 +2944,30 @@ CREATE TABLE public.game_systems (
 
 ALTER TABLE public.game_systems OWNER TO neondb_owner;
 
+
+-- ============================================================
+-- SEED: Bingo game system
+-- ============================================================
+
+INSERT INTO public.game_systems (
+    code,
+    name,
+    status,
+    metadata
+)
+VALUES (
+    'bingo',
+    'Bingo',
+    'active',
+    '{"source_type":"bingo_game"}'::jsonb
+)
+ON CONFLICT (code)
+DO UPDATE SET
+    name = EXCLUDED.name,
+    status = EXCLUDED.status,
+    metadata = EXCLUDED.metadata,
+    updated_at = NOW();
+
 --
 -- Name: game_systems_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
 --
@@ -3107,55 +3194,6 @@ ALTER SEQUENCE public.transfers_id_seq OWNER TO neondb_owner;
 
 ALTER SEQUENCE public.transfers_id_seq OWNED BY public.transfers.id;
 
-
---
--- Name: wallets; Type: TABLE; Schema: public; Owner: neondb_owner
---
-
-CREATE TABLE public.wallets (
-    id bigint NOT NULL,
-    user_id integer NOT NULL,
-    wallet_type character varying(20) NOT NULL,
-    currency character(3) DEFAULT 'ETB'::bpchar NOT NULL,
-    is_active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT wallets_type_check CHECK (((wallet_type)::text = ANY ((ARRAY['main'::character varying, 'play'::character varying])::text[])))
-);
-
-
-ALTER TABLE public.wallets OWNER TO neondb_owner;
-
---
--- Name: user_wallet_balances; Type: VIEW; Schema: public; Owner: neondb_owner
---
-
-CREATE VIEW public.user_wallet_balances AS
- SELECT u.id AS user_id,
-    u.telegram_id,
-    u.name,
-    u.phone,
-    main.wallet_id AS main_wallet_id,
-    main.balance AS main_balance,
-    play.wallet_id AS play_wallet_id,
-    play.balance AS play_balance,
-    (COALESCE(main.balance, (0)::numeric) + COALESCE(play.balance, (0)::numeric)) AS total_balance
-   FROM ((public.users u
-     LEFT JOIN ( SELECT w.user_id,
-            w.id AS wallet_id,
-            wb.balance
-           FROM (public.wallets w
-             JOIN public.wallet_balances wb ON ((wb.wallet_id = w.id)))
-          WHERE ((w.wallet_type)::text = 'main'::text)) main ON ((main.user_id = u.id)))
-     LEFT JOIN ( SELECT w.user_id,
-            w.id AS wallet_id,
-            wb.balance
-           FROM (public.wallets w
-             JOIN public.wallet_balances wb ON ((wb.wallet_id = w.id)))
-          WHERE ((w.wallet_type)::text = 'play'::text)) play ON ((play.user_id = u.id)));
-
-
-ALTER VIEW public.user_wallet_balances OWNER TO neondb_owner;
 
 --
 -- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
