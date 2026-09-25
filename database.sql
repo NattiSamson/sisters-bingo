@@ -1,7 +1,6 @@
 --
 -- PostgreSQL database dump
 --
-
 -- Dumped from database version 18.6 (6569466)
 -- Dumped by pg_dump version 18.4
 
@@ -2741,6 +2740,32 @@ CREATE TABLE public.game_systems (
 
 ALTER TABLE public.game_systems OWNER TO neondb_owner;
 
+
+-- ============================================================
+-- SEED: Bingo game system
+-- ============================================================
+
+INSERT INTO public.game_systems (
+    code,
+    name,
+    status,
+    metadata
+)
+VALUES (
+    'bingo',
+    'Bingo',
+    'active',
+    '{"source_type":"bingo_game"}'::jsonb
+)
+ON CONFLICT (code)
+DO UPDATE SET
+    name = EXCLUDED.name,
+    status = EXCLUDED.status,
+    metadata = EXCLUDED.metadata,
+    updated_at = NOW();
+
+
+
 --
 -- Name: game_systems_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
 --
@@ -2760,28 +2785,6 @@ ALTER SEQUENCE public.game_systems_id_seq OWNER TO neondb_owner;
 --
 
 ALTER SEQUENCE public.game_systems_id_seq OWNED BY public.game_systems.id;
-
-
---
--- Name: games_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
---
-
-CREATE SEQUENCE public.games_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE public.games_id_seq OWNER TO neondb_owner;
-
---
--- Name: games_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
---
-
-ALTER SEQUENCE public.games_id_seq OWNED BY public.bingo_games.id;
 
 
 --
