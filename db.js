@@ -4597,6 +4597,50 @@ async getAllPaymentAccountsForAdmin() {
   }
 },  
 
+async removeBingoParticipant(
+  gameId,
+  userId,
+  cardId
+) {
+  const game = toPositiveInteger(
+    gameId,
+    "gameId"
+  );
+
+  const user = toPositiveInteger(
+    userId,
+    "userId"
+  );
+
+  const card = toPositiveInteger(
+    cardId,
+    "cardId"
+  );
+
+  const { rows } = await pool.query(
+    `
+      SELECT remove_bingo_participant(
+        $1,
+        $2,
+        $3
+      ) AS result
+    `,
+    [
+      game,
+      user,
+      card
+    ]
+  );
+
+  if (!rows.length || !rows[0].result) {
+    throw new Error(
+      `Failed to remove Bingo card ${card} from game ${game}.`
+    );
+  }
+
+  return rows[0].result;
+},	
+
   async updateCalledBingoNumbers(
   gameId,
   calledNumbers
