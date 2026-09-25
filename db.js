@@ -4642,41 +4642,101 @@ async getAllPaymentAccountsForAdmin() {
 },
 
  async endBingoGame(gameId, winnerCardIds) {
-  const game = toPositiveInteger(gameId, "gameId");
+  // ------------------------------------------------------------
+  // 1. Validate game ID
+  // ------------------------------------------------------------
+  const game = toPositiveInteger(
+    gameId,
+    "gameId"
+  );
 
+  // ------------------------------------------------------------
+  // 2. Validate winnerCardIds
+  // ------------------------------------------------------------
   if (!Array.isArray(winnerCardIds)) {
-    throw new Error("winnerCardIds must be an array.");
+    throw new Error(
+      "winnerCardIds must be an array."
+    );
   }
 
-  const cardIds = [
-    ...new Set(
-      winnerCardIds.map((cardId) =>
-        toPositiveInteger(cardId, "winnerCardId")
+  if (winnerCardIds.length === 0) {
+    throw new Error(
+      "At least one winning card is required."
+    );
+  }
+
+  // ------------------------------------------------------------
+  // 3. Validate every card ID
+  //
+  // Do NOT silently accept invalid values.
+  // Do NOT allow duplicate winning cards.
+  // ------------------------------------------------------------
+  const normalizedCardIds =
+    winnerCardIds.map((cardId) =>
+      toPositiveInteger(
+        cardId,
+        "winnerCardId"
       )
-    ),
+    );
+
+  const cardIds = [
+    ...new Set(normalizedCardIds)
   ];
 
   if (cardIds.length === 0) {
-    throw new Error("At least one winning card is required.");
+    throw new Error(
+      "At least one valid winning card is required."
+    );
   }
 
+  // ------------------------------------------------------------
+  // 4. Call the PostgreSQL settlement function
+  //
+  // IMPORTANT:
+  // PostgreSQL is responsible for:
+  //
+  // - locking the Bingo game
+  // - validating the winning cards
+  // - validating the pot
+  // - calculating the payout
+  // - splitting the payout between winning CARDS
+  // - crediting winner wallets
+  // - marking participants as winners
+  // - updating user statistics
+  // - setting is_split
+  // - completing the game
+  //
+  // Therefore we do NOT calculate money here.
+  // ------------------------------------------------------------
   const { rows } = await pool.query(
     `
       SELECT end_bingo_game(
-        $1,
+        $1::integer,
         $2::integer[]
       ) AS result
     `,
-    [game, cardIds]
+    [
+      game,
+      cardIds
+    ]
   );
 
-  if (!rows.length || !rows[0].result) {
+  // ------------------------------------------------------------
+  // 5. Make sure PostgreSQL returned a settlement result
+  // ------------------------------------------------------------
+  const result =
+    rows[0]?.result;
+
+  if (!result) {
     throw new Error(
       `Failed to settle Bingo game ${game}.`
     );
   }
 
-  return rows[0].result;
+  // ------------------------------------------------------------
+  // 6. Return the database settlement result
+  // ------------------------------------------------------------
+  return result;
 },
 
   async getActiveBingoGame(
