@@ -4087,7 +4087,7 @@ async getAllPaymentAccountsForAdmin() {
 
 		if (checktransactionresult.type !== 'deposit' || checktransactionresult.status !== 'completed') 
 		{
-  			throw new Error('Invalid or incomplete deposit transaction');
+  			throw new Error('Invalid or incomplete deposit transaction' + checktransactionresult.type + ' ' + checktransactionresult.status);
 		}
 		
         const updateDepositResult = await client.query(
