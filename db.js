@@ -4933,7 +4933,7 @@ async removeBingoParticipant(
     const { rows }  = await pool.query(
         `
         SELECT *
-        FROM get_user_wallet_balances($1)
+        FROM get_user_wallet_balances($1::bigint)
         `,
         [telegramId]
     );
