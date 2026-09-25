@@ -4076,15 +4076,14 @@ async getAllPaymentAccountsForAdmin() {
           ]
         );
 
-		const newtransactionId =
-  checktransactionresult.rows[0]?.transaction_id;
+
 
 		if (checktransactionresult.rowCount !== 1) {
   throw new Error(
     "Could not finalize deposit. No transaction"
   );
 }
-
+		checktransactionresult = checktransactionresult.rows[0];
 		if (checktransactionresult.type !== 'deposit' || checktransactionresult.status !== 'completed') 
 		{
   			throw new Error('Invalid or incomplete deposit transaction' + checktransactionresult.type + ' ' + checktransactionresult.status);
