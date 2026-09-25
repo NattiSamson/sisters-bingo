@@ -2881,29 +2881,6 @@ CREATE TABLE public.game_systems (
 
 ALTER TABLE public.game_systems OWNER TO neondb_owner;
 
--- ============================================================
--- SEED: Bingo game system
--- ============================================================
-
-INSERT INTO public.game_systems (
-    code,
-    name,
-    status,
-    metadata
-)
-VALUES (
-    'bingo',
-    'Bingo',
-    'active',
-    '{"source_type":"bingo_game"}'::jsonb
-)
-ON CONFLICT (code)
-DO UPDATE SET
-    name = EXCLUDED.name,
-    status = EXCLUDED.status,
-    metadata = EXCLUDED.metadata,
-    updated_at = NOW();
-
 --
 -- Name: game_systems_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
 --
@@ -3157,6 +3134,7 @@ CREATE VIEW public.user_wallet_balances AS
  SELECT u.id AS user_id,
     u.telegram_id,
     u.name,
+    u.phone,
     main.wallet_id AS main_wallet_id,
     main.balance AS main_balance,
     play.wallet_id AS play_wallet_id,
@@ -4385,4 +4363,3 @@ ALTER TABLE ONLY public.withdrawals
 --
 -- PostgreSQL database dump complete
 --
-
