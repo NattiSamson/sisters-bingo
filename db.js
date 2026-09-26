@@ -4249,430 +4249,663 @@ async getAllPaymentAccountsForAdmin() {
    * calls approveDeposit().
    */
 
-  async approveDeposit(
-    receipt,
-    telegramId
-  ) {
-
-    const receiptNo =
-      String(
-        receipt?.receiptNo ??        
-        ""
-      ).trim();
-
-    if (receiptNo === undefined || receiptNo === "") {
-      console.log(`db.aproveDeposit No receiptNo`);
-      return {success:false, errorMessage:"No receiptNo"};
-    }
-
-    const amount =
-      amountFromReceipt(
-        receipt
-      );
-
-    if (amount === undefined || amount === "" || amount < 1) {
-      console.log(`db.aproveDeposit No amount`);
-      return {success:false, errorMessage:"No amount"};
-    }
-
-    /*if (amount > 500) {
-      console.log(`db.aproveDeposit amount > 500`);
-      return {success:false, errorMessage:"Amount is greaterthan 500"};
-    }*/
-
-    const creditedAccount =
-      String(
-        receipt?.creditedPartyAccountNo ??
-        ""
-      ).trim();
-
-    if (creditedAccount === undefined || creditedAccount === "") {
-      console.log(`db.aproveDeposit No creditedAccount`);
-      return {success:false, errorMessage:"No creditedAccount"};
-    }
-
-    const creditedName =
-      String(
-        receipt?.creditedPartyName ??
-        ""
-      ).trim();
-
-    if (creditedName === undefined || creditedName === "") {
-      console.log(`db.aproveDeposit No creditedAccount`);
-      return {success:false, errorMessage:"No creditedAccount"};
-    }
-
-    const payerName =
-      String(
-        receipt?.payerName ??
-        ""
-      ).trim() || null;
-
-    if (payerName === undefined || payerName === "" || payerName === null) {
-      console.log(`db.aproveDeposit No payerName`);
-      return {success:false, errorMessage:"No payerName"};
-    }
-
-    const payerAccount =
-      String(
-        receipt?.payerTelebirrNo ??
-        ""
-      ).trim() || null;
-
-    if (payerAccount === undefined || payerAccount === "" || payerAccount === null) {
-      console.log(`db.aproveDeposit No payerAccount`);
-      return {success:false, errorMessage:"No payerAccount"};
-    }
-
-    const client =  await pool.connect();
+async function approveDeposit(receipt, telegramId) {
+    const client = await pool.connect();
 
     try {
+        // ------------------------------------------------------------
+        // 1. Validate request input
+        // ------------------------------------------------------------
 
-      await client.query(
-        "BEGIN"
-      );
+        const parsedTelegramId = Number(telegramId);
 
-      const duplicate =
-        await client.query(
-          `
-          SELECT id
-          FROM deposits
-          WHERE reference = $1
-          LIMIT 1
-          `,
-          [receiptNo]
+        if (
+            !Number.isSafeInteger(parsedTelegramId) ||
+            parsedTelegramId <= 0
+        ) {
+            throw new Error("Invalid Telegram user ID.");
+        }
+
+        const receiptNo = String(receipt?.receiptNo ?? "").trim();
+
+        if (!receiptNo) {
+            throw new Error("Receipt number is required.");
+        }
+
+        if (receiptNo.length > 100) {
+            throw new Error("Receipt number is too long.");
+        }
+
+        const amount = toPositiveAmount(
+            amountFromReceipt(receipt)
         );
 
-      if (
-        duplicate.rows.length
-      ) {
+        if (!amount || amount <= 0) {
+            throw new Error("Invalid deposit amount.");
+        }
 
-        await client.query(
-          "ROLLBACK"
+        const creditedAccount = String(
+            receipt?.creditedPartyAccountNo ?? ""
+        ).replace(/\D/g, "");
+
+        if (creditedAccount.length < 4) {
+            throw new Error("Invalid credited account number.");
+        }
+
+        const creditedName = String(
+            receipt?.creditedPartyName ?? ""
+        ).trim();
+
+        if (!creditedName) {
+            throw new Error("Credited account name is required.");
+        }
+
+        const payerName = String(
+            receipt?.payerName ?? ""
+        ).trim();
+
+        if (!payerName) {
+            throw new Error("Payer name is required.");
+        }
+
+        const payerAccount = String(
+            receipt?.payerTelebirrNo ?? ""
+        ).replace(/\D/g, "");
+
+        if (
+            payerAccount.length < 4 ||
+            payerAccount.length > 20
+        ) {
+            throw new Error("Invalid payer account number.");
+        }
+
+        const creditedAccountLast4 =
+            creditedAccount.slice(-4);
+
+        // ------------------------------------------------------------
+        // 2. Begin transaction
+        // ------------------------------------------------------------
+
+        await client.query("BEGIN");
+
+        // ------------------------------------------------------------
+        // 3. Lock the user
+        // ------------------------------------------------------------
+
+        const userResult = await client.query(
+            `
+            SELECT
+                id,
+                telegram_id,
+                name,
+                is_active,
+                is_banned,
+                is_blocked
+            FROM users
+            WHERE telegram_id = $1
+            FOR UPDATE
+            `,
+            [parsedTelegramId]
         );
-        console.log(`db.aproveDeposit Used receiptNo`);
-        return {success:false, errorMessage:"Used receiptNo"};
-      }
 
-      const userResult =
-        await client.query(
-          `
-          SELECT
-            id,
-            telegram_id,            
-            is_active,
-            is_banned,
-            is_blocked
-          FROM users
-          WHERE telegram_id = $1
-          AND is_active = TRUE
-          AND is_blocked = FALSE
-          FOR UPDATE
-          `,
-          [telegramId]
+        if (userResult.rowCount !== 1) {
+            throw new Error("User not found.");
+        }
+
+        const user = userResult.rows[0];
+
+        if (!user.is_active) {
+            throw new Error("User account is inactive.");
+        }
+
+        if (user.is_banned) {
+            throw new Error("User is banned.");
+        }
+
+        if (user.is_blocked) {
+            throw new Error("User is blocked.");
+        }
+
+        // ------------------------------------------------------------
+        // 4. Protect against duplicate receipt
+        //
+        // The UNIQUE index is the final protection.
+        // This check simply gives a cleaner error.
+        // ------------------------------------------------------------
+
+        const duplicateResult = await client.query(
+            `
+            SELECT
+                id,
+                status,
+                transaction_id
+            FROM deposits
+            WHERE reference = $1
+            LIMIT 1
+            FOR UPDATE
+            `,
+            [receiptNo]
         );
 
-      if (
-        !userResult.rows.length
-      ) {       
+        if (duplicateResult.rowCount > 0) {
+            throw new Error(
+                `Receipt ${receiptNo} has already been processed.`
+            );
+        }
 
-        await client.query(
-          "ROLLBACK"
-        );
-        console.log(`db.aproveDeposit User not found!`);
-        return {success:false, errorMessage:"User not found!"};
-      }
+        // ------------------------------------------------------------
+        // 5. Find the payment account from the receipt
+        // ------------------------------------------------------------
 
-      const creditedAccountLast4 =
-        creditedAccount
-          .replace(
-            /\D/g,
-            ""
-          )
-          .slice(-4);
-
-      if (
-        creditedAccountLast4.length !== 4
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );                     
-        console.log(`db.aproveDeposit Deposit phone number from the receipt is not correct! ${creditedAccountLast4}`);
-        return {success:false, errorMessage:"Deposit phone number from the receipt is not correct!"};
-      }
-
-      const accountResult =
-        await client.query(
-          `
-          SELECT
-            pa.id,
-            pa.payment_method_id,
-            pa.account_number,
-            pa.account_name,
-            pa.balance,
-            pa.is_active,
-            pa.is_removed
-
-          FROM payment_accounts pa
-
-          WHERE pa.is_active = TRUE
-            AND pa.is_removed = FALSE
-            AND RIGHT(
-              REGEXP_REPLACE(
+        const paymentAccountResult = await client.query(
+            `
+            SELECT
+                pa.id,
+                pa.payment_method_id,
+                pa.account_name,
                 pa.account_number,
-                '[^0-9]',
-                '',
-                'g'
-              ),
-              4
-            ) = $1
+                pa.balance,
+                pa.is_active,
+                pa.is_removed,
 
-          ORDER BY pa.id
+                pm.name AS payment_method_name,
+                pm.is_active AS payment_method_active
 
-          FOR UPDATE
-          `,
-          [creditedAccountLast4]
+            FROM payment_accounts pa
+
+            JOIN payment_methods pm
+                ON pm.id = pa.payment_method_id
+
+            WHERE pa.is_active = TRUE
+              AND pa.is_removed = FALSE
+              AND pm.is_active = TRUE
+              AND RIGHT(
+                    REGEXP_REPLACE(pa.account_number, '\\D', '', 'g'),
+                    4
+                  ) = $1
+
+            FOR UPDATE OF pa
+            `,
+            [creditedAccountLast4]
         );
 
-      if (
-        !accountResult.rows.length
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-        
-        console.log(`db.aproveDeposit Wrong account deposit number!`);
-        return {success:false, errorMessage:"Wrong account deposit number!"};
-      }
-      let user = userResult.rows[0];
-      let account =
-        accountResult.rows[0];
-
-      /*
-       * If the receipt contains the credited
-       * account name, prefer an exact match.
-       */
-      if (creditedName) {
-
-        const exactAccount =
-          accountResult.rows.find(
-            (a) =>
-              String(
-                a.account_name || ""
-              )
-                .trim()
-                .toLowerCase() ===
-              creditedName
-                .toLowerCase()
-          );
-
-        if (exactAccount) {
-          account = exactAccount;
+        if (paymentAccountResult.rowCount === 0) {
+            throw new Error(
+                "No active payment account matches the credited account."
+            );
         }
-        else
-        {
-           await client.query(
-          "ROLLBACK"
-        );
-        console.log(`db.aproveDeposit Deposit account name for the account number can not be matched!  ${creditedName}`);
-        return {success:false, errorMessage:"Deposit account name for the account number can not be matched!"};
+
+        // ------------------------------------------------------------
+        // 6. Match the credited account name
+        //
+        // There may theoretically be multiple accounts with the
+        // same last 4 digits, so the account name must disambiguate.
+        // ------------------------------------------------------------
+
+        const normalizedCreditedName =
+            creditedName.replace(/\s+/g, " ").trim().toLowerCase();
+
+        const matchingAccounts =
+            paymentAccountResult.rows.filter((account) => {
+                const normalizedAccountName =
+                    String(account.account_name ?? "")
+                        .replace(/\s+/g, " ")
+                        .trim()
+                        .toLowerCase();
+
+                return normalizedAccountName === normalizedCreditedName;
+            });
+
+        if (matchingAccounts.length === 0) {
+            throw new Error(
+                "The credited account name does not match any active payment account."
+            );
         }
-      }
-      else
-      {
-        await client.query(
-          "ROLLBACK"
-        );
-        console.log(`db.aproveDeposit No creditedName!`);
-        return {success:false, errorMessage:"No creditedName!"};
-      }
 
-      const depositResult =
-        await client.query(
-          `
-          INSERT INTO deposits (
-            user_id,
-            payment_account_id,
-            deposit_method_id,
-            depositor_name,
-            depositor_account,
-            amount,            
-            reference,
-            created_at
-          )
-          VALUES (
-            $1,
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,            
-            $7,
-            NOW()
-          )
-          RETURNING
-            id,
-            created_at
-          `,
-          [
-            user.id,
-            account.id,
-            account.payment_method_id,
-            payerName,
-            payerAccount,
-            amount,            
-            receiptNo
-          ]
+        if (matchingAccounts.length > 1) {
+            throw new Error(
+                "Multiple payment accounts match this receipt. Deposit cannot be safely processed."
+            );
+        }
+
+        const paymentAccount = matchingAccounts[0];
+
+        // ------------------------------------------------------------
+        // 7. Ask PostgreSQL for the applicable deposit rule
+        //
+        // get_active_deposit_rule() checks:
+        //   - active status
+        //   - start/end dates
+        //   - payment method
+        //   - payment account
+        //   - minimum amount
+        //   - maximum amount
+        //
+        // It also applies the database's priority ordering.
+        // ------------------------------------------------------------
+
+        const ruleResult = await client.query(
+            `
+            SELECT *
+            FROM get_active_deposit_rule(
+                $1,
+                $2,
+                $3
+            )
+            `,
+            [
+                paymentAccount.payment_method_id,
+                paymentAccount.id,
+                amount
+            ]
         );
 
-    const depositId =
-      depositResult.rows[0]?.id;
-		
-  const depositvalues = depositResult.rows[0];
-  const walletResult = await client.query(
-    `
-    SELECT credit_deposit_to_wallet(
-      $1,
-      $2,
-      $3,      
-      $4,
-      $5,
-	  $6
-    ) AS transaction_id
-    `,
-    [
-      user.id,
-      amount,
-      depositvalues.id,
-      `deposit:credit:${depositId}`,
-	  null,
-	  null
-    ]
-  );
+        if (ruleResult.rowCount !== 1) {
+            throw new Error(
+                "No active deposit rule allows this deposit."
+            );
+        }
 
-  const transactionId =
-  walletResult.rows[0]?.transaction_id;
+        const rule = ruleResult.rows[0];
 
-		if (!transactionId) {
-  throw new Error(
-    "Deposit wallet transaction was not created."
-  );
-}
+        if (!rule.id) {
+            throw new Error(
+                "No valid deposit rule was found for this deposit."
+            );
+        }
 
-		const checktransactionresult = await client.query(
-          `
-          SELECT id, type, status
-			FROM financial_transactions
-			WHERE id = $1
-          `,
-          [
-            transactionId			
-          ]
+        // ------------------------------------------------------------
+        // 8. Save the deposit as pending first
+        //
+        // rule_id is stored so we know exactly which rule authorized
+        // this deposit.
+        // ------------------------------------------------------------
+
+        const depositResult = await client.query(
+            `
+            INSERT INTO deposits (
+                user_id,
+                payment_account_id,
+                deposit_method_id,
+                depositor_name,
+                depositor_account,
+                amount,
+                reference,
+                rule_id,
+                status,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                $1,
+                $2,
+                $3,
+                $4,
+                $5,
+                $6,
+                $7,
+                $8,
+                'pending',
+                NOW(),
+                NOW()
+            )
+            RETURNING
+                id,
+                user_id,
+                payment_account_id,
+                deposit_method_id,
+                depositor_name,
+                depositor_account,
+                amount,
+                reference,
+                rule_id,
+                status,
+                created_at
+            `,
+            [
+                user.id,
+                paymentAccount.id,
+                // This column is the deposit_method_id, while
+                // get_active_deposit_rule uses payment_method_id.
+                paymentAccount.payment_method_id,
+                payerName,
+                payerAccount,
+                amount,
+                receiptNo,
+                rule.id
+            ]
         );
 
+        if (depositResult.rowCount !== 1) {
+            throw new Error("Failed to create deposit record.");
+        }
 
+        const deposit = depositResult.rows[0];
 
-		if (checktransactionresult.rowCount !== 1) {
-  throw new Error(
-    "Could not finalize deposit. No transaction"
-  );
-}
-		const transresult = checktransactionresult.rows[0];
-		if (transresult.type !== 'deposit' || transresult.status !== 'completed') 
-		{
-  			throw new Error('Invalid or incomplete deposit transaction');
-		}
-		
-        const updateDepositResult = await client.query(
-          `
-          UPDATE deposits
-			SET
-			    transaction_id = $1,
-			    status = 'completed',
-			    approved_at = NOW(),
-			    updated_at = NOW()
-			WHERE id = $2
-          `,
-          [
-            transactionId,
-			depositId
-          ]
+        // ------------------------------------------------------------
+        // 9. Credit ONLY the Play wallet
+        //
+        // users.balance is intentionally NOT updated.
+        // ------------------------------------------------------------
+
+        const transactionResult = await client.query(
+            `
+            SELECT credit_deposit_to_wallet(
+                $1,
+                $2,
+                $3,
+                $4,
+                NULL,
+                $5
+            ) AS transaction_id
+            `,
+            [
+                user.id,
+                amount,
+                deposit.id,
+                `deposit:credit:${deposit.id}`,
+                `Deposit ${receiptNo}`
+            ]
         );
-		if (updateDepositResult.rowCount !== 1) {
-  throw new Error(
-    "Could not finalize deposit. can not update deposit"
-  );
-}
 
-/*
-      await client.query(
-        `
-        UPDATE users
-        SET
-          balance = $1,
-          last_seen = NOW()
-        WHERE id = $2
-        `,
-        [
-          amountAfter,
-          user.id
-        ]
-      );
-*/
-      const updatePaymentAccountsResult = await client.query(
-        `
-        UPDATE payment_accounts
-        SET
-          balance =
-            balance + $1
-        WHERE id = $2
-        `,
-        [
-          amount,
-          account.id
-        ]
-      );
-if (updatePaymentAccountsResult.rowCount !== 1) {
-  throw new Error(
-    "Could not finalize deposit. can not update payment_accounts"
-  );
-}
-     
+        if (transactionResult.rowCount !== 1) {
+            throw new Error(
+                "Failed to create deposit financial transaction."
+            );
+        }
 
-      await client.query(
-        "COMMIT"
-      );
+        const transactionId =
+            transactionResult.rows[0].transaction_id;
 
-      console.log(`db.aproveDeposit Successful`);
-      return {success:true, errorMessage:"Successful"};
+        if (!transactionId) {
+            throw new Error(
+                "Deposit financial transaction was not created."
+            );
+        }
 
-    } catch (err) {
+        // ------------------------------------------------------------
+        // 10. Verify the financial transaction
+        // ------------------------------------------------------------
 
-      await safeRollback(
-        client
-      );
+        const transactionCheck = await client.query(
+            `
+            SELECT
+                id,
+                user_id,
+                type,
+                status,
+                source_type,
+                source_id
+            FROM financial_transactions
+            WHERE id = $1
+            FOR UPDATE
+            `,
+            [transactionId]
+        );
 
-      if (
-        err.code === "23505"
-      ) {
-        return {success:false, errorMessage:"Someting went wrong! error code = "+ err.code};
-      }
+        if (transactionCheck.rowCount !== 1) {
+            throw new Error(
+                "Deposit financial transaction could not be verified."
+            );
+        }
 
-      console.error(
-        "approveDeposit error:",
-        err
-      );
+        const transaction =
+            transactionCheck.rows[0];
 
-      throw err;
+        if (Number(transaction.user_id) !== Number(user.id)) {
+            throw new Error(
+                "Deposit transaction user mismatch."
+            );
+        }
 
+        if (transaction.type !== "deposit") {
+            throw new Error(
+                "Invalid financial transaction type for deposit."
+            );
+        }
+
+        if (transaction.status !== "completed") {
+            throw new Error(
+                "Deposit financial transaction is not completed."
+            );
+        }
+
+        if (transaction.source_type !== "deposit") {
+            throw new Error(
+                "Deposit transaction source mismatch."
+            );
+        }
+
+        if (String(transaction.source_id) !== String(deposit.id)) {
+            throw new Error(
+                "Deposit transaction source ID mismatch."
+            );
+        }
+
+        // ------------------------------------------------------------
+        // 11. Verify the ledger entry belongs to the PLAY wallet
+        // ------------------------------------------------------------
+
+        const ledgerResult = await client.query(
+            `
+            SELECT
+                le.id,
+                le.wallet_id,
+                le.amount,
+                w.wallet_type
+            FROM ledger_entries le
+            JOIN wallets w
+                ON w.id = le.wallet_id
+            WHERE le.transaction_id = $1
+            FOR UPDATE
+            `,
+            [transactionId]
+        );
+
+        if (ledgerResult.rowCount !== 1) {
+            throw new Error(
+                "Deposit must create exactly one wallet ledger entry."
+            );
+        }
+
+        const ledger = ledgerResult.rows[0];
+
+        if (ledger.wallet_type !== "play") {
+            throw new Error(
+                "Deposit attempted to credit a non-play wallet."
+            );
+        }
+
+        if (Number(ledger.amount) !== Number(amount)) {
+            throw new Error(
+                "Deposit ledger amount does not match the receipt amount."
+            );
+        }
+
+        // ------------------------------------------------------------
+        // 12. Increase the payment account balance
+        //
+        // This is separate from the user's wallet.
+        // Both operations remain inside the same DB transaction.
+        // ------------------------------------------------------------
+
+        const paymentAccountUpdate = await client.query(
+            `
+            UPDATE payment_accounts
+            SET
+                balance = balance + $1
+            WHERE id = $2
+              AND is_active = TRUE
+              AND is_removed = FALSE
+            RETURNING
+                id,
+                balance
+            `,
+            [
+                amount,
+                paymentAccount.id
+            ]
+        );
+
+        if (paymentAccountUpdate.rowCount !== 1) {
+            throw new Error(
+                "Payment account could not be updated."
+            );
+        }
+
+        const updatedPaymentAccount =
+            paymentAccountUpdate.rows[0];
+
+        // ------------------------------------------------------------
+        // 13. Mark deposit completed
+        // ------------------------------------------------------------
+
+        const completedDepositResult = await client.query(
+            `
+            UPDATE deposits
+            SET
+                transaction_id = $1,
+                status = 'completed',
+                approved_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $2
+              AND status = 'pending'
+            RETURNING
+                id,
+                status,
+                transaction_id,
+                rule_id,
+                approved_at,
+                updated_at
+            `,
+            [
+                transactionId,
+                deposit.id
+            ]
+        );
+
+        if (completedDepositResult.rowCount !== 1) {
+            throw new Error(
+                "Deposit could not be marked as completed."
+            );
+        }
+
+        // ------------------------------------------------------------
+        // 14. Read final wallet balances
+        //
+        // The wallet view is now the source of truth.
+        // users.balance is NOT read or modified.
+        // ------------------------------------------------------------
+
+        const balancesResult = await client.query(
+            `
+            SELECT
+                user_id,
+                telegram_id,
+                name,
+                main_wallet_id,
+                main_balance,
+                play_wallet_id,
+                play_balance,
+                total_balance
+            FROM user_wallet_balances
+            WHERE telegram_id = $1
+            `,
+            [parsedTelegramId]
+        );
+
+        if (balancesResult.rowCount !== 1) {
+            throw new Error(
+                "Could not verify final wallet balances."
+            );
+        }
+
+        const balances = balancesResult.rows[0];
+
+        // ------------------------------------------------------------
+        // 15. Commit everything atomically
+        // ------------------------------------------------------------
+
+        await client.query("COMMIT");
+
+        return {
+            success: true,
+            message: "Deposit approved successfully.",
+
+            deposit: {
+                id: deposit.id,
+                reference: deposit.reference,
+                amount: Number(deposit.amount),
+                status: completedDepositResult.rows[0].status,
+                ruleId: completedDepositResult.rows[0].rule_id,
+                approvedAt:
+                    completedDepositResult.rows[0].approved_at
+            },
+
+            transaction: {
+                id: transactionId,
+                type: transaction.type,
+                status: transaction.status
+            },
+
+            rule: {
+                id: rule.id,
+                code: rule.code,
+                name: rule.name,
+                minimumAmount:
+                    rule.minimum_amount !== null
+                        ? Number(rule.minimum_amount)
+                        : null,
+                maximumAmount:
+                    rule.maximum_amount !== null
+                        ? Number(rule.maximum_amount)
+                        : null
+            },
+
+            paymentAccount: {
+                id: paymentAccount.id,
+                paymentMethodId:
+                    paymentAccount.payment_method_id,
+                paymentMethodName:
+                    paymentAccount.payment_method_name,
+                balance:
+                    Number(updatedPaymentAccount.balance)
+            },
+
+            wallet: {
+                mainBalance:
+                    Number(balances.main_balance),
+                playBalance:
+                    Number(balances.play_balance),
+                totalBalance:
+                    Number(balances.total_balance)
+            }
+        };
+    } catch (error) {
+        await safeRollback(client);
+
+        if (error?.code === "23505") {
+            if (
+                String(error.constraint ?? "")
+                    .includes("deposits_reference_unique_idx")
+            ) {
+                throw new Error(
+                    `Receipt ${String(
+                        receipt?.receiptNo ?? ""
+                    ).trim()} has already been processed.`
+                );
+            }
+
+            throw error;
+        }
+
+        console.error("approveDeposit failed:", error);
+
+        throw error;
     } finally {
-
-      client.release();
-
+        client.release();
     }
-  },
+}
 
   // ============================================================
   // GAMES
