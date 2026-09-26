@@ -4249,7 +4249,7 @@ async getAllPaymentAccountsForAdmin() {
    * calls approveDeposit().
    */
 
-async function approveDeposit(receipt, telegramId) {
+async approveDeposit(receipt, telegramId) {
     const client = await pool.connect();
 
     try {
