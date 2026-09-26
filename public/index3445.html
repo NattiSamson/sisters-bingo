@@ -1290,112 +1290,6 @@ body{padding:0!important}
   setTimeout(fixMelaCardPool,100);
 })();
 </script>
-
-<style id="mela-four-card-responsive-fix">
-/* FINAL FIX: all four selected-card states must have their own selection color. */
-#screenCards .pool-btn.mine1,
-#screenCards .pool-btn.mine2,
-#screenCards .pool-btn.mine3,
-#screenCards .pool-btn.mine4{
-  background:linear-gradient(145deg,#ff7a18,#f4510b)!important;
-  color:#fff!important;
-  border-color:#ffb05c!important;
-  opacity:1!important;
-  box-shadow:0 0 0 1px rgba(255,176,92,.30),0 0 13px rgba(255,101,15,.28)!important;
-}
-
-/* The game screen is a fixed viewport between the navbar and bottom nav.
-   Let its content shrink with the viewport instead of clipping the tracker. */
-#screenGame{
-  overflow-y:auto!important;
-  overflow-x:hidden!important;
-  scrollbar-width:thin;
-  scrollbar-color:#4f72ff transparent;
-}
-#screenGame #cardsWrap{
-  width:100%;
-  min-width:0;
-  min-height:0!important;
-  display:grid;
-  grid-template-columns:minmax(0,1fr);
-  gap:6px;
-  margin:0!important;
-  flex:0 0 auto!important;
-}
-#screenGame #cardsWrap.dual-cards-wrap{
-  grid-template-columns:repeat(2,minmax(0,1fr))!important;
-  gap:5px!important;
-}
-#screenGame #cardsWrap .card-container{
-  min-width:0!important;
-  width:100%!important;
-  margin:0!important;
-  padding:5px!important;
-  border-radius:12px!important;
-}
-#screenGame #cardsWrap .card-id-tag{
-  margin-bottom:3px!important;
-  padding-left:2px!important;
-  font-size:clamp(7px,1.35vh,9px)!important;
-  line-height:1.05!important;
-}
-#screenGame #cardsWrap .bingo-header{margin-bottom:3px!important;border-radius:5px!important}
-#screenGame #cardsWrap .bingo-col-head{
-  height:clamp(17px,2.8vh,25px)!important;
-  font-size:clamp(8px,1.65vh,11px)!important;
-}
-#screenGame #cardsWrap .bingo-body{gap:2px!important}
-#screenGame #cardsWrap .bingo-cell{
-  height:clamp(20px,4.25vh,37px)!important;
-  min-height:20px!important;
-  padding:0!important;
-  border-radius:4px!important;
-  font-size:clamp(7px,1.75vh,11px)!important;
-}
-
-/* When 3 or 4 cards are visible, the two-row card grid gets deliberately
-   smaller so the called-number tracker stays in the same viewport. */
-#screenGame.cards-3 #cardsWrap .bingo-cell,
-#screenGame.cards-4 #cardsWrap .bingo-cell{
-  height:clamp(17px,3.15vh,28px)!important;
-  min-height:17px!important;
-  font-size:clamp(7px,1.45vh,10px)!important;
-}
-#screenGame.cards-3 #cardsWrap .bingo-col-head,
-#screenGame.cards-4 #cardsWrap .bingo-col-head{
-  height:clamp(15px,2.3vh,21px)!important;
-  font-size:clamp(7px,1.35vh,10px)!important;
-}
-#screenGame.cards-3 #cardsWrap .card-container,
-#screenGame.cards-4 #cardsWrap .card-container{padding:4px!important;border-radius:10px!important}
-#screenGame.cards-3 #cardsWrap .card-id-tag,
-#screenGame.cards-4 #cardsWrap .card-id-tag{font-size:7px!important;margin-bottom:2px!important}
-
-/* Short screens need extra compression; this prevents the tracker from being
-   pushed below the viewport on phones in landscape or with browser UI visible. */
-@media(max-height:680px){
-  #screenGame{padding-top:4px!important;padding-bottom:5px!important}
-  #screenGame .game-stats-row{padding:5px 5px 4px!important;margin-bottom:4px!important}
-  #screenGame .claim-bar-wrap{margin-bottom:5px!important}
-  #screenGame #cardsWrap{gap:4px!important}
-  #screenGame #cardsWrap.dual-cards-wrap{gap:4px!important}
-  #screenGame #cardsWrap .bingo-cell{height:clamp(17px,3.2vh,28px)!important}
-  #screenGame.cards-3 #cardsWrap .bingo-cell,
-  #screenGame.cards-4 #cardsWrap .bingo-cell{height:clamp(15px,2.65vh,22px)!important;min-height:15px!important}
-  #screenGame.cards-3 #cardsWrap .bingo-col-head,
-  #screenGame.cards-4 #cardsWrap .bingo-col-head{height:16px!important}
-  #screenGame #cardsWrap .tracker-wrap{margin-top:0!important}
-}
-
-@media(max-width:380px){
-  #screenGame #cardsWrap.dual-cards-wrap{gap:3px!important}
-  #screenGame #cardsWrap .card-container{padding:3px!important;border-radius:9px!important}
-  #screenGame.cards-3 #cardsWrap .bingo-cell,
-  #screenGame.cards-4 #cardsWrap .bingo-cell{height:clamp(14px,2.5vh,20px)!important;min-height:14px!important;font-size:7px!important}
-  #screenGame.cards-3 #cardsWrap .bingo-col-head,
-  #screenGame.cards-4 #cardsWrap .bingo-col-head{height:14px!important;font-size:7px!important}
-}
-</style>
 </head>
 <body>
 
@@ -2613,36 +2507,14 @@ function renderBothCards(){
     [myCardId4,myCardNumbers4,'cardContainer4','cardLabel4','cardBody4','b4_']
   ];
   const selected=cards.filter(c=>c[0]&&c[1].length).length;
-  // Keep a deterministic layout class so CSS can shrink 3/4-card games
-  // according to the actual number of visible cards.
-  [1,2,3,4].forEach(n=>wrap.classList.remove('cards-'+n));
-  if(selected) wrap.classList.add('cards-'+selected);
   wrap.classList.toggle('dual-cards-wrap',selected>1);
-  document.getElementById('screenGame')?.classList.remove('cards-1','cards-2','cards-3','cards-4');
-  if(selected) document.getElementById('screenGame')?.classList.add('cards-'+selected);
   cards.forEach(([id,nums,container,label,body,pfx])=>{
     const el=document.getElementById(container);
     el.style.display=(id&&nums.length)?'':'none';
     document.getElementById(label).innerText=`Card ${id||'---'}`;
     if(id&&nums.length) renderCard(nums,body,pfx);
   });
-  requestAnimationFrame(compactGameLayout);
 }
-
-function compactGameLayout(){
-  const game=document.getElementById('screenGame');
-  const wrap=document.getElementById('cardsWrap');
-  if(!game||!wrap||game.classList.contains('spectator-mode')) return;
-  const ids=['cardContainer1','cardContainer2','cardContainer3','cardContainer4'];
-  const count=ids.reduce((n,id)=>{
-    const el=document.getElementById(id);
-    return n+(el&&getComputedStyle(el).display!=='none'?1:0);
-  },0);
-  [1,2,3,4].forEach(n=>game.classList.remove('cards-'+n));
-  if(count) game.classList.add('cards-'+count);
-}
-window.addEventListener('resize',()=>requestAnimationFrame(compactGameLayout),{passive:true});
-window.addEventListener('orientationchange',()=>setTimeout(compactGameLayout,80),{passive:true});
 
 // Winning patterns: rows, columns, both diagonals, and all four corners.
 // The center FREE square is always considered marked.
