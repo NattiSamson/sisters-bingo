@@ -2732,11 +2732,11 @@ async getWithdrawalHistory(
       withdrawal:
         approvedWithdrawal,
 	  mainBalance:
-		mainbalance,  
+		mainBalance,  
 	  playBalance:
-		playbalance,
+		playBalance,
 	  totalBalance:
-		totalbalance		
+		totalBalance		
     };
 
   } catch (err) {
