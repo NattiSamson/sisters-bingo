@@ -5056,7 +5056,7 @@ await ctx.reply(
 
           `📱 አካውንት፦ \`${result.withdrawal.account_number}\`\n\n` +
 
-          `💰 አዲሱ ቀሪ ሂሳብ፦ *${result.balance_after} ETB*`,
+          `💰 አዲሱ ቀሪ ሂሳብ፦ *${result.mainBalance} ETB*`,
 
           {
 
