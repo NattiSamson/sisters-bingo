@@ -2251,7 +2251,9 @@ async getWithdrawalHistory(
     await client.query("BEGIN");
 
     /*
-     * Verify admin.
+     * ============================================================
+     * 1. Verify admin
+     * ============================================================
      */
     const adminResult = await client.query(
       `
@@ -2262,89 +2264,89 @@ async getWithdrawalHistory(
       FROM users
       WHERE telegram_id = $1
         AND is_admin = TRUE
-        AND is_active = TRUE        
+        AND is_active = TRUE
         AND is_blocked = FALSE
       LIMIT 1
       `,
       [adminTelegramId]
     );
 
-    if (!adminResult.rows.length) {
-      await client.query("ROLLBACK");
-
-      return {
-        success: false,
-        message: "Admin account not found."
-      };
+    if (adminResult.rowCount !== 1) {
+      throw new Error(
+        "Admin account not found."
+      );
     }
 
-    const admin = adminResult.rows[0];
+    const admin =
+      adminResult.rows[0];
 
     /*
-     * Lock withdrawal.
+     * ============================================================
+     * 2. Lock the withdrawal
+     * ============================================================
+     *
+     * IMPORTANT:
+     *
+     * We lock ONLY the withdrawal row here.
+     *
+     * We do not need to lock the user's wallet because the user's
+     * withdrawal amount was already reserved when the withdrawal
+     * was created.
      */
-    const withdrawalResult = await client.query(
-      `
-      SELECT
-        w.*,
-        u.telegram_id,
-        u.name,
-		uwb.main_balance,
-  		uwb.play_balance,
-  		uwb.total_balance
-      FROM withdrawals w
-      JOIN users u
-        ON u.id = w.user_id
-	  JOIN user_wallet_balances uwb
-  		ON uwb.user_id = w.user_id		
-      WHERE w.id = $1
-      FOR UPDATE OF w
-      `,
-      [withdrawalIdNum]
-    );
+    const withdrawalResult =
+      await client.query(
+        `
+        SELECT
+          w.*,
+          u.telegram_id,
+          u.name
+        FROM withdrawals w
+        JOIN users u
+          ON u.id = w.user_id
+        WHERE w.id = $1
+        FOR UPDATE OF w
+        `,
+        [withdrawalIdNum]
+      );
 
-    if (!withdrawalResult.rows.length) {
-      await client.query("ROLLBACK");
-
-      return {
-        success: false,
-        message: "Withdrawal request not found."
-      };
+    if (withdrawalResult.rowCount !== 1) {
+      throw new Error(
+        "Withdrawal request not found."
+      );
     }
 
-    const withdrawal = withdrawalResult.rows[0];
+    const withdrawal =
+      withdrawalResult.rows[0];
 
     /*
-     * Must be actively claimed.
+     * ============================================================
+     * 3. Verify withdrawal state
+     * ============================================================
      */
     if (withdrawal.status !== "processing") {
-      await client.query("ROLLBACK");
-
-      return {
-        success: false,
-        message:
-          `Withdrawal is not being processed. Current status: ${withdrawal.status}`
-      };
+      throw new Error(
+        `Withdrawal is not being processed. Current status: ${withdrawal.status}`
+      );
     }
 
     /*
-     * Only the admin who claimed it can approve it.
+     * ============================================================
+     * 4. Verify the admin who claimed the withdrawal
+     * ============================================================
      */
     if (
       Number(withdrawal.claimed_by_id) !==
       Number(admin.id)
     ) {
-      await client.query("ROLLBACK");
-
-      return {
-        success: false,
-        message:
-          "This withdrawal is assigned to another admin."
-      };
+      throw new Error(
+        "This withdrawal is assigned to another admin."
+      );
     }
 
     /*
-     * Prevent an expired lease from being approved.
+     * ============================================================
+     * 5. Verify claim lease
+     * ============================================================
      */
     const claimedAt =
       withdrawal.claimed_at
@@ -2353,75 +2355,31 @@ async getWithdrawalHistory(
 
     if (
       !claimedAt ||
-      Date.now() - claimedAt.getTime() >
-        5 * 60 * 1000
+      Number.isNaN(claimedAt.getTime())
     ) {
-      await client.query("ROLLBACK");
+      throw new Error(
+        "This withdrawal has an invalid claim timestamp."
+      );
+    }
 
-      return {
-        success: false,
-        message:
-          "This withdrawal claim has expired. Please claim it again."
-      };
+    const CLAIM_TIMEOUT_MS =
+      5 * 60 * 1000;
+
+    const claimAge =
+      Date.now() -
+      claimedAt.getTime();
+
+    if (claimAge > CLAIM_TIMEOUT_MS) {
+      throw new Error(
+        "This withdrawal claim has expired. Please claim it again."
+      );
     }
 
     /*
-     * Lock payment account.
+     * ============================================================
+     * 6. Validate withdrawal amount
+     * ============================================================
      */
-    const accountResult = await client.query(
-      `
-      SELECT
-        id,
-        payment_method_id,
-        account_number,
-        account_name,
-        balance,
-        is_active,
-        is_removed
-      FROM payment_accounts
-      WHERE id = $1
-      FOR UPDATE
-      `,
-      [accountId]
-    );
-
-    if (!accountResult.rows.length) {
-      await client.query("ROLLBACK");
-
-      return {
-        success: false,
-        message: "Payment account not found."
-      };
-    }
-
-    const account = accountResult.rows[0];
-
-    if (
-      !account.is_active ||
-      account.is_removed
-    ) {
-      await client.query("ROLLBACK");
-
-      return {
-        success: false,
-        message:
-          "Selected payment account is inactive or removed."
-      };
-    }
-
-    if (
-      Number(account.payment_method_id) !==
-      Number(withdrawal.payment_method_id)
-    ) {
-      await client.query("ROLLBACK");
-
-      return {
-        success: false,
-        message:
-          "Payment account does not match the withdrawal method."
-      };
-    }
-
     const amount =
       Number(withdrawal.amount);
 
@@ -2429,98 +2387,286 @@ async getWithdrawalHistory(
       !Number.isFinite(amount) ||
       amount <= 0
     ) {
-      await client.query("ROLLBACK");
-
-      return {
-        success: false,
-        message: "Invalid withdrawal amount."
-      };
-    }
-
-    const accountBalance =
-      Number(account.balance || 0);
-
-    if (accountBalance < amount) {
-      await client.query("ROLLBACK");
-
-      return {
-        success: false,
-        message:
-          "Insufficient payment-account balance."
-      };
-    }
-
-    const accountAfter =
-      accountBalance - amount;
-
-    /*
-     * Deduct from the payment account.
-     */
-    await client.query(
-      `
-      UPDATE payment_accounts
-      SET balance = balance - $1
-      WHERE id = $2
-      `,
-      [
-        amount,
-        account.id
-      ]
-    );
-
-    /*
-     * Final state.
-     *
-     * Your actual database uses 'approved',
-     * NOT 'completed'.
-     */
-    const updateResult = await client.query(
-      `
-      UPDATE withdrawals
-      SET
-        payment_account_id = $1,
-        approved_by_id = $2,
-        rejected_by_id = NULL,
-        status = 'approved',
-        rejection_reason = NULL,
-        claimed_by_id = NULL,
-        claimed_at = NULL,
-        processed_at = NOW(),
-        updated_at = NOW()
-      WHERE id = $3
-        AND status = 'processing'
-        AND claimed_by_id = $2
-      RETURNING *
-      `,
-      [
-        account.id,
-        admin.id,
-        withdrawalIdNum
-      ]
-    );
-
-    if (!updateResult.rows.length) {
       throw new Error(
-        "Withdrawal could not be completed."
+        "Invalid withdrawal amount."
       );
     }
 
-    await client.query("COMMIT");
+    /*
+     * ============================================================
+     * 7. Make sure the withdrawal has a reservation transaction
+     * ============================================================
+     *
+     * The user's funds should already have been reserved by
+     * createWithdrawal().
+     *
+     * Therefore an approved withdrawal must have a linked
+     * financial transaction.
+     */
+    if (!withdrawal.transaction_id) {
+      throw new Error(
+        "Withdrawal has no reservation transaction."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 8. Verify the reservation transaction
+     * ============================================================
+     */
+    const transactionResult =
+      await client.query(
+        `
+        SELECT
+          id,
+          type,
+          status
+        FROM financial_transactions
+        WHERE id = $1
+        FOR UPDATE
+        `,
+        [withdrawal.transaction_id]
+      );
+
+    if (transactionResult.rowCount !== 1) {
+      throw new Error(
+        "Withdrawal reservation transaction not found."
+      );
+    }
+
+    const financialTransaction =
+      transactionResult.rows[0];
+
+    if (
+      financialTransaction.type !==
+      "withdrawal"
+    ) {
+      throw new Error(
+        "Withdrawal has an invalid financial transaction type."
+      );
+    }
+
+    if (
+      financialTransaction.status !==
+      "completed"
+    ) {
+      throw new Error(
+        "Withdrawal reservation transaction is not completed."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 9. Lock payment account
+     * ============================================================
+     *
+     * This is critical.
+     *
+     * Multiple admins may be processing different withdrawals
+     * using the same payment account.
+     *
+     * FOR UPDATE prevents two transactions from spending the
+     * same payment-account balance concurrently.
+     */
+    const accountResult =
+      await client.query(
+        `
+        SELECT
+          id,
+          payment_method_id,
+          account_number,
+          account_name,
+          balance,
+          is_active,
+          is_removed
+        FROM payment_accounts
+        WHERE id = $1
+        FOR UPDATE
+        `,
+        [accountId]
+      );
+
+    if (accountResult.rowCount !== 1) {
+      throw new Error(
+        "Payment account not found."
+      );
+    }
+
+    const account =
+      accountResult.rows[0];
+
+    /*
+     * ============================================================
+     * 10. Validate payment account
+     * ============================================================
+     */
+    if (
+      !account.is_active ||
+      account.is_removed
+    ) {
+      throw new Error(
+        "Selected payment account is inactive or removed."
+      );
+    }
+
+    /*
+     * The payment account must belong to the same payment method
+     * selected by the user.
+     */
+    if (
+      Number(account.payment_method_id) !==
+      Number(withdrawal.payment_method_id)
+    ) {
+      throw new Error(
+        "Payment account does not match the withdrawal payment method."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 11. Check payment account balance
+     * ============================================================
+     */
+    const accountBalance =
+      Number(account.balance);
+
+    if (
+      !Number.isFinite(accountBalance) ||
+      accountBalance < 0
+    ) {
+      throw new Error(
+        "Payment account has an invalid balance."
+      );
+    }
+
+    if (accountBalance < amount) {
+      throw new Error(
+        "Insufficient payment-account balance."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 12. Deduct payment account
+     * ============================================================
+     *
+     * The payment account is already locked with FOR UPDATE.
+     *
+     * We also use RETURNING to obtain the actual resulting balance
+     * from PostgreSQL.
+     */
+    const accountUpdateResult =
+      await client.query(
+        `
+        UPDATE payment_accounts
+        SET
+          balance = balance - $1,
+          updated_at = NOW()
+        WHERE id = $2
+          AND balance >= $1
+        RETURNING
+          id,
+          balance
+        `,
+        [
+          amount,
+          account.id
+        ]
+      );
+
+    if (accountUpdateResult.rowCount !== 1) {
+      throw new Error(
+        "Payment account balance could not be updated."
+      );
+    }
+
+    const updatedAccount =
+      accountUpdateResult.rows[0];
+
+    const accountBalanceAfter =
+      Number(updatedAccount.balance);
+
+    /*
+     * ============================================================
+     * 13. Approve withdrawal
+     * ============================================================
+     *
+     * The WHERE conditions provide another layer of protection.
+     */
+    const updateResult =
+      await client.query(
+        `
+        UPDATE withdrawals
+        SET
+          payment_account_id = $1,
+          approved_by_id = $2,
+          rejected_by_id = NULL,
+          status = 'approved',
+          rejection_reason = NULL,
+          claimed_by_id = NULL,
+          claimed_at = NULL,
+          processed_at = NOW(),
+          updated_at = NOW()
+        WHERE id = $3
+          AND status = 'processing'
+          AND claimed_by_id = $2
+          AND claimed_at IS NOT NULL
+          AND claimed_at >= NOW() - INTERVAL '5 minutes'
+        RETURNING *
+        `,
+        [
+          account.id,
+          admin.id,
+          withdrawalIdNum
+        ]
+      );
+
+    /*
+     * If this fails, throw.
+     *
+     * Because everything is inside the same DB transaction,
+     * the payment-account deduction will also be rolled back.
+     */
+    if (updateResult.rowCount !== 1) {
+      throw new Error(
+        "Withdrawal could not be approved. The claim may have expired or changed."
+      );
+    }
 
     const approvedWithdrawal =
       updateResult.rows[0];
 
+    /*
+     * ============================================================
+     * 14. Commit
+     * ============================================================
+     *
+     * At this point:
+     *
+     *   withdrawal       = approved
+     *   payment account  = amount deducted
+     *   user funds       = already reserved
+     *
+     * All three changes are committed together.
+     */
+    await client.query("COMMIT");
+
+    /*
+     * ============================================================
+     * 15. Return result
+     * ============================================================
+     */
     return {
       success: true,
 
       withdrawal_id:
         approvedWithdrawal.id,
 
-      telegram_id:
-        withdrawal.telegram_id,
-
       user_id:
         withdrawal.user_id,
+
+      telegram_id:
+        withdrawal.telegram_id,
 
       user_name:
         withdrawal.name,
@@ -2539,29 +2685,33 @@ async getWithdrawalHistory(
       payment_account_number:
         account.account_number,
 
+      payment_account_name:
+        account.account_name,
+
       payment_account_balance_before:
         accountBalance,
 
       payment_account_balance_after:
-        accountAfter,
+        accountBalanceAfter,
 
-      balance_after:
-        Number(withdrawal.total_balance),
-		
-	  main_balance:
-        Number(withdrawal.main_balance),
-		
-	  play_balance:
-        Number(withdrawal.play_balance),
-		
-      total_balance:
-        Number(withdrawal.total_balance),		
+      transaction_id:
+        withdrawal.transaction_id,
 
       withdrawal:
         approvedWithdrawal
     };
 
   } catch (err) {
+    /*
+     * ============================================================
+     * ROLLBACK
+     * ============================================================
+     *
+     * This is extremely important.
+     *
+     * If payment_account.balance was deducted but the withdrawal
+     * UPDATE failed, ROLLBACK restores the payment account.
+     */
     await safeRollback(client);
 
     console.error(
@@ -2572,7 +2722,7 @@ async getWithdrawalHistory(
     return {
       success: false,
       message:
-        err.message ||
+        err?.message ||
         "Withdrawal approval failed."
     };
 
@@ -2580,7 +2730,6 @@ async getWithdrawalHistory(
     client.release();
   }
 },
-
 
 async rejectWithdrawal(
   withdrawalId,
