@@ -4905,7 +4905,7 @@ async function approveDeposit(receipt, telegramId) {
     } finally {
         client.release();
     }
-}
+},
 
   // ============================================================
   // GAMES
