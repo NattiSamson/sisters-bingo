@@ -2651,6 +2651,38 @@ async getWithdrawalHistory(
      */
     await client.query("COMMIT");
 
+	/*
+	 * Read the user's current wallet balance.
+	 */
+	const balanceResult = await pool.query(
+	  `
+	  SELECT
+	    main_balance,
+	    play_balance,
+	    total_balance
+	  FROM user_wallet_balances
+	  WHERE user_id = $1
+	  `,
+	  [withdrawal.user_id]
+	);
+	
+	if (balanceResult.rowCount !== 1) {
+	  throw new Error(
+	    "User wallet balance record not found."
+	  );
+	}
+	
+	const balances = balanceResult.rows[0];
+	
+	const mainBalance =
+	  Number(balances.main_balance);
+	
+	const playBalance =
+	  Number(balances.play_balance);
+	
+	const totalBalance =
+	  Number(balances.total_balance);
+
     /*
      * ============================================================
      * 15. Return result
@@ -2698,7 +2730,13 @@ async getWithdrawalHistory(
         withdrawal.transaction_id,
 
       withdrawal:
-        approvedWithdrawal
+        approvedWithdrawal,
+	  mainBalance:
+		mainbalance,  
+	  playBalance:
+		playbalance,
+	  totalBalance:
+		totalbalance		
     };
 
   } catch (err) {
@@ -2731,6 +2769,7 @@ async getWithdrawalHistory(
   }
 },
 
+
 async rejectWithdrawal(
   withdrawalId,
   adminTelegramId,
@@ -2755,7 +2794,9 @@ async rejectWithdrawal(
     await client.query("BEGIN");
 
     /*
-     * Verify admin.
+     * ============================================================
+     * 1. Verify admin
+     * ============================================================
      */
     const adminResult = await client.query(
       `
@@ -2774,84 +2815,82 @@ async rejectWithdrawal(
       [adminTelegramId]
     );
 
-    if (!adminResult.rows.length) {
-      await client.query("ROLLBACK");
-
-      return {
-        success: false,
-        message: "Admin account not found."
-      };
+    if (adminResult.rowCount !== 1) {
+      throw new Error(
+        "Admin account not found."
+      );
     }
 
-    const admin = adminResult.rows[0];
+    const admin =
+      adminResult.rows[0];
 
     /*
-     * Lock the withdrawal and its user.
+     * ============================================================
+     * 2. Lock the withdrawal
+     * ============================================================
      *
-     * We need the transaction_id because the refund
-     * must reverse the original withdrawal transaction.
+     * We lock ONLY the withdrawal row.
+     *
+     * The user's wallet does not need to be independently locked
+     * here because refund_withdrawal() is responsible for the
+     * wallet/ledger operation.
      */
-    const withdrawalResult = await client.query(
-      `
-      SELECT
-        w.*,
-        u.telegram_id,
-        u.name
-      FROM withdrawals w
-      JOIN users u
-        ON u.id = w.user_id
-      WHERE w.id = $1
-      FOR UPDATE
-      `,
-      [withdrawalIdNum]
-    );
+    const withdrawalResult =
+      await client.query(
+        `
+        SELECT
+          w.*,
+          u.telegram_id,
+          u.name
+        FROM withdrawals w
+        JOIN users u
+          ON u.id = w.user_id
+        WHERE w.id = $1
+        FOR UPDATE OF w
+        `,
+        [withdrawalIdNum]
+      );
 
-    if (!withdrawalResult.rows.length) {
-      await client.query("ROLLBACK");
-
-      return {
-        success: false,
-        message: "Withdrawal request not found."
-      };
+    if (withdrawalResult.rowCount !== 1) {
+      throw new Error(
+        "Withdrawal request not found."
+      );
     }
 
     const withdrawal =
       withdrawalResult.rows[0];
 
     /*
-     * A withdrawal can only be rejected while it
-     * is actively assigned to an admin.
+     * ============================================================
+     * 3. Verify withdrawal state
+     * ============================================================
+     *
+     * Only a withdrawal currently being processed can be rejected.
      */
     if (withdrawal.status !== "processing") {
-      await client.query("ROLLBACK");
-
-      return {
-        success: false,
-        message:
-          `Withdrawal is not being processed. Current status: ${withdrawal.status}`
-      };
+      throw new Error(
+        `Withdrawal is not being processed. Current status: ${withdrawal.status}`
+      );
     }
 
     /*
-     * Make sure this admin owns the claim.
+     * ============================================================
+     * 4. Verify admin owns the claim
+     * ============================================================
      */
     if (
       Number(withdrawal.claimed_by_id) !==
       Number(admin.id)
     ) {
-      await client.query("ROLLBACK");
-
-      return {
-        success: false,
-        message:
-          "This withdrawal is assigned to another admin."
-      };
+      throw new Error(
+        "This withdrawal is assigned to another admin."
+      );
     }
 
     /*
-     * Check claim lease.
-     *
-     * Keep the existing 5-minute claim rule.
+     * ============================================================
+     * 5. Validate claim timestamp
+     * ============================================================
      */
     const claimedAt =
       withdrawal.claimed_at
@@ -2860,22 +2899,33 @@ async rejectWithdrawal(
 
     if (
       !claimedAt ||
-      Date.now() - claimedAt.getTime() >
-        5 * 60 * 1000
+      Number.isNaN(claimedAt.getTime())
     ) {
-      await client.query("ROLLBACK");
+      throw new Error(
+        "This withdrawal has an invalid claim timestamp."
+      );
+    }
 
-      return {
-        success: false,
-        message:
-          "This withdrawal claim has expired. Please claim it again."
-      };
+    const CLAIM_TIMEOUT_MS =
+      5 * 60 * 1000;
+
+    const claimAge =
+      Date.now() -
+      claimedAt.getTime();
+
+    if (claimAge > CLAIM_TIMEOUT_MS) {
+      throw new Error(
+        "This withdrawal claim has expired. Please claim it again."
+      );
     }
 
     /*
-     * The withdrawal must have an original financial
-     * transaction because the refund is now handled
-     * by the wallet/ledger system.
+     * ============================================================
+     * 6. Validate withdrawal transaction
+     * ============================================================
+     *
+     * createWithdrawal() should have already created and linked
+     * the original withdrawal reservation transaction.
      */
     if (!withdrawal.transaction_id) {
       throw new Error(
@@ -2884,32 +2934,86 @@ async rejectWithdrawal(
     }
 
     /*
-     * Refund the original withdrawal through the
-     * wallet ledger.
-     *
-     * This reverses the original Main-wallet debit.
-     *
-     * Idempotency key prevents the same withdrawal
-     * from being refunded twice.
+     * ============================================================
+     * 7. Validate original financial transaction
+     * ============================================================
      */
-    const refundResult = await client.query(
-      `
-      SELECT refund_withdrawal(
-        $1,
-        $2,
-        $3,
-        $4,
-        $5
-      ) AS transaction_id
-      `,
-      [
-        withdrawal.user_id,
-        withdrawal.id,
-        withdrawal.transaction_id,
-        `withdrawal:refund:${withdrawal.id}`,
-        `Withdrawal #${withdrawal.id} rejected`
-      ]
-    );
+    const transactionResult =
+      await client.query(
+        `
+        SELECT
+          id,
+          type,
+          status
+        FROM financial_transactions
+        WHERE id = $1
+        FOR UPDATE
+        `,
+        [withdrawal.transaction_id]
+      );
+
+    if (transactionResult.rowCount !== 1) {
+      throw new Error(
+        "Original withdrawal transaction not found."
+      );
+    }
+
+    const originalTransaction =
+      transactionResult.rows[0];
+
+    if (
+      originalTransaction.type !==
+      "withdrawal"
+    ) {
+      throw new Error(
+        "Original transaction is not a withdrawal transaction."
+      );
+    }
+
+    if (
+      originalTransaction.status !==
+      "completed"
+    ) {
+      throw new Error(
+        "Original withdrawal transaction is not completed."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 8. Refund the withdrawal
+     * ============================================================
+     *
+     * refund_withdrawal() should atomically:
+     *
+     *   - lock the user's appropriate wallet row
+     *   - verify the original withdrawal transaction
+     *   - prevent duplicate refunds
+     *   - restore the user's wallet balance
+     *   - create the refund ledger transaction
+     *   - return the refund transaction ID
+     *
+     * The idempotency key is unique per withdrawal.
+     */
+    const refundResult =
+      await client.query(
+        `
+        SELECT refund_withdrawal(
+          $1,
+          $2,
+          $3,
+          $4,
+          $5
+        ) AS transaction_id
+        `,
+        [
+          withdrawal.user_id,
+          withdrawal.id,
+          withdrawal.transaction_id,
+          `withdrawal:refund:${withdrawal.id}`,
+          `Withdrawal #${withdrawal.id} rejected`
+        ]
+      );
 
     const refundTransactionId =
       refundResult.rows[0]?.transaction_id;
@@ -2921,71 +3025,138 @@ async rejectWithdrawal(
     }
 
     /*
-     * Mark the withdrawal as rejected.
-     *
-     * Clear the claim because the withdrawal is no
-     * longer being processed.
+     * ============================================================
+     * 9. Validate refund transaction
+     * ============================================================
      */
-    const updateResult = await client.query(
-      `
-      UPDATE withdrawals
-      SET
-        rejected_by_id = $1,
-        approved_by_id = NULL,
-        status = 'rejected',
-        rejection_reason = $2,
-        claimed_by_id = NULL,
-        claimed_at = NULL,
-        processed_at = NOW(),
-        updated_at = NOW()
-      WHERE id = $3
-        AND status = 'processing'
-        AND claimed_by_id = $1
-      RETURNING *
-      `,
-      [
-        admin.id,
-        cleanReason,
-        withdrawalIdNum
-      ]
-    );
+    const refundTransactionResult =
+      await client.query(
+        `
+        SELECT
+          id,
+          type,
+          status
+        FROM financial_transactions
+        WHERE id = $1
+        FOR UPDATE
+        `,
+        [refundTransactionId]
+      );
 
-    if (!updateResult.rows.length) {
+    if (refundTransactionResult.rowCount !== 1) {
       throw new Error(
-        "Could not update withdrawal."
+        "Refund transaction was not found."
+      );
+    }
+
+    const refundTransaction =
+      refundTransactionResult.rows[0];
+
+    if (
+      refundTransaction.status !==
+      "completed"
+    ) {
+      throw new Error(
+        "Refund transaction was not completed."
       );
     }
 
     /*
-     * Get the user's current wallet balances.
+     * ============================================================
+     * 10. Reject the withdrawal
+     * ============================================================
      *
-     * users.balance is no longer used as the source
-     * of truth for financial accounting.
+     * The claim is cleared because the withdrawal is no longer
+     * being processed.
+     *
+     * The database also verifies the 5-minute lease here.
      */
-    const walletResult = await client.query(
-      `
-      SELECT
-        main_balance,
-        play_balance,
-        total_balance
-      FROM user_wallet_balances
-      WHERE user_id = $1
-      `,
-      [withdrawal.user_id]
-    );
+    const updateResult =
+      await client.query(
+        `
+        UPDATE withdrawals
+        SET
+          rejected_by_id = $1,
+          approved_by_id = NULL,
+          status = 'rejected',
+          rejection_reason = $2,
+          claimed_by_id = NULL,
+          claimed_at = NULL,
+          processed_at = NOW(),
+          updated_at = NOW()
+        WHERE id = $3
+          AND status = 'processing'
+          AND claimed_by_id = $1
+          AND claimed_at IS NOT NULL
+          AND claimed_at >= NOW() - INTERVAL '5 minutes'
+        RETURNING *
+        `,
+        [
+          admin.id,
+          cleanReason,
+          withdrawalIdNum
+        ]
+      );
 
-    const walletBalances =
-      walletResult.rows[0] || {
-        main_balance: 0,
-        play_balance: 0,
-        total_balance: 0
-      };
-
-    await client.query("COMMIT");
+    if (updateResult.rowCount !== 1) {
+      throw new Error(
+        "Withdrawal could not be rejected. The claim may have expired or changed."
+      );
+    }
 
     const rejectedWithdrawal =
       updateResult.rows[0];
 
+    /*
+     * ============================================================
+     * 11. Read the user's current wallet balances
+     * ============================================================
+     *
+     * refund_withdrawal() has already restored the user's funds.
+     *
+     * We now read the resulting balances.
+     */
+    const walletResult =
+      await client.query(
+        `
+        SELECT
+          main_balance,
+          play_balance,
+          total_balance
+        FROM user_wallet_balances
+        WHERE user_id = $1
+        `,
+        [withdrawal.user_id]
+      );
+
+    if (walletResult.rowCount !== 1) {
+      throw new Error(
+        "User wallet balance record not found."
+      );
+    }
+
+    const walletBalances =
+      walletResult.rows[0];
+
+    /*
+     * ============================================================
+     * 12. Commit
+     * ============================================================
+     *
+     * Everything succeeds or everything rolls back:
+     *
+     *   - refund
+     *   - wallet balance
+     *   - refund ledger transaction
+     *   - withdrawal rejection
+     */
+    await client.query("COMMIT");
+
+    /*
+     * ============================================================
+     * 13. Return result
+     * ============================================================
+     */
     return {
       success: true,
 
@@ -3004,29 +3175,60 @@ async rejectWithdrawal(
       amount:
         Number(withdrawal.amount),
 
-      balance_after:
-        Number(walletBalances.total_balance || 0),
-
-      main_balance:
-        Number(walletBalances.main_balance || 0),
-
-      play_balance:
-        Number(walletBalances.play_balance || 0),
-
-      total_balance:
-        Number(walletBalances.total_balance || 0),
-
       rejection_reason:
         cleanReason,
 
+      /*
+       * Original reservation transaction.
+       */
+      transaction_id:
+        withdrawal.transaction_id,
+
+      /*
+       * New refund transaction.
+       */
       refund_transaction_id:
         refundTransactionId,
+
+      /*
+       * Current user wallet balances after refund.
+       */
+      main_balance:
+        Number(
+          walletBalances.main_balance || 0
+        ),
+
+      play_balance:
+        Number(
+          walletBalances.play_balance || 0
+        ),
+
+      total_balance:
+        Number(
+          walletBalances.total_balance || 0
+        ),
+
+      /*
+       * Kept for compatibility with your existing API.
+       */
+      balance_after:
+        Number(
+          walletBalances.total_balance || 0
+        ),
 
       withdrawal:
         rejectedWithdrawal
     };
 
   } catch (err) {
+    /*
+     * ============================================================
+     * ROLLBACK
+     * ============================================================
+     *
+     * If the refund succeeds but anything afterward fails,
+     * the refund itself is rolled back too.
+     */
     await safeRollback(client);
 
     console.error(
@@ -3037,7 +3239,7 @@ async rejectWithdrawal(
     return {
       success: false,
       message:
-        err.message ||
+        err?.message ||
         "Withdrawal rejection failed."
     };
 
