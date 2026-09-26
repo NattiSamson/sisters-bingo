@@ -2153,7 +2153,7 @@ async getWithdrawalHistory(
 	  JOIN user_wallet_balances uwb
   		ON uwb.user_id = w.user_id		
       WHERE w.id = $1
-      FOR UPDATE OF uwb
+      FOR UPDATE OF w
       `,
       [withdrawalIdNum]
     );
