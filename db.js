@@ -1421,9 +1421,15 @@ async createWithdrawal(
     await client.query("BEGIN");
 
     /*
-     * Find user.
+     * ============================================================
+     * 1. Lock and verify the user
+     * ============================================================
      *
-     * Do NOT use users.balance for financial authorization.
+     * The user row is locked for the entire transaction.
+     *
+     * We do NOT use users.balance for financial authorization.
+     * The wallet reservation function is responsible for checking
+     * and reserving the actual available balance.
      */
     const userResult = await client.query(
       `
@@ -1433,26 +1439,25 @@ async createWithdrawal(
         name
       FROM users
       WHERE telegram_id = $1
-        AND is_active = TRUE        
+        AND is_active = TRUE
         AND is_blocked = FALSE
       FOR UPDATE
       `,
       [telegramId]
     );
 
-    if (!userResult.rows.length) {
-      await client.query("ROLLBACK");
-
-      return {
-        success: false,
-        message: "Account not found or blocked."
-      };
+    if (userResult.rowCount !== 1) {
+      throw new Error(
+        "Account not found or blocked."
+      );
     }
 
     const user = userResult.rows[0];
 
     /*
-     * Verify payment method.
+     * ============================================================
+     * 2. Verify payment method
+     * ============================================================
      */
     const methodResult = await client.query(
       `
@@ -1468,19 +1473,27 @@ async createWithdrawal(
       [methodId]
     );
 
-    if (!methodResult.rows.length) {
-      await client.query("ROLLBACK");
-
-      return {
-        success: false,
-        message: "Payment method not found or inactive."
-      };
+    if (methodResult.rowCount !== 1) {
+      throw new Error(
+        "Payment method not found or inactive."
+      );
     }
 
+    const paymentMethod =
+      methodResult.rows[0];
+
     /*
-     * Create withdrawal request first.
+     * ============================================================
+     * 3. Create withdrawal request
+     * ============================================================
      *
-     * Financial transaction is attached immediately afterward.
+     * The withdrawal starts as pending.
+     *
+     * The user's money is NOT considered successfully reserved
+     * until reserve_withdrawal_from_main() succeeds below.
+     *
+     * Everything is inside one DB transaction, so if the wallet
+     * reservation fails, this INSERT is rolled back as well.
      */
     const withdrawalResult =
       await client.query(
@@ -1521,21 +1534,39 @@ async createWithdrawal(
         `,
         [
           user.id,
-          methodId,
+          paymentMethod.id,
           cleanAccount,
           withdrawalAmount
         ]
       );
 
+    if (withdrawalResult.rowCount !== 1) {
+      throw new Error(
+        "Could not create withdrawal request."
+      );
+    }
+
     const withdrawal =
       withdrawalResult.rows[0];
 
     /*
-     * New wallet accounting.
+     * ============================================================
+     * 4. Reserve money from the user's main wallet
+     * ============================================================
      *
-     * This locks Main wallet and guarantees sufficient funds.
+     * IMPORTANT:
+     *
+     * reserve_withdrawal_from_main() should atomically:
+     *
+     *   - lock the appropriate wallet/balance row
+     *   - verify sufficient available funds
+     *   - deduct/reserve the withdrawal amount
+     *   - create the financial transaction
+     *   - return the financial transaction ID
+     *
+     * It must raise an exception if the reservation cannot be made.
      */
-    const transactionResult =
+    const reservationResult =
       await client.query(
         `
         SELECT reserve_withdrawal_from_main(
@@ -1556,99 +1587,213 @@ async createWithdrawal(
       );
 
     const transactionId =
-      transactionResult.rows[0]
-        ?.transaction_id;
+      reservationResult.rows[0]?.transaction_id;
 
-	  if (!transactionId) {
-			  throw new Error(
-			    "Withdrawal reservation transaction was not created."
-			  );
-			}
-			
-			const financialTransactionResult = await client.query(
-			  `
-			  SELECT id, type, status
-			  FROM financial_transactions
-			  WHERE id = $1
-			  `,
-			  [transactionId]
-			);
-			
-			const financialTransaction =
-			  financialTransactionResult.rows[0];
-			
-			if (!financialTransaction) {
-			  throw new Error(
-			    "Withdrawal reservation transaction not found."
-			  );
-			}
-			
-			if (financialTransaction.type !== "withdrawal") {
-			  throw new Error(
-			    "Withdrawal transaction has an invalid transaction type."
-			  );
-			}
-			
-			if (financialTransaction.status !== "completed") {
-			  throw new Error(
-			    "Withdrawal reservation transaction is not completed."
-			  );
-			}
+    if (!transactionId) {
+      throw new Error(
+        "Withdrawal reservation transaction was not created."
+      );
+    }
 
     /*
-     * Connect withdrawal request to ledger transaction.
+     * ============================================================
+     * 5. Verify the ledger transaction
+     * ============================================================
+     *
+     * This is defensive validation.
+     *
+     * We expect the reservation function to create:
+     *
+     *   type   = withdrawal
+     *   status = completed
+     *
+     * If that isn't true, the entire transaction is rolled back.
      */
-    await client.query(
-      `
-      UPDATE withdrawals
-      SET transaction_id = $1,
-          updated_at = NOW()
-      WHERE id = $2
-      `,
-      [
-        transactionId,
-        withdrawal.id
-      ]
-    );
+    const financialTransactionResult =
+      await client.query(
+        `
+        SELECT
+          id,
+          type,
+          status
+        FROM financial_transactions
+        WHERE id = $1
+        FOR UPDATE
+        `,
+        [transactionId]
+      );
+
+    if (financialTransactionResult.rowCount !== 1) {
+      throw new Error(
+        "Withdrawal reservation transaction not found."
+      );
+    }
+
+    const financialTransaction =
+      financialTransactionResult.rows[0];
+
+    if (
+      financialTransaction.type !==
+      "withdrawal"
+    ) {
+      throw new Error(
+        "Withdrawal reservation has an invalid transaction type."
+      );
+    }
+
+    if (
+      financialTransaction.status !==
+      "completed"
+    ) {
+      throw new Error(
+        "Withdrawal reservation transaction is not completed."
+      );
+    }
 
     /*
-     * Read new Main balance.
+     * ============================================================
+     * 6. Connect withdrawal to ledger transaction
+     * ============================================================
+     */
+    const linkResult =
+      await client.query(
+        `
+        UPDATE withdrawals
+        SET
+          transaction_id = $1,
+          updated_at = NOW()
+        WHERE id = $2
+          AND transaction_id IS NULL
+        RETURNING *
+        `,
+        [
+          transactionId,
+          withdrawal.id
+        ]
+      );
+
+    if (linkResult.rowCount !== 1) {
+      throw new Error(
+        "Could not link withdrawal to financial transaction."
+      );
+    }
+
+    const finalWithdrawal =
+      linkResult.rows[0];
+
+    /*
+     * ============================================================
+     * 7. Read current wallet balances
+     * ============================================================
+     *
+     * This is only for returning the balances to the caller.
+     *
+     * Financial authorization/reservation has already happened
+     * inside reserve_withdrawal_from_main().
      */
     const balanceResult =
       await client.query(
         `
-        SELECT wb.balance
-        FROM wallet_balances wb
-        JOIN wallets w
-          ON w.id = wb.wallet_id
-        WHERE w.user_id = $1
-          AND w.wallet_type = 'main'
+        SELECT
+          main_balance,
+          play_balance,
+          total_balance
+        FROM user_wallet_balances
+        WHERE user_id = $1
         `,
         [user.id]
       );
 
-    const balanceAfter =
-      Number(
-        balanceResult.rows[0]?.balance || 0
+    if (balanceResult.rowCount !== 1) {
+      throw new Error(
+        "User wallet balance record not found."
       );
+    }
 
+    const balances =
+      balanceResult.rows[0];
+
+    /*
+     * ============================================================
+     * 8. Commit
+     * ============================================================
+     *
+     * At this point:
+     *
+     *   withdrawal       = pending
+     *   user's funds     = reserved/deducted
+     *   ledger entry     = completed
+     *   transaction link = established
+     *
+     * If COMMIT fails, nothing should be considered successful.
+     */
     await client.query("COMMIT");
 
+    /*
+     * ============================================================
+     * 9. Return result
+     * ============================================================
+     */
     return {
       success: true,
+
       withdrawal: {
-        ...withdrawal,
+        ...finalWithdrawal,
         transaction_id: transactionId
       },
-      user_id: user.id,
-      telegram_id: user.telegram_id,
-      user_name: user.name,
-      amount: withdrawalAmount,
-      balance_after: balanceAfter
+
+      withdrawal_id:
+        finalWithdrawal.id,
+
+      user_id:
+        user.id,
+
+      telegram_id:
+        user.telegram_id,
+
+      user_name:
+        user.name,
+
+      amount:
+        withdrawalAmount,
+
+      payment_method_id:
+        paymentMethod.id,
+
+      payment_method_name:
+        paymentMethod.name,
+
+      payment_method_amharic_name:
+        paymentMethod.amharic_name,
+
+      payment_method_emoji:
+        paymentMethod.emoji,
+
+      account_number:
+        cleanAccount,
+
+      transaction_id:
+        transactionId,
+
+      main_balance:
+        Number(balances.main_balance),
+
+      play_balance:
+        Number(balances.play_balance),
+
+      total_balance:
+        Number(balances.total_balance)
     };
 
   } catch (err) {
-
+    /*
+     * Any error anywhere above rolls back:
+     *
+     *   - withdrawal INSERT
+     *   - wallet reservation
+     *   - financial transaction
+     *   - withdrawal/transaction link
+     */
     await safeRollback(client);
 
     console.error(
@@ -1659,7 +1804,7 @@ async createWithdrawal(
     return {
       success: false,
       message:
-        err.message ||
+        err?.message ||
         "Could not create withdrawal request."
     };
 
