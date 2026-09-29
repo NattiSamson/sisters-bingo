@@ -1,9 +1,6 @@
 --
 -- PostgreSQL database dump
 --
-
-
-
 -- Dumped from database version 18.6 (6569466)
 -- Dumped by pg_dump version 18.4
 
@@ -2863,19 +2860,20 @@ ALTER FUNCTION public.validate_withdrawal_rule(p_rule_id bigint, p_payment_metho
 
 CREATE TABLE public.bingo_commission_rules (
     id bigint NOT NULL,
-    commission_type character varying(20) DEFAULT 'percentage'::character varying NOT NULL,
-    commission_rate numeric(8,4),
-    commission_fixed_amount numeric(18,2),
-    currency character(3) DEFAULT 'ETB'::bpchar NOT NULL,
+    name character varying(100) NOT NULL,
+    code character varying(50) NOT NULL,
+    commission_rate numeric(7,4) NOT NULL,
+    stake_id character varying(10),
+    room_id bigint NOT NULL,
+    priority integer DEFAULT 0 NOT NULL,
     is_active boolean DEFAULT true NOT NULL,
     starts_at timestamp with time zone,
     ends_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT bingo_commission_fixed_check CHECK (((commission_fixed_amount IS NULL) OR (commission_fixed_amount >= (0)::numeric))),
-    CONSTRAINT bingo_commission_rate_check CHECK (((commission_rate IS NULL) OR ((commission_rate >= (0)::numeric) AND (commission_rate <= (100)::numeric)))),
-    CONSTRAINT bingo_commission_type_check CHECK (((commission_type)::text = ANY ((ARRAY['percentage'::character varying, 'fixed'::character varying])::text[]))),
-    CONSTRAINT bingo_commission_value_check CHECK (((((commission_type)::text = 'percentage'::text) AND (commission_rate IS NOT NULL) AND (commission_fixed_amount IS NULL)) OR (((commission_type)::text = 'fixed'::text) AND (commission_fixed_amount IS NOT NULL) AND (commission_rate IS NULL))))
+    CONSTRAINT bingo_commission_date_check CHECK (((starts_at IS NULL) OR (ends_at IS NULL) OR (starts_at <= ends_at))),
+    CONSTRAINT bingo_commission_priority_check CHECK ((priority >= 0)),
+    CONSTRAINT bingo_commission_rate_check CHECK (((commission_rate >= (0)::numeric) AND (commission_rate <= (100)::numeric)))
 );
 
 
@@ -2903,42 +2901,10 @@ ALTER SEQUENCE public.bingo_commission_rules_id_seq OWNED BY public.bingo_commis
 
 
 --
--- Name: bingo_games; Type: TABLE; Schema: public; Owner: neondb_owner
+-- Name: bingo_commission_rules_room_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
 --
 
-CREATE TABLE public.bingo_games (
-    id integer CONSTRAINT games_id_not_null NOT NULL,
-    room_id uuid CONSTRAINT games_room_id_not_null NOT NULL,
-    stake_id character varying(10) CONSTRAINT games_stake_id_not_null NOT NULL,
-    stake_amount numeric(18,2) CONSTRAINT games_stake_amount_not_null NOT NULL,
-    pot numeric(18,2) CONSTRAINT games_pot_not_null NOT NULL,
-    status character varying(20) DEFAULT 'waiting'::character varying,
-    called_numbers integer[] DEFAULT '{}'::integer[],
-    winner_card_ids integer[] DEFAULT '{}'::integer[],
-    win_amount numeric(18,2) DEFAULT 0,
-    is_split boolean DEFAULT false,
-    started_at timestamp with time zone,
-    ended_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now(),
-    game_code character varying(32) NOT NULL,
-    commission_rule_id bigint,
-    commission_rate numeric(8,4),
-    commission_amount numeric(18,2) DEFAULT 0 NOT NULL,
-    prize_pool numeric(18,2) DEFAULT 0 NOT NULL,
-    CONSTRAINT bingo_games_commission_amount_check CHECK ((commission_amount >= (0)::numeric)),
-    CONSTRAINT bingo_games_commission_rate_check CHECK (((commission_rate IS NULL) OR ((commission_rate >= (0)::numeric) AND (commission_rate <= (100)::numeric)))),
-    CONSTRAINT bingo_games_prize_pool_check CHECK ((prize_pool >= (0)::numeric))
-);
-
-
-ALTER TABLE public.bingo_games OWNER TO neondb_owner;
-
---
--- Name: bingo_games_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
---
-
-CREATE SEQUENCE public.bingo_games_id_seq
-    AS integer
+CREATE SEQUENCE public.bingo_commission_rules_room_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2946,13 +2912,71 @@ CREATE SEQUENCE public.bingo_games_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.bingo_games_id_seq OWNER TO neondb_owner;
+ALTER SEQUENCE public.bingo_commission_rules_room_id_seq OWNER TO neondb_owner;
 
 --
--- Name: bingo_games_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
+-- Name: bingo_commission_rules_room_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
 --
 
-ALTER SEQUENCE public.bingo_games_id_seq OWNED BY public.bingo_games.id;
+ALTER SEQUENCE public.bingo_commission_rules_room_id_seq OWNED BY public.bingo_commission_rules.room_id;
+
+
+--
+-- Name: bingo_games; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.bingo_games (
+    id integer NOT NULL,
+    game_code character varying(32) NOT NULL,
+    room_id bigint NOT NULL,
+    stake_id character varying(10) NOT NULL,
+    stake_amount numeric(18,2) NOT NULL,
+    commission_rule_id bigint NOT NULL,
+    commission_rate numeric(7,4) NOT NULL,
+    gross_pot numeric(18,2) DEFAULT 0 NOT NULL,
+    commission_amount numeric(18,2) DEFAULT 0 NOT NULL,
+    prize_pool numeric(18,2) DEFAULT 0 NOT NULL,
+    status character varying(20) DEFAULT 'waiting'::character varying NOT NULL,
+    called_numbers integer[] DEFAULT '{}'::integer[] NOT NULL,
+    winner_card_ids integer[] DEFAULT '{}'::integer[] NOT NULL,
+    win_amount numeric(18,2) DEFAULT 0 NOT NULL,
+    is_split boolean DEFAULT false NOT NULL,
+    selection_started_at timestamp with time zone,
+    selection_ends_at timestamp with time zone,
+    started_at timestamp with time zone,
+    ended_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT bingo_games_commission_non_negative CHECK ((commission_amount >= (0)::numeric)),
+    CONSTRAINT bingo_games_commission_rate_check CHECK (((commission_rate >= (0)::numeric) AND (commission_rate <= (100)::numeric))),
+    CONSTRAINT bingo_games_financial_equation CHECK (((commission_amount + prize_pool) = gross_pot)),
+    CONSTRAINT bingo_games_gross_pot_non_negative CHECK ((gross_pot >= (0)::numeric)),
+    CONSTRAINT bingo_games_prize_pool_non_negative CHECK ((prize_pool >= (0)::numeric)),
+    CONSTRAINT bingo_games_stake_amount_positive CHECK ((stake_amount > (0)::numeric)),
+    CONSTRAINT bingo_games_status_check CHECK (((status)::text = ANY ((ARRAY['waiting'::character varying, 'selection'::character varying, 'playing'::character varying, 'completed'::character varying, 'cancelled'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.bingo_games OWNER TO neondb_owner;
+
+--
+-- Name: bingo_games_room_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
+--
+
+CREATE SEQUENCE public.bingo_games_room_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.bingo_games_room_id_seq OWNER TO neondb_owner;
+
+--
+-- Name: bingo_games_room_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
+--
+
+ALTER SEQUENCE public.bingo_games_room_id_seq OWNED BY public.bingo_games.room_id;
 
 
 --
@@ -3003,13 +3027,49 @@ ALTER SEQUENCE public.bingo_participants_id_seq OWNED BY public.bingo_participan
 
 
 --
+-- Name: bingo_room_stakes; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.bingo_room_stakes (
+    room_id bigint NOT NULL,
+    stake_id character varying(10) NOT NULL,
+    status character varying(20) DEFAULT 'active'::character varying NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT bingo_room_stakes_status_check CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'inactive'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.bingo_room_stakes OWNER TO neondb_owner;
+
+--
+-- Name: bingo_room_stakes_room_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
+--
+
+CREATE SEQUENCE public.bingo_room_stakes_room_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.bingo_room_stakes_room_id_seq OWNER TO neondb_owner;
+
+--
+-- Name: bingo_room_stakes_room_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
+--
+
+ALTER SEQUENCE public.bingo_room_stakes_room_id_seq OWNED BY public.bingo_room_stakes.room_id;
+
+
+--
 -- Name: bingo_rooms; Type: TABLE; Schema: public; Owner: neondb_owner
 --
 
 CREATE TABLE public.bingo_rooms (
     id bigint NOT NULL,
     name character varying(100) NOT NULL,
-    code character varying(20) NOT NULL,
+    code character varying(30) NOT NULL,
     description text,
     status character varying(20) DEFAULT 'active'::character varying NOT NULL,
     min_players integer DEFAULT 2 NOT NULL,
@@ -3018,7 +3078,7 @@ CREATE TABLE public.bingo_rooms (
     selection_seconds integer DEFAULT 50 NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT bingo_rooms_max_cards_check CHECK ((max_cards_per_player >= 1)),
+    CONSTRAINT bingo_rooms_cards_check CHECK ((max_cards_per_player >= 1)),
     CONSTRAINT bingo_rooms_max_players_check CHECK (((max_players IS NULL) OR (max_players >= min_players))),
     CONSTRAINT bingo_rooms_min_players_check CHECK ((min_players >= 2)),
     CONSTRAINT bingo_rooms_selection_seconds_check CHECK ((selection_seconds >= 10)),
@@ -3055,21 +3115,14 @@ ALTER SEQUENCE public.bingo_rooms_id_seq OWNED BY public.bingo_rooms.id;
 
 CREATE TABLE public.bingo_stakes (
     id character varying(10) NOT NULL,
-    name character varying(50) NOT NULL,
+    name character varying(100) NOT NULL,
     amount numeric(18,2) NOT NULL,
-    currency character varying(3) DEFAULT 'ETB'::character varying NOT NULL,
-    min_players integer DEFAULT 2 NOT NULL,
-    max_players integer,
-    max_cards_per_player integer DEFAULT 2 NOT NULL,
-    status character varying(20) DEFAULT 'active'::character varying NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    display_order integer DEFAULT 0 NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT bingo_stakes_amount_check CHECK ((amount > (0)::numeric)),
-    CONSTRAINT bingo_stakes_currency_check CHECK (((currency)::text ~ '^[A-Z]{3}$'::text)),
-    CONSTRAINT bingo_stakes_max_cards_check CHECK ((max_cards_per_player >= 1)),
-    CONSTRAINT bingo_stakes_max_players_check CHECK (((max_players IS NULL) OR (max_players >= min_players))),
-    CONSTRAINT bingo_stakes_min_players_check CHECK ((min_players >= 2)),
-    CONSTRAINT bingo_stakes_status_check CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'inactive'::character varying])::text[])))
+    CONSTRAINT bingo_stakes_amount_positive CHECK ((amount > (0)::numeric)),
+    CONSTRAINT bingo_stakes_display_order_check CHECK ((display_order >= 0))
 );
 
 
@@ -3310,29 +3363,6 @@ CREATE TABLE public.game_systems (
 
 
 ALTER TABLE public.game_systems OWNER TO neondb_owner;
-
--- ============================================================
--- SEED: Bingo game system
--- ============================================================
-
-INSERT INTO public.game_systems (
-    code,
-    name,
-    status,
-    metadata
-)
-VALUES (
-    'bingo',
-    'Bingo',
-    'active',
-    '{"source_type":"bingo_game"}'::jsonb
-)
-ON CONFLICT (code)
-DO UPDATE SET
-    name = EXCLUDED.name,
-    status = EXCLUDED.status,
-    metadata = EXCLUDED.metadata,
-    updated_at = NOW();
 
 --
 -- Name: game_systems_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
@@ -3727,10 +3757,17 @@ ALTER TABLE ONLY public.bingo_commission_rules ALTER COLUMN id SET DEFAULT nextv
 
 
 --
--- Name: bingo_games id; Type: DEFAULT; Schema: public; Owner: neondb_owner
+-- Name: bingo_commission_rules room_id; Type: DEFAULT; Schema: public; Owner: neondb_owner
 --
 
-ALTER TABLE ONLY public.bingo_games ALTER COLUMN id SET DEFAULT nextval('public.bingo_games_id_seq'::regclass);
+ALTER TABLE ONLY public.bingo_commission_rules ALTER COLUMN room_id SET DEFAULT nextval('public.bingo_commission_rules_room_id_seq'::regclass);
+
+
+--
+-- Name: bingo_games room_id; Type: DEFAULT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_games ALTER COLUMN room_id SET DEFAULT nextval('public.bingo_games_room_id_seq'::regclass);
 
 
 --
@@ -3738,6 +3775,13 @@ ALTER TABLE ONLY public.bingo_games ALTER COLUMN id SET DEFAULT nextval('public.
 --
 
 ALTER TABLE ONLY public.bingo_participants ALTER COLUMN id SET DEFAULT nextval('public.bingo_participants_id_seq'::regclass);
+
+
+--
+-- Name: bingo_room_stakes room_id; Type: DEFAULT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_room_stakes ALTER COLUMN room_id SET DEFAULT nextval('public.bingo_room_stakes_room_id_seq'::regclass);
 
 
 --
@@ -3846,11 +3890,35 @@ ALTER TABLE ONLY public.withdrawals ALTER COLUMN id SET DEFAULT nextval('public.
 
 
 --
+-- Name: bingo_commission_rules bingo_commission_rules_code_key; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_commission_rules
+    ADD CONSTRAINT bingo_commission_rules_code_key UNIQUE (code);
+
+
+--
 -- Name: bingo_commission_rules bingo_commission_rules_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.bingo_commission_rules
     ADD CONSTRAINT bingo_commission_rules_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bingo_games bingo_games_game_code_key; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_games
+    ADD CONSTRAINT bingo_games_game_code_key UNIQUE (game_code);
+
+
+--
+-- Name: bingo_games bingo_games_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_games
+    ADD CONSTRAINT bingo_games_pkey PRIMARY KEY (id);
 
 
 --
@@ -3867,6 +3935,14 @@ ALTER TABLE ONLY public.bingo_participants
 
 ALTER TABLE ONLY public.bingo_participants
     ADD CONSTRAINT bingo_participants_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bingo_room_stakes bingo_room_stakes_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_room_stakes
+    ADD CONSTRAINT bingo_room_stakes_pkey PRIMARY KEY (room_id, stake_id);
 
 
 --
@@ -3979,14 +4055,6 @@ ALTER TABLE ONLY public.game_systems
 
 ALTER TABLE ONLY public.game_systems
     ADD CONSTRAINT game_systems_pkey PRIMARY KEY (id);
-
-
---
--- Name: bingo_games games_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
---
-
-ALTER TABLE ONLY public.bingo_games
-    ADD CONSTRAINT games_pkey PRIMARY KEY (id);
 
 
 --
@@ -4141,13 +4209,6 @@ CREATE UNIQUE INDEX deposits_reference_unique_idx ON public.deposits USING btree
 
 
 --
--- Name: idx_bingo_games_game_code; Type: INDEX; Schema: public; Owner: neondb_owner
---
-
-CREATE UNIQUE INDEX idx_bingo_games_game_code ON public.bingo_games USING btree (game_code);
-
-
---
 -- Name: idx_deposit_rules_account; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
@@ -4257,20 +4318,6 @@ CREATE INDEX idx_financial_transactions_type ON public.financial_transactions US
 --
 
 CREATE INDEX idx_financial_transactions_user ON public.financial_transactions USING btree (user_id, created_at DESC);
-
-
---
--- Name: idx_games_room; Type: INDEX; Schema: public; Owner: neondb_owner
---
-
-CREATE INDEX idx_games_room ON public.bingo_games USING btree (room_id);
-
-
---
--- Name: idx_games_status; Type: INDEX; Schema: public; Owner: neondb_owner
---
-
-CREATE INDEX idx_games_status ON public.bingo_games USING btree (status);
 
 
 --
@@ -4491,11 +4538,35 @@ CREATE TRIGGER withdrawals_set_updated_at BEFORE UPDATE ON public.withdrawals FO
 
 
 --
+-- Name: bingo_commission_rules bingo_commission_room_fk; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_commission_rules
+    ADD CONSTRAINT bingo_commission_room_fk FOREIGN KEY (room_id) REFERENCES public.bingo_rooms(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: bingo_commission_rules bingo_commission_stake_fk; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_commission_rules
+    ADD CONSTRAINT bingo_commission_stake_fk FOREIGN KEY (stake_id) REFERENCES public.bingo_stakes(id) ON DELETE RESTRICT;
+
+
+--
 -- Name: bingo_games bingo_games_commission_rule_fk; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.bingo_games
-    ADD CONSTRAINT bingo_games_commission_rule_fk FOREIGN KEY (commission_rule_id) REFERENCES public.bingo_commission_rules(id);
+    ADD CONSTRAINT bingo_games_commission_rule_fk FOREIGN KEY (commission_rule_id) REFERENCES public.bingo_commission_rules(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: bingo_games bingo_games_room_fk; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_games
+    ADD CONSTRAINT bingo_games_room_fk FOREIGN KEY (room_id) REFERENCES public.bingo_rooms(id) ON DELETE RESTRICT;
 
 
 --
@@ -4503,15 +4574,7 @@ ALTER TABLE ONLY public.bingo_games
 --
 
 ALTER TABLE ONLY public.bingo_games
-    ADD CONSTRAINT bingo_games_stake_fk FOREIGN KEY (stake_id) REFERENCES public.bingo_stakes(id);
-
-
---
--- Name: bingo_participants bingo_participants_game_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
---
-
-ALTER TABLE ONLY public.bingo_participants
-    ADD CONSTRAINT bingo_participants_game_id_fkey FOREIGN KEY (game_id) REFERENCES public.bingo_games(id) ON DELETE RESTRICT;
+    ADD CONSTRAINT bingo_games_stake_fk FOREIGN KEY (stake_id) REFERENCES public.bingo_stakes(id) ON DELETE RESTRICT;
 
 
 --
@@ -4531,11 +4594,19 @@ ALTER TABLE ONLY public.bingo_participants
 
 
 --
--- Name: bingo_winners bingo_winners_game_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+-- Name: bingo_room_stakes bingo_room_stakes_room_fk; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
-ALTER TABLE ONLY public.bingo_winners
-    ADD CONSTRAINT bingo_winners_game_id_fkey FOREIGN KEY (game_id) REFERENCES public.bingo_games(id) ON DELETE RESTRICT;
+ALTER TABLE ONLY public.bingo_room_stakes
+    ADD CONSTRAINT bingo_room_stakes_room_fk FOREIGN KEY (room_id) REFERENCES public.bingo_rooms(id) ON DELETE CASCADE;
+
+
+--
+-- Name: bingo_room_stakes bingo_room_stakes_stake_fk; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_room_stakes
+    ADD CONSTRAINT bingo_room_stakes_stake_fk FOREIGN KEY (stake_id) REFERENCES public.bingo_stakes(id) ON DELETE RESTRICT;
 
 
 --
