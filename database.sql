@@ -2,6 +2,8 @@
 -- PostgreSQL database dump
 --
 
+
+
 -- Dumped from database version 18.6 (6569466)
 -- Dumped by pg_dump version 18.4
 
@@ -3004,9 +3006,6 @@ CREATE TABLE public.bingo_participants (
     is_disqualified boolean DEFAULT false NOT NULL,
     amount_won numeric(18,2) DEFAULT 0 NOT NULL,
     joined_at timestamp with time zone DEFAULT now() NOT NULL,
-    card_id integer NOT NULL,
-    card_data jsonb,
-    total_cards integer,
     CONSTRAINT bingo_participants_amount_positive CHECK ((amount > (0)::numeric)),
     CONSTRAINT bingo_participants_amount_won_non_negative CHECK ((amount_won >= (0)::numeric))
 );
@@ -3340,7 +3339,6 @@ CREATE TABLE public.game_systems (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT game_systems_status_check CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'inactive'::character varying, 'maintenance'::character varying, 'disabled'::character varying])::text[])))
 );
-
 
 -- ============================================================
 -- SEED: Bingo game system
@@ -3929,11 +3927,27 @@ ALTER TABLE ONLY public.bingo_participant_cards
 
 
 --
+-- Name: bingo_participants bingo_participants_game_user_unique; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_participants
+    ADD CONSTRAINT bingo_participants_game_user_unique UNIQUE (game_id, user_id);
+
+
+--
 -- Name: bingo_participants bingo_participants_id_game_unique; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.bingo_participants
     ADD CONSTRAINT bingo_participants_id_game_unique UNIQUE (id, game_id);
+
+
+--
+-- Name: bingo_participants bingo_participants_id_game_user_unique; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_participants
+    ADD CONSTRAINT bingo_participants_id_game_user_unique UNIQUE (id, game_id, user_id);
 
 
 --
@@ -4678,6 +4692,14 @@ ALTER TABLE ONLY public.bingo_participant_cards
 
 
 --
+-- Name: bingo_participant_cards bingo_participant_cards_participant_game_fk; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_participant_cards
+    ADD CONSTRAINT bingo_participant_cards_participant_game_fk FOREIGN KEY (participant_id, game_id) REFERENCES public.bingo_participants(id, game_id) ON DELETE RESTRICT;
+
+
+--
 -- Name: bingo_participants bingo_participants_game_fk; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
@@ -4739,6 +4761,22 @@ ALTER TABLE ONLY public.bingo_winners
 
 ALTER TABLE ONLY public.bingo_winners
     ADD CONSTRAINT bingo_winners_participant_fk FOREIGN KEY (participant_id) REFERENCES public.bingo_participants(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: bingo_winners bingo_winners_participant_game_fk; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_winners
+    ADD CONSTRAINT bingo_winners_participant_game_fk FOREIGN KEY (participant_id, game_id) REFERENCES public.bingo_participants(id, game_id) ON DELETE RESTRICT;
+
+
+--
+-- Name: bingo_winners bingo_winners_participant_user_fk; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_winners
+    ADD CONSTRAINT bingo_winners_participant_user_fk FOREIGN KEY (participant_id, user_id) REFERENCES public.bingo_participants(id, user_id) ON DELETE RESTRICT;
 
 
 --
@@ -5016,3 +5054,6 @@ ALTER TABLE ONLY public.withdrawals
 --
 -- PostgreSQL database dump complete
 --
+
+
+
