@@ -1724,6 +1724,289 @@ app.get('/api/admin/analytics', adminAuth, async(req,res)=>{
   }
 });
 
+// ─────────────────────────────────────────────────────────────
+// PUBLIC GAME API
+// Used by the Vercel Telegram Mini App during initial load.
+// ─────────────────────────────────────────────────────────────
+
+function validTelegramId(value) {
+  const tid = String(value || '').trim();
+  return /^\d+$/.test(tid) && Number(tid) > 0 ? tid : null;
+}
+
+// Global game configuration.
+// No user-specific information belongs here.
+app.get('/api/config', (req, res) => {
+  res.json({
+    gameName: 'Beteseb Bingo',
+    currency: 'ETB',
+    currencySymbol: 'ETB',
+    houseCut: HOUSE_CUT,
+    winnerShare: 1 - HOUSE_CUT,
+    lobbyWaitSeconds: Math.ceil(LOBBY_WAIT_MS / 1000),
+    callIntervalSeconds: Math.ceil(CALL_INTERVAL_MS / 1000),
+    claimWindowMs: CLAIM_WINDOW_MS,
+    totalCards: TOTAL_CARDS
+  });
+});
+
+
+// Available stakes.
+//
+// IMPORTANT:
+// For this first step we still use the existing STAKES array.
+// We will move the source of truth to PostgreSQL in the next step.
+app.get('/api/stakes', (req, res) => {
+  const stakes = STAKES.map(s => {
+    const room = Object.values(rooms).find(
+      r => r.stakeId === s.id
+    );
+
+    return {
+      id: s.id,
+      amount: Number(s.amount),
+      maxPlayers: Number(s.maxPlayers),
+      cardLimit: Number(s.cardLimit),
+      playerCount: room ? room.players.length : 0,
+      status: room ? room.status : 'waiting',
+      countdown: (
+        room &&
+        room.status === 'countdown'
+      ) ? room.countdownLeft : 0
+    };
+  });
+
+  res.json(stakes);
+});
+
+
+// Current public lobby rooms.
+//
+// Do NOT expose the internal room object.
+// It contains WebSocket connections, timers, card state,
+// called numbers, etc.
+app.get('/api/rooms', (req, res) => {
+  const roomsList = Object.values(rooms).map(room => ({
+    roomId: room.roomId,
+    stakeId: room.stakeId,
+    stakeAmount: Number(room.stake),
+    maxPlayers: Number(room.maxPlayers),
+    playerCount: room.players.length,
+    status: room.status,
+    countdown: room.status === 'countdown'
+      ? room.countdownLeft
+      : 0
+  }));
+
+  res.json(roomsList);
+});
+
+
+// Combined initial-load endpoint.
+//
+// The Vercel frontend can call this once after obtaining
+// the Telegram Mini App user ID.
+app.get('/api/bootstrap', async (req, res) => {
+  const tid = validTelegramId(
+    req.query.telegramId || req.query.tid
+  );
+
+  if (!tid) {
+    return res.status(400).json({
+      error: 'Invalid Telegram ID'
+    });
+  }
+
+  if (!db) {
+    return res.status(503).json({
+      error: 'Database unavailable'
+    });
+  }
+
+  try {
+    // Reuse the existing profile endpoint logic through the
+    // same database query rather than relying on userCache.
+    const rows = await db.q(`
+      SELECT u.*,
+
+        COALESCE((
+          SELECT COUNT(DISTINCT g.id)
+          FROM games g
+          WHERE g.status='finished'
+            AND (
+              EXISTS (
+                SELECT 1
+                FROM game_participants gp
+                WHERE gp.game_id=g.id
+                  AND gp.user_id=u.id
+              )
+              OR EXISTS (
+                SELECT 1
+                FROM transactions t
+                WHERE t.user_id=u.id
+                  AND t.reference=g.room_id
+                  AND t.type='stake'
+              )
+            )
+        ),0)::int AS computed_total_games,
+
+        COALESCE((
+          SELECT COUNT(*)
+          FROM games g
+          WHERE g.status='finished'
+            AND $1 = ANY(
+              COALESCE(g.winner_ids, ARRAY[]::text[])
+            )
+        ),0)::int AS computed_total_wins,
+
+        COALESCE((
+          SELECT g.win_amount
+          FROM games g
+          WHERE g.status='finished'
+            AND $1 = ANY(
+              COALESCE(g.winner_ids, ARRAY[]::text[])
+            )
+          ORDER BY g.ended_at DESC NULLS LAST, g.id DESC
+          LIMIT 1
+        ),0)::numeric AS latest_earnings
+
+      FROM users u
+      WHERE u.telegram_id=$1
+      LIMIT 1
+    `, [tid]);
+
+    const u = rows[0];
+
+    if (!u) {
+      return res.status(404).json({
+        error: 'User not found',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+
+    const storedGames = Math.max(
+      0,
+      Number(u.total_games) || 0
+    );
+
+    const computedGames = Math.max(
+      0,
+      Number(u.computed_total_games) || 0
+    );
+
+    const totalGames = Math.max(
+      storedGames,
+      computedGames
+    );
+
+    const storedWins = Math.max(
+      0,
+      Number(u.total_wins) || 0
+    );
+
+    const computedWins = Math.max(
+      0,
+      Number(u.computed_total_wins) || 0
+    );
+
+    const totalWins = Math.max(
+      storedWins,
+      computedWins
+    );
+
+    const user = {
+      telegramId: String(u.telegram_id),
+      name: u.name || '',
+      phone: u.phone || '',
+      balance: Number.parseFloat(u.balance) || 0,
+      total_games: totalGames,
+      total_wins: totalWins,
+      total_winnings:
+        Math.max(0, Number(u.total_winnings) || 0),
+      latest_earnings:
+        Math.max(0, Number(u.latest_earnings) || 0),
+      isAdmin:
+        u.is_admin === true ||
+        isAdminPhone(u.phone)
+    };
+
+    userCache[tid] = {
+      ...(userCache[tid] || {}),
+      ...user
+    };
+
+    const stakes = STAKES.map(s => {
+      const room = Object.values(rooms).find(
+        r => r.stakeId === s.id
+      );
+
+      return {
+        id: s.id,
+        amount: Number(s.amount),
+        maxPlayers: Number(s.maxPlayers),
+        cardLimit: Number(s.cardLimit),
+        playerCount: room ? room.players.length : 0,
+        status: room ? room.status : 'waiting',
+        countdown: (
+          room &&
+          room.status === 'countdown'
+        ) ? room.countdownLeft : 0
+      };
+    });
+
+    const roomsList = Object.values(rooms).map(room => ({
+      roomId: room.roomId,
+      stakeId: room.stakeId,
+      stakeAmount: Number(room.stake),
+      maxPlayers: Number(room.maxPlayers),
+      playerCount: room.players.length,
+      status: room.status,
+      countdown: room.status === 'countdown'
+        ? room.countdownLeft
+        : 0
+    }));
+
+    return res.json({
+      user,
+      config: {
+        gameName: 'Beteseb Bingo',
+        currency: 'ETB',
+        currencySymbol: 'ETB',
+        houseCut: HOUSE_CUT,
+        winnerShare: 1 - HOUSE_CUT,
+        lobbyWaitSeconds:
+          Math.ceil(LOBBY_WAIT_MS / 1000),
+        callIntervalSeconds:
+          Math.ceil(CALL_INTERVAL_MS / 1000),
+        claimWindowMs: CLAIM_WINDOW_MS,
+        totalCards: TOTAL_CARDS
+      },
+      stakes,
+      rooms: roomsList
+    });
+
+  } catch (e) {
+    console.error(
+      'GET /api/bootstrap error:',
+      e.message
+    );
+
+    return res.status(500).json({
+      error: 'Could not initialize game'
+    });
+  }
+});
+
+
+// Simple health endpoint for Render/Vercel/proxy monitoring.
+app.get('/health', (req, res) => {
+  res.json({
+    ok: true,
+    database: !!db,
+    uptime: process.uptime()
+  });
+});
+
 // ── Payment info (Telebirr account shown on deposit page) ──
 app.get('/api/payment-info', (req,res)=>{
   res.json(PAYMENT_INFO);
