@@ -3,7 +3,6 @@
 --
 
 
-
 -- Dumped from database version 18.6 (6569466)
 -- Dumped by pg_dump version 18.4
 
@@ -18,6 +17,874 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+
+--
+-- Name: create_bingo_game_from_selections(bigint, character varying, character varying, jsonb); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.create_bingo_game_from_selections(p_room_id bigint, p_stake_id character varying, p_idempotency_key character varying, p_selections jsonb) RETURNS jsonb
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_room public.bingo_rooms%ROWTYPE;
+    v_stake public.bingo_stakes%ROWTYPE;
+    v_commission_rule public.bingo_commission_rules%ROWTYPE;
+
+    v_game_system_id BIGINT;
+    v_game_id INTEGER;
+    v_game_code VARCHAR(32);
+
+    v_gross_pot NUMERIC(18,2) := 0;
+    v_commission_amount NUMERIC(18,2) := 0;
+    v_prize_pool NUMERIC(18,2) := 0;
+
+    v_total_cards INTEGER := 0;
+    v_total_participants INTEGER := 0;
+
+    v_selection JSONB;
+    v_user_id INTEGER;
+    v_card_id INTEGER;
+    v_card_data JSONB;
+
+    v_user public.users%ROWTYPE;
+
+    v_transaction_id BIGINT;
+
+    v_participant_id BIGINT;
+
+    v_user_card_count INTEGER;
+    v_existing_card_owner INTEGER;
+
+    v_accepted JSONB := '[]'::JSONB;
+    v_rejected JSONB := '[]'::JSONB;
+
+    v_accepted_by_user JSONB := '{}'::JSONB;
+
+    v_source_id VARCHAR(100);
+    v_card_idempotency_key VARCHAR(150);
+
+    v_now TIMESTAMPTZ := NOW();
+
+    v_player_count INTEGER;
+
+    v_existing_game_id INTEGER;
+
+BEGIN
+    ----------------------------------------------------------------
+    -- 1. Validate arguments
+    ----------------------------------------------------------------
+
+    IF p_room_id IS NULL OR p_room_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid Bingo room ID';
+    END IF;
+
+    IF p_stake_id IS NULL OR BTRIM(p_stake_id) = '' THEN
+        RAISE EXCEPTION 'Bingo stake ID is required';
+    END IF;
+
+    IF p_idempotency_key IS NULL
+       OR BTRIM(p_idempotency_key) = '' THEN
+        RAISE EXCEPTION 'Bingo game idempotency key is required';
+    END IF;
+
+    IF p_selections IS NULL
+       OR jsonb_typeof(p_selections) <> 'array' THEN
+        RAISE EXCEPTION
+            'Selections must be a JSON array';
+    END IF;
+
+    IF jsonb_array_length(p_selections) = 0 THEN
+        RAISE EXCEPTION
+            'At least one cartela selection is required';
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 2. Idempotency
+    ----------------------------------------------------------------
+
+    SELECT id
+    INTO v_existing_game_id
+    FROM public.bingo_games
+    WHERE idempotency_key = p_idempotency_key
+    LIMIT 1;
+
+    IF FOUND THEN
+        RETURN jsonb_build_object(
+            'success', TRUE,
+            'idempotent', TRUE,
+            'game_id', v_existing_game_id
+        );
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 3. Lock room configuration
+    ----------------------------------------------------------------
+
+    SELECT *
+    INTO v_room
+    FROM public.bingo_rooms
+    WHERE id = p_room_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Bingo room % not found',
+            p_room_id;
+    END IF;
+
+    IF v_room.status <> 'active' THEN
+        RAISE EXCEPTION
+            'Bingo room % is not active',
+            p_room_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 4. Validate stake
+    ----------------------------------------------------------------
+
+    SELECT *
+    INTO v_stake
+    FROM public.bingo_stakes
+    WHERE id = p_stake_id
+      AND is_active = TRUE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Bingo stake "%" is not active or does not exist',
+            p_stake_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 5. Room must allow this stake
+    ----------------------------------------------------------------
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.bingo_room_stakes
+        WHERE room_id = v_room.id
+          AND stake_id = v_stake.id
+          AND status = 'active'
+    ) THEN
+        RAISE EXCEPTION
+            'Stake "%" is not available in room %',
+            v_stake.id,
+            v_room.id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 6. Find applicable commission rule
+    --
+    -- Priority:
+    --   room + stake
+    --   room only
+    --   stake only
+    --   global
+    --
+    -- Within the same scope:
+    --   priority DESC
+    --   id DESC
+    ----------------------------------------------------------------
+
+    SELECT *
+    INTO v_commission_rule
+    FROM public.bingo_commission_rules
+    WHERE is_active = TRUE
+
+      AND (
+            starts_at IS NULL
+            OR starts_at <= v_now
+          )
+
+      AND (
+            ends_at IS NULL
+            OR ends_at >= v_now
+          )
+
+      AND (
+            (room_id = v_room.id AND stake_id = v_stake.id)
+            OR
+            (room_id = v_room.id AND stake_id IS NULL)
+            OR
+            (room_id IS NULL AND stake_id = v_stake.id)
+            OR
+            (room_id IS NULL AND stake_id IS NULL)
+          )
+
+    ORDER BY
+        CASE
+            WHEN room_id = v_room.id
+             AND stake_id = v_stake.id
+            THEN 4
+
+            WHEN room_id = v_room.id
+             AND stake_id IS NULL
+            THEN 3
+
+            WHEN room_id IS NULL
+             AND stake_id = v_stake.id
+            THEN 2
+
+            ELSE 1
+        END DESC,
+
+        priority DESC,
+        id DESC
+
+    LIMIT 1
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'No active commission rule found for room % and stake %',
+            v_room.id,
+            v_stake.id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 7. Validate game-system
+    ----------------------------------------------------------------
+
+    SELECT id
+    INTO v_game_system_id
+    FROM public.game_systems
+    WHERE code = 'bingo'
+      AND status = 'active'
+    LIMIT 1;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Active Bingo game system was not found';
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 8. Process each selected cartela
+    ----------------------------------------------------------------
+
+    FOR v_selection IN
+        SELECT value
+        FROM jsonb_array_elements(p_selections)
+    LOOP
+
+        ------------------------------------------------------------
+        -- Validate selection object
+        ------------------------------------------------------------
+
+        IF jsonb_typeof(v_selection) <> 'object' THEN
+
+            v_rejected :=
+                v_rejected ||
+                jsonb_build_array(
+                    jsonb_build_object(
+                        'selection',
+                        v_selection,
+                        'reason',
+                        'invalid_selection'
+                    )
+                );
+
+            CONTINUE;
+        END IF;
+
+
+        v_user_id :=
+            NULLIF(
+                v_selection->>'user_id',
+                ''
+            )::INTEGER;
+
+        v_card_id :=
+            NULLIF(
+                v_selection->>'card_id',
+                ''
+            )::INTEGER;
+
+        v_card_data :=
+            COALESCE(
+                v_selection->'card_data',
+                '{}'::JSONB
+            );
+
+
+        ------------------------------------------------------------
+        -- Validate user ID
+        ------------------------------------------------------------
+
+        IF v_user_id IS NULL OR v_user_id <= 0 THEN
+
+            v_rejected :=
+                v_rejected ||
+                jsonb_build_array(
+                    jsonb_build_object(
+                        'user_id',
+                        v_user_id,
+                        'card_id',
+                        v_card_id,
+                        'reason',
+                        'invalid_user_id'
+                    )
+                );
+
+            CONTINUE;
+        END IF;
+
+
+        ------------------------------------------------------------
+        -- Validate card ID
+        ------------------------------------------------------------
+
+        IF v_card_id IS NULL OR v_card_id < 1 THEN
+
+            v_rejected :=
+                v_rejected ||
+                jsonb_build_array(
+                    jsonb_build_object(
+                        'user_id',
+                        v_user_id,
+                        'card_id',
+                        v_card_id,
+                        'reason',
+                        'invalid_card_id'
+                    )
+                );
+
+            CONTINUE;
+        END IF;
+
+
+        ------------------------------------------------------------
+        -- Card must belong to this room's configured card pool
+        ------------------------------------------------------------
+
+        IF v_card_id > v_room.card_count THEN
+
+            v_rejected :=
+                v_rejected ||
+                jsonb_build_array(
+                    jsonb_build_object(
+                        'user_id',
+                        v_user_id,
+                        'card_id',
+                        v_card_id,
+                        'reason',
+                        'card_out_of_range'
+                    )
+                );
+
+            CONTINUE;
+        END IF;
+
+
+        ------------------------------------------------------------
+        -- Load and lock user
+        ------------------------------------------------------------
+
+        SELECT *
+        INTO v_user
+        FROM public.users
+        WHERE id = v_user_id
+        FOR UPDATE;
+
+        IF NOT FOUND THEN
+
+            v_rejected :=
+                v_rejected ||
+                jsonb_build_array(
+                    jsonb_build_object(
+                        'user_id',
+                        v_user_id,
+                        'card_id',
+                        v_card_id,
+                        'reason',
+                        'user_not_found'
+                    )
+                );
+
+            CONTINUE;
+        END IF;
+
+
+        ------------------------------------------------------------
+        -- Blocked user:
+        -- ignore this user's cartela selection
+        ------------------------------------------------------------
+
+        IF v_user.is_blocked THEN
+
+            v_rejected :=
+                v_rejected ||
+                jsonb_build_array(
+                    jsonb_build_object(
+                        'user_id',
+                        v_user_id,
+                        'card_id',
+                        v_card_id,
+                        'reason',
+                        'user_blocked'
+                    )
+                );
+
+            CONTINUE;
+        END IF;
+
+
+        ------------------------------------------------------------
+        -- Inactive/banned users are also not allowed to participate
+        ------------------------------------------------------------
+
+        IF NOT v_user.is_active THEN
+
+            v_rejected :=
+                v_rejected ||
+                jsonb_build_array(
+                    jsonb_build_object(
+                        'user_id',
+                        v_user_id,
+                        'card_id',
+                        v_card_id,
+                        'reason',
+                        'user_inactive'
+                    )
+                );
+
+            CONTINUE;
+        END IF;
+
+        IF v_user.is_banned THEN
+
+            v_rejected :=
+                v_rejected ||
+                jsonb_build_array(
+                    jsonb_build_object(
+                        'user_id',
+                        v_user_id,
+                        'card_id',
+                        v_card_id,
+                        'reason',
+                        'user_banned'
+                    )
+                );
+
+            CONTINUE;
+        END IF;
+
+
+        ------------------------------------------------------------
+        -- Maximum cards per player
+        ------------------------------------------------------------
+
+        SELECT COUNT(*)
+        INTO v_user_card_count
+        FROM jsonb_array_elements(v_accepted) AS accepted
+        WHERE (accepted->>'user_id')::INTEGER = v_user_id;
+
+        IF v_user_card_count >= v_room.max_cards_per_player THEN
+
+            v_rejected :=
+                v_rejected ||
+                jsonb_build_array(
+                    jsonb_build_object(
+                        'user_id',
+                        v_user_id,
+                        'card_id',
+                        v_card_id,
+                        'reason',
+                        'max_cards_per_player_reached'
+                    )
+                );
+
+            CONTINUE;
+        END IF;
+
+
+        ------------------------------------------------------------
+        -- Same card cannot be accepted twice in this request
+        --
+        -- Because selections are processed in input order,
+        -- the first accepted selection owns the card.
+        ------------------------------------------------------------
+
+        IF EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(v_accepted) AS accepted
+            WHERE (accepted->>'card_id')::INTEGER = v_card_id
+        ) THEN
+
+            v_rejected :=
+                v_rejected ||
+                jsonb_build_array(
+                    jsonb_build_object(
+                        'user_id',
+                        v_user_id,
+                        'card_id',
+                        v_card_id,
+                        'reason',
+                        'card_already_selected'
+                    )
+                );
+
+            CONTINUE;
+        END IF;
+
+
+        ------------------------------------------------------------
+        -- Financial transaction identity
+        --
+        -- One stake transaction belongs to one cartela.
+        ------------------------------------------------------------
+
+        v_source_id :=
+            p_idempotency_key
+            || ':'
+            || v_user_id::TEXT
+            || ':'
+            || v_card_id::TEXT;
+
+        v_card_idempotency_key :=
+            LEFT(
+                'bingo-card:'
+                || p_idempotency_key
+                || ':'
+                || v_user_id::TEXT
+                || ':'
+                || v_card_id::TEXT,
+                150
+            );
+
+
+        ------------------------------------------------------------
+        -- Attempt the stake.
+        --
+        -- place_stake():
+        --   Play wallet first
+        --   Main wallet for remainder
+        --
+        -- It raises "Insufficient balance..." when the combined
+        -- balance cannot cover this cartela.
+        --
+        -- The nested block gives that cartela its own savepoint,
+        -- so a failed cartela does not abort the whole game.
+        ------------------------------------------------------------
+
+        BEGIN
+
+            v_transaction_id :=
+                public.place_stake(
+                    v_user_id,
+                    v_stake.amount,
+                    v_game_system_id,
+                    'bingo_game_selection',
+                    v_source_id,
+                    v_card_idempotency_key,
+                    'Bingo cartela stake',
+                    jsonb_build_object(
+                        'room_id', v_room.id,
+                        'stake_id', v_stake.id,
+                        'card_id', v_card_id,
+                        'user_id', v_user_id,
+                        'selection_key', p_idempotency_key
+                    )
+                );
+
+        EXCEPTION
+            WHEN OTHERS THEN
+
+                IF SQLERRM LIKE 'Insufficient balance.%' THEN
+
+                    v_rejected :=
+                        v_rejected ||
+                        jsonb_build_array(
+                            jsonb_build_object(
+                                'user_id',
+                                v_user_id,
+                                'card_id',
+                                v_card_id,
+                                'reason',
+                                'insufficient_balance'
+                            )
+                        );
+
+                    CONTINUE;
+
+                ELSE
+                    RAISE;
+                END IF;
+
+        END;
+
+
+        ------------------------------------------------------------
+        -- Successful cartela
+        ------------------------------------------------------------
+
+        v_accepted :=
+            v_accepted ||
+            jsonb_build_array(
+                jsonb_build_object(
+                    'user_id',
+                    v_user_id,
+                    'card_id',
+                    v_card_id,
+                    'card_data',
+                    v_card_data,
+                    'transaction_id',
+                    v_transaction_id
+                )
+            );
+
+    END LOOP;
+
+
+    ----------------------------------------------------------------
+    -- 9. Calculate final participant/card counts
+    ----------------------------------------------------------------
+
+    SELECT COUNT(*)
+    INTO v_total_cards
+    FROM jsonb_array_elements(v_accepted);
+
+
+    SELECT COUNT(DISTINCT (value->>'user_id')::INTEGER)
+    INTO v_total_participants
+    FROM jsonb_array_elements(v_accepted);
+
+
+    ----------------------------------------------------------------
+    -- 10. Validate final player count
+    ----------------------------------------------------------------
+
+    IF v_total_participants < v_room.min_players THEN
+
+        RAISE EXCEPTION
+            'Not enough eligible participants. Required: %, accepted: %',
+            v_room.min_players,
+            v_total_participants;
+
+    END IF;
+
+
+    IF v_room.max_players IS NOT NULL
+       AND v_total_participants > v_room.max_players THEN
+
+        RAISE EXCEPTION
+            'Too many participants. Maximum: %, accepted: %',
+            v_room.max_players,
+            v_total_participants;
+
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 11. Calculate financial totals from ACCEPTED cartelas only
+    ----------------------------------------------------------------
+
+    v_gross_pot :=
+        ROUND(
+            v_total_cards * v_stake.amount,
+            2
+        );
+
+    v_commission_amount :=
+        ROUND(
+            v_gross_pot
+            * v_commission_rule.commission_rate
+            / 100,
+            2
+        );
+
+    v_prize_pool :=
+        v_gross_pot - v_commission_amount;
+
+
+    ----------------------------------------------------------------
+    -- 12. Generate game code
+    ----------------------------------------------------------------
+
+    v_game_code :=
+        'BG-'
+        || UPPER(
+            SUBSTRING(
+                MD5(
+                    p_idempotency_key
+                    || clock_timestamp()::TEXT
+                    || random()::TEXT
+                )
+                FROM 1 FOR 20
+            )
+        );
+
+
+    ----------------------------------------------------------------
+    -- 13. Create the Bingo game
+    ----------------------------------------------------------------
+
+    INSERT INTO public.bingo_games (
+        game_code,
+        room_id,
+        stake_id,
+        stake_amount,
+        commission_rule_id,
+        commission_rate,
+        gross_pot,
+        commission_amount,
+        prize_pool,
+        status,
+        is_split,
+        selection_started_at,
+        selection_ends_at,
+        card_count,
+        max_cards_per_player,
+        idempotency_key,
+        created_at
+    )
+    VALUES (
+        v_game_code,
+        v_room.id,
+        v_stake.id,
+        v_stake.amount,
+        v_commission_rule.id,
+        v_commission_rule.commission_rate,
+        v_gross_pot,
+        v_commission_amount,
+        v_prize_pool,
+        'selection',
+        FALSE,
+        v_now,
+        v_now + MAKE_INTERVAL(
+            secs => v_room.selection_seconds
+        ),
+        v_room.card_count,
+        v_room.max_cards_per_player,
+        p_idempotency_key,
+        v_now
+    )
+    RETURNING id
+    INTO v_game_id;
+
+
+    ----------------------------------------------------------------
+    -- 14. Create participants
+    ----------------------------------------------------------------
+
+    INSERT INTO public.bingo_participants (
+        game_id,
+        user_id,
+        amount_paid,
+        status,
+        is_disqualified,
+        amount_won,
+        joined_at
+    )
+    SELECT
+        v_game_id,
+        accepted.user_id,
+        COUNT(*) * v_stake.amount,
+        'active',
+        FALSE,
+        0,
+        v_now
+    FROM (
+        SELECT
+            (value->>'user_id')::INTEGER AS user_id
+        FROM jsonb_array_elements(v_accepted)
+    ) AS accepted
+    GROUP BY accepted.user_id;
+
+
+    ----------------------------------------------------------------
+    -- 15. Create participant cards
+    ----------------------------------------------------------------
+
+    INSERT INTO public.bingo_participant_cards (
+        participant_id,
+        game_id,
+        card_id,
+        card_data,
+        transaction_id,
+        created_at
+    )
+    SELECT
+        bp.id,
+        v_game_id,
+        (accepted.value->>'card_id')::INTEGER,
+        COALESCE(
+            accepted.value->'card_data',
+            '{}'::JSONB
+        ),
+        (accepted.value->>'transaction_id')::BIGINT,
+        v_now
+    FROM jsonb_array_elements(v_accepted) AS accepted
+    JOIN public.bingo_participants bp
+      ON bp.game_id = v_game_id
+     AND bp.user_id =
+         (accepted.value->>'user_id')::INTEGER;
+
+
+    ----------------------------------------------------------------
+    -- 16. Return complete result
+    ----------------------------------------------------------------
+
+    RETURN jsonb_build_object(
+        'success',
+        TRUE,
+
+        'idempotent',
+        FALSE,
+
+        'game_id',
+        v_game_id,
+
+        'game_code',
+        v_game_code,
+
+        'room_id',
+        v_room.id,
+
+        'stake_id',
+        v_stake.id,
+
+        'stake_amount',
+        v_stake.amount,
+
+        'total_participants',
+        v_total_participants,
+
+        'total_cards',
+        v_total_cards,
+
+        'gross_pot',
+        v_gross_pot,
+
+        'commission_rule_id',
+        v_commission_rule.id,
+
+        'commission_rate',
+        v_commission_rule.commission_rate,
+
+        'commission_amount',
+        v_commission_amount,
+
+        'prize_pool',
+        v_prize_pool,
+
+        'accepted',
+        v_accepted,
+
+        'rejected',
+        v_rejected
+    );
+
+END;
+$$;
+
+
+ALTER FUNCTION public.create_bingo_game_from_selections(p_room_id bigint, p_stake_id character varying, p_idempotency_key character varying, p_selections jsonb) OWNER TO neondb_owner;
 
 --
 -- Name: create_financial_transaction(integer, character varying, character varying, bigint, character varying, character varying, character varying, text, jsonb); Type: FUNCTION; Schema: public; Owner: neondb_owner
@@ -2921,6 +3788,7 @@ CREATE TABLE public.bingo_games (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     card_count integer NOT NULL,
     max_cards_per_player integer NOT NULL,
+    idempotency_key character varying(150),
     CONSTRAINT bingo_games_commission_amount_check CHECK ((commission_amount >= (0)::numeric)),
     CONSTRAINT bingo_games_commission_rate_check CHECK (((commission_rate >= (0)::numeric) AND (commission_rate <= (100)::numeric))),
     CONSTRAINT bingo_games_financial_equation_check CHECK (((commission_amount + prize_pool) = gross_pot)),
@@ -3318,29 +4186,6 @@ CREATE TABLE public.game_systems (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT game_systems_status_check CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'inactive'::character varying, 'maintenance'::character varying, 'disabled'::character varying])::text[])))
 );
-
--- ============================================================
--- SEED: Bingo game system
--- ============================================================
-
-INSERT INTO public.game_systems (
-    code,
-    name,
-    status,
-    metadata
-)
-VALUES (
-    'bingo',
-    'Bingo',
-    'active',
-    '{"source_type":"bingo_game"}'::jsonb
-)
-ON CONFLICT (code)
-DO UPDATE SET
-    name = EXCLUDED.name,
-    status = EXCLUDED.status,
-    metadata = EXCLUDED.metadata,
-    updated_at = NOW();
 
 
 ALTER TABLE public.game_systems OWNER TO neondb_owner;
@@ -4542,6 +5387,13 @@ CREATE UNIQUE INDEX uq_bingo_games_active_room_stake ON public.bingo_games USING
 
 
 --
+-- Name: uq_bingo_games_idempotency_key; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE UNIQUE INDEX uq_bingo_games_idempotency_key ON public.bingo_games USING btree (idempotency_key) WHERE (idempotency_key IS NOT NULL);
+
+
+--
 -- Name: uq_financial_transactions_idempotency; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
@@ -5013,6 +5865,3 @@ ALTER TABLE ONLY public.withdrawals
 --
 -- PostgreSQL database dump complete
 --
-
-
-
