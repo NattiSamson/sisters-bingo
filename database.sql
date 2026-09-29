@@ -2919,6 +2919,8 @@ CREATE TABLE public.bingo_games (
     started_at timestamp with time zone,
     ended_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    card_count integer NOT NULL,
+    max_cards_per_player integer NOT NULL,
     CONSTRAINT bingo_games_commission_amount_check CHECK ((commission_amount >= (0)::numeric)),
     CONSTRAINT bingo_games_commission_rate_check CHECK (((commission_rate >= (0)::numeric) AND (commission_rate <= (100)::numeric))),
     CONSTRAINT bingo_games_financial_equation_check CHECK (((commission_amount + prize_pool) = gross_pot)),
@@ -2958,7 +2960,7 @@ CREATE TABLE public.bingo_participant_cards (
     card_id integer NOT NULL,
     card_data jsonb NOT NULL,
     transaction_id bigint NOT NULL,
-    created_at timestamp with time zone DEFAULT now(),
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT bingo_participant_cards_card_id_check CHECK ((card_id >= 1))
 );
 
@@ -4204,13 +4206,6 @@ CREATE INDEX idx_bingo_participant_cards_game ON public.bingo_participant_cards 
 
 
 --
--- Name: idx_bingo_participant_cards_lookup; Type: INDEX; Schema: public; Owner: neondb_owner
---
-
-CREATE INDEX idx_bingo_participant_cards_lookup ON public.bingo_participant_cards USING btree (game_id, participant_id, card_id);
-
-
---
 -- Name: idx_bingo_participant_cards_participant; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
@@ -4677,6 +4672,14 @@ ALTER TABLE ONLY public.bingo_participant_cards
 
 ALTER TABLE ONLY public.bingo_participant_cards
     ADD CONSTRAINT bingo_participant_cards_participant_fk FOREIGN KEY (participant_id) REFERENCES public.bingo_participants(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: bingo_participant_cards bingo_participant_cards_transaction_fk; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_participant_cards
+    ADD CONSTRAINT bingo_participant_cards_transaction_fk FOREIGN KEY (transaction_id) REFERENCES public.financial_transactions(id) ON DELETE RESTRICT;
 
 
 --
