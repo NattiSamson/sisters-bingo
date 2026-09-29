@@ -1,6 +1,9 @@
 --
 -- PostgreSQL database dump
 --
+
+
+
 -- Dumped from database version 18.6 (6569466)
 -- Dumped by pg_dump version 18.4
 
@@ -1621,23 +1624,47 @@ CREATE FUNCTION public.refund_stake(p_user_id integer, p_original_transaction_id
     AS $$
 DECLARE
     v_original financial_transactions%ROWTYPE;
+
     v_refund_transaction_id bigint;
     v_transaction_created boolean;
 
     v_wallet_id bigint;
+    v_wallet_balance numeric(18,2);
+
     v_original_ledger RECORD;
 
     v_total_refund numeric(18,2) := 0;
+    v_ledger_count integer := 0;
+
+    v_refund_metadata jsonb;
 BEGIN
-    /*
-     * 1. Lock and validate the original stake transaction.
-     *
-     * Locking the original transaction also serializes multiple attempts
-     * to refund the same stake.
-     */
+    ----------------------------------------------------------------
+    -- 1. Validate input
+    ----------------------------------------------------------------
+    IF p_user_id IS NULL OR p_user_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid user ID';
+    END IF;
+
+    IF p_original_transaction_id IS NULL
+       OR p_original_transaction_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid original transaction ID';
+    END IF;
+
+    IF p_idempotency_key IS NULL
+       OR BTRIM(p_idempotency_key) = '' THEN
+        RAISE EXCEPTION 'Refund idempotency key is required';
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 2. Lock and validate the original stake transaction
+    --
+    -- This serializes multiple refund attempts for the same
+    -- financial transaction.
+    ----------------------------------------------------------------
     SELECT *
     INTO v_original
-    FROM financial_transactions
+    FROM public.financial_transactions
     WHERE id = p_original_transaction_id
       AND user_id = p_user_id
       AND type = 'stake'
@@ -1652,34 +1679,55 @@ BEGIN
     END IF;
 
 
-    /*
-     * 2. Lock all wallets involved in the original stake.
-     *
-     * Lock in deterministic wallet_id order to reduce deadlock risk.
-     */
+    ----------------------------------------------------------------
+    -- 3. Find every wallet movement created by the original stake
+    --
+    -- place_stake() can debit:
+    --
+    --   Play wallet
+    --   Main wallet
+    --
+    -- Therefore we must reverse every negative ledger entry.
+    ----------------------------------------------------------------
     FOR v_wallet_id IN
-        SELECT DISTINCT wallet_id
-        FROM ledger_entries
-        WHERE transaction_id = p_original_transaction_id
-          AND amount < 0
-        ORDER BY wallet_id
+        SELECT DISTINCT le.wallet_id
+        FROM public.ledger_entries le
+        WHERE le.transaction_id = p_original_transaction_id
+          AND le.amount < 0
+        ORDER BY le.wallet_id
     LOOP
-        PERFORM 1
-        FROM wallets
-        WHERE id = v_wallet_id
-        FOR UPDATE;
+
+        ----------------------------------------------------------------
+        -- Lock the wallet balance row.
+        --
+        -- IMPORTANT:
+        -- The balance is stored in wallet_balances, not wallets.
+        ----------------------------------------------------------------
+        PERFORM public.lock_wallet(v_wallet_id);
+
     END LOOP;
 
 
-    /*
-     * 3. Create/retrieve the refund transaction.
-     *
-     * create_financial_transaction() is idempotent when an
-     * idempotency_key is supplied.
-     */
-    SELECT transaction_id, created
-    INTO v_refund_transaction_id, v_transaction_created
-    FROM create_financial_transaction(
+    ----------------------------------------------------------------
+    -- 4. Create/retrieve refund financial transaction
+    --
+    -- Description and metadata belong to financial_transactions.
+    -- They do NOT belong to ledger_entries.
+    ----------------------------------------------------------------
+    v_refund_metadata :=
+        COALESCE(p_metadata, '{}'::jsonb)
+        || jsonb_build_object(
+            'original_transaction_id',
+            p_original_transaction_id
+        );
+
+    SELECT
+        t.transaction_id,
+        t.created
+    INTO
+        v_refund_transaction_id,
+        v_transaction_created
+    FROM public.create_financial_transaction(
         p_user_id,
         'refund',
         'completed',
@@ -1687,53 +1735,75 @@ BEGIN
         'stake_refund',
         p_original_transaction_id::text,
         p_idempotency_key,
-        p_description,
-        COALESCE(p_metadata, '{}'::jsonb)
-            || jsonb_build_object(
-                'original_transaction_id',
-                p_original_transaction_id
-            )
-    );
+        COALESCE(
+            NULLIF(BTRIM(p_description), ''),
+            'Refund of stake transaction '
+                || p_original_transaction_id::text
+        ),
+        v_refund_metadata
+    ) AS t;
 
 
-    /*
-     * 4. If this is an idempotent retry, return the existing refund.
-     *
-     * This must happen BEFORE the reversal check below so a legitimate
-     * retry returns successfully.
-     */
+    ----------------------------------------------------------------
+    -- 5. Idempotent retry
+    --
+    -- If the refund transaction already exists, DO NOT:
+    --
+    --   - create another ledger entry
+    --   - credit the wallet again
+    --
+    -- Just return the existing refund transaction.
+    ----------------------------------------------------------------
     IF NOT v_transaction_created THEN
+
+        ----------------------------------------------------------------
+        -- Verify that the existing transaction really represents
+        -- this refund operation.
+        ----------------------------------------------------------------
+        IF NOT EXISTS (
+            SELECT 1
+            FROM public.financial_transactions ft
+            WHERE ft.id = v_refund_transaction_id
+              AND ft.user_id = p_user_id
+              AND ft.type = 'refund'
+              AND ft.status = 'completed'
+              AND ft.source_type = 'stake_refund'
+              AND ft.source_id = p_original_transaction_id::text
+        ) THEN
+            RAISE EXCEPTION
+                'Existing transaction % does not match stake refund %',
+                v_refund_transaction_id,
+                p_original_transaction_id;
+        END IF;
+
         RETURN v_refund_transaction_id;
     END IF;
 
 
-    /*
-     * 5. Prevent a stake from being reversed more than once.
-     *
-     * The original transaction is already locked above, so another
-     * refund_stake() call for the same stake cannot pass this point
-     * concurrently.
-     */
+    ----------------------------------------------------------------
+    -- 6. Prevent double refund
+    --
+    -- The original transaction is locked above, so concurrent
+    -- refund attempts for this same transaction are serialized.
+    ----------------------------------------------------------------
     IF EXISTS (
         SELECT 1
-        FROM financial_transactions
-        WHERE reversed_transaction_id = p_original_transaction_id
+        FROM public.financial_transactions ft
+        WHERE ft.reversed_transaction_id =
+              p_original_transaction_id
     ) THEN
         RAISE EXCEPTION
-            'Stake transaction % has already been reversed',
+            'Stake transaction % has already been refunded',
             p_original_transaction_id;
     END IF;
 
 
-    /*
-     * 6. Link the newly-created refund transaction to the original
-     * stake transaction.
-     *
-     * This is the structured relationship. It is in addition to the
-     * source_type/source_id and metadata fields.
-     */
-    UPDATE financial_transactions
-    SET reversed_transaction_id = p_original_transaction_id
+    ----------------------------------------------------------------
+    -- 7. Link refund transaction to original stake transaction
+    ----------------------------------------------------------------
+    UPDATE public.financial_transactions
+    SET
+        reversed_transaction_id = p_original_transaction_id
     WHERE id = v_refund_transaction_id
       AND reversed_transaction_id IS NULL;
 
@@ -1745,83 +1815,119 @@ BEGIN
     END IF;
 
 
-    /*
-     * 7. Reverse every original wallet movement.
-     *
-     * Original stake entries are negative.
-     * Refund entries are therefore positive.
-     *
-     * Process in wallet_id order for deterministic locking.
-     */
+    ----------------------------------------------------------------
+    -- 8. Reverse every negative ledger entry
+    --
+    -- Original:
+    --
+    --   Play  -70
+    --   Main  -30
+    --
+    -- Refund:
+    --
+    --   Play  +70
+    --   Main  +30
+    --
+    -- Total refund = 100
+    ----------------------------------------------------------------
     FOR v_original_ledger IN
         SELECT
-            wallet_id,
-            amount,
-            description,
-            metadata
-        FROM ledger_entries
-        WHERE transaction_id = p_original_transaction_id
-          AND amount < 0
-        ORDER BY wallet_id
+            le.wallet_id,
+            le.amount
+        FROM public.ledger_entries le
+        WHERE le.transaction_id = p_original_transaction_id
+          AND le.amount < 0
+        ORDER BY le.wallet_id
     LOOP
 
-        INSERT INTO ledger_entries (
+        v_ledger_count :=
+            v_ledger_count + 1;
+
+        ----------------------------------------------------------------
+        -- Insert the reversal ledger entry.
+        --
+        -- ledger_entries only contains:
+        --
+        --   transaction_id
+        --   wallet_id
+        --   amount
+        --   created_at
+        ----------------------------------------------------------------
+        INSERT INTO public.ledger_entries (
             transaction_id,
             wallet_id,
-            amount,
-            description,
-            metadata
+            amount
         )
         VALUES (
             v_refund_transaction_id,
             v_original_ledger.wallet_id,
-            -v_original_ledger.amount,
-            COALESCE(
-                p_description,
-                'Refund of stake transaction '
-                    || p_original_transaction_id::text
-            ),
-            COALESCE(v_original_ledger.metadata, '{}'::jsonb)
-                || jsonb_build_object(
-                    'refund_of_transaction_id',
-                    p_original_transaction_id
-                )
+            ROUND(-v_original_ledger.amount, 2)
         );
 
-        /*
-         * Credit the exact wallet that was originally debited.
-         */
-        UPDATE wallets
-        SET balance = balance - v_original_ledger.amount,
+
+        ----------------------------------------------------------------
+        -- Restore the exact wallet that was originally charged.
+        ----------------------------------------------------------------
+        UPDATE public.wallet_balances
+        SET
+            balance = balance + ROUND(
+                -v_original_ledger.amount,
+                2
+            ),
             updated_at = NOW()
-        WHERE id = v_original_ledger.wallet_id;
+        WHERE wallet_id = v_original_ledger.wallet_id;
 
         IF NOT FOUND THEN
             RAISE EXCEPTION
-                'Wallet % not found while refunding stake transaction %',
+                'Wallet balance % not found while refunding stake transaction %',
                 v_original_ledger.wallet_id,
                 p_original_transaction_id;
         END IF;
 
-        v_total_refund := v_total_refund - v_original_ledger.amount;
+
+        ----------------------------------------------------------------
+        -- Calculate total refund.
+        ----------------------------------------------------------------
+        v_total_refund :=
+            v_total_refund
+            + ROUND(-v_original_ledger.amount, 2);
+
     END LOOP;
 
 
-    /*
-     * 8. A completed stake must have produced at least one negative
-     * ledger entry.
-     */
-    IF v_total_refund <= 0 THEN
+    ----------------------------------------------------------------
+    -- 9. A completed stake must have at least one negative ledger
+    --    entry.
+    ----------------------------------------------------------------
+    IF v_ledger_count = 0
+       OR v_total_refund <= 0 THEN
+
         RAISE EXCEPTION
             'Stake transaction % has no refundable ledger entries',
             p_original_transaction_id;
+
     END IF;
 
 
-    /*
-     * 9. Return the refund transaction ID.
-     */
+    ----------------------------------------------------------------
+    -- 10. Final consistency check
+    ----------------------------------------------------------------
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.ledger_entries le
+        WHERE le.transaction_id = v_refund_transaction_id
+    ) THEN
+        RAISE EXCEPTION
+            'Refund transaction % has no ledger entries',
+            v_refund_transaction_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 11. Return refund transaction ID
+    ----------------------------------------------------------------
     RETURN v_refund_transaction_id;
+
 END;
 $$;
 
@@ -1844,13 +1950,37 @@ DECLARE
 
     v_main_wallet_id bigint;
     v_refund_amount numeric(18,2);
+
+    v_ledger_wallet_id bigint;
+    v_ledger_amount numeric(18,2);
+
+    v_refund_key varchar(150);
 BEGIN
-    /*
-     * 1. Lock and validate the withdrawal.
-     */
+    ----------------------------------------------------------------
+    -- 1. Validate input
+    ----------------------------------------------------------------
+    IF p_user_id IS NULL OR p_user_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid user ID';
+    END IF;
+
+    IF p_withdrawal_id IS NULL OR p_withdrawal_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid withdrawal ID';
+    END IF;
+
+    IF p_original_transaction_id IS NULL
+       OR p_original_transaction_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid original transaction ID';
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 2. Lock the withdrawal
+    --
+    -- This serializes refund attempts for the same withdrawal.
+    ----------------------------------------------------------------
     SELECT *
     INTO v_withdrawal
-    FROM withdrawals
+    FROM public.withdrawals
     WHERE id = p_withdrawal_id
       AND user_id = p_user_id
     FOR UPDATE;
@@ -1863,12 +1993,12 @@ BEGIN
     END IF;
 
 
-    /*
-     * 2. Lock and validate the original withdrawal transaction.
-     */
+    ----------------------------------------------------------------
+    -- 3. Validate the withdrawal transaction
+    ----------------------------------------------------------------
     SELECT *
     INTO v_original
-    FROM financial_transactions
+    FROM public.financial_transactions
     WHERE id = p_original_transaction_id
       AND user_id = p_user_id
       AND type = 'withdrawal'
@@ -1883,106 +2013,207 @@ BEGIN
     END IF;
 
 
-    /*
-     * 3. Make sure this withdrawal actually belongs to the supplied
-     * financial transaction.
-     *
-     * withdrawals.transaction_id should point to the original
-     * withdrawal transaction.
-     */
+    ----------------------------------------------------------------
+    -- 4. Verify the withdrawal points to this transaction
+    ----------------------------------------------------------------
     IF v_withdrawal.transaction_id IS DISTINCT FROM p_original_transaction_id THEN
         RAISE EXCEPTION
-            'Withdrawal % is not linked to withdrawal transaction %',
+            'Withdrawal % is not linked to transaction %',
             p_withdrawal_id,
             p_original_transaction_id;
     END IF;
 
 
-    /*
-     * 4. Find the exact amount that was originally withdrawn.
-     *
-     * Withdrawal transactions should contain negative ledger entries.
-     * Sum the negative entries and convert them to a positive refund.
-     */
-    SELECT COALESCE(-SUM(amount), 0)
+    ----------------------------------------------------------------
+    -- 5. Determine the exact amount that was reserved
+    --
+    -- reserve_withdrawal_from_main() creates:
+    --
+    --     ledger_entries.amount = -withdrawal_amount
+    --
+    -- Therefore the refund is the positive inverse.
+    ----------------------------------------------------------------
+    SELECT
+        COALESCE(
+            -SUM(le.amount),
+            0
+        )
     INTO v_refund_amount
-    FROM ledger_entries
-    WHERE transaction_id = p_original_transaction_id
-      AND amount < 0;
+    FROM public.ledger_entries le
+    WHERE le.transaction_id = p_original_transaction_id
+      AND le.amount < 0;
+
+    v_refund_amount := ROUND(v_refund_amount, 2);
 
     IF v_refund_amount <= 0 THEN
         RAISE EXCEPTION
-            'Withdrawal transaction % has no refundable ledger entries',
+            'Withdrawal transaction % has no refundable ledger entry',
             p_original_transaction_id;
     END IF;
 
 
-    /*
-     * 5. Lock the Main wallet.
-     *
-     * Withdrawals originate from Main, so the refund goes back to Main.
-     */
-    SELECT id
+    ----------------------------------------------------------------
+    -- 6. Validate the withdrawal amount against the ledger
+    --
+    -- This protects against a corrupted/mismatched withdrawal row.
+    ----------------------------------------------------------------
+    IF v_withdrawal.amount IS NULL
+       OR ROUND(v_withdrawal.amount, 2) <> v_refund_amount THEN
+        RAISE EXCEPTION
+            'Withdrawal % amount mismatch. Withdrawal amount: %, ledger amount: %',
+            p_withdrawal_id,
+            v_withdrawal.amount,
+            v_refund_amount;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 7. Find the Main wallet
+    ----------------------------------------------------------------
+    SELECT w.id
     INTO v_main_wallet_id
-    FROM wallets
-    WHERE user_id = p_user_id
-      AND wallet_type = 'main'
+    FROM public.wallets w
+    WHERE w.user_id = p_user_id
+      AND w.wallet_type = 'main'
+      AND w.is_active = TRUE
     FOR UPDATE;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION
-            'Main wallet for user % was not found',
+            'Active Main wallet for user % was not found',
             p_user_id;
     END IF;
 
 
-    /*
-     * 6. Create/retrieve the refund transaction.
-     */
-    SELECT transaction_id, created
-    INTO v_refund_transaction_id, v_transaction_created
-    FROM create_financial_transaction(
+    ----------------------------------------------------------------
+    -- 8. Lock the Main wallet balance row
+    --
+    -- IMPORTANT:
+    -- The actual balance is stored in wallet_balances,
+    -- NOT wallets.balance.
+    ----------------------------------------------------------------
+    PERFORM 1
+    FROM public.wallet_balances wb
+    WHERE wb.wallet_id = v_main_wallet_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Main wallet balance for wallet % was not found',
+            v_main_wallet_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 9. Verify the original withdrawal ledger belongs to Main
+    --
+    -- reserve_withdrawal_from_main() should have created exactly
+    -- one negative ledger entry against the Main wallet.
+    ----------------------------------------------------------------
+    SELECT
+        le.wallet_id,
+        le.amount
+    INTO
+        v_ledger_wallet_id,
+        v_ledger_amount
+    FROM public.ledger_entries le
+    WHERE le.transaction_id = p_original_transaction_id
+      AND le.amount < 0
+    ORDER BY le.id
+    LIMIT 1;
+
+    IF v_ledger_wallet_id IS NULL THEN
+        RAISE EXCEPTION
+            'No negative ledger entry found for withdrawal transaction %',
+            p_original_transaction_id;
+    END IF;
+
+    IF v_ledger_wallet_id <> v_main_wallet_id THEN
+        RAISE EXCEPTION
+            'Withdrawal transaction % does not belong to the user Main wallet',
+            p_original_transaction_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 10. Create/retrieve the refund transaction
+    --
+    -- If the caller does not provide an idempotency key, generate
+    -- the canonical one for this withdrawal.
+    ----------------------------------------------------------------
+    v_refund_key :=
+        COALESCE(
+            NULLIF(BTRIM(p_idempotency_key), ''),
+            'withdrawal:refund:' || p_withdrawal_id::text
+        );
+
+    SELECT
+        t.transaction_id,
+        t.created
+    INTO
+        v_refund_transaction_id,
+        v_transaction_created
+    FROM public.create_financial_transaction(
         p_user_id,
         'refund',
         'completed',
         v_original.game_system_id,
         'withdrawal_refund',
         p_withdrawal_id::text,
-        p_idempotency_key,
+        v_refund_key,
         COALESCE(
-            p_description,
+            NULLIF(BTRIM(p_description), ''),
             'Refund of withdrawal ' || p_withdrawal_id::text
         ),
         jsonb_build_object(
-            'withdrawal_id',
-            p_withdrawal_id,
-            'original_transaction_id',
-            p_original_transaction_id
+            'withdrawal_id', p_withdrawal_id,
+            'original_transaction_id', p_original_transaction_id,
+            'refund_amount', v_refund_amount,
+            'wallet_id', v_main_wallet_id,
+            'reason', 'withdrawal_rejected'
         )
-    );
+    ) AS t;
 
 
-    /*
-     * 7. Idempotent retry:
-     * if the refund already exists, return it without creating
-     * another ledger entry or changing the balance again.
-     */
+    ----------------------------------------------------------------
+    -- 11. Idempotent retry
+    --
+    -- If the refund transaction already exists for this key,
+    -- DO NOT create another ledger entry and DO NOT credit the
+    -- wallet again.
+    ----------------------------------------------------------------
     IF NOT v_transaction_created THEN
+
+        -- Make sure the existing refund really belongs to
+        -- this original withdrawal.
+        IF NOT EXISTS (
+            SELECT 1
+            FROM public.financial_transactions ft
+            WHERE ft.id = v_refund_transaction_id
+              AND ft.type = 'refund'
+              AND ft.user_id = p_user_id
+              AND ft.reversed_transaction_id =
+                    p_original_transaction_id
+        ) THEN
+            RAISE EXCEPTION
+                'Existing refund transaction % is not a valid refund for withdrawal transaction %',
+                v_refund_transaction_id,
+                p_original_transaction_id;
+        END IF;
+
         RETURN v_refund_transaction_id;
     END IF;
 
 
-    /*
-     * 8. Prevent the same withdrawal transaction from being reversed
-     * more than once.
-     *
-     * The original transaction is locked above, so concurrent refund
-     * attempts for the same withdrawal are serialized.
-     */
+    ----------------------------------------------------------------
+    -- 12. Make absolutely sure the original transaction has not
+    -- already been reversed by another refund.
+    ----------------------------------------------------------------
     IF EXISTS (
         SELECT 1
-        FROM financial_transactions
-        WHERE reversed_transaction_id = p_original_transaction_id
+        FROM public.financial_transactions ft
+        WHERE ft.reversed_transaction_id =
+              p_original_transaction_id
     ) THEN
         RAISE EXCEPTION
             'Withdrawal transaction % has already been reversed',
@@ -1990,72 +2221,82 @@ BEGIN
     END IF;
 
 
-    /*
-     * 9. Link the refund transaction to the original withdrawal.
-     */
-    UPDATE financial_transactions
+    ----------------------------------------------------------------
+    -- 13. Link refund transaction to original withdrawal
+    ----------------------------------------------------------------
+    UPDATE public.financial_transactions
     SET reversed_transaction_id = p_original_transaction_id
     WHERE id = v_refund_transaction_id
       AND reversed_transaction_id IS NULL;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION
-            'Failed to link refund transaction % to original withdrawal transaction %',
+            'Failed to link refund transaction % to withdrawal transaction %',
             v_refund_transaction_id,
             p_original_transaction_id;
     END IF;
 
 
-    /*
-     * 10. Create the positive refund ledger entry in Main.
-     *
-     * Ledger entries are immutable, so we create a new entry instead
-     * of modifying the original withdrawal entry.
-     */
-    INSERT INTO ledger_entries (
+    ----------------------------------------------------------------
+    -- 14. Create the positive refund ledger entry
+    --
+    -- ledger_entries has ONLY:
+    --   transaction_id
+    --   wallet_id
+    --   amount
+    --   created_at
+    --
+    -- Description/metadata belong to financial_transactions.
+    ----------------------------------------------------------------
+    INSERT INTO public.ledger_entries (
         transaction_id,
         wallet_id,
-        amount,
-        description,
-        metadata
+        amount
     )
     VALUES (
         v_refund_transaction_id,
         v_main_wallet_id,
-        v_refund_amount,
-        COALESCE(
-            p_description,
-            'Refund of withdrawal ' || p_withdrawal_id::text
-        ),
-        jsonb_build_object(
-            'withdrawal_id',
-            p_withdrawal_id,
-            'refund_of_transaction_id',
-            p_original_transaction_id
-        )
+        v_refund_amount
     );
 
 
-    /*
-     * 11. Credit Main with the exact withdrawn amount.
-     */
-    UPDATE wallets
-    SET balance = balance + v_refund_amount,
+    ----------------------------------------------------------------
+    -- 15. Restore the Main wallet balance
+    ----------------------------------------------------------------
+    UPDATE public.wallet_balances
+    SET
+        balance = balance + v_refund_amount,
         updated_at = NOW()
-    WHERE id = v_main_wallet_id;
+    WHERE wallet_id = v_main_wallet_id;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION
-            'Main wallet % disappeared while refunding withdrawal %',
-            v_main_wallet_id,
-            p_withdrawal_id;
+            'Failed to restore Main wallet balance for wallet %',
+            v_main_wallet_id;
     END IF;
 
 
-    /*
-     * 12. Return the refund transaction ID.
-     */
+    ----------------------------------------------------------------
+    -- 16. Final safety check
+    ----------------------------------------------------------------
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.ledger_entries
+        WHERE transaction_id = v_refund_transaction_id
+          AND wallet_id = v_main_wallet_id
+          AND amount = v_refund_amount
+    ) THEN
+        RAISE EXCEPTION
+            'Refund ledger entry was not created for transaction %',
+            v_refund_transaction_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 17. Return refund transaction ID
+    ----------------------------------------------------------------
     RETURN v_refund_transaction_id;
+
 END;
 $$;
 
@@ -2617,6 +2858,51 @@ $$;
 ALTER FUNCTION public.validate_withdrawal_rule(p_rule_id bigint, p_payment_method_id integer, p_payment_account_id integer, p_amount numeric) OWNER TO neondb_owner;
 
 --
+-- Name: bingo_commission_rules; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.bingo_commission_rules (
+    id bigint NOT NULL,
+    commission_type character varying(20) DEFAULT 'percentage'::character varying NOT NULL,
+    commission_rate numeric(8,4),
+    commission_fixed_amount numeric(18,2),
+    currency character(3) DEFAULT 'ETB'::bpchar NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    starts_at timestamp with time zone,
+    ends_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT bingo_commission_fixed_check CHECK (((commission_fixed_amount IS NULL) OR (commission_fixed_amount >= (0)::numeric))),
+    CONSTRAINT bingo_commission_rate_check CHECK (((commission_rate IS NULL) OR ((commission_rate >= (0)::numeric) AND (commission_rate <= (100)::numeric)))),
+    CONSTRAINT bingo_commission_type_check CHECK (((commission_type)::text = ANY ((ARRAY['percentage'::character varying, 'fixed'::character varying])::text[]))),
+    CONSTRAINT bingo_commission_value_check CHECK (((((commission_type)::text = 'percentage'::text) AND (commission_rate IS NOT NULL) AND (commission_fixed_amount IS NULL)) OR (((commission_type)::text = 'fixed'::text) AND (commission_fixed_amount IS NOT NULL) AND (commission_rate IS NULL))))
+);
+
+
+ALTER TABLE public.bingo_commission_rules OWNER TO neondb_owner;
+
+--
+-- Name: bingo_commission_rules_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
+--
+
+CREATE SEQUENCE public.bingo_commission_rules_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.bingo_commission_rules_id_seq OWNER TO neondb_owner;
+
+--
+-- Name: bingo_commission_rules_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
+--
+
+ALTER SEQUENCE public.bingo_commission_rules_id_seq OWNED BY public.bingo_commission_rules.id;
+
+
+--
 -- Name: bingo_games; Type: TABLE; Schema: public; Owner: neondb_owner
 --
 
@@ -2634,7 +2920,14 @@ CREATE TABLE public.bingo_games (
     started_at timestamp with time zone,
     ended_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now(),
-    game_code character varying(32) NOT NULL
+    game_code character varying(32) NOT NULL,
+    commission_rule_id bigint,
+    commission_rate numeric(8,4),
+    commission_amount numeric(18,2) DEFAULT 0 NOT NULL,
+    prize_pool numeric(18,2) DEFAULT 0 NOT NULL,
+    CONSTRAINT bingo_games_commission_amount_check CHECK ((commission_amount >= (0)::numeric)),
+    CONSTRAINT bingo_games_commission_rate_check CHECK (((commission_rate IS NULL) OR ((commission_rate >= (0)::numeric) AND (commission_rate <= (100)::numeric)))),
+    CONSTRAINT bingo_games_prize_pool_check CHECK ((prize_pool >= (0)::numeric))
 );
 
 
@@ -2710,6 +3003,79 @@ ALTER SEQUENCE public.bingo_participants_id_seq OWNED BY public.bingo_participan
 
 
 --
+-- Name: bingo_rooms; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.bingo_rooms (
+    id bigint NOT NULL,
+    name character varying(100) NOT NULL,
+    code character varying(20) NOT NULL,
+    description text,
+    status character varying(20) DEFAULT 'active'::character varying NOT NULL,
+    min_players integer DEFAULT 2 NOT NULL,
+    max_players integer,
+    max_cards_per_player integer DEFAULT 2 NOT NULL,
+    selection_seconds integer DEFAULT 50 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT bingo_rooms_max_cards_check CHECK ((max_cards_per_player >= 1)),
+    CONSTRAINT bingo_rooms_max_players_check CHECK (((max_players IS NULL) OR (max_players >= min_players))),
+    CONSTRAINT bingo_rooms_min_players_check CHECK ((min_players >= 2)),
+    CONSTRAINT bingo_rooms_selection_seconds_check CHECK ((selection_seconds >= 10)),
+    CONSTRAINT bingo_rooms_status_check CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'inactive'::character varying, 'maintenance'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.bingo_rooms OWNER TO neondb_owner;
+
+--
+-- Name: bingo_rooms_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
+--
+
+CREATE SEQUENCE public.bingo_rooms_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.bingo_rooms_id_seq OWNER TO neondb_owner;
+
+--
+-- Name: bingo_rooms_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
+--
+
+ALTER SEQUENCE public.bingo_rooms_id_seq OWNED BY public.bingo_rooms.id;
+
+
+--
+-- Name: bingo_stakes; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.bingo_stakes (
+    id character varying(10) NOT NULL,
+    name character varying(50) NOT NULL,
+    amount numeric(18,2) NOT NULL,
+    currency character varying(3) DEFAULT 'ETB'::character varying NOT NULL,
+    min_players integer DEFAULT 2 NOT NULL,
+    max_players integer,
+    max_cards_per_player integer DEFAULT 2 NOT NULL,
+    status character varying(20) DEFAULT 'active'::character varying NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT bingo_stakes_amount_check CHECK ((amount > (0)::numeric)),
+    CONSTRAINT bingo_stakes_currency_check CHECK (((currency)::text ~ '^[A-Z]{3}$'::text)),
+    CONSTRAINT bingo_stakes_max_cards_check CHECK ((max_cards_per_player >= 1)),
+    CONSTRAINT bingo_stakes_max_players_check CHECK (((max_players IS NULL) OR (max_players >= min_players))),
+    CONSTRAINT bingo_stakes_min_players_check CHECK ((min_players >= 2)),
+    CONSTRAINT bingo_stakes_status_check CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'inactive'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.bingo_stakes OWNER TO neondb_owner;
+
+--
 -- Name: bingo_winners; Type: TABLE; Schema: public; Owner: neondb_owner
 --
 
@@ -2780,7 +3146,8 @@ CREATE TABLE public.payment_accounts (
     balance numeric(18,2) DEFAULT 0.00 NOT NULL,
     is_active boolean DEFAULT true NOT NULL,
     is_removed boolean DEFAULT false CONSTRAINT payment_accounts_permanently_removed_not_null NOT NULL,
-    created_at timestamp with time zone DEFAULT now()
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
 );
 
 
@@ -2943,7 +3310,6 @@ CREATE TABLE public.game_systems (
 
 
 ALTER TABLE public.game_systems OWNER TO neondb_owner;
-
 
 -- ============================================================
 -- SEED: Bingo game system
@@ -3354,6 +3720,13 @@ ALTER SEQUENCE public."withdrawals _id_seq" OWNED BY public.withdrawals.id;
 
 
 --
+-- Name: bingo_commission_rules id; Type: DEFAULT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_commission_rules ALTER COLUMN id SET DEFAULT nextval('public.bingo_commission_rules_id_seq'::regclass);
+
+
+--
 -- Name: bingo_games id; Type: DEFAULT; Schema: public; Owner: neondb_owner
 --
 
@@ -3365,6 +3738,13 @@ ALTER TABLE ONLY public.bingo_games ALTER COLUMN id SET DEFAULT nextval('public.
 --
 
 ALTER TABLE ONLY public.bingo_participants ALTER COLUMN id SET DEFAULT nextval('public.bingo_participants_id_seq'::regclass);
+
+
+--
+-- Name: bingo_rooms id; Type: DEFAULT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_rooms ALTER COLUMN id SET DEFAULT nextval('public.bingo_rooms_id_seq'::regclass);
 
 
 --
@@ -3466,6 +3846,14 @@ ALTER TABLE ONLY public.withdrawals ALTER COLUMN id SET DEFAULT nextval('public.
 
 
 --
+-- Name: bingo_commission_rules bingo_commission_rules_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_commission_rules
+    ADD CONSTRAINT bingo_commission_rules_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: bingo_participants bingo_participants_game_card_unique; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
@@ -3479,6 +3867,30 @@ ALTER TABLE ONLY public.bingo_participants
 
 ALTER TABLE ONLY public.bingo_participants
     ADD CONSTRAINT bingo_participants_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bingo_rooms bingo_rooms_code_key; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_rooms
+    ADD CONSTRAINT bingo_rooms_code_key UNIQUE (code);
+
+
+--
+-- Name: bingo_rooms bingo_rooms_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_rooms
+    ADD CONSTRAINT bingo_rooms_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bingo_stakes bingo_stakes_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_stakes
+    ADD CONSTRAINT bingo_stakes_pkey PRIMARY KEY (id);
 
 
 --
@@ -4076,6 +4488,22 @@ CREATE TRIGGER withdrawal_rules_set_updated_at BEFORE UPDATE ON public.withdrawa
 --
 
 CREATE TRIGGER withdrawals_set_updated_at BEFORE UPDATE ON public.withdrawals FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+
+--
+-- Name: bingo_games bingo_games_commission_rule_fk; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_games
+    ADD CONSTRAINT bingo_games_commission_rule_fk FOREIGN KEY (commission_rule_id) REFERENCES public.bingo_commission_rules(id);
+
+
+--
+-- Name: bingo_games bingo_games_stake_fk; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_games
+    ADD CONSTRAINT bingo_games_stake_fk FOREIGN KEY (stake_id) REFERENCES public.bingo_stakes(id);
 
 
 --
