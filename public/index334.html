@@ -1163,7 +1163,6 @@ body{
   }
 }
 /* If the active game state does not exist, GAME always returns to the lobby. */
-.card-pending{opacity:.88;transform:scale(.98);transition:transform .08s ease,opacity .08s ease;}
 </style>
 
 <style id="mela-responsive-layout-fix">
@@ -2255,7 +2254,6 @@ function handle(msg){
       break;
 
     case 'cardSelected':
-      delete pendingCardSelections[String(msg.cardId)];
       if(msg.slot===2){ myCardId2=msg.cardId; myCardNumbers2=msg.cardNumbers; }
       else if(msg.slot===3){ myCardId3=msg.cardId; myCardNumbers3=msg.cardNumbers; }
       else if(msg.slot===4){ myCardId4=msg.cardId; myCardNumbers4=msg.cardNumbers; }
@@ -2407,12 +2405,7 @@ function handle(msg){
 
     case 'notification': showToast(msg.message, msg.message.startsWith('✅')?'':'error'); break;
 
-    case 'error':
-      // A rejected charge/selection must remove the optimistic highlight.
-      Object.keys(pendingCardSelections).forEach(k=>delete pendingCardSelections[k]);
-      renderCardPool(cardPool);
-      showToast(msg.message,'error');
-      break;
+    case 'error': showToast(msg.message,'error'); break;
   }
 }
 
@@ -2780,72 +2773,37 @@ function getMyCardSlot(cardId){
   return 0;
 }
 function getNextCardSlot(){
-  // Include selections that are already on the way to the server. This is
-  // critical for very fast clicks: the second click must use slot 2 even if
-  // the server has not yet sent the cardSelected response for slot 1.
-  const occupied=new Set();
-  if(myCardId) occupied.add(1);
-  if(myCardId2) occupied.add(2);
-  if(myCardId3) occupied.add(3);
-  if(myCardId4) occupied.add(4);
-  Object.values(pendingCardSelections).forEach(slot=>{
-    const n=Number(slot);
-    if(n>=1&&n<=4) occupied.add(n);
-  });
-  for(let slot=1;slot<=4;slot++){
-    if(!occupied.has(slot)) return slot;
-  }
+  if(!myCardId) return 1;
+  if(!myCardId2) return 2;
+  if(!myCardId3) return 3;
+  if(!myCardId4) return 4;
   return 0;
 }
-// Pending card selections are visual-only until the server confirms the charge.
-// This makes the card feel instant while keeping the server/database authoritative.
-const pendingCardSelections={};
-
 function renderCardPool(pool){
   const grid=document.getElementById('poolGrid'); grid.innerHTML='';
   pool.forEach(c=>{
     const btn=document.createElement('div'); btn.className='pool-btn'; btn.id='cardbtn-'+c.id; btn.innerText=`${c.id}`;
     const slot=getMyCardSlot(c.id);
-    const pendingSlot=Number(pendingCardSelections[String(c.id)]||0);
-    if(slot) {
-      btn.classList.add('mine'+slot);
-      btn.onclick=()=>deselectCard(slot);
-    } else if(pendingSlot) {
-      btn.classList.add('mine'+pendingSlot,'card-pending');
-      btn.onclick=null;
-    } else if(c.taken) btn.classList.add('taken');
+    if(slot) btn.classList.add('mine'+slot);
+    else if(c.taken) btn.classList.add('taken');
     else btn.onclick=()=>pickCard(c.id);
+    if(slot) btn.onclick=()=>deselectCard(slot);
     grid.appendChild(btn);
   });
   syncCardPoolResponsiveLayout();
 }
 function patchCardButton(c){
   const btn=document.getElementById('cardbtn-'+c.id); if(!btn) return;
-  btn.classList.remove('mine1','mine2','mine3','mine4','taken','card-pending'); btn.onclick=null;
+  btn.classList.remove('mine1','mine2','mine3','mine4','taken'); btn.onclick=null;
   const slot=getMyCardSlot(c.id);
-  const pendingSlot=Number(pendingCardSelections[String(c.id)]||0);
-  if(slot) {
-    btn.classList.add('mine'+slot); btn.onclick=()=>deselectCard(slot);
-  } else if(pendingSlot) {
-    btn.classList.add('mine'+pendingSlot,'card-pending');
-  } else if(c.taken) btn.classList.add('taken');
+  if(slot) {btn.classList.add('mine'+slot); btn.onclick=()=>deselectCard(slot);}
+  else if(c.taken) btn.classList.add('taken');
   else btn.onclick=()=>pickCard(c.id);
 }
 function pickCard(cardId){
   const slot=getNextCardSlot();
-  if(!slot) { showToast('ሌላ ካርድ ለመምረጥ ከተመረጡት ካርዶች አንዱን ይንኩ።','warn'); return; }
-  const key=String(cardId);
-  // Ignore duplicate clicks while this card is being charged/confirmed.
-  if(pendingCardSelections[key]) return;
-  // Immediate visual feedback; this does NOT change the wallet or server state.
-  pendingCardSelections[key]=slot;
-  const btn=document.getElementById('cardbtn-'+cardId);
-  if(btn){
-    btn.classList.remove('taken');
-    btn.classList.add('mine'+slot,'card-pending');
-    btn.onclick=null;
-  }
-  wsSend({type:'selectCard',cardId,slot});
+  if(slot) wsSend({type:'selectCard',cardId,slot});
+  else showToast('ሌላ ካርድ ለመምረጥ ከተመረጡት ካርዶች አንዱን ይንኩ።','warn');
 }
 function deselectCard(slot){
   const ids=[null,myCardId,myCardId2,myCardId3,myCardId4];
