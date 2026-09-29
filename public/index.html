@@ -1803,12 +1803,6 @@ function navGo(screen, navId){
     restoreCachedBalance();
   }
 
-  // Reconcile with Neon after navigation. This updates the UI only when the
-  // authoritative account endpoint returns a valid balance.
-  if(telegramId){
-    refreshAccountProfile(3,300);
-  }
-
   
 }
 function saveActiveGameState(phase){
@@ -2124,7 +2118,6 @@ function finishPostGameReset(msg={}){
   if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
     setBalance(msg.balance);
   }
-  setTimeout(()=>refreshAccountProfile(8,500),300);
   resetTrackerBoard(); setBingoBtn('idle'); resetSlotUI();
   document.getElementById('cdCountdown').innerText='ተጫዋቾችን በመጠባበቅ ላይ...';
 
@@ -2157,9 +2150,8 @@ function handle(msg){
           return;
         }
         telegramId=tid;
-        // First load the account directly over HTTPS. This breaks the old failure
-        // mode where a WebSocket lookup returned a fake zero/unregistered snapshot.
-        await refreshAccountProfile(6,500);
+        // Authenticate once through WebSocket. The server loads the authoritative
+        // database balance and returns it in authSuccess; no extra /api/user call is needed.
         sendTelegramAuth(tid);
       });
       break;
@@ -2181,10 +2173,6 @@ function handle(msg){
     setBalance(msg.balance);
   }
   //document.getElementById('welcomeName').innerText=myName||'Player';
-  // Always reconcile from the HTTPS account endpoint as the final authority.
-  refreshAccountProfile(10,500);
-
-
   document.getElementById('welcomeName').innerText=myName||'Player';
   //document.getElementById('welcomeStatus').innerText=msg.isRegistered?'Welcome back! 👋':'Registered!';
 
@@ -2232,8 +2220,6 @@ function handle(msg){
       if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
         setBalance(msg.balance);
       }
-      // Room balance can be stale after a deposit/stake transaction; re-read the Telegram/database account.
-      refreshAccountProfile(4,300);
       resetSlotUI();
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
       restoringActiveGame=false;
@@ -2386,7 +2372,6 @@ function handle(msg){
                  winnerList.includes(String(myPlayerId)) ||
                  (Array.isArray(msg.winnerTelegramIds)&&msg.winnerTelegramIds.map(String).includes(String(telegramId)));
       showToast(iWon?'🏆 አሸንፈዋል! የሽልማት ገንዘብዎ ወደ ሂሳብዎ ተጨምሯል።':'ዙሩ ተጠናቋል — ሂሳብዎ በጨዋታው ሰርቨር ተስተካክሏል።','');
-      setTimeout(()=>refreshAccountBalance(),300);
       // The server remains authoritative for the actual room reset. The hidden
       // refresh button is clicked automatically when this same countdown ends,
       // which forces the card-selection screen to request the fresh card pool.
@@ -2414,8 +2399,6 @@ function handle(msg){
         setBalance(msg.balance);
         accountLoaded=true;
       }
-      // Periodically reconcile with the Telegram-linked database account.
-      if(telegramId) setTimeout(()=>refreshAccountProfile(3,300),100);
       break;
 
     case 'leftRoom': clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; navGo('screenLobby'); break;

@@ -53,16 +53,30 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .pool-btn:hover{border-color:var(--gold)}
 .pool-btn.taken{background:#8b1e1e;color:#ffd0d0;cursor:not-allowed;opacity:.78}
 /* A card selected by the current player is GREEN; cards taken by other players are RED. */
-.pool-btn.mine1,.pool-btn.mine2{background:#16a34a!important;color:#fff!important;border-color:#4ade80!important;box-shadow:0 0 0 1px rgba(74,222,128,.18)}
+.pool-btn.mine1,.pool-btn.mine2,.pool-btn.mine3,.pool-btn.mine4{background:#16a34a!important;color:#fff!important;border-color:#4ade80!important;box-shadow:0 0 0 1px rgba(74,222,128,.18)}
 .leave-btn{width:100%;margin-top:12px;background:transparent;border:1px solid #4a2d7a;color:var(--gray);padding:11px;border-radius:8px;font-size:14px;cursor:pointer}
 /* Dual cards side by side in game */
-.dual-cards-wrap{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.dual-cards-wrap{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px}
 .dual-cards-wrap .card-container{margin-bottom:0;padding:8px}
 .dual-cards-wrap .bingo-cell{height:34px;font-size:11px;border-radius:4px;background:#fff;color:#1a0a2e}
 .dual-cards-wrap .bingo-col-head{height:26px;font-size:12px}
 .dual-cards-wrap .card-id-tag{font-size:10px;margin-bottom:4px}
 .dual-cards-wrap .bingo-body{gap:3px}
 .dual-cards-wrap .bingo-header{margin-bottom:5px}
+@media(max-width:520px){
+  #screenGame .dual-cards-wrap{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:5px!important}
+  #screenGame .dual-cards-wrap .card-container{padding:4px!important;margin-bottom:4px!important;border-radius:10px!important}
+  #screenGame .dual-cards-wrap .bingo-cell{height:clamp(22px,8.5vw,34px)!important;font-size:clamp(8px,2.7vw,11px)!important;border-radius:3px!important}
+  #screenGame .dual-cards-wrap .bingo-col-head{height:clamp(18px,6vw,26px)!important;font-size:clamp(8px,2.7vw,12px)!important}
+  #screenGame .dual-cards-wrap .bingo-body{gap:2px!important}
+  #screenGame .dual-cards-wrap .card-id-tag{font-size:8px!important;margin-bottom:2px!important}
+  #screenGame .dual-cards-wrap .bingo-header{margin-bottom:2px!important}
+}
+@media(max-width:360px){
+  #screenGame .dual-cards-wrap{gap:3px!important}
+  #screenGame .dual-cards-wrap .bingo-cell{height:21px!important;font-size:7px!important}
+  #screenGame .dual-cards-wrap .bingo-col-head{height:17px!important;font-size:7px!important}
+}
 
 /* GAME */
 .game-stats-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
@@ -1276,6 +1290,112 @@ body{padding:0!important}
   setTimeout(fixMelaCardPool,100);
 })();
 </script>
+
+<style id="mela-four-card-responsive-fix">
+/* FINAL FIX: all four selected-card states must have their own selection color. */
+#screenCards .pool-btn.mine1,
+#screenCards .pool-btn.mine2,
+#screenCards .pool-btn.mine3,
+#screenCards .pool-btn.mine4{
+  background:linear-gradient(145deg,#ff7a18,#f4510b)!important;
+  color:#fff!important;
+  border-color:#ffb05c!important;
+  opacity:1!important;
+  box-shadow:0 0 0 1px rgba(255,176,92,.30),0 0 13px rgba(255,101,15,.28)!important;
+}
+
+/* The game screen is a fixed viewport between the navbar and bottom nav.
+   Let its content shrink with the viewport instead of clipping the tracker. */
+#screenGame{
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  scrollbar-width:thin;
+  scrollbar-color:#4f72ff transparent;
+}
+#screenGame #cardsWrap{
+  width:100%;
+  min-width:0;
+  min-height:0!important;
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:6px;
+  margin:0!important;
+  flex:0 0 auto!important;
+}
+#screenGame #cardsWrap.dual-cards-wrap{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:5px!important;
+}
+#screenGame #cardsWrap .card-container{
+  min-width:0!important;
+  width:100%!important;
+  margin:0!important;
+  padding:5px!important;
+  border-radius:12px!important;
+}
+#screenGame #cardsWrap .card-id-tag{
+  margin-bottom:3px!important;
+  padding-left:2px!important;
+  font-size:clamp(7px,1.35vh,9px)!important;
+  line-height:1.05!important;
+}
+#screenGame #cardsWrap .bingo-header{margin-bottom:3px!important;border-radius:5px!important}
+#screenGame #cardsWrap .bingo-col-head{
+  height:clamp(17px,2.8vh,25px)!important;
+  font-size:clamp(8px,1.65vh,11px)!important;
+}
+#screenGame #cardsWrap .bingo-body{gap:2px!important}
+#screenGame #cardsWrap .bingo-cell{
+  height:clamp(20px,4.25vh,37px)!important;
+  min-height:20px!important;
+  padding:0!important;
+  border-radius:4px!important;
+  font-size:clamp(7px,1.75vh,11px)!important;
+}
+
+/* When 3 or 4 cards are visible, the two-row card grid gets deliberately
+   smaller so the called-number tracker stays in the same viewport. */
+#screenGame.cards-3 #cardsWrap .bingo-cell,
+#screenGame.cards-4 #cardsWrap .bingo-cell{
+  height:clamp(17px,3.15vh,28px)!important;
+  min-height:17px!important;
+  font-size:clamp(7px,1.45vh,10px)!important;
+}
+#screenGame.cards-3 #cardsWrap .bingo-col-head,
+#screenGame.cards-4 #cardsWrap .bingo-col-head{
+  height:clamp(15px,2.3vh,21px)!important;
+  font-size:clamp(7px,1.35vh,10px)!important;
+}
+#screenGame.cards-3 #cardsWrap .card-container,
+#screenGame.cards-4 #cardsWrap .card-container{padding:4px!important;border-radius:10px!important}
+#screenGame.cards-3 #cardsWrap .card-id-tag,
+#screenGame.cards-4 #cardsWrap .card-id-tag{font-size:7px!important;margin-bottom:2px!important}
+
+/* Short screens need extra compression; this prevents the tracker from being
+   pushed below the viewport on phones in landscape or with browser UI visible. */
+@media(max-height:680px){
+  #screenGame{padding-top:4px!important;padding-bottom:5px!important}
+  #screenGame .game-stats-row{padding:5px 5px 4px!important;margin-bottom:4px!important}
+  #screenGame .claim-bar-wrap{margin-bottom:5px!important}
+  #screenGame #cardsWrap{gap:4px!important}
+  #screenGame #cardsWrap.dual-cards-wrap{gap:4px!important}
+  #screenGame #cardsWrap .bingo-cell{height:clamp(17px,3.2vh,28px)!important}
+  #screenGame.cards-3 #cardsWrap .bingo-cell,
+  #screenGame.cards-4 #cardsWrap .bingo-cell{height:clamp(15px,2.65vh,22px)!important;min-height:15px!important}
+  #screenGame.cards-3 #cardsWrap .bingo-col-head,
+  #screenGame.cards-4 #cardsWrap .bingo-col-head{height:16px!important}
+  #screenGame #cardsWrap .tracker-wrap{margin-top:0!important}
+}
+
+@media(max-width:380px){
+  #screenGame #cardsWrap.dual-cards-wrap{gap:3px!important}
+  #screenGame #cardsWrap .card-container{padding:3px!important;border-radius:9px!important}
+  #screenGame.cards-3 #cardsWrap .bingo-cell,
+  #screenGame.cards-4 #cardsWrap .bingo-cell{height:clamp(14px,2.5vh,20px)!important;min-height:14px!important;font-size:7px!important}
+  #screenGame.cards-3 #cardsWrap .bingo-col-head,
+  #screenGame.cards-4 #cardsWrap .bingo-col-head{height:14px!important;font-size:7px!important}
+}
+</style>
 </head>
 <body>
 
@@ -1416,6 +1536,24 @@ body{padding:0!important}
       </div>
       <div id="cardBody2" class="bingo-body"></div>
     </div>
+    <div class="card-container" id="cardContainer3" style="display:none">
+      <div id="cardLabel3" class="card-id-tag" style="color:#22c55e">ካርቴላ ---</div>
+      <div class="bingo-header">
+        <div class="bingo-col-head bh-b">B</div><div class="bingo-col-head bh-i">I</div>
+        <div class="bingo-col-head bh-n">N</div><div class="bingo-col-head bh-g">G</div>
+        <div class="bingo-col-head bh-o">O</div>
+      </div>
+      <div id="cardBody3" class="bingo-body"></div>
+    </div>
+    <div class="card-container" id="cardContainer4" style="display:none">
+      <div id="cardLabel4" class="card-id-tag" style="color:#60a5fa">ካርቴላ ---</div>
+      <div class="bingo-header">
+        <div class="bingo-col-head bh-b">B</div><div class="bingo-col-head bh-i">I</div>
+        <div class="bingo-col-head bh-n">N</div><div class="bingo-col-head bh-g">G</div>
+        <div class="bingo-col-head bh-o">O</div>
+      </div>
+      <div id="cardBody4" class="bingo-body"></div>
+    </div>
   </div>
   <button id="bingoBtn" class="bingo-btn" style="display:none" aria-hidden="true" tabindex="-1">🎉 BINGO!</button>
   <div class="tracker-wrap"><div id="trackerGrid" class="tracker-grid"></div></div>
@@ -1509,6 +1647,8 @@ let activeCountdownLeft=Number(localStorage.getItem('activeCountdownLeft')||0);
 let restoringActiveGame=false;
 let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0;
 let myCardId2=null, myCardNumbers2=[], markedIndices2=new Set();
+let myCardId3=null, myCardNumbers3=[], markedIndices3=new Set();
+let myCardId4=null, myCardNumbers4=[], markedIndices4=new Set();
 let claimWindowOpen=false, claimBarAnim=null, prevLastCalled=null;
 let telegramId=null;
 let calledNumbersSet=new Set();
@@ -1929,7 +2069,7 @@ function refreshCardsForNewRound(){
   }
 
   // Clear the previous round locally first.
-  myCardId=null; myCardId2=null;
+  myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null;
   myCardNumbers=[]; myCardNumbers2=[];
   resetAutomaticGameState();
   claimWindowOpen=false;
@@ -1974,7 +2114,7 @@ function finishPostGameReset(msg={}){
   if(roomId){ myRoomId=roomId; localStorage.setItem('roomId',roomId); }
   if(stakeId){ myStakeId=stakeId; localStorage.setItem('stakeId',stakeId); }
 
-  myCardId=null; myCardId2=null;
+  myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null;
   myCardNumbers=[]; myCardNumbers2=[];
   resetAutomaticGameState();
   claimWindowOpen=false;
@@ -2061,7 +2201,7 @@ function handle(msg){
       if(restoringActiveGame && document.getElementById('screenLoading').classList.contains('active')){
         restoringActiveGame=false;
         clearActiveGameState();
-        myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null;
+        myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null;
         goScreen('screenLobby');
       }
     },6000);
@@ -2071,7 +2211,7 @@ function handle(msg){
   break;
 
     case 'reconnectFailed':
-      restoringActiveGame=false; clearActiveGameState(); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardNumbers=[]; myCardNumbers2=[]; goScreen('screenLobby'); break;
+      restoringActiveGame=false; clearActiveGameState(); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; myCardNumbers=[]; myCardNumbers2=[]; goScreen('screenLobby'); break;
 
    case 'lobbyUpdate': renderStakes(msg.stakes); break;
 
@@ -2081,12 +2221,12 @@ function handle(msg){
       if(msg.status==='countdown'){
         activeGamePhase='countdown'; activeCountdownLeft=Number(msg.countdown||msg.countdownLeft||activeCountdownLeft||0);
       }else if(msg.status==='playing'){
-        activeGamePhase=(myCardId||myCardId2)?'playing':'spectating';
-      }else if(!myCardId){
+        activeGamePhase=(myCardId||myCardId2||myCardId3||myCardId4)?'playing':'spectating';
+      }else if(!myCardId&&!myCardId2&&!myCardId3&&!myCardId4){
         activeGamePhase='none'; activeCountdownLeft=0;
       }
       saveActiveGameState(activeGamePhase);
-      if(msg.status!=='countdown' && msg.status!=='playing') { myCardId=null; myCardId2=null; }
+      if(msg.status!=='countdown' && msg.status!=='playing') { myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; }
       resetAutomaticGameState();
       activePlayers=[]; updateActivePlayers(msg.players||msg.activePlayers||[]);
       if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
@@ -2098,7 +2238,7 @@ function handle(msg){
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
       restoringActiveGame=false;
       if(msg.status==='playing'){
-        if(myCardId||myCardId2){
+        if(myCardId||myCardId2||myCardId3||myCardId4){
           activeGamePhase='playing'; saveActiveGameState('playing');
           navGo('screenGame','navGame'); setSpectatorMode(false);
         }else{
@@ -2128,13 +2268,11 @@ function handle(msg){
       break;
 
     case 'cardSelected':
-      if(msg.slot===2){
-        myCardId2=msg.cardId; myCardNumbers2=msg.cardNumbers;
-        updateSlotUI();
-      } else {
-        myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
-        updateSlotUI();
-      }
+      if(msg.slot===2){ myCardId2=msg.cardId; myCardNumbers2=msg.cardNumbers; }
+      else if(msg.slot===3){ myCardId3=msg.cardId; myCardNumbers3=msg.cardNumbers; }
+      else if(msg.slot===4){ myCardId4=msg.cardId; myCardNumbers4=msg.cardNumbers; }
+      else { myCardId=msg.cardId; myCardNumbers=msg.cardNumbers; }
+      updateSlotUI();
       if(activeGamePhase!=='playing' && activeGamePhase!=='spectating') { activeGamePhase='countdown'; saveActiveGameState('countdown'); }
       break;
 
@@ -2159,6 +2297,8 @@ function handle(msg){
     case 'yourCard':
       myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
       myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
+      myCardId3=msg.cardId3||null; myCardNumbers3=msg.cardNumbers3||[];
+      myCardId4=msg.cardId4||null; myCardNumbers4=msg.cardNumbers4||[];
       activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
       setSpectatorMode(false);
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
@@ -2169,7 +2309,7 @@ function handle(msg){
       break;
 
     case 'spectating':
-      myCardId=null; myCardNumbers=[]; myCardId2=null; myCardNumbers2=[];
+      myCardId=null; myCardNumbers=[]; myCardId2=null; myCardNumbers2=[]; myCardId3=null; myCardNumbers3=[]; myCardId4=null; myCardNumbers4=[];
       resetAutomaticGameState();
       updateActivePlayers(msg.players||msg.activePlayers||[]);
       document.getElementById('potVal').innerText=`${msg.pot||0} ETB`;
@@ -2192,6 +2332,8 @@ function handle(msg){
     case 'reconnected':
       myRoomId=msg.roomId; myCardId=msg.cardId||null; myCardNumbers=msg.cardNumbers||[];
       myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
+      myCardId3=msg.cardId3||null; myCardNumbers3=msg.cardNumbers3||[];
+      myCardId4=msg.cardId4||null; myCardNumbers4=msg.cardNumbers4||[];
       if(msg.stakeId) myStakeId=msg.stakeId;
       restoringActiveGame=false;
       resetAutomaticGameState();
@@ -2276,7 +2418,7 @@ function handle(msg){
       if(telegramId) setTimeout(()=>refreshAccountProfile(3,300),100);
       break;
 
-    case 'leftRoom': clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; navGo('screenLobby'); break;
+    case 'leftRoom': clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; navGo('screenLobby'); break;
 
     case 'notification': showToast(msg.message, msg.message.startsWith('✅')?'':'error'); break;
 
@@ -2464,21 +2606,43 @@ function renderCard(nums, bodyId, prefix){
 
 function renderBothCards(){
   const wrap=document.getElementById('cardsWrap');
-  const c2=document.getElementById('cardContainer2');
-  if(myCardId2&&myCardNumbers2.length){
-    wrap.classList.add('dual-cards-wrap');
-    c2.style.display='';
-    document.getElementById('cardLabel').innerText=`Card ${myCardId}`;
-    document.getElementById('cardLabel2').innerText=`Card ${myCardId2}`;
-    renderCard(myCardNumbers,'cardBody','');
-    renderCard(myCardNumbers2,'cardBody2','b2_');
-  } else {
-    wrap.classList.remove('dual-cards-wrap');
-    c2.style.display='none';
-    document.getElementById('cardLabel').innerText=`Card ${myCardId||'---'}`;
-    renderCard(myCardNumbers,'cardBody','');
-  }
+  const cards=[
+    [myCardId,myCardNumbers,'cardContainer1','cardLabel','cardBody',''],
+    [myCardId2,myCardNumbers2,'cardContainer2','cardLabel2','cardBody2','b2_'],
+    [myCardId3,myCardNumbers3,'cardContainer3','cardLabel3','cardBody3','b3_'],
+    [myCardId4,myCardNumbers4,'cardContainer4','cardLabel4','cardBody4','b4_']
+  ];
+  const selected=cards.filter(c=>c[0]&&c[1].length).length;
+  // Keep a deterministic layout class so CSS can shrink 3/4-card games
+  // according to the actual number of visible cards.
+  [1,2,3,4].forEach(n=>wrap.classList.remove('cards-'+n));
+  if(selected) wrap.classList.add('cards-'+selected);
+  wrap.classList.toggle('dual-cards-wrap',selected>1);
+  document.getElementById('screenGame')?.classList.remove('cards-1','cards-2','cards-3','cards-4');
+  if(selected) document.getElementById('screenGame')?.classList.add('cards-'+selected);
+  cards.forEach(([id,nums,container,label,body,pfx])=>{
+    const el=document.getElementById(container);
+    el.style.display=(id&&nums.length)?'':'none';
+    document.getElementById(label).innerText=`Card ${id||'---'}`;
+    if(id&&nums.length) renderCard(nums,body,pfx);
+  });
+  requestAnimationFrame(compactGameLayout);
 }
+
+function compactGameLayout(){
+  const game=document.getElementById('screenGame');
+  const wrap=document.getElementById('cardsWrap');
+  if(!game||!wrap||game.classList.contains('spectator-mode')) return;
+  const ids=['cardContainer1','cardContainer2','cardContainer3','cardContainer4'];
+  const count=ids.reduce((n,id)=>{
+    const el=document.getElementById(id);
+    return n+(el&&getComputedStyle(el).display!=='none'?1:0);
+  },0);
+  [1,2,3,4].forEach(n=>game.classList.remove('cards-'+n));
+  if(count) game.classList.add('cards-'+count);
+}
+window.addEventListener('resize',()=>requestAnimationFrame(compactGameLayout),{passive:true});
+window.addEventListener('orientationchange',()=>setTimeout(compactGameLayout,80),{passive:true});
 
 // Winning patterns: rows, columns, both diagonals, and all four corners.
 // The center FREE square is always considered marked.
@@ -2515,8 +2679,10 @@ function applyAutomaticMarks(){
 
   const win1=markOne(myCardNumbers,markedIndices,'');
   const win2=myCardId2 ? markOne(myCardNumbers2,markedIndices2,'b2_') : false;
+  const win3=myCardId3 ? markOne(myCardNumbers3,markedIndices3,'b3_') : false;
+  const win4=myCardId4 ? markOne(myCardNumbers4,markedIndices4,'b4_') : false;
 
-  if((win1||win2) && !autoClaimSent && myCardId && claimWindowOpen){
+  if((win1||win2||win3||win4) && !autoClaimSent && (myCardId||myCardId2||myCardId3||myCardId4) && claimWindowOpen){
     autoClaimSent=true;
     // Give the DOM one tick to reflect the automatic marks before submitting.
     setTimeout(()=>autoClaimBingo(),50);
@@ -2528,18 +2694,13 @@ function refreshCardCells(){
 }
 
 function autoClaimBingo(){
-  if(!myCardId || !claimWindowOpen || autoClaimSent!==true) return;
+  if(!(myCardId||myCardId2||myCardId3||myCardId4) || !claimWindowOpen || autoClaimSent!==true) return;
   const valid1=isWinningSet(markedIndices);
   const valid2=myCardId2 && isWinningSet(markedIndices2);
-  if(!valid1 && !valid2) return;
-  wsSend({
-    type:'claimBingo',
-    cardId:myCardId,
-    markedIndices:Array.from(markedIndices),
-    cardId2:myCardId2||null,
-    markedIndices2:myCardId2?Array.from(markedIndices2):null,
-    automatic:true
-  });
+  const valid3=myCardId3 && isWinningSet(markedIndices3);
+  const valid4=myCardId4 && isWinningSet(markedIndices4);
+  if(!valid1 && !valid2 && !valid3 && !valid4) return;
+  wsSend({type:'claimBingo',cardId:myCardId,markedIndices:Array.from(markedIndices),cardId2:myCardId2||null,markedIndices2:myCardId2?Array.from(markedIndices2):null,cardId3:myCardId3||null,markedIndices3:myCardId3?Array.from(markedIndices3):null,cardId4:myCardId4||null,markedIndices4:myCardId4?Array.from(markedIndices4):null,automatic:true});
 }
 
 // Kept only as an internal compatibility function. There is no user-facing
@@ -2553,6 +2714,8 @@ function resetAutomaticGameState(){
   autoClaimSent=false;
   markedIndices=new Set([12]);
   markedIndices2=new Set([12]);
+  markedIndices3=new Set([12]);
+  markedIndices4=new Set([12]);
 }
 
 // Compatibility helper: older round-reset code calls setBingoBtn().
@@ -2619,56 +2782,53 @@ if(window.ResizeObserver){
 }
 
 // ─── CARD POOL ────────────────────────────────────────────────
+function getMyCardSlot(cardId){
+  if(cardId===myCardId) return 1;
+  if(cardId===myCardId2) return 2;
+  if(cardId===myCardId3) return 3;
+  if(cardId===myCardId4) return 4;
+  return 0;
+}
+function getNextCardSlot(){
+  if(!myCardId) return 1;
+  if(!myCardId2) return 2;
+  if(!myCardId3) return 3;
+  if(!myCardId4) return 4;
+  return 0;
+}
 function renderCardPool(pool){
-  const grid=document.getElementById('poolGrid');
-  grid.innerHTML='';
+  const grid=document.getElementById('poolGrid'); grid.innerHTML='';
   pool.forEach(c=>{
     const btn=document.createElement('div'); btn.className='pool-btn'; btn.id='cardbtn-'+c.id; btn.innerText=`${c.id}`;
-    if(c.id===myCardId) btn.classList.add('mine1');
-    else if(c.id===myCardId2) btn.classList.add('mine2');
+    const slot=getMyCardSlot(c.id);
+    if(slot) btn.classList.add('mine'+slot);
     else if(c.taken) btn.classList.add('taken');
     else btn.onclick=()=>pickCard(c.id);
-    // Allow deselecting own cards
-    if(c.id===myCardId) btn.onclick=()=>deselectCard(1);
-    if(c.id===myCardId2) btn.onclick=()=>deselectCard(2);
+    if(slot) btn.onclick=()=>deselectCard(slot);
     grid.appendChild(btn);
   });
   syncCardPoolResponsiveLayout();
 }
-// Patch a single card button in place (used by cardPoolDiff) — avoids re-rendering
-// all 400 buttons just because one card's taken/free state changed.
 function patchCardButton(c){
-  const btn=document.getElementById('cardbtn-'+c.id);
-  if(!btn) return;
-  btn.classList.remove('mine1','mine2','taken');
-  btn.onclick=null;
-  if(c.id===myCardId) btn.classList.add('mine1');
-  else if(c.id===myCardId2) btn.classList.add('mine2');
+  const btn=document.getElementById('cardbtn-'+c.id); if(!btn) return;
+  btn.classList.remove('mine1','mine2','mine3','mine4','taken'); btn.onclick=null;
+  const slot=getMyCardSlot(c.id);
+  if(slot) {btn.classList.add('mine'+slot); btn.onclick=()=>deselectCard(slot);}
   else if(c.taken) btn.classList.add('taken');
   else btn.onclick=()=>pickCard(c.id);
-  if(c.id===myCardId) btn.onclick=()=>deselectCard(1);
-  if(c.id===myCardId2) btn.onclick=()=>deselectCard(2);
 }
 function pickCard(cardId){
-  if(!myCardId){
-    // First card — wait for server to confirm before updating UI
-    wsSend({type:'selectCard',cardId,slot:1});
-  } else if(!myCardId2 && cardId!==myCardId){
-    // Second card — wait for server to confirm before updating UI
-    wsSend({type:'selectCard',cardId,slot:2});
-  } else if(myCardId2){
-    showToast('ከፍተኛው 2 ካርዶችን ብቻ መምረጥ ይችላሉ። ሌላ ካርድ ለመምረጥ ከተመረጡት ካርዶች አንዱን ይንኩ።','warn');
-  }
+  const slot=getNextCardSlot();
+  if(slot) wsSend({type:'selectCard',cardId,slot});
+  else showToast('ሌላ ካርድ ለመምረጥ ከተመረጡት ካርዶች አንዱን ይንኩ።','warn');
 }
 function deselectCard(slot){
-  if(slot===1){
-    if(myCardId) wsSend({type:'deselectCard',cardId:myCardId,slot:1});
-    myCardId=null; myCardNumbers=[];
-    myCardId2=null; myCardNumbers2=[];  // clear second too since server clears both
-  } else {
-    if(myCardId2) wsSend({type:'deselectCard',cardId:myCardId2,slot:2});
-    myCardId2=null; myCardNumbers2=[];
-  }
+  const ids=[null,myCardId,myCardId2,myCardId3,myCardId4];
+  if(ids[slot]) wsSend({type:'deselectCard',cardId:ids[slot],slot});
+  if(slot===1){myCardId=null;myCardNumbers=[];}
+  if(slot===2){myCardId2=null;myCardNumbers2=[];}
+  if(slot===3){myCardId3=null;myCardNumbers3=[];}
+  if(slot===4){myCardId4=null;myCardNumbers4=[];}
   updateSlotUI(); renderCardPool(cardPool);
 }
 
@@ -2742,7 +2902,7 @@ function showToast(msg,type=''){
 
 function leaveRoom(){
   wsSend({type:'leaveRoom'});
-  myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardNumbers=[]; myCardNumbers2=[];
+  myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; myCardNumbers=[]; myCardNumbers2=[];
   clearActiveGameState();
   localStorage.removeItem('roomId'); localStorage.removeItem('stakeId');
   setSpectatorMode(false);
