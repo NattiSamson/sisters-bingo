@@ -3,6 +3,7 @@
 --
 
 
+
 -- Dumped from database version 18.6 (6569466)
 -- Dumped by pg_dump version 18.4
 
@@ -3953,6 +3954,7 @@ CREATE TABLE public.bingo_stakes (
     display_order integer DEFAULT 0 NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    display_name character varying(20) NOT NULL,
     CONSTRAINT bingo_stakes_amount_positive CHECK ((amount > (0)::numeric)),
     CONSTRAINT bingo_stakes_display_order_check CHECK ((display_order >= 0))
 );
@@ -4209,7 +4211,6 @@ DO UPDATE SET
     status = EXCLUDED.status,
     metadata = EXCLUDED.metadata,
     updated_at = NOW();
-
 
 ALTER TABLE public.game_systems OWNER TO neondb_owner;
 
@@ -5888,3 +5889,6 @@ ALTER TABLE ONLY public.withdrawals
 --
 -- PostgreSQL database dump complete
 --
+
+
+
