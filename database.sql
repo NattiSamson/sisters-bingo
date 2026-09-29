@@ -4187,6 +4187,29 @@ CREATE TABLE public.game_systems (
     CONSTRAINT game_systems_status_check CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'inactive'::character varying, 'maintenance'::character varying, 'disabled'::character varying])::text[])))
 );
 
+-- ============================================================
+-- SEED: Bingo game system
+-- ============================================================
+
+INSERT INTO public.game_systems (
+    code,
+    name,
+    status,
+    metadata
+)
+VALUES (
+    'bingo',
+    'Bingo',
+    'active',
+    '{"source_type":"bingo_game"}'::jsonb
+)
+ON CONFLICT (code)
+DO UPDATE SET
+    name = EXCLUDED.name,
+    status = EXCLUDED.status,
+    metadata = EXCLUDED.metadata,
+    updated_at = NOW();
+
 
 ALTER TABLE public.game_systems OWNER TO neondb_owner;
 
