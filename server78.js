@@ -407,10 +407,6 @@ function checkWin(nums, called, marked) {
 
 // ─── STATE ───────────────────────────────────────────────────
 const clients={}, rooms={}, userCache={};
-// Live wallet sessions: DB balance is the permanent source of truth, while
-// reserved amounts are held in memory during card selection. This removes a
-// DB balance write/read from every individual card click without trusting the browser.
-const walletSessions={};
 
 // ─── USER HELPERS ────────────────────────────────────────────
 async function loadUser(tid,retries=6,delayMs=500) {
@@ -441,104 +437,15 @@ async function loadUser(tid,retries=6,delayMs=500) {
   return userCache[id]||null;
 }
 
-function walletState(tid){
-  const id=String(tid||'').trim();
-  if(!id) return null;
-  if(!walletSessions[id]) walletSessions[id]={dbBalance:0,reserved:0,loaded:false};
-  return walletSessions[id];
-}
-
-function syncWalletClients(tid){
-  const id=String(tid||'').trim();
-  const state=walletSessions[id];
-  if(!state) return;
-  const available=Math.max(0,Number(state.dbBalance||0)-Number(state.reserved||0));
-  Object.values(clients).forEach(cl=>{
-    if(String(cl.telegramId||'')===id) cl.balance=available;
-  });
-  if(userCache[id]) userCache[id].balance=Number(state.dbBalance||0);
-}
-
-function setWalletDbBalance(tid,dbBalance){
-  const state=walletState(tid);
-  state.dbBalance=Math.max(0,Number(dbBalance)||0);
-  state.loaded=true;
-  syncWalletClients(tid);
-  return state;
-}
-
-function reserveClientStake(client,amount){
-  const n=Number(amount);
-  if(!client?.telegramId || !Number.isFinite(n) || n<=0) throw new Error('Invalid stake reservation');
-  const state=walletState(client.telegramId);
-  const available=Math.max(0,Number(state.dbBalance||0)-Number(state.reserved||0));
-  if(available+1e-9<n){
-    const e=new Error('Insufficient balance');
-    e.code='INSUFFICIENT_BALANCE';
-    e.balance=available;
-    throw e;
-  }
-  state.reserved+=n;
-  client.sessionReserved=(Number(client.sessionReserved)||0)+n;
-  syncWalletClients(client.telegramId);
-  return Math.max(0,Number(state.dbBalance||0)-Number(state.reserved||0));
-}
-
-function releaseClientReservation(client,amount){
-  const n=Number(amount);
-  if(!client?.telegramId || !Number.isFinite(n) || n<=0) return Number(client?.balance)||0;
-  const state=walletState(client.telegramId);
-  const release=Math.min(n,Number(client.sessionReserved)||0,Number(state.reserved)||0);
-  state.reserved-=release;
-  client.sessionReserved=(Number(client.sessionReserved)||0)-release;
-  if(state.reserved<0) state.reserved=0;
-  if(client.sessionReserved<0) client.sessionReserved=0;
-  syncWalletClients(client.telegramId);
-  return Number(client.balance)||0;
-}
-
-async function commitClientReservation(client,txType,ref){
-  const reserved=Math.max(0,Number(client?.sessionReserved)||0);
-  if(!client?.telegramId || reserved<=0) return Number(client?.balance)||0;
-  const tid=String(client.telegramId);
-  const state=walletState(tid);
-  if(db){
-    let newBal;
-    try{
-      // One atomic DB adjustment for the player's entire card stake at game start.
-      newBal=await db.adjustBalance(tid,-reserved);
-    }catch(e){
-      // Keep the reservation intact so the caller can safely cancel/retry it.
-      throw e;
-    }
-    state.dbBalance=Number(newBal)||0;
-    state.reserved=Math.max(0,Number(state.reserved||0)-reserved);
-    client.sessionReserved=0;
-    state.loaded=true;
-    if(userCache[tid]) userCache[tid].balance=state.dbBalance;
-    syncWalletClients(tid);
-    if(txType){
-      try{await db.logTx(tid,txType,-reserved,newBal,ref||'');}
-      catch(e){console.error('logTx:',e.message);}
-    }
-    return Number(client.balance)||0;
-  }
-  // Memory mode: reservation is already deducted from the session's spendable balance.
-  state.reserved=Math.max(0,Number(state.reserved||0)-reserved);
-  client.sessionReserved=0;
-  syncWalletClients(tid);
-  return Number(client.balance)||0;
-}
-
 async function refreshClientBalance(client){
   if(!client?.telegramId || !db) return Number.isFinite(Number(client?.balance));
   try{
     const u=await db.getUser(String(client.telegramId));
     if(!u) return false;
-    const dbBal=parseFloat(u.balance)||0;
-    setWalletDbBalance(client.telegramId,dbBal);
+    client.balance=parseFloat(u.balance)||0;
     client.playerName=u.name||client.playerName;
     client.isAdmin=u.is_admin===true || isAdminPhone(u.phone);
+    if(userCache[client.telegramId]) userCache[client.telegramId].balance=client.balance;
     return true;
   }catch(e){
     console.error('refreshClientBalance:',e.message);
@@ -563,12 +470,9 @@ async function changeClientBalance(client, delta, txType, ref){
 
     // Neon is authoritative. Never use client.balance to decide whether the
     // charge succeeded.
-    const wallet=walletState(client.telegramId);
-    wallet.dbBalance=Number(newBal)||0;
-    wallet.loaded=true;
+    client.balance=newBal;
     if(userCache[client.telegramId])
-      userCache[client.telegramId].balance=wallet.dbBalance;
-    syncWalletClients(client.telegramId);
+      userCache[client.telegramId].balance=newBal;
 
     if(txType){
       try{
@@ -597,11 +501,8 @@ async function changeClientBalance(client, delta, txType, ref){
     e.balance=current;
     throw e;
   }
-  const wallet=walletState(client.telegramId);
-  wallet.dbBalance=next;
-  wallet.loaded=true;
-  syncWalletClients(client.telegramId);
-  return Number(client.balance)||next;
+  client.balance=next;
+  return next;
 }
 
 async function saveBalance(tid, bal) {
@@ -637,28 +538,21 @@ function broadcastLobby(){
     Object.values(clients).forEach(c=>{if(!c.roomId&&c.ws&&c.ws.readyState===WebSocket.OPEN)c.ws.send(payloadStr);});
   },250);
 }
-function getPlayerCardIds(p){
-  return [p.cardId,p.cardId2,p.cardId3,p.cardId4].filter(Boolean);
-}
-function getPlayerCardCount(p){ return getPlayerCardIds(p).length; }
-function getCardField(slot){ return slot===1?'cardId':slot===2?'cardId2':slot===3?'cardId3':'cardId4'; }
-function getNumbersField(slot){ return slot===1?'cardNumbers':slot===2?'cardNumbers2':slot===3?'cardNumbers3':'cardNumbers4'; }
-
 function broadcastCardPool(room){
   // Send only the FULL pool once when needed (e.g. on join); for live picks use broadcastCardDiff instead.
   const base=getCardPoolForRoom(room).map(c=>({id:c.id,taken:room.takenCardIds.has(c.id)}));
-  const cardCount=room.players.reduce((sum,p)=>sum+getPlayerCardCount(p),0);
-  room.players.forEach(p=>send(p.ws,{type:'cardPoolUpdate',pool:base.map(c=>({...c,takenByMe:getPlayerCardIds(p).includes(c.id)})),playerCount:cardCount,stakeAmount:room.stake}));
+  const cardCount=room.players.reduce((sum,p)=>(p.cardId?sum+1:sum)+(p.cardId2?1:0),0);
+  room.players.forEach(p=>send(p.ws,{type:'cardPoolUpdate',pool:base.map(c=>({...c,takenByMe:p.cardId===c.id||p.cardId2===c.id})),playerCount:cardCount,stakeAmount:room.stake}));
 }
 // Lightweight update: tell everyone in the room only WHICH card(s) changed state,
 // instead of re-sending the entire 400-card array on every single pick.
 // This is the #1 fix for handling 400 concurrent players smoothly.
 function broadcastCardDiff(room, changedCardIds){
-  const cardCount=room.players.reduce((sum,p)=>sum+getPlayerCardCount(p),0);
+  const cardCount=room.players.reduce((sum,p)=>(p.cardId?sum+1:sum)+(p.cardId2?1:0),0);
   const changes=changedCardIds.map(id=>({id,taken:room.takenCardIds.has(id)}));
   room.players.forEach(p=>send(p.ws,{
     type:'cardPoolDiff',
-    changes:changes.map(c=>({...c,takenByMe:getPlayerCardIds(p).includes(c.id)})),
+    changes:changes.map(c=>({...c,takenByMe:p.cardId===c.id||p.cardId2===c.id})),
     playerCount:cardCount,
     stakeAmount:room.stake
   }));
@@ -678,48 +572,36 @@ function startCountdown(room){
 
 async function startGame(room){
   for(const p of room.players){
-    if(getPlayerCardCount(p)===0) continue; // spectator
+    if(!p.cardId&&!p.cardId2) continue; // spectator
 
     if(!p.hasPaid){
       const cl=clients[p.playerId];
-      if(cl && getPlayerCardCount(p)>0){
-        // Compatibility path for an older/reconnected client that reached game start
-        // without a session reservation. Prefer the normal reservation path below.
-        try{
-          const totalCost=room.stake*getPlayerCardCount(p);
-          reserveClientStake(cl,totalCost);
+      const numCards=(p.cardId?1:0)+(p.cardId2?1:0);
+      const totalCost=room.stake*numCards;
+
+      // This is normally already paid during card selection. This fallback
+      // protects the game if an older client reached startGame unpaid.
+      if(cl){
+        await refreshClientBalance(cl);
+        const newBal=await changeClientBalance(cl,-totalCost,'stake',room.roomId);
+        if(newBal!==null){
           p.hasPaid=true;
-        }catch(e){
-          getPlayerCardIds(p).forEach(id=>room.takenCardIds.delete(id));
-          p.cardId=null; p.cardId2=null; p.cardId3=null; p.cardId4=null;
+          send(p.ws,{type:'balanceUpdate',balance:newBal});
+        }else{
+          if(p.cardId){room.takenCardIds.delete(p.cardId);p.cardId=null;}
+          if(p.cardId2){room.takenCardIds.delete(p.cardId2);p.cardId2=null;}
           continue;
         }
       }else{
-        getPlayerCardIds(p).forEach(id=>room.takenCardIds.delete(id));
-        p.cardId=null; p.cardId2=null; p.cardId3=null; p.cardId4=null;
-        continue;
-      }
-    }
-
-    // Commit the player's complete reserved stake once, at game start.
-    const cl=clients[p.playerId];
-    if(cl && Number(cl.sessionReserved)>0){
-      try{
-        const newBal=await commitClientReservation(cl,'stake',room.roomId);
-        send(p.ws,{type:'balanceUpdate',balance:newBal});
-      }catch(e){
-        console.error('Card stake commit:',e.message);
-        releaseClientReservation(cl,Number(cl.sessionReserved)||0);
-        getPlayerCardIds(p).forEach(id=>room.takenCardIds.delete(id));
-        p.cardId=null; p.cardId2=null; p.cardId3=null; p.cardId4=null; p.hasPaid=false;
-        send(p.ws,{type:'error',message:'የካርቴላ ክፍያ ማረጋገጥ አልተሳካም። እባክዎ እንደገና ይሞክሩ።'});
+        if(p.cardId){room.takenCardIds.delete(p.cardId);p.cardId=null;}
+        if(p.cardId2){room.takenCardIds.delete(p.cardId2);p.cardId2=null;}
         continue;
       }
     }
   }
 
   room.status='playing';
-  const paidCards=room.players.reduce((s,p)=>s+(p.hasPaid?(getPlayerCardCount(p)):0),0);
+  const paidCards=room.players.reduce((s,p)=>s+(p.hasPaid?((p.cardId?1:0)+(p.cardId2?1:0)):0),0);
   const grossPot=paidCards*room.stake;
   room.pot=Math.floor(grossPot*(1-HOUSE_CUT));
   room.calledNumbers=[]; room.availableNumbers=Array.from({length:75},(_,i)=>i+1);
@@ -727,14 +609,12 @@ async function startGame(room){
   if(db){try{room.dbGameId=await db.saveGame(room.roomId,room.stakeId,room.stake,grossPot);}catch(e){console.error('saveGame:',e.message);}}
 
   room.players.forEach(p=>{
-    if(getPlayerCardCount(p)>0){
+    if(p.cardId||p.cardId2){
       const card=p.cardId?getCard(p.cardId):null;
       const card2=p.cardId2?getCard(p.cardId2):null;
       send(p.ws,{type:'yourCard',
         cardId:p.cardId,cardNumbers:card?card.numbers:[],
         cardId2:p.cardId2||null,cardNumbers2:card2?card2.numbers:[],
-        cardId3:p.cardId3||null,cardNumbers3:p.cardId3?getCard(p.cardId3).numbers:[],
-        cardId4:p.cardId4||null,cardNumbers4:p.cardId4?getCard(p.cardId4).numbers:[],
         pot:room.pot,playerCount:room.players.length,spectator:false});
     }else{
       send(p.ws,{type:'spectating',pot:room.pot,playerCount:room.players.filter(p=>p.hasPaid).length,calledNumbers:room.calledNumbers});
@@ -767,17 +647,18 @@ function evaluateClaims(room){
   const winners=[], cheaters=[];
   room.claimedThisRound.forEach(claim=>{
     const p=room.players.find(p=>p.playerId===claim.playerId);
-    if(!p||p.disqualified||getPlayerCardCount(p)===0) return;
-    const wins=[1,2,3,4].map(slot=>{
-      const id=p[getCardField(slot)];
-      const card=id?getCard(id):null;
-      const marks=claim['markedIndices'+(slot===1?'':slot)]||[];
-      return {slot,id,win:!!(card&&checkWin(card.numbers,room.calledNumbers,marks)),marks};
-    });
-    const winning=wins.find(x=>x.win);
-    if(winning){
-      p._winningCardId=winning.id;
-      p._winningMarkedIndices=Array.from(winning.marks);
+    if(!p||p.disqualified||(!p.cardId&&!p.cardId2)) return;
+    // Check card 1
+    const card1=p.cardId?getCard(p.cardId):null;
+    const win1=card1&&checkWin(card1.numbers,room.calledNumbers,claim.markedIndices);
+    // Check card 2
+    const card2=p.cardId2?getCard(p.cardId2):null;
+    const win2=card2&&checkWin(card2.numbers,room.calledNumbers,claim.markedIndices2);
+    if(win1||win2){
+      // Keep the exact winning card and marked cells so the end-of-game result
+      // screen can show the same winning cartela to every player.
+      p._winningCardId = win1 ? p.cardId : p.cardId2;
+      p._winningMarkedIndices = win1 ? Array.from(claim.markedIndices||[]) : Array.from(claim.markedIndices2||[]);
       winners.push(p);
     }else cheaters.push(p);
   });
@@ -834,7 +715,7 @@ async function endGame(room, winners, customMsg, noWinner){
     catch(e){console.error('endGame DB error:',e.message);}
   }else if(db&&!room.dbGameId){
     try{
-      const grossPot=room.players.reduce((s,p)=>s+(p.hasPaid?(getPlayerCardCount(p)):0),0)*room.stake;
+      const grossPot=room.players.reduce((s,p)=>s+(p.hasPaid?((p.cardId?1:0)+(p.cardId2?1:0)):0),0)*room.stake;
       const gid=await db.saveGame(room.roomId,room.stakeId,room.stake,grossPot);
       await db.endGame(gid,winnerTids,winAmount,winners.length>1,room.calledNumbers);
     }catch(e){console.error('endGame fallback DB error:',e.message);}
@@ -909,8 +790,6 @@ async function endGame(room, winners, customMsg, noWinner){
     room.players.forEach(p=>{
       p.cardId=null;
       p.cardId2=null;
-      p.cardId3=null;
-      p.cardId4=null;
       p.hasPaid=false;
       p.disqualified=false;
     });
@@ -944,14 +823,16 @@ async function leaveRoom(client){
   const p=room.players.find(p=>p.playerId===client.playerId);
   if(p){
     if(p.cardId) room.takenCardIds.delete(p.cardId);
-    getPlayerCardIds(p).forEach(id=>room.takenCardIds.delete(id));
+    if(p.cardId2) room.takenCardIds.delete(p.cardId2);
 
-    // Release any uncommitted card-stake reservation when leaving before the game starts.
+    // Refund every paid card when leaving before the game starts.
     if(p.hasPaid&&(room.status==='waiting'||room.status==='countdown')){
-      const cl=clients[p.playerId];
-      if(cl && Number(cl.sessionReserved)>0){
-        releaseClientReservation(cl,Number(cl.sessionReserved));
-        send(cl.ws,{type:'balanceUpdate',balance:cl.balance});
+      const cardCount=(p.cardId?1:0)+(p.cardId2?1:0);
+      const refund=room.stake*cardCount;
+      if(refund>0){
+        const newBal=await changeClientBalance(client,refund,'stake_refund',room.roomId);
+        if(newBal!==null) send(client.ws,{type:'balanceUpdate',balance:newBal});
+        else console.error('Failed to refund player',client.telegramId,room.roomId);
       }
       p.hasPaid=false;
     }
@@ -971,7 +852,7 @@ async function leaveRoom(client){
 // ─── WEBSOCKET ────────────────────────────────────────────────
 wss.on('connection',(ws)=>{
   const playerId=uuidv4();
-  const client={playerId,playerName:'',telegramId:null,balance:0,roomId:null,isAdmin:false,ws,sessionReserved:0};
+  const client={playerId,playerName:'',telegramId:null,balance:0,roomId:null,isAdmin:false,ws};
   clients[playerId]=client; ws._pid=playerId;
 
   const lobbyStakes=STAKES.map(s=>{const r=Object.values(rooms).find(r=>r.stakeId===s.id);
@@ -1030,14 +911,8 @@ wss.on('connection',(ws)=>{
               if(user){
                 client.telegramId=tid;
                 client.playerName=user.name||client.playerName||'Player';
-                const authDbBalance=Number.isFinite(Number(user.balance))?Number(user.balance):0;
-                const wsWallet=walletState(tid);
-                wsWallet.dbBalance=authDbBalance;
-                wsWallet.loaded=true;
-                client.sessionReserved=Number(client.sessionReserved)||0;
-                client.balance=Math.max(0,authDbBalance-Number(wsWallet.reserved||0));
+                client.balance=Number.isFinite(Number(user.balance))?Number(user.balance):0;
                 client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
-                syncWalletClients(tid);
                 send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
               } else {
                 // Never convert a failed/late database lookup into a fake zero wallet.
@@ -1111,8 +986,6 @@ wss.on('connection',(ws)=>{
             cardId:ep.cardId,cardNumbers:card?card.numbers:[],
 
             cardId2:ep.cardId2||null,cardNumbers2:card2?card2.numbers:[],
-            cardId3:ep.cardId3||null,cardNumbers3:ep.cardId3?getCard(ep.cardId3).numbers:[],
-            cardId4:ep.cardId4||null,cardNumbers4:ep.cardId4?getCard(ep.cardId4).numbers:[],
 
             calledNumbers:room.calledNumbers,pot:room.pot,playerCount:room.players.length,balance:client.balance});
         }else{
@@ -1121,7 +994,7 @@ wss.on('connection',(ws)=>{
             balance:client.balance,status:room.status,
             countdownLeft:room.status==='countdown'?room.countdownLeft:0,
             countdown:room.status==='countdown'?room.countdownLeft:0,
-            playerCount:room.players.reduce((sum,p)=>getPlayerCardCount(p)+sum,0),
+            playerCount:room.players.reduce((sum,p)=>(p.cardId?1:0)+(p.cardId2?1:0)+sum,0),
             stakeAmount:room.stake});
           broadcastCardPool(room);
           broadcastLobby();
@@ -1168,7 +1041,7 @@ wss.on('connection',(ws)=>{
 
                          client.playerName=u.name||client.playerName;
 
-                         setWalletDbBalance(tid,parseFloat(u.balance)||0);
+                         client.balance=parseFloat(u.balance)||0;
 
                          client.isAdmin=u.isAdmin||isAdminPhone(u.phone);
 
@@ -1192,7 +1065,7 @@ wss.on('connection',(ws)=>{
                 const existingRoom=Object.values(rooms).find(r=>
                   r.stakeId===msg.stakeId &&
                   (r.status==='waiting'||r.status==='countdown'||r.status==='playing') &&
-                  r.players.some(p=>String(p.telegramId||'')===reconnectTid && (getPlayerCardCount(p)>0||p.hasPaid))
+                  r.players.some(p=>String(p.telegramId||'')===reconnectTid && (p.cardId||p.cardId2||p.hasPaid))
                 );
                 if(existingRoom){
                   const ep=existingRoom.players.find(p=>String(p.telegramId||'')===reconnectTid);
@@ -1210,8 +1083,6 @@ wss.on('connection',(ws)=>{
                     send(ws,{type:'reconnected',roomId:existingRoom.roomId,stakeId:existingRoom.stakeId,
                       cardId:ep.cardId,cardNumbers:card?card.numbers:[],
                       cardId2:ep.cardId2||null,cardNumbers2:card2?card2.numbers:[],
-            cardId3:ep.cardId3||null,cardNumbers3:ep.cardId3?getCard(ep.cardId3).numbers:[],
-            cardId4:ep.cardId4||null,cardNumbers4:ep.cardId4?getCard(ep.cardId4).numbers:[],
                       calledNumbers:existingRoom.calledNumbers,pot:existingRoom.pot,
                       playerCount:existingRoom.players.length,balance:client.balance});
                   }else{
@@ -1236,7 +1107,7 @@ wss.on('connection',(ws)=>{
 
               if(liveRoom){
                 if(liveRoom.players.length>=liveRoom.maxPlayers) return send(ws,{type:'error',message:`ይህ ክፍል ሙሉ ነው። ከፍተኛው ተጫዋቾች: ${liveRoom.maxPlayers}`});
-                liveRoom.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,ws,cardId:null,cardId2:null,cardId3:null,cardId4:null,hasPaid:false,disqualified:false});
+                liveRoom.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,ws,cardId:null,cardId2:null,hasPaid:false,disqualified:false});
 
                 client.roomId=liveRoom.roomId;
 
@@ -1256,11 +1127,11 @@ wss.on('connection',(ws)=>{
 
               if(room.status!=='waiting'&&room.status!=='countdown') return send(ws,{type:'error',message:'ጨዋታው ቀድሞውኑ ተጀምሯል።'});
 
-              room.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,ws,cardId:null,cardId2:null,cardId3:null,cardId4:null,hasPaid:false,disqualified:false});
+              room.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,ws,cardId:null,cardId2:null,hasPaid:false,disqualified:false});
 
               client.roomId=room.roomId;
 
-              send(ws,{type:'joinedRoom',roomId:room.roomId,stakeId:room.stakeId,balance:client.balance,status:room.status,playerCount:room.players.reduce((sum,p)=>sum+getPlayerCardCount(p),0),stakeAmount:room.stake});
+              send(ws,{type:'joinedRoom',roomId:room.roomId,stakeId:room.stakeId,balance:client.balance,status:room.status,playerCount:room.players.reduce((sum,p)=>(p.cardId?sum+1:sum)+(p.cardId2?1:0),0),stakeAmount:room.stake});
 
               broadcastCardPool(room); broadcastLobby();
 
@@ -1273,65 +1144,264 @@ wss.on('connection',(ws)=>{
             }
 
             case 'selectCard':{
-              if(!client.roomId) break;
-              const room=rooms[client.roomId];
-              if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
-              const cardId=parseInt(msg.cardId);
-              const slot=Math.max(1,Math.min(4,parseInt(msg.slot)||1));
-              if(cardId<1||cardId>room.cardLimit) break;
-              const p=room.players.find(p=>p.playerId===client.playerId);
-              if(!p) break;
-              if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'ይህ ካርቴላ ቀድሞውኑ ተመርጧል!'});
-              const field=getCardField(slot);
-              const previous=p[field];
 
-              // Reserve before changing the card ownership. If the balance check fails,
-              // the player's existing card remains untouched.
-              if(!previous){
-                try{
-                  const newBal=reserveClientStake(client,room.stake);
-                  p.hasPaid=true;
-                  send(ws,{type:'balanceUpdate',balance:newBal});
-                }catch(e){
-                  if(e.code==='INSUFFICIENT_BALANCE')
-                    return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። ቀሪ ሂሳብ: ${(Number(e.balance)||0).toFixed(2)} ብር። ያስፈልጋል: ${room.stake} ብር።`});
-                  console.error(`Card ${slot} balance reservation:`,e.message);
-                  return send(ws,{type:'error',message:'የቀሪ ሂሳብ ማረጋገጥ አልተሳካም። እባክዎ እንደገና ይሞክሩ።'});
-                }
-              }
+              if(!client.roomId) break;
+
+              const room=rooms[client.roomId];
+
+              if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
+
+              const cardId=parseInt(msg.cardId);
+
+              const slot=msg.slot===2?2:1;
+
+              if(cardId<1||cardId>room.cardLimit) break;
+
+              const p=room.players.find(p=>p.playerId===client.playerId);
+
+              if(!p) break;
+
+              if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'ይህ ካርቴላ ቀድሞውኑ ተመርጧል!'});
+
 
               const changedIds=new Set([cardId]);
-              if(previous) { room.takenCardIds.delete(previous); changedIds.add(previous); }
-              p[field]=cardId;
-              room.takenCardIds.add(cardId);
-              const card=getCard(cardId);
-              send(ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot});
+
+
+              if(slot===1){
+
+                // First card costs one stake only the first time. Re-selecting card 1
+
+                // is free because that stake has already been paid.
+
+                if(!p.hasPaid){
+
+                  // Use the balance already loaded at Telegram authentication/join.
+                  // Do not query Neon again on every card click. The variable is updated
+                  // after each successful charge and stays authoritative for this session.
+                  if(Number(client.balance) < Number(room.stake)){
+                    return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። ቀሪ ሂሳብ: ${(Number(client.balance)||0).toFixed(2)} ብር። ያስፈልጋል: ${room.stake} ብር።`});
+                  }
+
+                  let newBal;
+
+                  try{
+
+                    newBal=await changeClientBalance(client,-room.stake,'stake',room.roomId);
+        console.log('🔎 CHARGE SUCCESS:', { telegramId: client.telegramId, charged: room.stake, newBalance: newBal });
+
+                  }catch(e){
+
+                    if(e.code==='INSUFFICIENT_BALANCE'){
+
+                      return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። የአካውንት ቀሪ ሂሳብ: ${(Number(e.balance)||0).toFixed(2)} ብር። ያስፈልጋል: ${room.stake} ብር።`});
+
+                    }
+
+                    if(e.code==='ACCOUNT_NOT_FOUND'){
+
+                      return send(ws,{type:'error',message:'ለዚህ Telegram ID የNeon ሂሳብ አልተገኘም። እባክዎ Telegramን እንደገና ያገናኙ።'});
+
+                    }
+
+                    if(e.code==='NO_TELEGRAM_ID'){
+
+                      return send(ws,{type:'error',message:'የTelegram ሂሳብ አልተረጋገጠም። እባክዎ Telegramን እንደገና ያገናኙ።'});
+
+                    }
+
+                    console.error('Card 1 balance charge:',e.message);
+
+                    return send(ws,{type:'error',message:'የNeon ሂሳብ ማረጋገጥ አልተሳካም። እባክዎ እንደገና ይሞክሩ።'});
+
+                  }
+
+                  p.hasPaid=true;
+
+                  send(ws,{type:'balanceUpdate',balance:newBal});
+
+                }
+
+                if(p.cardId){room.takenCardIds.delete(p.cardId);changedIds.add(p.cardId);}
+
+                p.cardId=cardId; room.takenCardIds.add(cardId);
+
+                const card=getCard(cardId);
+
+                send(ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot:1});
+
+              }else{
+
+                // Second card costs one additional stake only when adding it.
+
+                // Re-selecting card 2 is free instead of charging twice.
+
+                if(!p.cardId){
+
+                  return send(ws,{type:'error',message:'ሁለተኛውን ካርቴላ ከመምረጥዎ በፊት የመጀመሪያውን ካርቴላ ይምረጡ።'});
+
+                }
+
+                if(!p.cardId2){
+
+                  // Use the current session balance. No extra Neon balance read.
+                  if(Number(client.balance) < Number(room.stake)){
+                    return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። ቀሪ ሂሳብ: ${(Number(client.balance)||0).toFixed(2)} ብር። ያስፈልጋል: ${room.stake} ብር።`});
+                  }
+
+                  let newBal;
+
+                  try{
+
+                    newBal=await changeClientBalance(client,-room.stake,'stake',room.roomId);
+
+                  }catch(e){
+
+                    if(e.code==='INSUFFICIENT_BALANCE'){
+
+                      return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። የአካውንት ቀሪ ሂሳብ: ${(Number(e.balance)||0).toFixed(2)} ብር። ያስፈልጋል: ${room.stake} ብር።`});
+
+                    }
+
+                    if(e.code==='ACCOUNT_NOT_FOUND'){
+
+                      return send(ws,{type:'error',message:'ለዚህ Telegram ID የNeon ሂሳብ አልተገኘም። እባክዎ Telegramን እንደገና ያገናኙ።'});
+
+                    }
+
+                    if(e.code==='NO_TELEGRAM_ID'){
+
+                      return send(ws,{type:'error',message:'የTelegram ሂሳብ አልተረጋገጠም። እባክዎ Telegramን እንደገና ያገናኙ።'});
+
+                    }
+
+                    console.error('Card 2 balance charge:',e.message);
+
+                    return send(ws,{type:'error',message:'የNeon ሂሳብ ማረጋገጥ አልተሳካም። እባክዎ እንደገና ይሞክሩ።'});
+
+                  }
+
+                  send(ws,{type:'balanceUpdate',balance:newBal});
+
+                }else{
+
+                  changedIds.add(p.cardId2);
+
+                  room.takenCardIds.delete(p.cardId2);
+
+                }
+
+                p.cardId2=cardId; room.takenCardIds.add(cardId);
+
+                const card=getCard(cardId);
+
+                send(ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot:2});
+
+              }
+
+
               broadcastCardDiff(room,Array.from(changedIds));
+
               const readyCount=room.players.filter(p=>p.cardId).length;
+
               if(readyCount>=2&&room.status==='waiting') startCountdown(room);
+
               break;
+
             }
+
             case 'deselectCard':{
+
               if(!client.roomId) break;
+
               const room=rooms[client.roomId];
+
               if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
+
               const p=room.players.find(p=>p.playerId===client.playerId);
+
               if(!p) break;
-              const slot=Math.max(1,Math.min(4,parseInt(msg.slot)||1));
-              const field=getCardField(slot);
-              const releasedId=p[field];
-              if(!releasedId) break;
-              room.takenCardIds.delete(releasedId);
-              p[field]=null;
-              // Release the reservation locally. No database refund is needed because
-              // the stake has not been committed to the DB until game start.
-              const newBal=releaseClientReservation(client,room.stake);
-              if((Number(client.sessionReserved)||0)<0){ client.sessionReserved=0; }
-              if(getPlayerCardCount(p)===0) p.hasPaid=false;
-              send(ws,{type:'balanceUpdate',balance:newBal});
-              broadcastCardDiff(room,[releasedId]);
+
+
+              if(msg.slot===2&&p.cardId2){
+
+                const releasedId=p.cardId2;
+
+                room.takenCardIds.delete(releasedId);
+
+                p.cardId2=null;
+
+                const newBal=await changeClientBalance(client,room.stake,'stake_refund',room.roomId);
+
+                if(newBal===null){
+
+                  p.cardId2=releasedId;
+
+                  room.takenCardIds.add(releasedId);
+
+                  return send(ws,{type:'error',message:'የሁለተኛው ካርቴላ ክፍያ መመለስ አልተቻለም። እባክዎ እንደገና ይሞክሩ።'});
+
+                }
+
+                send(ws,{type:'balanceUpdate',balance:newBal});
+
+                broadcastCardDiff(room,[releasedId]);
+
+                break;
+
+              }
+
+
+              if(msg.slot===1&&p.cardId){
+
+                const releasedIds=[p.cardId];
+
+                if(p.cardId2) releasedIds.push(p.cardId2);
+
+                releasedIds.forEach(id=>room.takenCardIds.delete(id));
+
+                p.cardId=null; p.cardId2=null;
+
+
+                // Both selected cards are refunded together. This avoids the old
+
+                // bug where two cards could be refunded/charged inconsistently.
+
+                const refundCount=p.hasPaid?releasedIds.length:0;
+
+                if(refundCount>0){
+
+                  const newBal=await changeClientBalance(client,room.stake*refundCount,'stake_refund',room.roomId);
+
+                  if(newBal===null){
+
+                    // Restore room state if the DB refund fails.
+
+                    p.cardId=releasedIds[0]||null;
+
+                    p.cardId2=releasedIds[1]||null;
+
+                    releasedIds.forEach(id=>room.takenCardIds.add(id));
+
+                    return send(ws,{type:'error',message:'የካርቴላ ክፍያዎን መመለስ አልተቻለም። እባክዎ እንደገና ይሞክሩ።'});
+
+                  }
+
+                  send(ws,{type:'balanceUpdate',balance:newBal});
+
+                }
+
+                p.hasPaid=false;
+
+                broadcastCardDiff(room,releasedIds);
+
+                break;
+
+              }
+
               break;
+
             }
+
             case 'claimBingo':{
 
               if(!client.roomId) return;
@@ -1342,7 +1412,7 @@ wss.on('connection',(ws)=>{
 
               const p=room.players.find(p=>p.playerId===client.playerId);
 
-              if(!p||p.disqualified||getPlayerCardCount(p)===0) return;
+              if(!p||p.disqualified||(!p.cardId&&!p.cardId2)) return;
 
               if(!room.claimWindowOpen) return send(ws,{type:'claimTooLate',message:'ጊዜው አልፏል!'});
 
@@ -1356,15 +1426,7 @@ wss.on('connection',(ws)=>{
 
                   cardId2:msg.cardId2||null,
 
-                  markedIndices2:msg.markedIndices2||[],
-
-                  cardId3:msg.cardId3||null,
-
-                  markedIndices3:msg.markedIndices3||[],
-
-                  cardId4:msg.cardId4||null,
-
-                  markedIndices4:msg.markedIndices4||[]
+                  markedIndices2:msg.markedIndices2||[]
 
                 });
 
@@ -1411,9 +1473,7 @@ wss.on('connection',(ws)=>{
 
                 // Memory mode: auto-approve
 
-                const memWallet=walletState(client.telegramId);
-                memWallet.dbBalance=(Number(memWallet.dbBalance)||0)+Number(amount);
-                syncWalletClients(client.telegramId);
+                client.balance+=amount;
 
                 send(ws,{type:'balanceUpdate',balance:client.balance});
 
@@ -1437,9 +1497,6 @@ wss.on('connection',(ws)=>{
               if(!client.telegramId) return send(ws,{type:'error',message:'Please register first.'});
 
               await refreshClientBalance(client);
-              if(Number(amount)>Number(client.balance)+1e-9){
-                return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። ሊወጣ የሚችለው: ${(Number(client.balance)||0).toFixed(2)} ብር።`});
-              }
 
               if(db){
 
@@ -1449,7 +1506,7 @@ wss.on('connection',(ws)=>{
 
                   if(result.error) return send(ws,{type:'error',message:result.error});
 
-                  setWalletDbBalance(client.telegramId,result.newBalance);
+                  client.balance=result.newBalance;
 
                   send(ws,{type:'balanceUpdate',balance:client.balance});
 
@@ -1459,9 +1516,7 @@ wss.on('connection',(ws)=>{
 
               } else {
 
-                const memWallet=walletState(client.telegramId);
-                memWallet.dbBalance=Math.max(0,(Number(memWallet.dbBalance)||0)-Number(amount));
-                syncWalletClients(client.telegramId);
+                client.balance-=amount;
 
                 send(ws,{type:'balanceUpdate',balance:client.balance});
 
@@ -1539,7 +1594,7 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, async(req,res)=>{
   if(result){
     // Push balance update to connected user
     const cl=Object.values(clients).find(c=>c.telegramId===String(result.telegramId));
-    if(cl){setWalletDbBalance(String(result.telegramId),result.newBalance);send(cl.ws,{type:'balanceUpdate',balance:cl.balance});send(cl.ws,{type:'notification',message:`✅ Deposit of ${result.amount} ETB approved!`});}
+    if(cl){cl.balance=result.newBalance;send(cl.ws,{type:'balanceUpdate',balance:result.newBalance});send(cl.ws,{type:'notification',message:`✅ Deposit of ${result.amount} ETB approved!`});}
   }
   res.json({ok:true,result});
 });
@@ -1567,7 +1622,7 @@ app.post('/api/admin/withdrawals/:id/reject', adminAuth, async(req,res)=>{
   const result=await db.rejectWithdrawal(parseInt(req.params.id));
   if(result){
     const cl=Object.values(clients).find(c=>c.telegramId===String(result.telegramId));
-    if(cl){setWalletDbBalance(String(result.telegramId),result.newBalance);send(cl.ws,{type:'balanceUpdate',balance:cl.balance});send(cl.ws,{type:'notification',message:`❌ Withdrawal rejected. ${result.newBalance} ETB refunded.`});}
+    if(cl){cl.balance=result.newBalance;send(cl.ws,{type:'balanceUpdate',balance:result.newBalance});send(cl.ws,{type:'notification',message:`❌ Withdrawal rejected. ${result.newBalance} ETB refunded.`});}
   }
   res.json({ok:true,result});
 });
@@ -1669,6 +1724,289 @@ app.get('/api/admin/analytics', adminAuth, async(req,res)=>{
   }
 });
 
+// ─────────────────────────────────────────────────────────────
+// PUBLIC GAME API
+// Used by the Vercel Telegram Mini App during initial load.
+// ─────────────────────────────────────────────────────────────
+
+function validTelegramId(value) {
+  const tid = String(value || '').trim();
+  return /^\d+$/.test(tid) && Number(tid) > 0 ? tid : null;
+}
+
+// Global game configuration.
+// No user-specific information belongs here.
+app.get('/api/config', (req, res) => {
+  res.json({
+    gameName: 'Beteseb Bingo',
+    currency: 'ETB',
+    currencySymbol: 'ETB',
+    houseCut: HOUSE_CUT,
+    winnerShare: 1 - HOUSE_CUT,
+    lobbyWaitSeconds: Math.ceil(LOBBY_WAIT_MS / 1000),
+    callIntervalSeconds: Math.ceil(CALL_INTERVAL_MS / 1000),
+    claimWindowMs: CLAIM_WINDOW_MS,
+    totalCards: TOTAL_CARDS
+  });
+});
+
+
+// Available stakes.
+//
+// IMPORTANT:
+// For this first step we still use the existing STAKES array.
+// We will move the source of truth to PostgreSQL in the next step.
+app.get('/api/stakes', (req, res) => {
+  const stakes = STAKES.map(s => {
+    const room = Object.values(rooms).find(
+      r => r.stakeId === s.id
+    );
+
+    return {
+      id: s.id,
+      amount: Number(s.amount),
+      maxPlayers: Number(s.maxPlayers),
+      cardLimit: Number(s.cardLimit),
+      playerCount: room ? room.players.length : 0,
+      status: room ? room.status : 'waiting',
+      countdown: (
+        room &&
+        room.status === 'countdown'
+      ) ? room.countdownLeft : 0
+    };
+  });
+
+  res.json(stakes);
+});
+
+
+// Current public lobby rooms.
+//
+// Do NOT expose the internal room object.
+// It contains WebSocket connections, timers, card state,
+// called numbers, etc.
+app.get('/api/rooms', (req, res) => {
+  const roomsList = Object.values(rooms).map(room => ({
+    roomId: room.roomId,
+    stakeId: room.stakeId,
+    stakeAmount: Number(room.stake),
+    maxPlayers: Number(room.maxPlayers),
+    playerCount: room.players.length,
+    status: room.status,
+    countdown: room.status === 'countdown'
+      ? room.countdownLeft
+      : 0
+  }));
+
+  res.json(roomsList);
+});
+
+
+// Combined initial-load endpoint.
+//
+// The Vercel frontend can call this once after obtaining
+// the Telegram Mini App user ID.
+app.get('/api/bootstrap', async (req, res) => {
+  const tid = validTelegramId(
+    req.query.telegramId || req.query.tid
+  );
+
+  if (!tid) {
+    return res.status(400).json({
+      error: 'Invalid Telegram ID'
+    });
+  }
+
+  if (!db) {
+    return res.status(503).json({
+      error: 'Database unavailable'
+    });
+  }
+
+  try {
+    // Reuse the existing profile endpoint logic through the
+    // same database query rather than relying on userCache.
+    const rows = await db.q(`
+      SELECT u.*,
+
+        COALESCE((
+          SELECT COUNT(DISTINCT g.id)
+          FROM games g
+          WHERE g.status='finished'
+            AND (
+              EXISTS (
+                SELECT 1
+                FROM game_participants gp
+                WHERE gp.game_id=g.id
+                  AND gp.user_id=u.id
+              )
+              OR EXISTS (
+                SELECT 1
+                FROM transactions t
+                WHERE t.user_id=u.id
+                  AND t.reference=g.room_id
+                  AND t.type='stake'
+              )
+            )
+        ),0)::int AS computed_total_games,
+
+        COALESCE((
+          SELECT COUNT(*)
+          FROM games g
+          WHERE g.status='finished'
+            AND $1 = ANY(
+              COALESCE(g.winner_ids, ARRAY[]::text[])
+            )
+        ),0)::int AS computed_total_wins,
+
+        COALESCE((
+          SELECT g.win_amount
+          FROM games g
+          WHERE g.status='finished'
+            AND $1 = ANY(
+              COALESCE(g.winner_ids, ARRAY[]::text[])
+            )
+          ORDER BY g.ended_at DESC NULLS LAST, g.id DESC
+          LIMIT 1
+        ),0)::numeric AS latest_earnings
+
+      FROM users u
+      WHERE u.telegram_id=$1
+      LIMIT 1
+    `, [tid]);
+
+    const u = rows[0];
+
+    if (!u) {
+      return res.status(404).json({
+        error: 'User not found',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+
+    const storedGames = Math.max(
+      0,
+      Number(u.total_games) || 0
+    );
+
+    const computedGames = Math.max(
+      0,
+      Number(u.computed_total_games) || 0
+    );
+
+    const totalGames = Math.max(
+      storedGames,
+      computedGames
+    );
+
+    const storedWins = Math.max(
+      0,
+      Number(u.total_wins) || 0
+    );
+
+    const computedWins = Math.max(
+      0,
+      Number(u.computed_total_wins) || 0
+    );
+
+    const totalWins = Math.max(
+      storedWins,
+      computedWins
+    );
+
+    const user = {
+      telegramId: String(u.telegram_id),
+      name: u.name || '',
+      phone: u.phone || '',
+      balance: Number.parseFloat(u.balance) || 0,
+      total_games: totalGames,
+      total_wins: totalWins,
+      total_winnings:
+        Math.max(0, Number(u.total_winnings) || 0),
+      latest_earnings:
+        Math.max(0, Number(u.latest_earnings) || 0),
+      isAdmin:
+        u.is_admin === true ||
+        isAdminPhone(u.phone)
+    };
+
+    userCache[tid] = {
+      ...(userCache[tid] || {}),
+      ...user
+    };
+
+    const stakes = STAKES.map(s => {
+      const room = Object.values(rooms).find(
+        r => r.stakeId === s.id
+      );
+
+      return {
+        id: s.id,
+        amount: Number(s.amount),
+        maxPlayers: Number(s.maxPlayers),
+        cardLimit: Number(s.cardLimit),
+        playerCount: room ? room.players.length : 0,
+        status: room ? room.status : 'waiting',
+        countdown: (
+          room &&
+          room.status === 'countdown'
+        ) ? room.countdownLeft : 0
+      };
+    });
+
+    const roomsList = Object.values(rooms).map(room => ({
+      roomId: room.roomId,
+      stakeId: room.stakeId,
+      stakeAmount: Number(room.stake),
+      maxPlayers: Number(room.maxPlayers),
+      playerCount: room.players.length,
+      status: room.status,
+      countdown: room.status === 'countdown'
+        ? room.countdownLeft
+        : 0
+    }));
+
+    return res.json({
+      user,
+      config: {
+        gameName: 'Beteseb Bingo',
+        currency: 'ETB',
+        currencySymbol: 'ETB',
+        houseCut: HOUSE_CUT,
+        winnerShare: 1 - HOUSE_CUT,
+        lobbyWaitSeconds:
+          Math.ceil(LOBBY_WAIT_MS / 1000),
+        callIntervalSeconds:
+          Math.ceil(CALL_INTERVAL_MS / 1000),
+        claimWindowMs: CLAIM_WINDOW_MS,
+        totalCards: TOTAL_CARDS
+      },
+      stakes,
+      rooms: roomsList
+    });
+
+  } catch (e) {
+    console.error(
+      'GET /api/bootstrap error:',
+      e.message
+    );
+
+    return res.status(500).json({
+      error: 'Could not initialize game'
+    });
+  }
+});
+
+
+// Simple health endpoint for Render/Vercel/proxy monitoring.
+app.get('/health', (req, res) => {
+  res.json({
+    ok: true,
+    database: !!db,
+    uptime: process.uptime()
+  });
+});
+
 // ── Payment info (Telebirr account shown on deposit page) ──
 app.get('/api/payment-info', (req,res)=>{
   res.json(PAYMENT_INFO);
@@ -1698,85 +2036,65 @@ app.get('/api/user/:tid', async(req,res)=>{
   const tid=String(req.params.tid||'').trim();
   if(!tid) return res.status(400).json({error:'Missing Telegram ID'});
   if(!db) return res.status(503).json({error:'Database unavailable'});
-
   try{
-    // Keep the basic account query completely independent from game/statistics
-    // queries. A statistics query must never prevent login/profile from loading.
-    const rows=await db.q(
-      `SELECT * FROM users WHERE telegram_id=$1 LIMIT 1`,
-      [tid]
-    );
+    // Keep the existing users balance/win totals authoritative, but compute
+    // games played from finished-game participation as a safe fallback.
+    // Also calculate the latest actual payout directly from finished games.
+    // This avoids relying on the history transaction join for the Profile UI.
+    const rows=await db.q(`
+      SELECT u.*,
+        COALESCE((
+          SELECT COUNT(DISTINCT g.id)
+          FROM games g
+          WHERE g.status='finished'
+            AND (
+              EXISTS (
+                SELECT 1 FROM game_participants gp
+                WHERE gp.game_id=g.id AND gp.user_id=u.id
+              )
+              OR EXISTS (
+                SELECT 1 FROM transactions t
+                WHERE t.user_id=u.id
+                  AND t.reference=g.room_id
+                  AND t.type='stake'
+              )
+            )
+        ),0)::int AS computed_total_games,
+        COALESCE((
+          SELECT COUNT(*)
+          FROM games g
+          WHERE g.status='finished'
+            AND $1 = ANY(COALESCE(g.winner_ids, ARRAY[]::text[]))
+        ),0)::int AS computed_total_wins,
+        COALESCE((
+          SELECT g.win_amount
+          FROM games g
+          WHERE g.status='finished'
+            AND $1 = ANY(COALESCE(g.winner_ids, ARRAY[]::text[]))
+          ORDER BY g.ended_at DESC NULLS LAST, g.id DESC
+          LIMIT 1
+        ),0)::numeric AS latest_earnings
+      FROM users u
+      WHERE u.telegram_id=$1
+      LIMIT 1
+    `,[tid]);
     const u=rows[0]||null;
     if(!u) return res.status(404).json({error:'Not found'});
 
-    // Always keep the database user's stored counters as the safe fallback.
-    let totalGames=Math.max(0,Number(u.total_games)||0);
-    let totalWins=Math.max(0,Number(u.total_wins)||0);
-    let latestEarnings=0;
-
-    // Calculate games played independently through stake transactions. This is
-    // the same relationship used by the existing game-history endpoint and does
-    // not depend on game_participants being present/correct.
-    try{
-      const r=await db.q(`
-        SELECT COUNT(DISTINCT g.id)::int AS total_games
-        FROM games g
-        JOIN transactions t ON t.reference=g.room_id
-        JOIN users tu ON tu.id=t.user_id
-        WHERE tu.telegram_id=$1
-          AND g.status='finished'
-          AND t.type='stake'
-      `,[tid]);
-      const computed=Math.max(0,Number(r[0]?.total_games)||0);
-      totalGames=Math.max(totalGames,computed);
-    }catch(e){
-      console.error('Profile games query:',e.message);
+    const storedGames=Math.max(0,Number(u.total_games)||0);
+    const computedGames=Math.max(0,Number(u.computed_total_games)||0);
+    const totalGames=Math.max(storedGames,computedGames);
+    if(totalGames!==storedGames){
+      try{ await db.q('UPDATE users SET total_games=$1 WHERE id=$2',[totalGames,u.id]); }
+      catch(e){ console.error('Profile total_games sync:',e.message); }
     }
 
-    // Calculate wins directly from finished games. If the winner column cannot
-    // be queried for any reason, retain the authoritative users.total_wins value.
-    try{
-      const r=await db.q(`
-        SELECT COUNT(*)::int AS total_wins
-        FROM games
-        WHERE status='finished'
-          AND $1 = ANY(winner_ids)
-      `,[tid]);
-      const computed=Math.max(0,Number(r[0]?.total_wins)||0);
-      totalWins=Math.max(totalWins,computed);
-    }catch(e){
-      console.error('Profile wins query:',e.message);
-    }
-
-    try{
-      const r=await db.q(`
-        SELECT win_amount
-        FROM games
-        WHERE status='finished'
-          AND $1 = ANY(winner_ids)
-        ORDER BY ended_at DESC NULLS LAST, id DESC
-        LIMIT 1
-      `,[tid]);
-      latestEarnings=Math.max(0,Number(r[0]?.win_amount)||0);
-    }catch(e){
-      console.error('Profile latest earnings query:',e.message);
-    }
-
-    // Keep stored totals synchronized when our safe calculations find more data.
-    if(totalGames !== Math.max(0,Number(u.total_games)||0)){
-      try{
-        await db.q('UPDATE users SET total_games=$1 WHERE id=$2',[totalGames,u.id]);
-      }catch(e){
-        console.error('Profile total_games sync:',e.message);
-      }
-    }
-    if(totalWins !== Math.max(0,Number(u.total_wins)||0)){
-      try{
-        await db.q('UPDATE users SET total_wins=$1 WHERE id=$2',[totalWins,u.id]);
-      }catch(e){
-        console.error('Profile total_wins sync:',e.message);
-      }
-    }
+    // Profile stats: use the finished-game winner records directly. This is
+    // independent of the users-table counter, so old accounts with total_wins=0
+    // still show the real number of games won.
+    const storedWins=Math.max(0,Number(u.total_wins)||0);
+    const computedWins=Math.max(0,Number(u.computed_total_wins)||0);
+    const totalWins=Math.max(storedWins,computedWins);
 
     const user={
       telegramId:String(u.telegram_id),
@@ -1786,14 +2104,13 @@ app.get('/api/user/:tid', async(req,res)=>{
       total_games:totalGames,
       total_wins:totalWins,
       total_winnings:Math.max(0,Number(u.total_winnings)||0),
-      latest_earnings:latestEarnings,
+      latest_earnings:Math.max(0,Number(u.latest_earnings)||0),
       isAdmin:u.is_admin===true || isAdminPhone(u.phone)
     };
-
     userCache[tid]={...(userCache[tid]||{}),...user};
     res.json(user);
   }catch(e){
-    console.error('GET /api/user error:',e.stack||e.message);
+    console.error('GET /api/user error:',e.message);
     res.status(500).json({error:'Database query failed'});
   }
 });
