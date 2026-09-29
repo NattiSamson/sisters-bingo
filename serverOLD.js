@@ -578,10 +578,6 @@ function startCountdown(room){
 }
 
 async function startGame(room){
-  // Lock the room before the first await so no new card reservations can race
-  // with the final financial commit. Card selection itself is always memory-only.
-  room.status='starting';
-
   for(const p of room.players){
     if(getPlayerCardCount(p)===0) continue; // spectator
 
@@ -1164,7 +1160,6 @@ wss.on('connection',(ws)=>{
             case 'selectCard':{
               if(!client.roomId) break;
               const room=rooms[client.roomId];
-              // Selecting a card is intentionally memory-only. Never wait for the DB here.
               if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
               const cardId=parseInt(msg.cardId);
               const slot=Math.max(1,Math.min(4,parseInt(msg.slot)||1));
@@ -1172,30 +1167,25 @@ wss.on('connection',(ws)=>{
               const p=room.players.find(p=>p.playerId===client.playerId);
               if(!p) break;
               if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'ይህ ካርቴላ ቀድሞውኑ ተመርጧል!'});
-
               const field=getCardField(slot);
               const previous=p[field];
               const changedIds=new Set([cardId]);
-              if(previous){
-                room.takenCardIds.delete(previous);
-                changedIds.add(previous);
-              }
-
-              // The player's selected cards are reservations only. No balance change
-              // and no database call happens here, so rapid clicks are safe.
+              if(previous) { room.takenCardIds.delete(previous); changedIds.add(previous); }
+              // Every newly occupied slot costs one stake. Replacing an occupied slot is free.
               if(!previous){
-                const reservedAfter=getPlayerCardCount(p)+1;
-                const required=Number(room.stake)*reservedAfter;
-                // Fast local guard only. The authoritative DB balance is checked again
-                // once, when the game actually starts.
-                if(Number(client.balance)<required){
-                  if(previous) room.takenCardIds.add(previous);
-                  return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። ለ${reservedAfter} ካርድ(ዎች) ${required} ብር ያስፈልጋል።`});
+                if(Number(client.balance)<Number(room.stake))
+                  return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። ቀሪ ሂሳብ: ${(Number(client.balance)||0).toFixed(2)} ብር። ያስፈልጋል: ${room.stake} ብር።`});
+                let newBal;
+                try{ newBal=await changeClientBalance(client,-room.stake,'stake',room.roomId); }catch(e){
+                  if(e.code==='INSUFFICIENT_BALANCE') return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። የአካውንት ቀሪ ሂሳብ: ${(Number(e.balance)||0).toFixed(2)} ብር። ያስፈልጋል: ${room.stake} ብር።`});
+                  if(e.code==='ACCOUNT_NOT_FOUND') return send(ws,{type:'error',message:'ለዚህ Telegram ID የNeon ሂሳብ አልተገኘም። እባክዎ Telegramን እንደገና ያገናኙ።'});
+                  if(e.code==='NO_TELEGRAM_ID') return send(ws,{type:'error',message:'የTelegram ሂሳብ አልተረጋገጠም። እባክዎ Telegramን እንደገና ያገናኙ።'});
+                  console.error(`Card ${slot} balance charge:`,e.message);
+                  return send(ws,{type:'error',message:'የNeon ሂሳብ ማረጋገጥ አልተሳካም። እባክዎ እንደገና ይሞክሩ።'});
                 }
+                p.hasPaid=true; send(ws,{type:'balanceUpdate',balance:newBal});
               }
-
-              p[field]=cardId;
-              room.takenCardIds.add(cardId);
+              p[field]=cardId; room.takenCardIds.add(cardId);
               const card=getCard(cardId);
               send(ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot});
               broadcastCardDiff(room,Array.from(changedIds));
@@ -1213,11 +1203,12 @@ wss.on('connection',(ws)=>{
               const field=getCardField(slot);
               const releasedId=p[field];
               if(!releasedId) break;
-              // Before the game starts this is only a reservation release.
-              // Nothing was charged yet, so there is nothing to refund.
               room.takenCardIds.delete(releasedId);
               p[field]=null;
+              const newBal=await changeClientBalance(client,room.stake,'stake_refund',room.roomId);
+              if(newBal===null){ p[field]=releasedId; room.takenCardIds.add(releasedId); return send(ws,{type:'error',message:'የካርቴላ ክፍያ መመለስ አልተቻለም። እባክዎ እንደገና ይሞክሩ።'}); }
               if(getPlayerCardCount(p)===0) p.hasPaid=false;
+              send(ws,{type:'balanceUpdate',balance:newBal});
               broadcastCardDiff(room,[releasedId]);
               break;
             }
