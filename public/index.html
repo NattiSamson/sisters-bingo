@@ -1670,21 +1670,14 @@ function normalizeTelegramId(value){
   return /^\d+$/.test(id) && Number(id)>0 ? id : null;
 }
 function getTelegramId(){
-  // Identity priority: last verified localStorage ID first, then the bot-provided
-  // ?tid URL parameter, then Telegram WebApp user ID.
-  // This avoids unnecessary identity changes when Telegram initializes late.
-  try{
-    const cached=normalizeTelegramId(localStorage.getItem('melaBingoTelegramId'));
-    if(cached) return cached;
-  }catch(e){}
-
+  // The bot-provided ?tid is the preferred identity for this app.
   const p=new URLSearchParams(location.search);
   const urlId=normalizeTelegramId(p.get('tid'));
   if(urlId){
     try{localStorage.setItem('melaBingoTelegramId',urlId);}catch(e){}
     return urlId;
   }
-
+  // Telegram WebApp data can become available a little after the WebSocket connects.
   try{
     if(window.Telegram&&Telegram.WebApp){
       try{Telegram.WebApp.ready();}catch(e){}
@@ -1694,6 +1687,11 @@ function getTelegramId(){
         return webId;
       }
     }
+  }catch(e){}
+  // Last verified ID survives a page reload while Telegram initializes.
+  try{
+    const cached=normalizeTelegramId(localStorage.getItem('melaBingoTelegramId'));
+    if(cached) return cached;
   }catch(e){}
   return null;
 }
@@ -1805,8 +1803,13 @@ function navGo(screen, navId){
     restoreCachedBalance();
   }
 
-  // Do not re-query the account on every navigation. The WebSocket server session
-  // owns the live wallet during gameplay and pushes balanceUpdate messages.
+  // Reconcile with Neon after navigation. This updates the UI only when the
+  // authoritative account endpoint returns a valid balance.
+  if(telegramId){
+    refreshAccountProfile(3,300);
+  }
+
+  
 }
 function saveActiveGameState(phase){
   if(myRoomId) localStorage.setItem('roomId',myRoomId);
@@ -2121,6 +2124,7 @@ function finishPostGameReset(msg={}){
   if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
     setBalance(msg.balance);
   }
+  setTimeout(()=>refreshAccountProfile(8,500),300);
   resetTrackerBoard(); setBingoBtn('idle'); resetSlotUI();
   document.getElementById('cdCountdown').innerText='ተጫዋቾችን በመጠባበቅ ላይ...';
 
@@ -2153,8 +2157,9 @@ function handle(msg){
           return;
         }
         telegramId=tid;
-        // The server loads the authoritative DB balance during Telegram authentication.
-        // Avoid a duplicate /api/user request here.
+        // First load the account directly over HTTPS. This breaks the old failure
+        // mode where a WebSocket lookup returned a fake zero/unregistered snapshot.
+        await refreshAccountProfile(6,500);
         sendTelegramAuth(tid);
       });
       break;
@@ -2176,12 +2181,9 @@ function handle(msg){
     setBalance(msg.balance);
   }
   //document.getElementById('welcomeName').innerText=myName||'Player';
-  // The WebSocket authentication response is backed by the same server-side
-  // authoritative account lookup. Only fall back to HTTPS if it did not include
-  // a valid registered balance.
-  if(!(msg.isRegistered===true && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0)){
-    refreshAccountProfile(6,500);
-  }
+  // Always reconcile from the HTTPS account endpoint as the final authority.
+  refreshAccountProfile(10,500);
+
 
   document.getElementById('welcomeName').innerText=myName||'Player';
   //document.getElementById('welcomeStatus').innerText=msg.isRegistered?'Welcome back! 👋':'Registered!';
@@ -2230,8 +2232,8 @@ function handle(msg){
       if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
         setBalance(msg.balance);
       }
-      // The server session is authoritative during the room. Avoid a database/account read
-      // on every room restore; balanceUpdate messages keep the UI synchronized.
+      // Room balance can be stale after a deposit/stake transaction; re-read the Telegram/database account.
+      refreshAccountProfile(4,300);
       resetSlotUI();
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
       restoringActiveGame=false;
@@ -2412,8 +2414,8 @@ function handle(msg){
         setBalance(msg.balance);
         accountLoaded=true;
       }
-      // No account GET here: this balance came directly from the authoritative
-      // server session, so card clicks do not trigger database/account reads.
+      // Periodically reconcile with the Telegram-linked database account.
+      if(telegramId) setTimeout(()=>refreshAccountProfile(3,300),100);
       break;
 
     case 'leftRoom': clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; navGo('screenLobby'); break;

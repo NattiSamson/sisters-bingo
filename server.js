@@ -407,10 +407,6 @@ function checkWin(nums, called, marked) {
 
 // ─── STATE ───────────────────────────────────────────────────
 const clients={}, rooms={}, userCache={};
-// Live wallet sessions: DB balance is the permanent source of truth, while
-// reserved amounts are held in memory during card selection. This removes a
-// DB balance write/read from every individual card click without trusting the browser.
-const walletSessions={};
 
 // ─── USER HELPERS ────────────────────────────────────────────
 async function loadUser(tid,retries=6,delayMs=500) {
@@ -441,104 +437,15 @@ async function loadUser(tid,retries=6,delayMs=500) {
   return userCache[id]||null;
 }
 
-function walletState(tid){
-  const id=String(tid||'').trim();
-  if(!id) return null;
-  if(!walletSessions[id]) walletSessions[id]={dbBalance:0,reserved:0,loaded:false};
-  return walletSessions[id];
-}
-
-function syncWalletClients(tid){
-  const id=String(tid||'').trim();
-  const state=walletSessions[id];
-  if(!state) return;
-  const available=Math.max(0,Number(state.dbBalance||0)-Number(state.reserved||0));
-  Object.values(clients).forEach(cl=>{
-    if(String(cl.telegramId||'')===id) cl.balance=available;
-  });
-  if(userCache[id]) userCache[id].balance=Number(state.dbBalance||0);
-}
-
-function setWalletDbBalance(tid,dbBalance){
-  const state=walletState(tid);
-  state.dbBalance=Math.max(0,Number(dbBalance)||0);
-  state.loaded=true;
-  syncWalletClients(tid);
-  return state;
-}
-
-function reserveClientStake(client,amount){
-  const n=Number(amount);
-  if(!client?.telegramId || !Number.isFinite(n) || n<=0) throw new Error('Invalid stake reservation');
-  const state=walletState(client.telegramId);
-  const available=Math.max(0,Number(state.dbBalance||0)-Number(state.reserved||0));
-  if(available+1e-9<n){
-    const e=new Error('Insufficient balance');
-    e.code='INSUFFICIENT_BALANCE';
-    e.balance=available;
-    throw e;
-  }
-  state.reserved+=n;
-  client.sessionReserved=(Number(client.sessionReserved)||0)+n;
-  syncWalletClients(client.telegramId);
-  return Math.max(0,Number(state.dbBalance||0)-Number(state.reserved||0));
-}
-
-function releaseClientReservation(client,amount){
-  const n=Number(amount);
-  if(!client?.telegramId || !Number.isFinite(n) || n<=0) return Number(client?.balance)||0;
-  const state=walletState(client.telegramId);
-  const release=Math.min(n,Number(client.sessionReserved)||0,Number(state.reserved)||0);
-  state.reserved-=release;
-  client.sessionReserved=(Number(client.sessionReserved)||0)-release;
-  if(state.reserved<0) state.reserved=0;
-  if(client.sessionReserved<0) client.sessionReserved=0;
-  syncWalletClients(client.telegramId);
-  return Number(client.balance)||0;
-}
-
-async function commitClientReservation(client,txType,ref){
-  const reserved=Math.max(0,Number(client?.sessionReserved)||0);
-  if(!client?.telegramId || reserved<=0) return Number(client?.balance)||0;
-  const tid=String(client.telegramId);
-  const state=walletState(tid);
-  if(db){
-    let newBal;
-    try{
-      // One atomic DB adjustment for the player's entire card stake at game start.
-      newBal=await db.adjustBalance(tid,-reserved);
-    }catch(e){
-      // Keep the reservation intact so the caller can safely cancel/retry it.
-      throw e;
-    }
-    state.dbBalance=Number(newBal)||0;
-    state.reserved=Math.max(0,Number(state.reserved||0)-reserved);
-    client.sessionReserved=0;
-    state.loaded=true;
-    if(userCache[tid]) userCache[tid].balance=state.dbBalance;
-    syncWalletClients(tid);
-    if(txType){
-      try{await db.logTx(tid,txType,-reserved,newBal,ref||'');}
-      catch(e){console.error('logTx:',e.message);}
-    }
-    return Number(client.balance)||0;
-  }
-  // Memory mode: reservation is already deducted from the session's spendable balance.
-  state.reserved=Math.max(0,Number(state.reserved||0)-reserved);
-  client.sessionReserved=0;
-  syncWalletClients(tid);
-  return Number(client.balance)||0;
-}
-
 async function refreshClientBalance(client){
   if(!client?.telegramId || !db) return Number.isFinite(Number(client?.balance));
   try{
     const u=await db.getUser(String(client.telegramId));
     if(!u) return false;
-    const dbBal=parseFloat(u.balance)||0;
-    setWalletDbBalance(client.telegramId,dbBal);
+    client.balance=parseFloat(u.balance)||0;
     client.playerName=u.name||client.playerName;
     client.isAdmin=u.is_admin===true || isAdminPhone(u.phone);
+    if(userCache[client.telegramId]) userCache[client.telegramId].balance=client.balance;
     return true;
   }catch(e){
     console.error('refreshClientBalance:',e.message);
@@ -563,12 +470,9 @@ async function changeClientBalance(client, delta, txType, ref){
 
     // Neon is authoritative. Never use client.balance to decide whether the
     // charge succeeded.
-    const wallet=walletState(client.telegramId);
-    wallet.dbBalance=Number(newBal)||0;
-    wallet.loaded=true;
+    client.balance=newBal;
     if(userCache[client.telegramId])
-      userCache[client.telegramId].balance=wallet.dbBalance;
-    syncWalletClients(client.telegramId);
+      userCache[client.telegramId].balance=newBal;
 
     if(txType){
       try{
@@ -597,11 +501,8 @@ async function changeClientBalance(client, delta, txType, ref){
     e.balance=current;
     throw e;
   }
-  const wallet=walletState(client.telegramId);
-  wallet.dbBalance=next;
-  wallet.loaded=true;
-  syncWalletClients(client.telegramId);
-  return Number(client.balance)||next;
+  client.balance=next;
+  return next;
 }
 
 async function saveBalance(tid, bal) {
@@ -682,14 +583,18 @@ async function startGame(room){
 
     if(!p.hasPaid){
       const cl=clients[p.playerId];
-      if(cl && getPlayerCardCount(p)>0){
-        // Compatibility path for an older/reconnected client that reached game start
-        // without a session reservation. Prefer the normal reservation path below.
-        try{
-          const totalCost=room.stake*getPlayerCardCount(p);
-          reserveClientStake(cl,totalCost);
+      const numCards=getPlayerCardCount(p);
+      const totalCost=room.stake*numCards;
+
+      // This is normally already paid during card selection. This fallback
+      // protects the game if an older client reached startGame unpaid.
+      if(cl){
+        await refreshClientBalance(cl);
+        const newBal=await changeClientBalance(cl,-totalCost,'stake',room.roomId);
+        if(newBal!==null){
           p.hasPaid=true;
-        }catch(e){
+          send(p.ws,{type:'balanceUpdate',balance:newBal});
+        }else{
           getPlayerCardIds(p).forEach(id=>room.takenCardIds.delete(id));
           p.cardId=null; p.cardId2=null; p.cardId3=null; p.cardId4=null;
           continue;
@@ -697,22 +602,6 @@ async function startGame(room){
       }else{
         getPlayerCardIds(p).forEach(id=>room.takenCardIds.delete(id));
         p.cardId=null; p.cardId2=null; p.cardId3=null; p.cardId4=null;
-        continue;
-      }
-    }
-
-    // Commit the player's complete reserved stake once, at game start.
-    const cl=clients[p.playerId];
-    if(cl && Number(cl.sessionReserved)>0){
-      try{
-        const newBal=await commitClientReservation(cl,'stake',room.roomId);
-        send(p.ws,{type:'balanceUpdate',balance:newBal});
-      }catch(e){
-        console.error('Card stake commit:',e.message);
-        releaseClientReservation(cl,Number(cl.sessionReserved)||0);
-        getPlayerCardIds(p).forEach(id=>room.takenCardIds.delete(id));
-        p.cardId=null; p.cardId2=null; p.cardId3=null; p.cardId4=null; p.hasPaid=false;
-        send(p.ws,{type:'error',message:'የካርቴላ ክፍያ ማረጋገጥ አልተሳካም። እባክዎ እንደገና ይሞክሩ።'});
         continue;
       }
     }
@@ -946,12 +835,14 @@ async function leaveRoom(client){
     if(p.cardId) room.takenCardIds.delete(p.cardId);
     getPlayerCardIds(p).forEach(id=>room.takenCardIds.delete(id));
 
-    // Release any uncommitted card-stake reservation when leaving before the game starts.
+    // Refund every paid card when leaving before the game starts.
     if(p.hasPaid&&(room.status==='waiting'||room.status==='countdown')){
-      const cl=clients[p.playerId];
-      if(cl && Number(cl.sessionReserved)>0){
-        releaseClientReservation(cl,Number(cl.sessionReserved));
-        send(cl.ws,{type:'balanceUpdate',balance:cl.balance});
+      const cardCount=getPlayerCardCount(p);
+      const refund=room.stake*cardCount;
+      if(refund>0){
+        const newBal=await changeClientBalance(client,refund,'stake_refund',room.roomId);
+        if(newBal!==null) send(client.ws,{type:'balanceUpdate',balance:newBal});
+        else console.error('Failed to refund player',client.telegramId,room.roomId);
       }
       p.hasPaid=false;
     }
@@ -971,7 +862,7 @@ async function leaveRoom(client){
 // ─── WEBSOCKET ────────────────────────────────────────────────
 wss.on('connection',(ws)=>{
   const playerId=uuidv4();
-  const client={playerId,playerName:'',telegramId:null,balance:0,roomId:null,isAdmin:false,ws,sessionReserved:0};
+  const client={playerId,playerName:'',telegramId:null,balance:0,roomId:null,isAdmin:false,ws};
   clients[playerId]=client; ws._pid=playerId;
 
   const lobbyStakes=STAKES.map(s=>{const r=Object.values(rooms).find(r=>r.stakeId===s.id);
@@ -1030,14 +921,8 @@ wss.on('connection',(ws)=>{
               if(user){
                 client.telegramId=tid;
                 client.playerName=user.name||client.playerName||'Player';
-                const authDbBalance=Number.isFinite(Number(user.balance))?Number(user.balance):0;
-                const wsWallet=walletState(tid);
-                wsWallet.dbBalance=authDbBalance;
-                wsWallet.loaded=true;
-                client.sessionReserved=Number(client.sessionReserved)||0;
-                client.balance=Math.max(0,authDbBalance-Number(wsWallet.reserved||0));
+                client.balance=Number.isFinite(Number(user.balance))?Number(user.balance):0;
                 client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
-                syncWalletClients(tid);
                 send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
               } else {
                 // Never convert a failed/late database lookup into a fake zero wallet.
@@ -1168,7 +1053,7 @@ wss.on('connection',(ws)=>{
 
                          client.playerName=u.name||client.playerName;
 
-                         setWalletDbBalance(tid,parseFloat(u.balance)||0);
+                         client.balance=parseFloat(u.balance)||0;
 
                          client.isAdmin=u.isAdmin||isAdminPhone(u.phone);
 
@@ -1284,26 +1169,23 @@ wss.on('connection',(ws)=>{
               if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'ይህ ካርቴላ ቀድሞውኑ ተመርጧል!'});
               const field=getCardField(slot);
               const previous=p[field];
-
-              // Reserve before changing the card ownership. If the balance check fails,
-              // the player's existing card remains untouched.
-              if(!previous){
-                try{
-                  const newBal=reserveClientStake(client,room.stake);
-                  p.hasPaid=true;
-                  send(ws,{type:'balanceUpdate',balance:newBal});
-                }catch(e){
-                  if(e.code==='INSUFFICIENT_BALANCE')
-                    return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። ቀሪ ሂሳብ: ${(Number(e.balance)||0).toFixed(2)} ብር። ያስፈልጋል: ${room.stake} ብር።`});
-                  console.error(`Card ${slot} balance reservation:`,e.message);
-                  return send(ws,{type:'error',message:'የቀሪ ሂሳብ ማረጋገጥ አልተሳካም። እባክዎ እንደገና ይሞክሩ።'});
-                }
-              }
-
               const changedIds=new Set([cardId]);
               if(previous) { room.takenCardIds.delete(previous); changedIds.add(previous); }
-              p[field]=cardId;
-              room.takenCardIds.add(cardId);
+              // Every newly occupied slot costs one stake. Replacing an occupied slot is free.
+              if(!previous){
+                if(Number(client.balance)<Number(room.stake))
+                  return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። ቀሪ ሂሳብ: ${(Number(client.balance)||0).toFixed(2)} ብር። ያስፈልጋል: ${room.stake} ብር።`});
+                let newBal;
+                try{ newBal=await changeClientBalance(client,-room.stake,'stake',room.roomId); }catch(e){
+                  if(e.code==='INSUFFICIENT_BALANCE') return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። የአካውንት ቀሪ ሂሳብ: ${(Number(e.balance)||0).toFixed(2)} ብር። ያስፈልጋል: ${room.stake} ብር።`});
+                  if(e.code==='ACCOUNT_NOT_FOUND') return send(ws,{type:'error',message:'ለዚህ Telegram ID የNeon ሂሳብ አልተገኘም። እባክዎ Telegramን እንደገና ያገናኙ።'});
+                  if(e.code==='NO_TELEGRAM_ID') return send(ws,{type:'error',message:'የTelegram ሂሳብ አልተረጋገጠም። እባክዎ Telegramን እንደገና ያገናኙ።'});
+                  console.error(`Card ${slot} balance charge:`,e.message);
+                  return send(ws,{type:'error',message:'የNeon ሂሳብ ማረጋገጥ አልተሳካም። እባክዎ እንደገና ይሞክሩ።'});
+                }
+                p.hasPaid=true; send(ws,{type:'balanceUpdate',balance:newBal});
+              }
+              p[field]=cardId; room.takenCardIds.add(cardId);
               const card=getCard(cardId);
               send(ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot});
               broadcastCardDiff(room,Array.from(changedIds));
@@ -1323,10 +1205,8 @@ wss.on('connection',(ws)=>{
               if(!releasedId) break;
               room.takenCardIds.delete(releasedId);
               p[field]=null;
-              // Release the reservation locally. No database refund is needed because
-              // the stake has not been committed to the DB until game start.
-              const newBal=releaseClientReservation(client,room.stake);
-              if((Number(client.sessionReserved)||0)<0){ client.sessionReserved=0; }
+              const newBal=await changeClientBalance(client,room.stake,'stake_refund',room.roomId);
+              if(newBal===null){ p[field]=releasedId; room.takenCardIds.add(releasedId); return send(ws,{type:'error',message:'የካርቴላ ክፍያ መመለስ አልተቻለም። እባክዎ እንደገና ይሞክሩ።'}); }
               if(getPlayerCardCount(p)===0) p.hasPaid=false;
               send(ws,{type:'balanceUpdate',balance:newBal});
               broadcastCardDiff(room,[releasedId]);
@@ -1411,9 +1291,7 @@ wss.on('connection',(ws)=>{
 
                 // Memory mode: auto-approve
 
-                const memWallet=walletState(client.telegramId);
-                memWallet.dbBalance=(Number(memWallet.dbBalance)||0)+Number(amount);
-                syncWalletClients(client.telegramId);
+                client.balance+=amount;
 
                 send(ws,{type:'balanceUpdate',balance:client.balance});
 
@@ -1437,9 +1315,6 @@ wss.on('connection',(ws)=>{
               if(!client.telegramId) return send(ws,{type:'error',message:'Please register first.'});
 
               await refreshClientBalance(client);
-              if(Number(amount)>Number(client.balance)+1e-9){
-                return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። ሊወጣ የሚችለው: ${(Number(client.balance)||0).toFixed(2)} ብር።`});
-              }
 
               if(db){
 
@@ -1449,7 +1324,7 @@ wss.on('connection',(ws)=>{
 
                   if(result.error) return send(ws,{type:'error',message:result.error});
 
-                  setWalletDbBalance(client.telegramId,result.newBalance);
+                  client.balance=result.newBalance;
 
                   send(ws,{type:'balanceUpdate',balance:client.balance});
 
@@ -1459,9 +1334,7 @@ wss.on('connection',(ws)=>{
 
               } else {
 
-                const memWallet=walletState(client.telegramId);
-                memWallet.dbBalance=Math.max(0,(Number(memWallet.dbBalance)||0)-Number(amount));
-                syncWalletClients(client.telegramId);
+                client.balance-=amount;
 
                 send(ws,{type:'balanceUpdate',balance:client.balance});
 
@@ -1539,7 +1412,7 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, async(req,res)=>{
   if(result){
     // Push balance update to connected user
     const cl=Object.values(clients).find(c=>c.telegramId===String(result.telegramId));
-    if(cl){setWalletDbBalance(String(result.telegramId),result.newBalance);send(cl.ws,{type:'balanceUpdate',balance:cl.balance});send(cl.ws,{type:'notification',message:`✅ Deposit of ${result.amount} ETB approved!`});}
+    if(cl){cl.balance=result.newBalance;send(cl.ws,{type:'balanceUpdate',balance:result.newBalance});send(cl.ws,{type:'notification',message:`✅ Deposit of ${result.amount} ETB approved!`});}
   }
   res.json({ok:true,result});
 });
@@ -1567,7 +1440,7 @@ app.post('/api/admin/withdrawals/:id/reject', adminAuth, async(req,res)=>{
   const result=await db.rejectWithdrawal(parseInt(req.params.id));
   if(result){
     const cl=Object.values(clients).find(c=>c.telegramId===String(result.telegramId));
-    if(cl){setWalletDbBalance(String(result.telegramId),result.newBalance);send(cl.ws,{type:'balanceUpdate',balance:cl.balance});send(cl.ws,{type:'notification',message:`❌ Withdrawal rejected. ${result.newBalance} ETB refunded.`});}
+    if(cl){cl.balance=result.newBalance;send(cl.ws,{type:'balanceUpdate',balance:result.newBalance});send(cl.ws,{type:'notification',message:`❌ Withdrawal rejected. ${result.newBalance} ETB refunded.`});}
   }
   res.json({ok:true,result});
 });
