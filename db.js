@@ -111,6 +111,39 @@ async function safeRollback(client) {
 
 module.exports = {
 
+	/**
+ * Get transfer limits and current usage for a user's wallet.
+ *
+ * @param {number} userId
+ * @param {"main"|"play"} walletType
+ * @returns {Promise<object>}
+ */
+async function getTransferLimits(userId, walletType) {
+    if (!userId) {
+        throw new Error("User ID is required");
+    }
+
+    if (!["main", "play"].includes(walletType)) {
+        throw new Error("Invalid wallet type");
+    }
+
+    const { rows } = await pool.query(
+        `
+        SELECT public.get_transfer_limits($1, $2) AS limits
+        `,
+        [
+            userId,
+            walletType
+        ]
+    );
+
+    if (!rows.length || !rows[0].limits) {
+        throw new Error("Unable to load transfer limits");
+    }
+
+    return rows[0].limits;
+},
+
 async getTransferRecipient(phone) {
   const { rows } = await pool.query(
     `
