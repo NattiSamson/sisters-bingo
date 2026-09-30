@@ -118,7 +118,7 @@ module.exports = {
  * @param {"main"|"play"} walletType
  * @returns {Promise<object>}
  */
-async function getTransferLimits(userId, walletType) {
+async getTransferLimits(userId, walletType) {
     if (!userId) {
         throw new Error("User ID is required");
     }
