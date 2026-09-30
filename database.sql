@@ -1738,6 +1738,45 @@ $$;
 ALTER FUNCTION public.end_bingo_game(p_game_id integer, p_winner_card_ids integer[]) OWNER TO neondb_owner;
 
 --
+-- Name: find_transfer_recipient(character varying); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.find_transfer_recipient(p_phone character varying) RETURNS TABLE(user_id integer, name character varying, phone character varying, telegram_id bigint)
+    LANGUAGE sql STABLE
+    AS $$
+    SELECT
+        u.id,
+        u.name,
+        u.phone,
+        u.telegram_id
+    FROM public.users u
+    WHERE RIGHT(
+        REGEXP_REPLACE(
+            COALESCE(u.phone, ''),
+            '[^0-9]',
+            '',
+            'g'
+        ),
+        9
+    ) =
+    RIGHT(
+        REGEXP_REPLACE(
+            COALESCE(p_phone, ''),
+            '[^0-9]',
+            '',
+            'g'
+        ),
+        9
+    )
+    AND u.is_active = TRUE    
+    AND u.is_blocked = FALSE
+    LIMIT 1;
+$$;
+
+
+ALTER FUNCTION public.find_transfer_recipient(p_phone character varying) OWNER TO neondb_owner;
+
+--
 -- Name: generate_bingo_game_code(); Type: FUNCTION; Schema: public; Owner: neondb_owner
 --
 
@@ -1876,6 +1915,91 @@ $$;
 
 
 ALTER FUNCTION public.get_active_deposit_rule(p_payment_method_id integer, p_payment_account_id integer, p_amount numeric) OWNER TO neondb_owner;
+
+--
+-- Name: transfer_rules; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.transfer_rules (
+    id bigint NOT NULL,
+    wallet_type character varying(20) NOT NULL,
+    period character varying(20) NOT NULL,
+    minimum_transfer_amount numeric(18,2) DEFAULT 0 NOT NULL,
+    maximum_transfer_amount numeric(18,2),
+    maximum_transfer_count integer,
+    is_active boolean DEFAULT true NOT NULL,
+    starts_at timestamp with time zone,
+    ends_at timestamp with time zone,
+    priority integer DEFAULT 0 NOT NULL,
+    description text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT transfer_rules_amount_range_check CHECK (((maximum_transfer_amount IS NULL) OR (maximum_transfer_amount >= minimum_transfer_amount))),
+    CONSTRAINT transfer_rules_count_check CHECK (((maximum_transfer_count IS NULL) OR (maximum_transfer_count > 0))),
+    CONSTRAINT transfer_rules_date_range_check CHECK (((starts_at IS NULL) OR (ends_at IS NULL) OR (starts_at <= ends_at))),
+    CONSTRAINT transfer_rules_maximum_check CHECK (((maximum_transfer_amount IS NULL) OR (maximum_transfer_amount > (0)::numeric))),
+    CONSTRAINT transfer_rules_minimum_check CHECK ((minimum_transfer_amount >= (0)::numeric)),
+    CONSTRAINT transfer_rules_period_check CHECK (((period)::text = ANY ((ARRAY['daily'::character varying, 'weekly'::character varying, 'monthly'::character varying, 'quarterly'::character varying, 'yearly'::character varying])::text[]))),
+    CONSTRAINT transfer_rules_wallet_type_check CHECK (((wallet_type)::text = ANY ((ARRAY['main'::character varying, 'play'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.transfer_rules OWNER TO neondb_owner;
+
+--
+-- Name: get_active_transfer_rule(character varying, character varying); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.get_active_transfer_rule(p_wallet_type character varying, p_period character varying) RETURNS public.transfer_rules
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+    v_rule public.transfer_rules;
+BEGIN
+
+    IF p_wallet_type NOT IN ('main', 'play') THEN
+        RAISE EXCEPTION
+            'Invalid wallet type: %',
+            p_wallet_type;
+    END IF;
+
+    IF p_period NOT IN (
+        'daily',
+        'weekly',
+        'monthly',
+        'quarterly',
+        'yearly'
+    ) THEN
+        RAISE EXCEPTION
+            'Invalid transfer rule period: %',
+            p_period;
+    END IF;
+
+    SELECT tr.*
+    INTO v_rule
+    FROM public.transfer_rules tr
+    WHERE tr.wallet_type = p_wallet_type
+      AND tr.period = p_period
+      AND tr.is_active = TRUE
+      AND (
+            tr.starts_at IS NULL
+            OR tr.starts_at <= NOW()
+          )
+      AND (
+            tr.ends_at IS NULL
+            OR tr.ends_at >= NOW()
+          )
+    ORDER BY
+        tr.priority DESC,
+        tr.id DESC
+    LIMIT 1;
+
+    RETURN v_rule;
+END;
+$$;
+
+
+ALTER FUNCTION public.get_active_transfer_rule(p_wallet_type character varying, p_period character varying) OWNER TO neondb_owner;
 
 --
 -- Name: withdrawal_rules; Type: TABLE; Schema: public; Owner: neondb_owner
@@ -3596,6 +3720,826 @@ $$;
 ALTER FUNCTION public.set_updated_at() OWNER TO neondb_owner;
 
 --
+-- Name: transfer_wallet(integer, character varying, character varying, numeric, character varying, text); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.transfer_wallet(p_sender_user_id integer, p_receiver_phone character varying, p_wallet_type character varying, p_amount numeric, p_idempotency_key character varying, p_description text DEFAULT NULL::text) RETURNS jsonb
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+
+    v_sender public.users%ROWTYPE;
+    v_receiver public.users%ROWTYPE;
+
+    v_sender_wallet_id BIGINT;
+    v_receiver_wallet_id BIGINT;
+
+    v_sender_balance NUMERIC(18,2);
+    v_receiver_balance NUMERIC(18,2);
+
+    v_amount NUMERIC(18,2);
+
+    v_rule public.transfer_rules%ROWTYPE;
+
+    v_daily_count INTEGER;
+    v_weekly_count INTEGER;
+    v_monthly_count INTEGER;
+    v_quarterly_count INTEGER;
+    v_yearly_count INTEGER;
+
+    v_daily_amount NUMERIC(18,2);
+    v_weekly_amount NUMERIC(18,2);
+    v_monthly_amount NUMERIC(18,2);
+    v_quarterly_amount NUMERIC(18,2);
+    v_yearly_amount NUMERIC(18,2);
+
+    v_transaction_id BIGINT;
+    v_transaction_created BOOLEAN;
+
+    v_transfer_id BIGINT;
+
+    v_existing_transfer public.transfers%ROWTYPE;
+
+    v_normalized_phone VARCHAR(20);
+
+    v_now TIMESTAMPTZ := NOW();
+
+BEGIN
+
+    -- ========================================================
+    -- 1. Validate sender
+    -- ========================================================
+
+    IF p_sender_user_id IS NULL
+       OR p_sender_user_id <= 0 THEN
+
+        RAISE EXCEPTION
+            'Invalid sender user ID';
+
+    END IF;
+
+
+    SELECT *
+    INTO v_sender
+    FROM public.users
+    WHERE id = p_sender_user_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Sender user not found';
+    END IF;
+
+
+    IF v_sender.is_active IS NOT TRUE THEN
+        RAISE EXCEPTION
+            'Sender account is inactive';
+    END IF;
+
+    IF v_sender.is_blocked IS TRUE THEN
+        RAISE EXCEPTION
+            'Sender account is blocked';
+    END IF;
+
+
+    -- ========================================================
+    -- 2. Validate wallet type
+    -- ========================================================
+
+    IF p_wallet_type NOT IN ('main', 'play') THEN
+
+        RAISE EXCEPTION
+            'Invalid wallet type. Use main or play';
+
+    END IF;
+
+
+    -- ========================================================
+    -- 3. Validate amount
+    -- ========================================================
+
+    v_amount := ROUND(p_amount, 2);
+
+    IF v_amount IS NULL
+       OR v_amount <= 0 THEN
+
+        RAISE EXCEPTION
+            'Transfer amount must be greater than zero';
+
+    END IF;
+
+
+    -- ========================================================
+    -- 4. Validate idempotency key
+    -- ========================================================
+
+    IF p_idempotency_key IS NULL
+       OR BTRIM(p_idempotency_key) = '' THEN
+
+        RAISE EXCEPTION
+            'Transfer idempotency key is required';
+
+    END IF;
+
+
+    -- ========================================================
+    -- 5. Check if this transfer was already completed
+    -- ========================================================
+
+    SELECT *
+    INTO v_existing_transfer
+    FROM public.transfers
+    WHERE idempotency_key = p_idempotency_key
+    FOR UPDATE;
+
+    IF FOUND THEN
+
+        IF v_existing_transfer.sender_user_id
+               IS DISTINCT FROM p_sender_user_id
+           OR v_existing_transfer.wallet_type
+               IS DISTINCT FROM p_wallet_type
+           OR v_existing_transfer.amount
+               IS DISTINCT FROM v_amount THEN
+
+            RAISE EXCEPTION
+                'Idempotency key belongs to a different transfer';
+
+        END IF;
+
+        RETURN jsonb_build_object(
+            'success', TRUE,
+            'idempotent', TRUE,
+            'transfer_id', v_existing_transfer.id,
+            'transaction_id', v_existing_transfer.transaction_id,
+            'sender_user_id', v_existing_transfer.sender_user_id,
+            'receiver_user_id', v_existing_transfer.receiver_user_id,
+            'wallet_type', v_existing_transfer.wallet_type,
+            'amount', v_existing_transfer.amount,
+            'status', v_existing_transfer.status
+        );
+
+    END IF;
+
+
+    -- ========================================================
+    -- 6. Normalize phone
+    --
+    -- Ethiopian phone:
+    -- 0912345678
+    -- 0712345678
+    -- 251912345678
+    -- +251912345678
+    -- ========================================================
+
+    v_normalized_phone :=
+        RIGHT(
+            REGEXP_REPLACE(
+                COALESCE(p_receiver_phone, ''),
+                '[^0-9]',
+                '',
+                'g'
+            ),
+            9
+        );
+
+    IF LENGTH(v_normalized_phone) <> 9 THEN
+
+        RAISE EXCEPTION
+            'Invalid receiver phone number';
+
+    END IF;
+
+
+    -- ========================================================
+    -- 7. Find receiver
+    --
+    -- Only registered, active, non-banned, non-blocked users
+    -- are eligible.
+    -- ========================================================
+
+    SELECT *
+    INTO v_receiver
+    FROM public.users
+    WHERE RIGHT(
+            REGEXP_REPLACE(
+                COALESCE(phone, ''),
+                '[^0-9]',
+                '',
+                'g'
+            ),
+            9
+        ) = v_normalized_phone
+      AND is_active = TRUE
+      AND is_banned = FALSE
+      AND is_blocked = FALSE
+    LIMIT 1
+    FOR UPDATE;
+
+
+    IF NOT FOUND THEN
+
+        RAISE EXCEPTION
+            'Receiver phone number is not registered or the account is unavailable';
+
+    END IF;
+
+
+    -- ========================================================
+    -- 8. Sender cannot transfer to himself
+    -- ========================================================
+
+    IF v_receiver.id = v_sender.id THEN
+
+        RAISE EXCEPTION
+            'You cannot transfer money to yourself';
+
+    END IF;
+
+
+    -- ========================================================
+    -- 9. Get wallet IDs
+    -- ========================================================
+
+    v_sender_wallet_id :=
+        public.get_user_wallet_id(
+            v_sender.id,
+            p_wallet_type
+        );
+
+    v_receiver_wallet_id :=
+        public.get_user_wallet_id(
+            v_receiver.id,
+            p_wallet_type
+        );
+
+
+    -- ========================================================
+    -- 10. Lock wallets in deterministic order
+    --
+    -- This is important to prevent deadlocks when:
+    --
+    -- User A -> User B
+    -- User B -> User A
+    --
+    -- happen simultaneously.
+    -- ========================================================
+
+    IF v_sender_wallet_id < v_receiver_wallet_id THEN
+
+        PERFORM public.lock_wallet(v_sender_wallet_id);
+        PERFORM public.lock_wallet(v_receiver_wallet_id);
+
+    ELSE
+
+        PERFORM public.lock_wallet(v_receiver_wallet_id);
+        PERFORM public.lock_wallet(v_sender_wallet_id);
+
+    END IF;
+
+
+    -- ========================================================
+    -- 11. Read balances after locking
+    -- ========================================================
+
+    SELECT balance
+    INTO v_sender_balance
+    FROM public.wallet_balances
+    WHERE wallet_id = v_sender_wallet_id
+    FOR UPDATE;
+
+    SELECT balance
+    INTO v_receiver_balance
+    FROM public.wallet_balances
+    WHERE wallet_id = v_receiver_wallet_id
+    FOR UPDATE;
+
+
+    IF v_sender_balance < v_amount THEN
+
+        RAISE EXCEPTION
+            'Insufficient % wallet balance. Available: %, requested: %',
+            p_wallet_type,
+            v_sender_balance,
+            v_amount;
+
+    END IF;
+
+
+    -- ========================================================
+    -- 12. Minimum transfer amount
+    --
+    -- Minimum amount is taken from the highest-priority
+    -- active daily rule.
+    --
+    -- The same minimum can be configured independently for
+    -- main and play wallets.
+    -- ========================================================
+
+    v_rule :=
+        public.get_active_transfer_rule(
+            p_wallet_type,
+            'daily'
+        );
+
+
+    IF v_rule.id IS NULL THEN
+
+        RAISE EXCEPTION
+            'No active transfer rule exists for % wallet',
+            p_wallet_type;
+
+    END IF;
+
+
+    IF v_amount < v_rule.minimum_transfer_amount THEN
+
+        RAISE EXCEPTION
+            'Minimum % wallet transfer amount is %',
+            p_wallet_type,
+            v_rule.minimum_transfer_amount;
+
+    END IF;
+
+
+    IF v_rule.maximum_transfer_amount IS NOT NULL
+       AND v_amount > v_rule.maximum_transfer_amount THEN
+
+        RAISE EXCEPTION
+            'Maximum % wallet transfer amount per transfer is %',
+            p_wallet_type,
+            v_rule.maximum_transfer_amount;
+
+    END IF;
+
+
+    -- ========================================================
+    -- 13. DAILY
+    -- ========================================================
+
+    SELECT
+        COUNT(*),
+        COALESCE(SUM(amount), 0)
+    INTO
+        v_daily_count,
+        v_daily_amount
+    FROM public.transfers
+    WHERE sender_user_id = v_sender.id
+      AND wallet_type = p_wallet_type
+      AND status = 'completed'
+      AND created_at >= date_trunc('day', v_now);
+
+
+    IF v_rule.maximum_transfer_count IS NOT NULL
+       AND v_daily_count + 1 >
+           v_rule.maximum_transfer_count THEN
+
+        RAISE EXCEPTION
+            'Daily transfer count limit reached: %',
+            v_rule.maximum_transfer_count;
+
+    END IF;
+
+
+    IF v_rule.maximum_transfer_amount IS NOT NULL
+       AND v_daily_amount + v_amount >
+           v_rule.maximum_transfer_amount THEN
+
+        RAISE EXCEPTION
+            'Daily transfer amount limit reached. Remaining: %',
+            GREATEST(
+                v_rule.maximum_transfer_amount
+                - v_daily_amount,
+                0
+            );
+
+    END IF;
+
+
+    -- ========================================================
+    -- 14. WEEKLY
+    -- ========================================================
+
+    v_rule :=
+        public.get_active_transfer_rule(
+            p_wallet_type,
+            'weekly'
+        );
+
+    IF v_rule.id IS NOT NULL THEN
+
+        SELECT
+            COUNT(*),
+            COALESCE(SUM(amount), 0)
+        INTO
+            v_weekly_count,
+            v_weekly_amount
+        FROM public.transfers
+        WHERE sender_user_id = v_sender.id
+          AND wallet_type = p_wallet_type
+          AND status = 'completed'
+          AND created_at >= date_trunc('week', v_now);
+
+
+        IF v_rule.maximum_transfer_count IS NOT NULL
+           AND v_weekly_count + 1 >
+               v_rule.maximum_transfer_count THEN
+
+            RAISE EXCEPTION
+                'Weekly transfer count limit reached: %',
+                v_rule.maximum_transfer_count;
+
+        END IF;
+
+
+        IF v_rule.maximum_transfer_amount IS NOT NULL
+           AND v_weekly_amount + v_amount >
+               v_rule.maximum_transfer_amount THEN
+
+            RAISE EXCEPTION
+                'Weekly transfer amount limit reached. Remaining: %',
+                GREATEST(
+                    v_rule.maximum_transfer_amount
+                    - v_weekly_amount,
+                    0
+                );
+
+        END IF;
+
+    END IF;
+
+
+    -- ========================================================
+    -- 15. MONTHLY
+    -- ========================================================
+
+    v_rule :=
+        public.get_active_transfer_rule(
+            p_wallet_type,
+            'monthly'
+        );
+
+    IF v_rule.id IS NOT NULL THEN
+
+        SELECT
+            COUNT(*),
+            COALESCE(SUM(amount), 0)
+        INTO
+            v_monthly_count,
+            v_monthly_amount
+        FROM public.transfers
+        WHERE sender_user_id = v_sender.id
+          AND wallet_type = p_wallet_type
+          AND status = 'completed'
+          AND created_at >= date_trunc('month', v_now);
+
+
+        IF v_rule.maximum_transfer_count IS NOT NULL
+           AND v_monthly_count + 1 >
+               v_rule.maximum_transfer_count THEN
+
+            RAISE EXCEPTION
+                'Monthly transfer count limit reached: %',
+                v_rule.maximum_transfer_count;
+
+        END IF;
+
+
+        IF v_rule.maximum_transfer_amount IS NOT NULL
+           AND v_monthly_amount + v_amount >
+               v_rule.maximum_transfer_amount THEN
+
+            RAISE EXCEPTION
+                'Monthly transfer amount limit reached. Remaining: %',
+                GREATEST(
+                    v_rule.maximum_transfer_amount
+                    - v_monthly_amount,
+                    0
+                );
+
+        END IF;
+
+    END IF;
+
+
+    -- ========================================================
+    -- 16. QUARTERLY
+    -- ========================================================
+
+    v_rule :=
+        public.get_active_transfer_rule(
+            p_wallet_type,
+            'quarterly'
+        );
+
+    IF v_rule.id IS NOT NULL THEN
+
+        SELECT
+            COUNT(*),
+            COALESCE(SUM(amount), 0)
+        INTO
+            v_quarterly_count,
+            v_quarterly_amount
+        FROM public.transfers
+        WHERE sender_user_id = v_sender.id
+          AND wallet_type = p_wallet_type
+          AND status = 'completed'
+          AND created_at >= date_trunc('quarter', v_now);
+
+
+        IF v_rule.maximum_transfer_count IS NOT NULL
+           AND v_quarterly_count + 1 >
+               v_rule.maximum_transfer_count THEN
+
+            RAISE EXCEPTION
+                'Quarterly transfer count limit reached: %',
+                v_rule.maximum_transfer_count;
+
+        END IF;
+
+
+        IF v_rule.maximum_transfer_amount IS NOT NULL
+           AND v_quarterly_amount + v_amount >
+               v_rule.maximum_transfer_amount THEN
+
+            RAISE EXCEPTION
+                'Quarterly transfer amount limit reached. Remaining: %',
+                GREATEST(
+                    v_rule.maximum_transfer_amount
+                    - v_quarterly_amount,
+                    0
+                );
+
+        END IF;
+
+    END IF;
+
+
+    -- ========================================================
+    -- 17. YEARLY
+    -- ========================================================
+
+    v_rule :=
+        public.get_active_transfer_rule(
+            p_wallet_type,
+            'yearly'
+        );
+
+    IF v_rule.id IS NOT NULL THEN
+
+        SELECT
+            COUNT(*),
+            COALESCE(SUM(amount), 0)
+        INTO
+            v_yearly_count,
+            v_yearly_amount
+        FROM public.transfers
+        WHERE sender_user_id = v_sender.id
+          AND wallet_type = p_wallet_type
+          AND status = 'completed'
+          AND created_at >= date_trunc('year', v_now);
+
+
+        IF v_rule.maximum_transfer_count IS NOT NULL
+           AND v_yearly_count + 1 >
+               v_rule.maximum_transfer_count THEN
+
+            RAISE EXCEPTION
+                'Yearly transfer count limit reached: %',
+                v_rule.maximum_transfer_count;
+
+        END IF;
+
+
+        IF v_rule.maximum_transfer_amount IS NOT NULL
+           AND v_yearly_amount + v_amount >
+               v_rule.maximum_transfer_amount THEN
+
+            RAISE EXCEPTION
+                'Yearly transfer amount limit reached. Remaining: %',
+                GREATEST(
+                    v_rule.maximum_transfer_amount
+                    - v_yearly_amount,
+                    0
+                );
+
+        END IF;
+
+    END IF;
+
+
+    -- ========================================================
+    -- 18. Create financial transaction
+    -- ========================================================
+
+    SELECT
+        t.transaction_id,
+        t.created
+    INTO
+        v_transaction_id,
+        v_transaction_created
+    FROM public.create_financial_transaction(
+        v_sender.id,
+        'transfer',
+        'completed',
+        NULL,
+        'wallet_transfer',
+        p_idempotency_key,
+        p_idempotency_key,
+        COALESCE(
+            p_description,
+            'Wallet transfer'
+        ),
+        jsonb_build_object(
+            'sender_user_id', v_sender.id,
+            'receiver_user_id', v_receiver.id,
+            'wallet_type', p_wallet_type,
+            'amount', v_amount,
+            'receiver_phone', v_receiver.phone
+        )
+    ) AS t;
+
+
+    -- ========================================================
+    -- 19. Idempotent retry
+    -- ========================================================
+
+    IF NOT v_transaction_created THEN
+
+        SELECT id
+        INTO v_transfer_id
+        FROM public.transfers
+        WHERE transaction_id = v_transaction_id
+        LIMIT 1;
+
+        IF v_transfer_id IS NULL THEN
+
+            RAISE EXCEPTION
+                'Financial transaction exists but transfer record is missing';
+
+        END IF;
+
+        RETURN jsonb_build_object(
+            'success', TRUE,
+            'idempotent', TRUE,
+            'transfer_id', v_transfer_id,
+            'transaction_id', v_transaction_id
+        );
+
+    END IF;
+
+
+    -- ========================================================
+    -- 20. Debit sender wallet
+    -- ========================================================
+
+    INSERT INTO public.ledger_entries (
+        transaction_id,
+        wallet_id,
+        amount
+    )
+    VALUES (
+        v_transaction_id,
+        v_sender_wallet_id,
+        -v_amount
+    );
+
+
+    UPDATE public.wallet_balances
+    SET
+        balance = balance - v_amount,
+        updated_at = NOW()
+    WHERE wallet_id = v_sender_wallet_id;
+
+
+    -- ========================================================
+    -- 21. Credit receiver wallet
+    -- ========================================================
+
+    INSERT INTO public.ledger_entries (
+        transaction_id,
+        wallet_id,
+        amount
+    )
+    VALUES (
+        v_transaction_id,
+        v_receiver_wallet_id,
+        v_amount
+    );
+
+
+    UPDATE public.wallet_balances
+    SET
+        balance = balance + v_amount,
+        updated_at = NOW()
+    WHERE wallet_id = v_receiver_wallet_id;
+
+
+    -- ========================================================
+    -- 22. Create transfer record
+    -- ========================================================
+
+    INSERT INTO public.transfers (
+        transaction_id,
+        sender_user_id,
+        receiver_user_id,
+        amount,
+        wallet_type,
+        rule_id,
+        idempotency_key,
+        status,
+        metadata,
+        created_at
+    )
+    VALUES (
+        v_transaction_id,
+        v_sender.id,
+        v_receiver.id,
+        v_amount,
+        p_wallet_type,
+        v_rule.id,
+        p_idempotency_key,
+        'completed',
+        jsonb_build_object(
+            'sender_phone', v_sender.phone,
+            'receiver_phone', v_receiver.phone,
+            'wallet_type', p_wallet_type
+        ),
+        v_now
+    )
+    RETURNING id
+    INTO v_transfer_id;
+
+
+    -- ========================================================
+    -- 23. Final consistency check
+    -- ========================================================
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.ledger_entries
+        WHERE transaction_id = v_transaction_id
+          AND wallet_id = v_sender_wallet_id
+          AND amount = -v_amount
+    ) THEN
+
+        RAISE EXCEPTION
+            'Sender ledger entry was not created';
+
+    END IF;
+
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.ledger_entries
+        WHERE transaction_id = v_transaction_id
+          AND wallet_id = v_receiver_wallet_id
+          AND amount = v_amount
+    ) THEN
+
+        RAISE EXCEPTION
+            'Receiver ledger entry was not created';
+
+    END IF;
+
+
+    -- ========================================================
+    -- 24. Return result
+    -- ========================================================
+
+    RETURN jsonb_build_object(
+        'success', TRUE,
+        'idempotent', FALSE,
+
+        'transfer_id', v_transfer_id,
+        'transaction_id', v_transaction_id,
+
+        'sender_user_id', v_sender.id,
+        'sender_name', v_sender.name,
+
+        'receiver_user_id', v_receiver.id,
+        'receiver_name', v_receiver.name,
+
+        'wallet_type', p_wallet_type,
+        'amount', v_amount,
+
+        'sender_balance_before', v_sender_balance,
+        'sender_balance_after',
+            ROUND(v_sender_balance - v_amount, 2),
+
+        'receiver_balance_before', v_receiver_balance,
+        'receiver_balance_after',
+            ROUND(v_receiver_balance + v_amount, 2),
+
+        'status', 'completed'
+    );
+
+END;
+$$;
+
+
+ALTER FUNCTION public.transfer_wallet(p_sender_user_id integer, p_receiver_phone character varying, p_wallet_type character varying, p_amount numeric, p_idempotency_key character varying, p_description text) OWNER TO neondb_owner;
+
+--
 -- Name: validate_deposit_rule(bigint, integer, integer, numeric); Type: FUNCTION; Schema: public; Owner: neondb_owner
 --
 
@@ -4212,6 +5156,7 @@ DO UPDATE SET
     metadata = EXCLUDED.metadata,
     updated_at = NOW();
 
+
 ALTER TABLE public.game_systems OWNER TO neondb_owner;
 
 --
@@ -4401,6 +5346,20 @@ CREATE VIEW public.transaction_ledger_totals AS
 ALTER VIEW public.transaction_ledger_totals OWNER TO neondb_owner;
 
 --
+-- Name: transfer_rules_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE public.transfer_rules ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.transfer_rules_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: transfers; Type: TABLE; Schema: public; Owner: neondb_owner
 --
 
@@ -4409,12 +5368,21 @@ CREATE TABLE public.transfers (
     transaction_id bigint NOT NULL,
     sender_user_id integer NOT NULL,
     receiver_user_id integer NOT NULL,
+    wallet_type character varying(20) NOT NULL,
     amount numeric(18,2) NOT NULL,
+    rule_id bigint,
     status character varying(20) DEFAULT 'completed'::character varying NOT NULL,
+    idempotency_key character varying(150),
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT transfers_different_users CHECK ((sender_user_id <> receiver_user_id)),
-    CONSTRAINT transfers_positive_amount CHECK ((amount > (0)::numeric)),
-    CONSTRAINT transfers_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'completed'::character varying, 'failed'::character varying, 'cancelled'::character varying, 'reversed'::character varying])::text[])))
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT transfers_amount_check CHECK ((amount > (0)::numeric)),
+    CONSTRAINT transfers_different_users_check CHECK ((sender_user_id <> receiver_user_id)),
+    CONSTRAINT transfers_idempotency_key_check CHECK (((idempotency_key IS NULL) OR (length(btrim((idempotency_key)::text)) > 0))),
+    CONSTRAINT transfers_metadata_object_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
+    CONSTRAINT transfers_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'completed'::character varying, 'failed'::character varying, 'cancelled'::character varying, 'reversed'::character varying])::text[]))),
+    CONSTRAINT transfers_updated_at_check CHECK ((updated_at >= created_at)),
+    CONSTRAINT transfers_wallet_type_check CHECK (((wallet_type)::text = ANY ((ARRAY['main'::character varying, 'play'::character varying])::text[])))
 );
 
 
@@ -4424,21 +5392,14 @@ ALTER TABLE public.transfers OWNER TO neondb_owner;
 -- Name: transfers_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
 --
 
-CREATE SEQUENCE public.transfers_id_seq
+ALTER TABLE public.transfers ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.transfers_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
     NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE public.transfers_id_seq OWNER TO neondb_owner;
-
---
--- Name: transfers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
---
-
-ALTER SEQUENCE public.transfers_id_seq OWNED BY public.transfers.id;
+    CACHE 1
+);
 
 
 --
@@ -4653,13 +5614,6 @@ ALTER TABLE ONLY public.payment_methods ALTER COLUMN id SET DEFAULT nextval('pub
 --
 
 ALTER TABLE ONLY public.payment_types ALTER COLUMN id SET DEFAULT nextval('public.payment_type_id_seq'::regclass);
-
-
---
--- Name: transfers id; Type: DEFAULT; Schema: public; Owner: neondb_owner
---
-
-ALTER TABLE ONLY public.transfers ALTER COLUMN id SET DEFAULT nextval('public.transfers_id_seq'::regclass);
 
 
 --
@@ -4936,6 +5890,14 @@ ALTER TABLE ONLY public.payment_types
 
 ALTER TABLE ONLY public.settings
     ADD CONSTRAINT settings_pkey PRIMARY KEY (key);
+
+
+--
+-- Name: transfer_rules transfer_rules_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.transfer_rules
+    ADD CONSTRAINT transfer_rules_pkey PRIMARY KEY (id);
 
 
 --
@@ -5250,6 +6212,13 @@ CREATE INDEX idx_financial_transactions_status ON public.financial_transactions 
 
 
 --
+-- Name: idx_financial_transactions_transfer_source; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_financial_transactions_transfer_source ON public.financial_transactions USING btree (type, user_id, created_at DESC) WHERE ((type)::text = 'transfer'::text);
+
+
+--
 -- Name: idx_financial_transactions_type; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
@@ -5285,6 +6254,27 @@ CREATE INDEX idx_payment_accounts_method_active ON public.payment_accounts USING
 
 
 --
+-- Name: idx_transfer_rules_dates; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_transfer_rules_dates ON public.transfer_rules USING btree (starts_at, ends_at);
+
+
+--
+-- Name: idx_transfer_rules_lookup; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_transfer_rules_lookup ON public.transfer_rules USING btree (wallet_type, period, is_active, priority);
+
+
+--
+-- Name: idx_transfers_limit_lookup; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_transfers_limit_lookup ON public.transfers USING btree (sender_user_id, wallet_type, status, created_at DESC);
+
+
+--
 -- Name: idx_transfers_receiver; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
@@ -5292,10 +6282,38 @@ CREATE INDEX idx_transfers_receiver ON public.transfers USING btree (receiver_us
 
 
 --
+-- Name: idx_transfers_receiver_wallet; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_transfers_receiver_wallet ON public.transfers USING btree (receiver_user_id, wallet_type, created_at DESC);
+
+
+--
+-- Name: idx_transfers_rule; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_transfers_rule ON public.transfers USING btree (rule_id, created_at DESC);
+
+
+--
 -- Name: idx_transfers_sender; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
 CREATE INDEX idx_transfers_sender ON public.transfers USING btree (sender_user_id, created_at DESC);
+
+
+--
+-- Name: idx_transfers_sender_wallet; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_transfers_sender_wallet ON public.transfers USING btree (sender_user_id, wallet_type, created_at DESC);
+
+
+--
+-- Name: idx_transfers_status; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_transfers_status ON public.transfers USING btree (status, created_at DESC);
 
 
 --
@@ -5432,6 +6450,20 @@ CREATE UNIQUE INDEX uq_financial_transactions_reversal ON public.financial_trans
 
 
 --
+-- Name: uq_transfers_idempotency_key; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE UNIQUE INDEX uq_transfers_idempotency_key ON public.transfers USING btree (idempotency_key) WHERE (idempotency_key IS NOT NULL);
+
+
+--
+-- Name: uq_transfers_transaction_id; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE UNIQUE INDEX uq_transfers_transaction_id ON public.transfers USING btree (transaction_id);
+
+
+--
 -- Name: ux_deposits_transaction; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
@@ -5464,6 +6496,13 @@ CREATE TRIGGER deposits_set_updated_at BEFORE UPDATE ON public.deposits FOR EACH
 --
 
 CREATE TRIGGER ledger_entries_immutable BEFORE DELETE OR UPDATE ON public.ledger_entries FOR EACH ROW EXECUTE FUNCTION public.prevent_ledger_entries_mutation();
+
+
+--
+-- Name: transfer_rules transfer_rules_set_updated_at; Type: TRIGGER; Schema: public; Owner: neondb_owner
+--
+
+CREATE TRIGGER transfer_rules_set_updated_at BEFORE UPDATE ON public.transfer_rules FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 
 --
@@ -5811,7 +6850,15 @@ ALTER TABLE ONLY public.payment_methods
 --
 
 ALTER TABLE ONLY public.transfers
-    ADD CONSTRAINT transfers_receiver_user_id_fkey FOREIGN KEY (receiver_user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+    ADD CONSTRAINT transfers_receiver_user_id_fkey FOREIGN KEY (receiver_user_id) REFERENCES public.users(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- Name: transfers transfers_rule_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.transfers
+    ADD CONSTRAINT transfers_rule_id_fkey FOREIGN KEY (rule_id) REFERENCES public.transfer_rules(id) ON UPDATE CASCADE ON DELETE RESTRICT;
 
 
 --
@@ -5819,7 +6866,7 @@ ALTER TABLE ONLY public.transfers
 --
 
 ALTER TABLE ONLY public.transfers
-    ADD CONSTRAINT transfers_sender_user_id_fkey FOREIGN KEY (sender_user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+    ADD CONSTRAINT transfers_sender_user_id_fkey FOREIGN KEY (sender_user_id) REFERENCES public.users(id) ON UPDATE CASCADE ON DELETE RESTRICT;
 
 
 --
@@ -5827,7 +6874,7 @@ ALTER TABLE ONLY public.transfers
 --
 
 ALTER TABLE ONLY public.transfers
-    ADD CONSTRAINT transfers_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES public.financial_transactions(id) ON DELETE RESTRICT;
+    ADD CONSTRAINT transfers_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES public.financial_transactions(id) ON UPDATE CASCADE ON DELETE RESTRICT;
 
 
 --
