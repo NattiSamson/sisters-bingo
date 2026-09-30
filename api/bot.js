@@ -3877,57 +3877,49 @@ bot.callbackQuery(
 // TRANSFER — SELECT WALLET
 // ============================================================
 
-async function startTransferWalletSelection(
-  ctx,
-  walletType
-) {
+async function startTransferWalletSelection(ctx, walletType) {
   const telegramId = ctx.from.id;
 
   try {
-
-    const user =
-      await db.getUserByTelegramId(
-        telegramId
-      );
+    const user = await db.getUserByTelegramId(telegramId);
 
     if (!user) {
-      return ctx.reply(
+      await ctx.reply(
         "Please /start to register first."
       );
+      return;
     }
 
     if (
       user.is_active !== true ||
-      user.is_blocked === true
-      
+      user.is_blocked === true ||
+      user.is_banned === true
     ) {
-      return ctx.reply(
+      await ctx.reply(
         "🚫 Your account is not eligible for transfers."
       );
+      return;
     }
 
-    /*
-     * Load balance + transfer rules + current usage.
-     */
-    const limits =
-      await db.getTransferLimits(
-        user.id,
-        walletType
-      );
+    const limits = await db.getTransferLimits(
+      user.id,
+      walletType
+    );
 
     if (!limits) {
-      return ctx.reply(
+      await ctx.reply(
         "❌ Transfer limits could not be loaded."
       );
+      return;
     }
 
-    const balance =
-      Number(limits.balance || 0);
+    const balance = Number(
+      limits.balance || 0
+    );
 
-    const minimum =
-      Number(
-        limits.minimum_transfer_amount || 0
-      );
+    const minimum = Number(
+      limits.minimum_transfer_amount || 0
+    );
 
     const maximum =
       limits.maximum_transfer_amount === null ||
@@ -3937,37 +3929,31 @@ async function startTransferWalletSelection(
             limits.maximum_transfer_amount
           );
 
-    /*
-     * We require enough money to make at least
-     * the minimum allowed transfer.
-     */
     if (balance < minimum) {
+      delete pendingTransfer[telegramId];
 
-      delete pendingTransfer[
-        telegramId
-      ];
-
-      return ctx.editMessageText(
+      await ctx.editMessageText(
         `${getWalletDisplayName(walletType)}\n\n` +
         `💰 Available balance: *${formatTransferAmount(balance)}*\n` +
         `📌 Minimum transfer: *${formatTransferAmount(minimum)}*\n\n` +
         `❌ Your balance is below the minimum amount required to transfer.`,
         {
           parse_mode: "Markdown",
-          reply_markup:
-            getTransferCancelKeyboard()
+          reply_markup: getTransferCancelKeyboard()
         }
       );
+
+      return;
     }
 
     /*
-     * Store transfer session.
+     * Create the transfer session only after all
+     * preliminary checks have succeeded.
      */
-    const state =
-      createTransferState(
-        telegramId,
-        walletType
-      );
+    const state = createTransferState(
+      telegramId,
+      walletType
+    );
 
     state.limits = limits;
 
@@ -3975,9 +3961,7 @@ async function startTransferWalletSelection(
 
     let message =
       `${getWalletDisplayName(walletType)}\n\n` +
-
       `💰 Available balance: *${formatTransferAmount(balance)}*\n` +
-
       `📌 Minimum transfer: *${formatTransferAmount(minimum)}*\n`;
 
     if (maximum !== null) {
@@ -3985,13 +3969,10 @@ async function startTransferWalletSelection(
         `📌 Maximum per transfer: *${formatTransferAmount(maximum)}*\n`;
     }
 
-    /*
-     * Show remaining period limits.
-     */
-
     if (
       limits.daily &&
-      limits.daily.remaining_count !== null
+      limits.daily.remaining_count !== null &&
+      limits.daily.remaining_count !== undefined
     ) {
       message +=
         `\n📅 Daily remaining transfers: *${limits.daily.remaining_count}*`;
@@ -3999,7 +3980,8 @@ async function startTransferWalletSelection(
 
     if (
       limits.daily &&
-      limits.daily.remaining_amount !== null
+      limits.daily.remaining_amount !== null &&
+      limits.daily.remaining_amount !== undefined
     ) {
       message +=
         `\n💵 Daily remaining amount: *${formatTransferAmount(
@@ -4013,6 +3995,9 @@ async function startTransferWalletSelection(
       "or `+251912345678`\n\n" +
       "❌ Send /cancel to cancel.";
 
+    /*
+     * Update the original menu message.
+     */
     await ctx.editMessageText(
       message,
       {
@@ -4022,8 +4007,7 @@ async function startTransferWalletSelection(
             [
               {
                 text: "❌ Cancel",
-                callback_data:
-                  "transfer_cancel"
+                callback_data: "transfer_cancel"
               }
             ]
           ]
@@ -4034,31 +4018,20 @@ async function startTransferWalletSelection(
   } catch (err) {
 
     console.error(
-    "Transfer wallet selection error:",
-    err
-  );
-
-  console.error(
-    "Transfer wallet selection stack:",
-    err?.stack
-  );
-
-  console.error(
-    "Transfer wallet selection state:",
-    pendingTransfer[telegramId]
-  );
-
-  /*
-   * Do NOT delete the transfer session here.
-   * The first message may already have been displayed.
-   */
-  if (!ctx.callbackQuery?.message) {
-    await ctx.reply(
-      "❌ Unable to start the transfer right now. Please try again."
+      "Transfer wallet selection error:",
+      err
     );
+
+    console.error(
+      err?.stack
+    );
+
+    /*
+     * Don't send a second error message if the
+     * original callback message was already edited.
+     */
   }
 }
-
 
 bot.callbackQuery(
   "transfer_wallet_main",
