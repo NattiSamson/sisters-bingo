@@ -3786,7 +3786,7 @@ bot.callbackQuery("user_deposit", async (ctx) =>
 // ============================================================
 // TRANSFER — OPEN
 // ============================================================
-async function showDeposit(
+async function showTransfer(
   ctx
 ) {
 
