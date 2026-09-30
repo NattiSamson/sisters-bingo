@@ -16,22 +16,11 @@ const http      = require('http');
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
 const path      = require('path');
-const dbmain = require('./db');
 
 const app    = express();
 const server = http.createServer(app);
 const wss    = new WebSocket.Server({ server });
 const PORT   = process.env.PORT || 3000;
-
-// ─── START ────────────────────────────────────────────────────
-server.listen(PORT,()=>{
-  console.log(`\n🎱 Beteseb Bingo v5 on port ${PORT}\n`);
-  startTelegramBot();
-});
-refreshActiveStakes().catch(err => {
-  console.error('Initial stake load failed:', err.message);
-});
-
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/audio', express.static(path.join(__dirname, 'audio')));
@@ -523,51 +512,15 @@ async function saveBalance(tid, bal) {
 }
 
 // ─── ROOM HELPERS ────────────────────────────────────────────
-async function getOrCreateRoom(sid) {
-    let r = Object.values(rooms).find(
-        r =>
-            r.stakeId === sid &&
-            (r.status === 'waiting' || r.status === 'countdown')
-    );
-
-    if (r) return r;
-
-    const stakes = await dbmain.getActiveStakes();
-
-    const s = stakes.find(stake => stake.id === sid);
-
-    if (!s) {
-        throw new Error(`Invalid or inactive stake: ${sid}`);
-    }
-
-    const roomId = uuidv4();
-
-    r = {
-        roomId,
-        stakeId: sid,
-        stake: s.amount,
-        maxPlayers: s.maxPlayers,
-        cardLimit: s.cardCount,
-		status: 'waiting',
-		players: [],
-		calledNumbers: [],
-		availableNumbers: Array.from({ length: 75 }, (_, i) => i + 1),
-		callTimer: null,
-		countdownTimer: null,
-		claimEvalTimer: null,
-		countdownLeft: Math.ceil(LOBBY_WAIT_MS / 1000),
-		claimWindowOpen: false,
-		claimedThisRound: [],
-		resetCountdownTimer: null,
-		resetTimer: null,
-		takenCardIds: new Set(),
-		pot: 0,
-		dbGameId: null
-  };
-
-  rooms[roomId] = r;
-
-  return r;
+function getOrCreateRoom(sid){
+  let r=Object.values(rooms).find(r=>r.stakeId===sid&&(r.status==='waiting'||r.status==='countdown'));
+  if(r) return r;
+  const s=STAKES.find(s=>s.id===sid), roomId=uuidv4();
+  r={roomId,stakeId:sid,stake:s.amount,maxPlayers:s.maxPlayers,cardLimit:s.cardLimit,status:'waiting',players:[],calledNumbers:[],
+     availableNumbers:Array.from({length:75},(_,i)=>i+1),callTimer:null,countdownTimer:null,claimEvalTimer:null,
+     countdownLeft:Math.ceil(LOBBY_WAIT_MS/1000),claimWindowOpen:false,claimedThisRound:[],resetCountdownTimer:null,resetTimer:null,
+     takenCardIds:new Set(),pot:0,dbGameId:null};
+  rooms[roomId]=r; return r;
 }
 const send=(ws,msg)=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(msg));};
 const broadcast=(room,msg)=>{const s=JSON.stringify(msg);room.players.forEach(p=>{if(p.ws&&p.ws.readyState===WebSocket.OPEN)p.ws.send(s);});};
@@ -579,21 +532,8 @@ function broadcastLobby(){
   broadcastLobby._pending=true;
   setTimeout(()=>{
     broadcastLobby._pending=false;
-    const payload=activeStakes.map(s=>{
-  const r=Object.values(rooms).find(r=>r.stakeId===s.id);
-
-  return {
-    stakeId: s.id,
-    amount: s.amount,
-    maxPlayers: s.maxPlayers,
-    playerCount: r ? r.players.length : 0,
-    status: r ? r.status : 'waiting',
-    countdown: r && r.status === 'countdown'
-      ? r.countdownLeft
-      : 0
-  };
-});
-      
+    const payload=STAKES.map(s=>{const r=Object.values(rooms).find(r=>r.stakeId===s.id);
+      return{stakeId:s.id,amount:s.amount,maxPlayers:s.maxPlayers,playerCount:r?r.players.length:0,status:r?r.status:'waiting',countdown:r&&r.status==='countdown'?r.countdownLeft:0};});
     const payloadStr=JSON.stringify({type:'lobbyUpdate',stakes:payload});
     Object.values(clients).forEach(c=>{if(!c.roomId&&c.ws&&c.ws.readyState===WebSocket.OPEN)c.ws.send(payloadStr);});
   },250);
@@ -929,30 +869,9 @@ wss.on('connection',(ws)=>{
   const client={playerId,playerName:'',telegramId:null,balance:0,roomId:null,isAdmin:false,ws};
   clients[playerId]=client; ws._pid=playerId;
 
-const lobbyStakes = activeStakes.map(s => {
-  const r = Object.values(rooms).find(
-    r => r.stakeId === s.id
-  );
-
-		  return {
-			stakeId: s.id,
-			amount: s.amount,
-			maxPlayers: s.maxPlayers,
-			playerCount: r ? r.players.length : 0,
-			status: r ? r.status : 'waiting',
-			countdown:
-			  r && r.status === 'countdown'
-				? r.countdownLeft
-				: 0
-		  };
-		});
-
-		send(ws, {
-		  type: 'connected',
-		  playerId,
-		  balance: 0,
-		  stakes: lobbyStakes
-		});
+  const lobbyStakes=STAKES.map(s=>{const r=Object.values(rooms).find(r=>r.stakeId===s.id);
+    return{stakeId:s.id,amount:s.amount,maxPlayers:s.maxPlayers,playerCount:r?r.players.length:0,status:r?r.status:'waiting',countdown:r&&r.status==='countdown'?r.countdownLeft:0};});
+  send(ws,{type:'connected',playerId,balance:0,stakes:lobbyStakes});
 
   ws.on('message',async raw=>{
 
@@ -1109,7 +1028,7 @@ const lobbyStakes = activeStakes.map(s => {
 
            case 'joinRoom':{
 
-                  const sc = activeStakes.find(stake => stake.id === msg.stakeId);
+                  const sc=STAKES.find(s=>s.id===msg.stakeId);
 
                  if(!sc) return send(ws,{type:'error',message:'የተሳሳተ የውርርድ መጠን።'});
 
@@ -1631,232 +1550,6 @@ app.get('/api/admin/analytics', adminAuth, async(req,res)=>{
     res.status(500).json({ error: e.message });
   }
 });
-
-// Combined initial-load endpoint.
-//
-// The Vercel frontend can call this once after obtaining
-// the Telegram Mini App user ID.
-app.get('/api/bootstrap', async (req, res) => {
-  const tid = validTelegramId(
-    req.query.telegramId || req.query.tid
-  );
-
-  if (!tid) {
-    return res.status(400).json({
-      error: 'Invalid Telegram ID'
-    });
-  }
-
-  if (!db) {
-    return res.status(503).json({
-      error: 'Database unavailable'
-    });
-  }
-
-  try {
-    // Reuse the existing profile endpoint logic through the
-    // same database query rather than relying on userCache.
-    const rows = await db.q(`
-      SELECT u.*,
-
-        COALESCE((
-          SELECT COUNT(DISTINCT g.id)
-          FROM games g
-          WHERE g.status='finished'
-            AND (
-              EXISTS (
-                SELECT 1
-                FROM game_participants gp
-                WHERE gp.game_id=g.id
-                  AND gp.user_id=u.id
-              )
-              OR EXISTS (
-                SELECT 1
-                FROM transactions t
-                WHERE t.user_id=u.id
-                  AND t.reference=g.room_id
-                  AND t.type='stake'
-              )
-            )
-        ),0)::int AS computed_total_games,
-
-        COALESCE((
-          SELECT COUNT(*)
-          FROM games g
-          WHERE g.status='finished'
-            AND $1 = ANY(
-              COALESCE(g.winner_ids, ARRAY[]::text[])
-            )
-        ),0)::int AS computed_total_wins,
-
-        COALESCE((
-          SELECT g.win_amount
-          FROM games g
-          WHERE g.status='finished'
-            AND $1 = ANY(
-              COALESCE(g.winner_ids, ARRAY[]::text[])
-            )
-          ORDER BY g.ended_at DESC NULLS LAST, g.id DESC
-          LIMIT 1
-        ),0)::numeric AS latest_earnings
-
-      FROM users u
-      WHERE u.telegram_id=$1
-      LIMIT 1
-    `, [tid]);
-
-    const u = rows[0];
-
-    if (!u) {
-      return res.status(404).json({
-        error: 'User not found',
-        code: 'USER_NOT_FOUND'
-      });
-    }
-
-    const storedGames = Math.max(
-      0,
-      Number(u.total_games) || 0
-    );
-
-    const computedGames = Math.max(
-      0,
-      Number(u.computed_total_games) || 0
-    );
-
-    const totalGames = Math.max(
-      storedGames,
-      computedGames
-    );
-
-    const storedWins = Math.max(
-      0,
-      Number(u.total_wins) || 0
-    );
-
-    const computedWins = Math.max(
-      0,
-      Number(u.computed_total_wins) || 0
-    );
-
-    const totalWins = Math.max(
-      storedWins,
-      computedWins
-    );
-
-    const user = {
-      telegramId: String(u.telegram_id),
-      name: u.name || '',
-      phone: u.phone || '',
-      balance: Number.parseFloat(u.balance) || 0,
-      total_games: totalGames,
-      total_wins: totalWins,
-      total_winnings:
-        Math.max(0, Number(u.total_winnings) || 0),
-      latest_earnings:
-        Math.max(0, Number(u.latest_earnings) || 0),
-      isAdmin:
-        u.is_admin === true ||
-        isAdminPhone(u.phone)
-    };
-
-    userCache[tid] = {
-      ...(userCache[tid] || {}),
-      ...user
-    };
-
-    const activeDbStakes = await getCachedActiveStakes();
-
-	const stakes = activeDbStakes.map(s => {
-	  const room = Object.values(rooms).find(
-		r => r.stakeId === s.id
-	  );
-
-	  return {
-		id: s.id,
-		amount: Number(s.amount),
-		maxPlayers:
-		  s.maxPlayers === null
-			? null
-			: Number(s.maxPlayers),
-		cardLimit: Number(s.cardCount),
-		playerCount: room ? room.players.length : 0,
-		status: room ? room.status : 'waiting',
-		countdown: (
-		  room &&
-		  room.status === 'countdown'
-		) ? room.countdownLeft : 0
-	  };
-	});
-
-// ─────────────────────────────────────────────────────────────
-// PUBLIC GAME API
-// Used by the Vercel Telegram Mini App during initial load.
-// ─────────────────────────────────────────────────────────────
-
-function validTelegramId(value) {
-  const tid = String(value || '').trim();
-  return /^\d+$/.test(tid) && Number(tid) > 0 ? tid : null;
-}
-
-// Global game configuration.
-// No user-specific information belongs here.
-app.get('/api/config', (req, res) => {
-  res.json({
-    gameName: 'Beteseb Bingo',
-    currency: 'ETB',
-    currencySymbol: 'ETB',
-    houseCut: HOUSE_CUT,
-    winnerShare: 1 - HOUSE_CUT,
-    lobbyWaitSeconds: Math.ceil(LOBBY_WAIT_MS / 1000),
-    callIntervalSeconds: Math.ceil(CALL_INTERVAL_MS / 1000),
-    claimWindowMs: CLAIM_WINDOW_MS,
-    totalCards: TOTAL_CARDS
-  });
-});
-
-
-// Available stakes.
-//
-// IMPORTANT:
-// For this first step we still use the existing STAKES array.
-// We will move the source of truth to PostgreSQL in the next step.
-app.get('/api/stakes', async (req, res) => {
-    try {
-        const stakes = await dbmain.getActiveStakes();
-
-        const result = stakes.map(stake => {
-            const room = Object.values(rooms).find(
-                room => room.stakeId === stake.id
-            );
-
-            return {
-                id: stake.id,
-                dbId: stake.dbId,
-                code: stake.code,
-                name: stake.name,
-                amount: stake.amount,
-                isActive: stake.isActive,
-                displayOrder: stake.displayOrder,
-                playerCount: room ? room.players.length : 0,
-                status: room ? room.status : 'waiting',
-                countdown:
-                    room && room.status === 'countdown'
-                        ? room.countdownLeft
-                        : 0
-            };
-        });
-
-        res.json(result);
-    } catch (error) {
-        console.error('GET /api/stakes:', error);
-
-        res.status(500).json({
-            error: 'Failed to load stakes'
-        });
-    }
-});
-
 
 // ── Payment info (Telebirr account shown on deposit page) ──
 app.get('/api/payment-info', (req,res)=>{
