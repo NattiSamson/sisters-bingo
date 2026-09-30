@@ -110,6 +110,51 @@ async function safeRollback(client) {
 
 
 module.exports = {
+
+async getTransferRecipient(phone) {
+  const { rows } = await pool.query(
+    `
+    SELECT *
+    FROM find_transfer_recipient($1)
+    LIMIT 1
+    `,
+    [phone]
+  );
+
+  return rows[0] || null;
+},
+
+async transferWallet(
+  senderUserId,
+  receiverPhone,
+  walletType,
+  amount,
+  idempotencyKey,
+  description = "Telegram wallet transfer"
+) {
+  const { rows } = await pool.query(
+    `
+    SELECT public.transfer_wallet(
+      $1::integer,
+      $2::varchar,
+      $3::varchar,
+      $4::numeric,
+      $5::varchar,
+      $6::text
+    ) AS result
+    `,
+    [
+      senderUserId,
+      receiverPhone,
+      walletType,
+      amount,
+      idempotencyKey,
+      description
+    ]
+  );
+
+  return rows[0]?.result || null;
+},	
 	
 async getActiveStakes() {
     const { rows } = await pool.query(`
