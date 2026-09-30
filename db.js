@@ -110,6 +110,71 @@ async function safeRollback(client) {
 
 
 module.exports = {
+	
+async getActiveStakes() {
+    const { rows } = await pool.query(`
+        SELECT
+            bs.id AS stake_id,
+            bs.name AS stake_name,
+            bs.amount,
+            bs.is_active,
+            bs.display_order,
+            bs.display_name,
+
+            br.id AS room_id,
+            br.name AS room_name,
+            br.code AS room_code,
+            br.status AS room_status,
+            br.min_players,
+            br.max_players,
+            br.card_count,
+            br.max_cards_per_player,
+            br.selection_seconds
+
+        FROM bingo_stakes bs
+
+        INNER JOIN bingo_room_stakes brs
+            ON brs.stake_id = bs.id
+            AND brs.status = 'active'
+
+        INNER JOIN bingo_rooms br
+            ON br.id = brs.room_id
+            AND br.status = 'active'
+
+        WHERE bs.is_active = true
+
+        ORDER BY
+            bs.display_order ASC,
+            bs.amount ASC
+    `);
+
+    return rows.map(row => ({
+        id: String(row.stake_id).toLowerCase(),
+
+        dbId: row.stake_id,
+        name: row.stake_name,
+        displayName: row.display_name,
+        amount: Number(row.amount),
+
+        isActive: row.is_active,
+        displayOrder: Number(row.display_order),
+
+        roomId: Number(row.room_id),
+        roomName: row.room_name,
+        roomCode: row.room_code,
+
+        minPlayers: Number(row.min_players),
+
+        maxPlayers:
+            row.max_players === null
+                ? null
+                : Number(row.max_players),
+
+        cardCount: Number(row.card_count),
+        maxCardsPerPlayer: Number(row.max_cards_per_player),
+        selectionSeconds: Number(row.selection_seconds)
+    }));
+},
 
   // ============================================================
   // USER LOOKUPS / REGISTRATION
