@@ -3390,6 +3390,7 @@ Total Balance: ${userwallets.total_balance}</pre>`;
 bot.command("balance",showBalance);
 bot.command("deposit",showDeposit);
 bot.command("withdraw",showWithdrawal);
+bot.command("transfer",showTransfer);
 bot.command("support",showSupport);
 
 
@@ -3399,6 +3400,8 @@ bot.hears("deposit", showDeposit);
 bot.hears("deposit", showDeposit);
 bot.hears("withdraw", showWithdrawal);
 bot.hears("🏧 Withdraw", showWithdrawal);
+bot.hears("Transfer", showTransfer);
+bot.hears("🏧 Transfer", showTransfer);
 bot.hears("support", showSupport);
 bot.hears("support", showSupport);
 bot.hears("📊 Leaderboard", showLeaderboard);
@@ -3415,6 +3418,219 @@ bot.callbackQuery(
     await showBalance(ctx);
   }
 );
+
+// ============================================================
+// TRANSFER
+// ============================================================
+
+// ============================================================
+// TRANSFER HELPERS
+// ============================================================
+
+const TRANSFER_SESSION_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+
+const TRANSFER_STATES = {
+  CHOOSE_WALLET: "choose_wallet",
+  ENTER_PHONE: "enter_phone",
+  CONFIRM_RECIPIENT: "confirm_recipient",
+  ENTER_AMOUNT: "enter_amount",
+  CONFIRM_TRANSFER: "confirm_transfer"
+};
+
+function createTransferState(telegramId, walletType = null) {
+  const state = {
+    state: walletType
+      ? TRANSFER_STATES.ENTER_PHONE
+      : TRANSFER_STATES.CHOOSE_WALLET,
+
+    walletType,
+
+    receiverPhone: null,
+    receiverUserId: null,
+    receiverName: null,
+    receiverTelegramId: null,
+
+    amount: null,
+
+    limits: null,
+
+    idempotencyKey: null,
+
+    createdAt: Date.now(),
+    expiresAt: Date.now() + TRANSFER_SESSION_TIMEOUT
+  };
+
+  pendingTransfer[telegramId] = state;
+
+  return state;
+}
+
+function getTransferState(telegramId) {
+  const state = pendingTransfer[telegramId];
+
+  if (!state) {
+    return null;
+  }
+
+  if (
+    state.expiresAt &&
+    Date.now() > state.expiresAt
+  ) {
+    delete pendingTransfer[telegramId];
+    return null;
+  }
+
+  return state;
+}
+
+function refreshTransferExpiry(state) {
+  if (!state) {
+    return;
+  }
+
+  state.expiresAt =
+    Date.now() + TRANSFER_SESSION_TIMEOUT;
+}
+
+function generateTransferIdempotencyKey(
+  telegramId,
+  walletType
+) {
+  return [
+    "telegram-transfer",
+    telegramId,
+    walletType,
+    Date.now(),
+    Math.random()
+      .toString(36)
+      .substring(2, 10)
+  ].join("-");
+}
+
+function formatTransferAmount(amount) {
+  const n = Number(amount);
+
+  if (!Number.isFinite(n)) {
+    return "0.00";
+  }
+
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+}
+
+function getWalletDisplayName(walletType) {
+  if (walletType === "main") {
+    return "💰 Main Wallet";
+  }
+
+  if (walletType === "play") {
+    return "🎮 Play Wallet";
+  }
+
+  return "Wallet";
+}
+
+function getTransferWalletKeyboard() {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "💰 Main Wallet",
+          callback_data: "transfer_wallet_main"
+        },
+        {
+          text: "🎮 Play Wallet",
+          callback_data: "transfer_wallet_play"
+        }
+      ],
+      [
+        {
+          text: "❌ Cancel",
+          callback_data: "transfer_cancel"
+        }
+      ]
+    ]
+  };
+}
+
+function getTransferRecipientKeyboard() {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "✅ Continue",
+          callback_data: "transfer_recipient_confirm"
+        },
+        {
+          text: "❌ Cancel",
+          callback_data: "transfer_cancel"
+        }
+      ]
+    ]
+  };
+}
+
+function getTransferConfirmationKeyboard() {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "✅ Confirm Transfer",
+          callback_data: "transfer_confirm"
+        }
+      ],
+      [
+        {
+          text: "✏️ Change Amount",
+          callback_data: "transfer_change_amount"
+        }
+      ],
+      [
+        {
+          text: "❌ Cancel",
+          callback_data: "transfer_cancel"
+        }
+      ]
+    ]
+  };
+}
+
+function getTransferCancelKeyboard() {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "🏠 Home",
+          callback_data: "user_home"
+        }
+      ]
+    ]
+  };
+}
+
+async function showDeposit(
+  ctx
+) {
+
+  const user =
+    await db.getUserByTelegramId(
+      ctx.from.id
+    );
+
+
+  if (!user) {
+
+    return ctx.reply(
+      "Please /start to register first."
+    );
+
+  }
+
+  
+}
+
 
 // ============================================================
 // DEPOSIT
@@ -3584,6 +3800,1084 @@ bot.callbackQuery("user_deposit", async (ctx) =>
       clearPendingState(ctx.from.id);
       await showDeposit(ctx);
   });
+
+
+// ============================================================
+// TRANSFER — OPEN
+// ============================================================
+
+bot.callbackQuery(
+  "user_transfer",
+  async (ctx) => {
+    await answerCallback(ctx);
+
+    const telegramId = ctx.from.id;
+
+    clearPendingState(telegramId);
+
+    try {
+      const user =
+        await db.getUserByTelegramId(
+          telegramId
+        );
+
+      if (!user) {
+        return ctx.reply(
+          "Please /start to register first."
+        );
+      }
+
+      if (
+        user.is_active !== true ||
+        user.is_blocked === true ||
+        user.is_banned === true
+      ) {
+        return ctx.reply(
+          "🚫 Your account is not eligible for transfers."
+        );
+      }
+
+      createTransferState(
+        telegramId
+      );
+
+      await ctx.editMessageText(
+        "💸 *TRANSFER MONEY*\n\n" +
+        "Choose the wallet you want to transfer money from.\n\n" +
+        "💰 Main Wallet → another user's Main Wallet\n" +
+        "🎮 Play Wallet → another user's Play Wallet",
+        {
+          parse_mode: "Markdown",
+          reply_markup:
+            getTransferWalletKeyboard()
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Open transfer error:",
+        err
+      );
+
+      delete pendingTransfer[
+        telegramId
+      ];
+
+      await ctx.reply(
+        "❌ Unable to start the transfer right now. Please try again."
+      );
+    }
+  }
+);
+
+// ============================================================
+// TRANSFER — SELECT WALLET
+// ============================================================
+
+async function startTransferWalletSelection(
+  ctx,
+  walletType
+) {
+  const telegramId = ctx.from.id;
+
+  try {
+
+    const user =
+      await db.getUserByTelegramId(
+        telegramId
+      );
+
+    if (!user) {
+      return ctx.reply(
+        "Please /start to register first."
+      );
+    }
+
+    if (
+      user.is_active !== true ||
+      user.is_blocked === true ||
+      user.is_banned === true
+    ) {
+      return ctx.reply(
+        "🚫 Your account is not eligible for transfers."
+      );
+    }
+
+    /*
+     * Load balance + transfer rules + current usage.
+     */
+    const limits =
+      await db.getTransferLimits(
+        user.id,
+        walletType
+      );
+
+    if (!limits) {
+      return ctx.reply(
+        "❌ Transfer limits could not be loaded."
+      );
+    }
+
+    const balance =
+      Number(limits.balance || 0);
+
+    const minimum =
+      Number(
+        limits.minimum_transfer_amount || 0
+      );
+
+    const maximum =
+      limits.maximum_transfer_amount === null ||
+      limits.maximum_transfer_amount === undefined
+        ? null
+        : Number(
+            limits.maximum_transfer_amount
+          );
+
+    /*
+     * We require enough money to make at least
+     * the minimum allowed transfer.
+     */
+    if (balance < minimum) {
+
+      delete pendingTransfer[
+        telegramId
+      ];
+
+      return ctx.editMessageText(
+        `${getWalletDisplayName(walletType)}\n\n` +
+        `💰 Available balance: *${formatTransferAmount(balance)}*\n` +
+        `📌 Minimum transfer: *${formatTransferAmount(minimum)}*\n\n` +
+        `❌ Your balance is below the minimum amount required to transfer.`,
+        {
+          parse_mode: "Markdown",
+          reply_markup:
+            getTransferCancelKeyboard()
+        }
+      );
+    }
+
+    /*
+     * Store transfer session.
+     */
+    const state =
+      createTransferState(
+        telegramId,
+        walletType
+      );
+
+    state.limits = limits;
+
+    refreshTransferExpiry(state);
+
+    let message =
+      `${getWalletDisplayName(walletType)}\n\n` +
+
+      `💰 Available balance: *${formatTransferAmount(balance)}*\n` +
+
+      `📌 Minimum transfer: *${formatTransferAmount(minimum)}*\n`;
+
+    if (maximum !== null) {
+      message +=
+        `📌 Maximum per transfer: *${formatTransferAmount(maximum)}*\n`;
+    }
+
+    /*
+     * Show remaining period limits.
+     */
+
+    if (
+      limits.daily &&
+      limits.daily.remaining_count !== null
+    ) {
+      message +=
+        `\n📅 Daily remaining transfers: *${limits.daily.remaining_count}*`;
+    }
+
+    if (
+      limits.daily &&
+      limits.daily.remaining_amount !== null
+    ) {
+      message +=
+        `\n💵 Daily remaining amount: *${formatTransferAmount(
+          limits.daily.remaining_amount
+        )}*`;
+    }
+
+    message +=
+      "\n\n📱 *Enter the recipient's phone number.*\n\n" +
+      "Example: `0912345678`\n" +
+      "or `+251912345678`\n\n" +
+      "❌ Send /cancel to cancel.";
+
+    await ctx.editMessageText(
+      message,
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "transfer_cancel"
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+  } catch (err) {
+
+    console.error(
+      "Transfer wallet selection error:",
+      err
+    );
+
+    delete pendingTransfer[
+      telegramId
+    ];
+
+    await ctx.reply(
+      "❌ Unable to start the transfer. Please try again."
+    );
+  }
+}
+
+
+bot.callbackQuery(
+  "transfer_wallet_main",
+  async (ctx) => {
+    await answerCallback(ctx);
+
+    await startTransferWalletSelection(
+      ctx,
+      "main"
+    );
+  }
+);
+
+
+bot.callbackQuery(
+  "transfer_wallet_play",
+  async (ctx) => {
+    await answerCallback(ctx);
+
+    await startTransferWalletSelection(
+      ctx,
+      "play"
+    );
+  }
+);
+
+// ============================================================
+// TRANSFER — CONFIRM RECIPIENT
+// ============================================================
+
+bot.callbackQuery(
+  "transfer_recipient_confirm",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const telegramId =
+      ctx.from.id;
+
+    const state =
+      getTransferState(
+        telegramId
+      );
+
+    if (!state) {
+      return ctx.reply(
+        "⏱ This transfer session has expired. Please start again."
+      );
+    }
+
+    if (
+      state.state !==
+      TRANSFER_STATES.CONFIRM_RECIPIENT
+    ) {
+      return;
+    }
+
+    refreshTransferExpiry(state);
+
+    state.state =
+      TRANSFER_STATES.ENTER_AMOUNT;
+
+    const limits =
+      state.limits;
+
+    let message =
+      `💸 *TRANSFER ${state.walletType.toUpperCase()} WALLET*\n\n` +
+
+      `👤 Recipient: *${state.receiverName || "User"}*\n` +
+
+      `📱 Phone: *${state.receiverPhone}*\n\n` +
+
+      `💰 Available balance: *${formatTransferAmount(
+        limits.balance
+      )}*\n` +
+
+      `📌 Minimum: *${formatTransferAmount(
+        limits.minimum_transfer_amount
+      )}*\n`;
+
+    if (
+      limits.maximum_transfer_amount !== null &&
+      limits.maximum_transfer_amount !== undefined
+    ) {
+      message +=
+        `📌 Maximum per transfer: *${formatTransferAmount(
+          limits.maximum_transfer_amount
+        )}*\n`;
+    }
+
+    message +=
+      "\n💵 *Enter the amount you want to transfer.*\n\n" +
+      "Example: `500`\n\n" +
+      "❌ Send /cancel to cancel.";
+
+    await ctx.editMessageText(
+      message,
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "transfer_cancel"
+              }
+            ]
+          ]
+        }
+      }
+    );
+  }
+);
+
+// ============================================================
+// TRANSFER — CHANGE AMOUNT
+// ============================================================
+
+bot.callbackQuery(
+  "transfer_change_amount",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const telegramId =
+      ctx.from.id;
+
+    const state =
+      getTransferState(
+        telegramId
+      );
+
+    if (!state) {
+      return ctx.reply(
+        "⏱ This transfer session has expired. Please start again."
+      );
+    }
+
+    refreshTransferExpiry(state);
+
+    state.amount = null;
+    state.state =
+      TRANSFER_STATES.ENTER_AMOUNT;
+
+    await ctx.editMessageText(
+      `💵 *ENTER TRANSFER AMOUNT*\n\n` +
+      `👤 Recipient: *${state.receiverName}*\n` +
+      `📱 Phone: *${state.receiverPhone}*\n\n` +
+      `💰 Wallet: *${getWalletDisplayName(
+        state.walletType
+      )}*\n` +
+      `💰 Available: *${formatTransferAmount(
+        state.limits.balance
+      )}*\n\n` +
+      `📌 Minimum: *${formatTransferAmount(
+        state.limits.minimum_transfer_amount
+      )}*\n` +
+      (
+        state.limits.maximum_transfer_amount !== null &&
+        state.limits.maximum_transfer_amount !== undefined
+          ? `📌 Maximum: *${formatTransferAmount(
+              state.limits.maximum_transfer_amount
+            )}*\n`
+          : ""
+      ) +
+      `\nEnter the amount.\n\n` +
+      `❌ Send /cancel to cancel.`,
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "transfer_cancel"
+              }
+            ]
+          ]
+        }
+      }
+    );
+  }
+);
+
+// ============================================================
+// TRANSFER — FINAL CONFIRMATION
+// ============================================================
+
+bot.callbackQuery(
+  "transfer_confirm",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const telegramId =
+      ctx.from.id;
+
+    const state =
+      getTransferState(
+        telegramId
+      );
+
+    if (!state) {
+      return ctx.reply(
+        "⏱ This transfer session has expired. Please start again."
+      );
+    }
+
+    if (
+      state.state !==
+      TRANSFER_STATES.CONFIRM_TRANSFER
+    ) {
+      return;
+    }
+
+    refreshTransferExpiry(state);
+
+    if (
+      !state.receiverPhone ||
+      !state.walletType ||
+      !state.amount
+    ) {
+      delete pendingTransfer[
+        telegramId
+      ];
+
+      return ctx.reply(
+        "❌ Transfer information is incomplete. Please start again."
+      );
+    }
+
+    /*
+     * Generate idempotency key ONCE.
+     *
+     * If Telegram sends the callback twice,
+     * the database will safely return the same
+     * transfer instead of moving money twice.
+     */
+    if (!state.idempotencyKey) {
+      state.idempotencyKey =
+        generateTransferIdempotencyKey(
+          telegramId,
+          state.walletType
+        );
+    }
+
+    /*
+     * Disable the current buttons immediately.
+     */
+    try {
+      await ctx.editMessageText(
+        "⏳ *Processing transfer...*\n\n" +
+        "Please wait. Do not send the transfer again.",
+        {
+          parse_mode: "Markdown"
+        }
+      );
+    } catch (err) {
+      console.error(
+        "Transfer processing UI error:",
+        err
+      );
+    }
+
+    try {
+
+      const user =
+        await db.getUserByTelegramId(
+          telegramId
+        );
+
+      if (!user) {
+        throw new Error(
+          "Your account could not be found."
+        );
+      }
+
+      /*
+       * Re-check recipient immediately before money moves.
+       *
+       * The DB function also checks this, so this is
+       * only a friendly pre-check.
+       */
+      const recipient =
+        await db.getTransferRecipient(
+          state.receiverPhone
+        );
+
+      if (!recipient) {
+        throw new Error(
+          "The recipient is no longer available for transfers."
+        );
+      }
+
+      if (
+        recipient.user_id === user.id
+      ) {
+        throw new Error(
+          "You cannot transfer money to yourself."
+        );
+      }
+
+      /*
+       * FINAL DATABASE OPERATION
+       */
+      const result =
+        await db.transferWallet(
+          user.id,
+          state.receiverPhone,
+          state.walletType,
+          state.amount,
+          state.idempotencyKey,
+          "Telegram wallet transfer"
+        );
+
+      if (
+        !result ||
+        result.success !== true
+      ) {
+        throw new Error(
+          "The transfer could not be completed."
+        );
+      }
+
+      /*
+       * Transfer successful.
+       */
+      delete pendingTransfer[
+        telegramId
+      ];
+
+      const amount =
+        Number(
+          result.amount ||
+          state.amount
+        );
+
+      let successMessage =
+        "✅ *TRANSFER SUCCESSFUL*\n\n" +
+
+        `💰 Wallet: *${getWalletDisplayName(
+          state.walletType
+        )}*\n` +
+
+        `👤 Recipient: *${result.receiver_name || state.receiverName}*\n` +
+
+        `📱 Phone: *${state.receiverPhone}*\n` +
+
+        `💵 Amount: *${formatTransferAmount(
+          amount
+        )}*\n\n`;
+
+      if (
+        result.sender_balance_after !==
+        undefined
+      ) {
+        successMessage +=
+          `💰 Your new balance: *${formatTransferAmount(
+            result.sender_balance_after
+          )}*\n\n`;
+      }
+
+      if (
+        result.transaction_id
+      ) {
+        successMessage +=
+          `🧾 Transaction ID: \`${result.transaction_id}\`\n`;
+      }
+
+      successMessage +=
+        "\nThe money has been transferred successfully.";
+
+      await ctx.reply(
+        successMessage,
+        {
+          parse_mode: "Markdown",
+          reply_markup:
+            getTransferCancelKeyboard()
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Wallet transfer execution error:",
+        err
+      );
+
+      /*
+       * Keep state only if this was a recoverable
+       * validation/limit problem.
+       *
+       * The user can cancel or try another amount.
+       */
+      const message =
+        String(
+          err?.message || ""
+        );
+
+      let friendlyMessage =
+        "❌ *TRANSFER FAILED*\n\n";
+
+      if (
+        /insufficient/i.test(
+          message
+        )
+      ) {
+        friendlyMessage +=
+          "Your wallet balance is not sufficient for this transfer.";
+      }
+      else if (
+        /minimum/i.test(
+          message
+        )
+      ) {
+        friendlyMessage +=
+          message;
+      }
+      else if (
+        /maximum/i.test(
+          message
+        )
+      ) {
+        friendlyMessage +=
+          message;
+      }
+      else if (
+        /limit/i.test(
+          message
+        )
+      ) {
+        friendlyMessage +=
+          message;
+      }
+      else if (
+        /recipient/i.test(
+          message
+        )
+      ) {
+        friendlyMessage +=
+          message;
+      }
+      else if (
+        /yourself/i.test(
+          message
+        )
+      ) {
+        friendlyMessage +=
+          message;
+      }
+      else {
+        friendlyMessage +=
+          "The transfer could not be completed. Please try again.";
+      }
+
+      friendlyMessage +=
+        "\n\nYour money was not intentionally deducted by the bot.";
+
+      await ctx.reply(
+        friendlyMessage,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🔄 Try Again",
+                  callback_data:
+                    "transfer_retry_amount"
+                }
+              ],
+              [
+                {
+                  text: "❌ Cancel",
+                  callback_data:
+                    "transfer_cancel"
+                }
+              ]
+            ]
+          }
+        }
+      );
+    }
+  }
+);
+
+// ============================================================
+// TRANSFER — FINAL CONFIRMATION
+// ============================================================
+
+bot.callbackQuery(
+  "transfer_confirm",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const telegramId =
+      ctx.from.id;
+
+    const state =
+      getTransferState(
+        telegramId
+      );
+
+    if (!state) {
+      return ctx.reply(
+        "⏱ This transfer session has expired. Please start again."
+      );
+    }
+
+    if (
+      state.state !==
+      TRANSFER_STATES.CONFIRM_TRANSFER
+    ) {
+      return;
+    }
+
+    refreshTransferExpiry(state);
+
+    if (
+      !state.receiverPhone ||
+      !state.walletType ||
+      !state.amount
+    ) {
+      delete pendingTransfer[
+        telegramId
+      ];
+
+      return ctx.reply(
+        "❌ Transfer information is incomplete. Please start again."
+      );
+    }
+
+    /*
+     * Generate idempotency key ONCE.
+     *
+     * If Telegram sends the callback twice,
+     * the database will safely return the same
+     * transfer instead of moving money twice.
+     */
+    if (!state.idempotencyKey) {
+      state.idempotencyKey =
+        generateTransferIdempotencyKey(
+          telegramId,
+          state.walletType
+        );
+    }
+
+    /*
+     * Disable the current buttons immediately.
+     */
+    try {
+      await ctx.editMessageText(
+        "⏳ *Processing transfer...*\n\n" +
+        "Please wait. Do not send the transfer again.",
+        {
+          parse_mode: "Markdown"
+        }
+      );
+    } catch (err) {
+      console.error(
+        "Transfer processing UI error:",
+        err
+      );
+    }
+
+    try {
+
+      const user =
+        await db.getUserByTelegramId(
+          telegramId
+        );
+
+      if (!user) {
+        throw new Error(
+          "Your account could not be found."
+        );
+      }
+
+      /*
+       * Re-check recipient immediately before money moves.
+       *
+       * The DB function also checks this, so this is
+       * only a friendly pre-check.
+       */
+      const recipient =
+        await db.getTransferRecipient(
+          state.receiverPhone
+        );
+
+      if (!recipient) {
+        throw new Error(
+          "The recipient is no longer available for transfers."
+        );
+      }
+
+      if (
+        recipient.user_id === user.id
+      ) {
+        throw new Error(
+          "You cannot transfer money to yourself."
+        );
+      }
+
+      /*
+       * FINAL DATABASE OPERATION
+       */
+      const result =
+        await db.transferWallet(
+          user.id,
+          state.receiverPhone,
+          state.walletType,
+          state.amount,
+          state.idempotencyKey,
+          "Telegram wallet transfer"
+        );
+
+      if (
+        !result ||
+        result.success !== true
+      ) {
+        throw new Error(
+          "The transfer could not be completed."
+        );
+      }
+
+      /*
+       * Transfer successful.
+       */
+      delete pendingTransfer[
+        telegramId
+      ];
+
+      const amount =
+        Number(
+          result.amount ||
+          state.amount
+        );
+
+      let successMessage =
+        "✅ *TRANSFER SUCCESSFUL*\n\n" +
+
+        `💰 Wallet: *${getWalletDisplayName(
+          state.walletType
+        )}*\n` +
+
+        `👤 Recipient: *${result.receiver_name || state.receiverName}*\n` +
+
+        `📱 Phone: *${state.receiverPhone}*\n` +
+
+        `💵 Amount: *${formatTransferAmount(
+          amount
+        )}*\n\n`;
+
+      if (
+        result.sender_balance_after !==
+        undefined
+      ) {
+        successMessage +=
+          `💰 Your new balance: *${formatTransferAmount(
+            result.sender_balance_after
+          )}*\n\n`;
+      }
+
+      if (
+        result.transaction_id
+      ) {
+        successMessage +=
+          `🧾 Transaction ID: \`${result.transaction_id}\`\n`;
+      }
+
+      successMessage +=
+        "\nThe money has been transferred successfully.";
+
+      await ctx.reply(
+        successMessage,
+        {
+          parse_mode: "Markdown",
+          reply_markup:
+            getTransferCancelKeyboard()
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Wallet transfer execution error:",
+        err
+      );
+
+      /*
+       * Keep state only if this was a recoverable
+       * validation/limit problem.
+       *
+       * The user can cancel or try another amount.
+       */
+      const message =
+        String(
+          err?.message || ""
+        );
+
+      let friendlyMessage =
+        "❌ *TRANSFER FAILED*\n\n";
+
+      if (
+        /insufficient/i.test(
+          message
+        )
+      ) {
+        friendlyMessage +=
+          "Your wallet balance is not sufficient for this transfer.";
+      }
+      else if (
+        /minimum/i.test(
+          message
+        )
+      ) {
+        friendlyMessage +=
+          message;
+      }
+      else if (
+        /maximum/i.test(
+          message
+        )
+      ) {
+        friendlyMessage +=
+          message;
+      }
+      else if (
+        /limit/i.test(
+          message
+        )
+      ) {
+        friendlyMessage +=
+          message;
+      }
+      else if (
+        /recipient/i.test(
+          message
+        )
+      ) {
+        friendlyMessage +=
+          message;
+      }
+      else if (
+        /yourself/i.test(
+          message
+        )
+      ) {
+        friendlyMessage +=
+          message;
+      }
+      else {
+        friendlyMessage +=
+          "The transfer could not be completed. Please try again.";
+      }
+
+      friendlyMessage +=
+        "\n\nYour money was not intentionally deducted by the bot.";
+
+      await ctx.reply(
+        friendlyMessage,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🔄 Try Again",
+                  callback_data:
+                    "transfer_retry_amount"
+                }
+              ],
+              [
+                {
+                  text: "❌ Cancel",
+                  callback_data:
+                    "transfer_cancel"
+                }
+              ]
+            ]
+          }
+        }
+      );
+    }
+  }
+);
+
+// ============================================================
+// TRANSFER — CANCEL
+// ============================================================
+
+bot.callbackQuery(
+  "transfer_cancel",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const telegramId =
+      ctx.from.id;
+
+    delete pendingTransfer[
+      telegramId
+    ];
+
+    try {
+
+      await ctx.editMessageText(
+        "❌ *Transfer cancelled.*\n\n" +
+        "No money was transferred.",
+        {
+          parse_mode: "Markdown",
+          reply_markup:
+            getTransferCancelKeyboard()
+        }
+      );
+
+    } catch (err) {
+
+      await ctx.reply(
+        "❌ Transfer cancelled.\n\n" +
+        "No money was transferred.",
+        {
+          reply_markup:
+            getTransferCancelKeyboard()
+        }
+      );
+    }
+  }
+);
 
 
 // ============================================================
@@ -5850,6 +7144,640 @@ bot.on(
         String(
           ctx.message.text || ""
         ).trim();
+
+            // ========================================================
+      // TRANSFER FLOW
+      // ========================================================
+
+      const transfer =
+        getTransferState(
+          telegramId
+        );
+
+      if (transfer) {
+
+        refreshTransferExpiry(
+          transfer
+        );
+
+        // ------------------------------------------------------
+        // CANCEL TRANSFER
+        // ------------------------------------------------------
+
+        if (
+          text.toLowerCase() ===
+          "/cancel"
+        ) {
+
+          delete pendingTransfer[
+            telegramId
+          ];
+
+          return ctx.reply(
+            "❌ Transfer cancelled.\n\n" +
+            "No money was transferred."
+          );
+        }
+
+
+        // ------------------------------------------------------
+        // ENTER RECIPIENT PHONE
+        // ------------------------------------------------------
+
+        if (
+          transfer.state ===
+          TRANSFER_STATES.ENTER_PHONE
+        ) {
+
+          const phone =
+            normalizeEthiopianPhone(
+              text
+            );
+
+          if (!phone) {
+
+            return ctx.reply(
+              "❌ Invalid Ethiopian phone number.\n\n" +
+              "Please enter a valid number such as:\n" +
+              "`0912345678`\n" +
+              "or\n" +
+              "`+251912345678`\n\n" +
+              "❌ Send /cancel to cancel.",
+              {
+                parse_mode: "Markdown"
+              }
+            );
+          }
+
+
+          /*
+           * Prevent sending to ourselves before
+           * displaying recipient confirmation.
+           */
+          const currentUser =
+            await db.getUserByTelegramId(
+              telegramId
+            );
+
+          if (!currentUser) {
+
+            delete pendingTransfer[
+              telegramId
+            ];
+
+            return ctx.reply(
+              "❌ Your account could not be found. Please /start again."
+            );
+          }
+
+
+          /*
+           * Find registered recipient.
+           */
+          let recipient;
+
+          try {
+
+            recipient =
+              await db.getTransferRecipient(
+                phone
+              );
+
+          } catch (err) {
+
+            console.error(
+              "Transfer recipient lookup error:",
+              err
+            );
+
+            return ctx.reply(
+              "❌ Unable to verify that phone number right now. Please try again."
+            );
+          }
+
+
+          if (!recipient) {
+
+            return ctx.reply(
+              "❌ This phone number is not registered or the account is unavailable.\n\n" +
+              "Please enter another registered user's phone number."
+            );
+          }
+
+
+          if (
+            Number(recipient.user_id) ===
+            Number(currentUser.id)
+          ) {
+
+            return ctx.reply(
+              "❌ You cannot transfer money to yourself.\n\n" +
+              "Please enter another user's phone number."
+            );
+          }
+
+
+          /*
+           * Store recipient.
+           */
+          transfer.receiverPhone =
+            phone;
+
+          transfer.receiverUserId =
+            recipient.user_id;
+
+          transfer.receiverName =
+            recipient.name ||
+            "Registered User";
+
+          transfer.receiverTelegramId =
+            recipient.telegram_id ||
+            null;
+
+          transfer.state =
+            TRANSFER_STATES.CONFIRM_RECIPIENT;
+
+
+          await ctx.reply(
+            "👤 *RECIPIENT FOUND*\n\n" +
+
+            `Name: *${transfer.receiverName}*\n` +
+
+            `Phone: *${transfer.receiverPhone}*\n\n` +
+
+            `Wallet: *${getWalletDisplayName(
+              transfer.walletType
+            )}*\n\n` +
+
+            "Please confirm that this is the person you want to send money to.",
+
+            {
+              parse_mode: "Markdown",
+              reply_markup:
+                getTransferRecipientKeyboard()
+            }
+          );
+
+          return;
+        }
+
+
+        // ------------------------------------------------------
+        // ENTER AMOUNT
+        // ------------------------------------------------------
+
+        if (
+          transfer.state ===
+          TRANSFER_STATES.ENTER_AMOUNT
+        ) {
+
+          /*
+           * Only ordinary numeric amounts.
+           *
+           * Examples:
+           * 500
+           * 500.50
+           * 1,000
+           */
+          const cleanedAmount =
+            text.replace(
+              /,/g,
+              ""
+            );
+
+          if (
+            !/^\d+(?:\.\d{1,2})?$/.test(
+              cleanedAmount
+            )
+          ) {
+
+            return ctx.reply(
+              "❌ Invalid amount.\n\n" +
+              "Please enter a positive amount, for example:\n" +
+              "`500`\n" +
+              "`500.50`\n\n" +
+              "❌ Send /cancel to cancel.",
+              {
+                parse_mode: "Markdown"
+              }
+            );
+          }
+
+
+          const amount =
+            Number(
+              cleanedAmount
+            );
+
+
+          if (
+            !Number.isFinite(amount) ||
+            amount <= 0
+          ) {
+
+            return ctx.reply(
+              "❌ Amount must be greater than zero."
+            );
+          }
+
+
+          /*
+           * Refresh limits immediately before
+           * showing confirmation.
+           *
+           * This catches transfers that may have
+           * happened after the wallet-selection step.
+           */
+          try {
+
+            const user =
+              await db.getUserByTelegramId(
+                telegramId
+              );
+
+            if (!user) {
+
+              delete pendingTransfer[
+                telegramId
+              ];
+
+              return ctx.reply(
+                "❌ Your account could not be found."
+              );
+            }
+
+            transfer.limits =
+              await db.getTransferLimits(
+                user.id,
+                transfer.walletType
+              );
+
+          } catch (err) {
+
+            console.error(
+              "Refresh transfer limits error:",
+              err
+            );
+
+            return ctx.reply(
+              "❌ Unable to verify your transfer limits right now. Please try again."
+            );
+          }
+
+
+          const limits =
+            transfer.limits;
+
+          const balance =
+            Number(
+              limits.balance || 0
+            );
+
+          const minimum =
+            Number(
+              limits.minimum_transfer_amount || 0
+            );
+
+          const maximum =
+            limits.maximum_transfer_amount === null ||
+            limits.maximum_transfer_amount === undefined
+              ? null
+              : Number(
+                  limits.maximum_transfer_amount
+                );
+
+
+          /*
+           * Check current balance.
+           */
+          if (
+            amount > balance
+          ) {
+
+            return ctx.reply(
+              `❌ Insufficient balance.\n\n` +
+              `Available: *${formatTransferAmount(
+                balance
+              )}*\n` +
+              `Requested: *${formatTransferAmount(
+                amount
+              )}*`,
+              {
+                parse_mode: "Markdown"
+              }
+            );
+          }
+
+
+          /*
+           * Minimum.
+           */
+          if (
+            amount < minimum
+          ) {
+
+            return ctx.reply(
+              `❌ The minimum transfer amount is *${formatTransferAmount(
+                minimum
+              )}*.`,
+
+              {
+                parse_mode: "Markdown"
+              }
+            );
+          }
+
+
+          /*
+           * Maximum per transaction.
+           */
+          if (
+            maximum !== null &&
+            amount > maximum
+          ) {
+
+            return ctx.reply(
+              `❌ The maximum amount per transfer is *${formatTransferAmount(
+                maximum
+              )}*.`,
+
+              {
+                parse_mode: "Markdown"
+              }
+            );
+          }
+
+
+          /*
+           * Daily remaining amount.
+           */
+          if (
+            limits.daily &&
+            limits.daily.remaining_amount !== null &&
+            amount >
+              Number(
+                limits.daily.remaining_amount
+              )
+          ) {
+
+            return ctx.reply(
+              `❌ Daily transfer amount limit exceeded.\n\n` +
+              `Remaining today: *${formatTransferAmount(
+                limits.daily.remaining_amount
+              )}*`,
+
+              {
+                parse_mode: "Markdown"
+              }
+            );
+          }
+
+
+          /*
+           * Daily remaining count.
+           */
+          if (
+            limits.daily &&
+            limits.daily.remaining_count !== null &&
+            Number(
+              limits.daily.remaining_count
+            ) <= 0
+          ) {
+
+            return ctx.reply(
+              "❌ You have reached your daily transfer count limit."
+            );
+          }
+
+
+          /*
+           * Weekly amount.
+           */
+          if (
+            limits.weekly &&
+            limits.weekly.remaining_amount !== null &&
+            amount >
+              Number(
+                limits.weekly.remaining_amount
+              )
+          ) {
+
+            return ctx.reply(
+              `❌ Weekly transfer amount limit exceeded.\n\n` +
+              `Remaining this week: *${formatTransferAmount(
+                limits.weekly.remaining_amount
+              )}*`,
+
+              {
+                parse_mode: "Markdown"
+              }
+            );
+          }
+
+
+          /*
+           * Weekly count.
+           */
+          if (
+            limits.weekly &&
+            limits.weekly.remaining_count !== null &&
+            Number(
+              limits.weekly.remaining_count
+            ) <= 0
+          ) {
+
+            return ctx.reply(
+              "❌ You have reached your weekly transfer count limit."
+            );
+          }
+
+
+          /*
+           * Monthly amount.
+           */
+          if (
+            limits.monthly &&
+            limits.monthly.remaining_amount !== null &&
+            amount >
+              Number(
+                limits.monthly.remaining_amount
+              )
+          ) {
+
+            return ctx.reply(
+              `❌ Monthly transfer amount limit exceeded.\n\n` +
+              `Remaining this month: *${formatTransferAmount(
+                limits.monthly.remaining_amount
+              )}*`,
+
+              {
+                parse_mode: "Markdown"
+              }
+            );
+          }
+
+
+          /*
+           * Monthly count.
+           */
+          if (
+            limits.monthly &&
+            limits.monthly.remaining_count !== null &&
+            Number(
+              limits.monthly.remaining_count
+            ) <= 0
+          ) {
+
+            return ctx.reply(
+              "❌ You have reached your monthly transfer count limit."
+            );
+          }
+
+
+          /*
+           * Quarterly amount.
+           */
+          if (
+            limits.quarterly &&
+            limits.quarterly.remaining_amount !== null &&
+            amount >
+              Number(
+                limits.quarterly.remaining_amount
+              )
+          ) {
+
+            return ctx.reply(
+              `❌ Quarterly transfer amount limit exceeded.\n\n` +
+              `Remaining this quarter: *${formatTransferAmount(
+                limits.quarterly.remaining_amount
+              )}*`,
+
+              {
+                parse_mode: "Markdown"
+              }
+            );
+          }
+
+
+          /*
+           * Quarterly count.
+           */
+          if (
+            limits.quarterly &&
+            limits.quarterly.remaining_count !== null &&
+            Number(
+              limits.quarterly.remaining_count
+            ) <= 0
+          ) {
+
+            return ctx.reply(
+              "❌ You have reached your quarterly transfer count limit."
+            );
+          }
+
+
+          /*
+           * Yearly amount.
+           */
+          if (
+            limits.yearly &&
+            limits.yearly.remaining_amount !== null &&
+            amount >
+              Number(
+                limits.yearly.remaining_amount
+              )
+          ) {
+
+            return ctx.reply(
+              `❌ Yearly transfer amount limit exceeded.\n\n` +
+              `Remaining this year: *${formatTransferAmount(
+                limits.yearly.remaining_amount
+              )}*`,
+
+              {
+                parse_mode: "Markdown"
+              }
+            );
+          }
+
+
+          /*
+           * Yearly count.
+           */
+          if (
+            limits.yearly &&
+            limits.yearly.remaining_count !== null &&
+            Number(
+              limits.yearly.remaining_count
+            ) <= 0
+          ) {
+
+            return ctx.reply(
+              "❌ You have reached your yearly transfer count limit."
+            );
+          }
+
+
+          /*
+           * Store amount.
+           */
+          transfer.amount =
+            Math.round(
+              amount * 100
+            ) / 100;
+
+          transfer.state =
+            TRANSFER_STATES.CONFIRM_TRANSFER;
+
+          /*
+           * Generate idempotency key only once.
+           */
+          transfer.idempotencyKey =
+            generateTransferIdempotencyKey(
+              telegramId,
+              transfer.walletType
+            );
+
+
+          /*
+           * Confirmation.
+           */
+          await ctx.reply(
+            "💸 *CONFIRM TRANSFER*\n\n" +
+
+            `👤 Recipient: *${transfer.receiverName}*\n` +
+
+            `📱 Phone: *${transfer.receiverPhone}*\n\n` +
+
+            `💰 From: *${getWalletDisplayName(
+              transfer.walletType
+            )}*\n` +
+
+            `💵 Amount: *${formatTransferAmount(
+              transfer.amount
+            )}*\n\n` +
+
+            `💰 Current balance: *${formatTransferAmount(
+              balance
+            )}*\n` +
+
+            `💰 Balance after transfer: *${formatTransferAmount(
+              balance - transfer.amount
+            )}*\n\n` +
+
+            "⚠️ Please verify the recipient and amount before confirming.",
+
+            {
+              parse_mode: "Markdown",
+              reply_markup:
+                getTransferConfirmationKeyboard()
+            }
+          );
+
+          return;
+        }
+
+      }
 
       // ========================================================
       // COMMANDS
