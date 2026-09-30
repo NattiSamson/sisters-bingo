@@ -37,6 +37,7 @@ const pendingAdminAccountDelete = {};
 const pendingAdminUserSearch = new Map();
 const pendingAdminRoleSearch = new Map();
 const pendingBroadcastRecipient = new Map();
+const pendingTransfer = {};
 
 // ============================================================
 // CLEAR USER STATE
@@ -46,12 +47,13 @@ function clearPendingState(telegramId)
   delete pendingPhone[telegramId];
   delete pendingDelete[telegramId];
   delete pendingDeposit[telegramId];  
+  delete pendingTransfer[telegramId];
   delete pendingWithdrawal[telegramId];  
   delete pendingAdminReject[telegramId];
   delete pendingAdminAccount[telegramId];
   delete pendingAdminWithdrawal[telegramId];  
   delete pendingAdminAccountEdit[telegramId];
-  delete pendingAdminAccountDelete[telegramId];
+  delete pendingAdminAccountDelete[telegramId];  
  
   pendingAdminUserSearch.delete(telegramId);
   pendingAdminRoleSearch.delete(telegramId);
@@ -844,6 +846,7 @@ async function showHome(ctx, user)
   }
   keyboard.push([{ text: "💰 Balance", callback_data: "user_balance"}, { text: "📊 Statistics", callback_data: "user_statistics"},],
                 [{ text: "💎 Deposit", callback_data: "user_deposit"}, { text: "🏧 Withdraw", callback_data: "user_withdraw"}],
+                [{ text: "💸 Transfer", callback_data: "user_transfer"}],
                 [{ text: "🆘 Support", callback_data: "user_support"}, { text: "🗑️ Delete", callback_data: "user_delete"}]);
   
   // ============================================================
