@@ -1758,7 +1758,8 @@ CREATE FUNCTION public.find_transfer_recipient(p_phone character varying) RETURN
             'g'
         ),
         9
-    ) =
+    )
+    =
     RIGHT(
         REGEXP_REPLACE(
             COALESCE(p_phone, ''),
@@ -1768,7 +1769,8 @@ CREATE FUNCTION public.find_transfer_recipient(p_phone character varying) RETURN
         ),
         9
     )
-    AND u.is_active = TRUE    
+    AND u.is_active = TRUE
+    AND u.is_banned = FALSE
     AND u.is_blocked = FALSE
     LIMIT 1;
 $$;
@@ -1934,11 +1936,10 @@ CREATE TABLE public.transfer_rules (
     description text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT transfer_rules_amount_range_check CHECK (((maximum_transfer_amount IS NULL) OR (maximum_transfer_amount >= minimum_transfer_amount))),
-    CONSTRAINT transfer_rules_count_check CHECK (((maximum_transfer_count IS NULL) OR (maximum_transfer_count > 0))),
-    CONSTRAINT transfer_rules_date_range_check CHECK (((starts_at IS NULL) OR (ends_at IS NULL) OR (starts_at <= ends_at))),
+    maximum_period_amount numeric(18,2),
     CONSTRAINT transfer_rules_maximum_check CHECK (((maximum_transfer_amount IS NULL) OR (maximum_transfer_amount > (0)::numeric))),
     CONSTRAINT transfer_rules_minimum_check CHECK ((minimum_transfer_amount >= (0)::numeric)),
+    CONSTRAINT transfer_rules_period_amount_check CHECK (((maximum_period_amount IS NULL) OR (maximum_period_amount > (0)::numeric))),
     CONSTRAINT transfer_rules_period_check CHECK (((period)::text = ANY ((ARRAY['daily'::character varying, 'weekly'::character varying, 'monthly'::character varying, 'quarterly'::character varying, 'yearly'::character varying])::text[]))),
     CONSTRAINT transfer_rules_wallet_type_check CHECK (((wallet_type)::text = ANY ((ARRAY['main'::character varying, 'play'::character varying])::text[])))
 );
@@ -1955,25 +1956,46 @@ CREATE FUNCTION public.get_active_transfer_rule(p_wallet_type character varying,
     AS $$
 DECLARE
     v_rule public.transfer_rules;
+    v_now TIMESTAMPTZ := NOW();
 BEGIN
 
-    IF p_wallet_type NOT IN ('main', 'play') THEN
+    /* --------------------------------------------------------
+       Validate wallet
+       -------------------------------------------------------- */
+
+    IF p_wallet_type IS NULL
+       OR p_wallet_type NOT IN ('main', 'play') THEN
+
         RAISE EXCEPTION
-            'Invalid wallet type: %',
+            'Invalid wallet type: %. Expected main or play',
             p_wallet_type;
+
     END IF;
 
-    IF p_period NOT IN (
-        'daily',
-        'weekly',
-        'monthly',
-        'quarterly',
-        'yearly'
-    ) THEN
+
+    /* --------------------------------------------------------
+       Validate period
+       -------------------------------------------------------- */
+
+    IF p_period IS NULL
+       OR p_period NOT IN (
+            'daily',
+            'weekly',
+            'monthly',
+            'quarterly',
+            'yearly'
+       ) THEN
+
         RAISE EXCEPTION
             'Invalid transfer rule period: %',
             p_period;
+
     END IF;
+
+
+    /* --------------------------------------------------------
+       Get highest-priority active rule.
+       -------------------------------------------------------- */
 
     SELECT tr.*
     INTO v_rule
@@ -1981,20 +2003,26 @@ BEGIN
     WHERE tr.wallet_type = p_wallet_type
       AND tr.period = p_period
       AND tr.is_active = TRUE
+
       AND (
-            tr.starts_at IS NULL
-            OR tr.starts_at <= NOW()
-          )
+          tr.starts_at IS NULL
+          OR tr.starts_at <= v_now
+      )
+
       AND (
-            tr.ends_at IS NULL
-            OR tr.ends_at >= NOW()
-          )
+          tr.ends_at IS NULL
+          OR tr.ends_at >= v_now
+      )
+
     ORDER BY
         tr.priority DESC,
         tr.id DESC
+
     LIMIT 1;
 
+
     RETURN v_rule;
+
 END;
 $$;
 
@@ -2098,6 +2126,474 @@ $$;
 
 
 ALTER FUNCTION public.get_active_withdrawal_rule(p_payment_method_id integer, p_payment_account_id integer, p_amount numeric) OWNER TO neondb_owner;
+
+--
+-- Name: get_transfer_limits(integer, character varying); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.get_transfer_limits(p_user_id integer, p_wallet_type character varying) RETURNS jsonb
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+    v_wallet_id BIGINT;
+    v_balance NUMERIC(18,2);
+
+    v_daily_rule public.transfer_rules;
+    v_weekly_rule public.transfer_rules;
+    v_monthly_rule public.transfer_rules;
+    v_quarterly_rule public.transfer_rules;
+    v_yearly_rule public.transfer_rules;
+
+    v_daily_count INTEGER := 0;
+    v_weekly_count INTEGER := 0;
+    v_monthly_count INTEGER := 0;
+    v_quarterly_count INTEGER := 0;
+    v_yearly_count INTEGER := 0;
+
+    v_daily_amount NUMERIC(18,2) := 0;
+    v_weekly_amount NUMERIC(18,2) := 0;
+    v_monthly_amount NUMERIC(18,2) := 0;
+    v_quarterly_amount NUMERIC(18,2) := 0;
+    v_yearly_amount NUMERIC(18,2) := 0;
+
+    v_now TIMESTAMPTZ := NOW();
+
+BEGIN
+
+    /* --------------------------------------------------------
+       Validate user
+       -------------------------------------------------------- */
+
+    IF p_user_id IS NULL
+       OR p_user_id <= 0 THEN
+
+        RAISE EXCEPTION
+            'Invalid user ID';
+
+    END IF;
+
+
+    /* --------------------------------------------------------
+       Validate wallet
+       -------------------------------------------------------- */
+
+    IF p_wallet_type IS NULL
+       OR p_wallet_type NOT IN ('main', 'play') THEN
+
+        RAISE EXCEPTION
+            'Invalid wallet type: %',
+            p_wallet_type;
+
+    END IF;
+
+
+    /* --------------------------------------------------------
+       Validate user account
+       -------------------------------------------------------- */
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.users u
+        WHERE u.id = p_user_id
+          AND u.is_active = TRUE
+          AND u.is_banned = FALSE
+          AND u.is_blocked = FALSE
+    ) THEN
+
+        RAISE EXCEPTION
+            'User account is not eligible for transfers';
+
+    END IF;
+
+
+    /* --------------------------------------------------------
+       Wallet
+       -------------------------------------------------------- */
+
+    v_wallet_id :=
+        public.get_user_wallet_id(
+            p_user_id,
+            p_wallet_type
+        );
+
+
+    SELECT wb.balance
+    INTO v_balance
+    FROM public.wallet_balances wb
+    WHERE wb.wallet_id = v_wallet_id;
+
+
+    IF v_balance IS NULL THEN
+
+        RAISE EXCEPTION
+            '% wallet balance was not found',
+            p_wallet_type;
+
+    END IF;
+
+
+    /* --------------------------------------------------------
+       Rules
+       -------------------------------------------------------- */
+
+    v_daily_rule :=
+        public.get_active_transfer_rule(
+            p_wallet_type,
+            'daily'
+        );
+
+    v_weekly_rule :=
+        public.get_active_transfer_rule(
+            p_wallet_type,
+            'weekly'
+        );
+
+    v_monthly_rule :=
+        public.get_active_transfer_rule(
+            p_wallet_type,
+            'monthly'
+        );
+
+    v_quarterly_rule :=
+        public.get_active_transfer_rule(
+            p_wallet_type,
+            'quarterly'
+        );
+
+    v_yearly_rule :=
+        public.get_active_transfer_rule(
+            p_wallet_type,
+            'yearly'
+        );
+
+
+    /* --------------------------------------------------------
+       Daily usage
+       -------------------------------------------------------- */
+
+    SELECT
+        COUNT(*)::INTEGER,
+        COALESCE(SUM(t.amount), 0)::NUMERIC(18,2)
+    INTO
+        v_daily_count,
+        v_daily_amount
+    FROM public.transfers t
+    WHERE t.sender_user_id = p_user_id
+      AND t.wallet_type = p_wallet_type
+      AND t.status = 'completed'
+      AND t.created_at >= date_trunc('day', v_now);
+
+
+    /* --------------------------------------------------------
+       Weekly usage
+       -------------------------------------------------------- */
+
+    SELECT
+        COUNT(*)::INTEGER,
+        COALESCE(SUM(t.amount), 0)::NUMERIC(18,2)
+    INTO
+        v_weekly_count,
+        v_weekly_amount
+    FROM public.transfers t
+    WHERE t.sender_user_id = p_user_id
+      AND t.wallet_type = p_wallet_type
+      AND t.status = 'completed'
+      AND t.created_at >= date_trunc('week', v_now);
+
+
+    /* --------------------------------------------------------
+       Monthly usage
+       -------------------------------------------------------- */
+
+    SELECT
+        COUNT(*)::INTEGER,
+        COALESCE(SUM(t.amount), 0)::NUMERIC(18,2)
+    INTO
+        v_monthly_count,
+        v_monthly_amount
+    FROM public.transfers t
+    WHERE t.sender_user_id = p_user_id
+      AND t.wallet_type = p_wallet_type
+      AND t.status = 'completed'
+      AND t.created_at >= date_trunc('month', v_now);
+
+
+    /* --------------------------------------------------------
+       Quarterly usage
+       -------------------------------------------------------- */
+
+    SELECT
+        COUNT(*)::INTEGER,
+        COALESCE(SUM(t.amount), 0)::NUMERIC(18,2)
+    INTO
+        v_quarterly_count,
+        v_quarterly_amount
+    FROM public.transfers t
+    WHERE t.sender_user_id = p_user_id
+      AND t.wallet_type = p_wallet_type
+      AND t.status = 'completed'
+      AND t.created_at >= date_trunc('quarter', v_now);
+
+
+    /* --------------------------------------------------------
+       Yearly usage
+       -------------------------------------------------------- */
+
+    SELECT
+        COUNT(*)::INTEGER,
+        COALESCE(SUM(t.amount), 0)::NUMERIC(18,2)
+    INTO
+        v_yearly_count,
+        v_yearly_amount
+    FROM public.transfers t
+    WHERE t.sender_user_id = p_user_id
+      AND t.wallet_type = p_wallet_type
+      AND t.status = 'completed'
+      AND t.created_at >= date_trunc('year', v_now);
+
+
+    /* --------------------------------------------------------
+       Return
+       -------------------------------------------------------- */
+
+    RETURN jsonb_build_object(
+
+        'wallet_type',
+        p_wallet_type,
+
+        'wallet_id',
+        v_wallet_id,
+
+        'balance',
+        v_balance,
+
+        /*
+         * Minimum and maximum per-transfer limits come from
+         * the DAILY rule.
+         */
+        'minimum_transfer_amount',
+        v_daily_rule.minimum_transfer_amount,
+
+        'maximum_transfer_amount',
+        v_daily_rule.maximum_transfer_amount,
+
+
+        /* =========================
+           DAILY
+           ========================= */
+
+        'daily',
+        jsonb_build_object(
+            'count',
+            v_daily_count,
+
+            'count_limit',
+            v_daily_rule.maximum_transfer_count,
+
+            'amount',
+            v_daily_amount,
+
+            'amount_limit',
+            v_daily_rule.maximum_period_amount,
+
+            'remaining_count',
+            CASE
+                WHEN v_daily_rule.maximum_transfer_count IS NULL
+                THEN NULL
+                ELSE GREATEST(
+                    v_daily_rule.maximum_transfer_count
+                    - v_daily_count,
+                    0
+                )
+            END,
+
+            'remaining_amount',
+            CASE
+                WHEN v_daily_rule.maximum_period_amount IS NULL
+                THEN NULL
+                ELSE GREATEST(
+                    v_daily_rule.maximum_period_amount
+                    - v_daily_amount,
+                    0
+                )
+            END
+        ),
+
+
+        /* =========================
+           WEEKLY
+           ========================= */
+
+        'weekly',
+        jsonb_build_object(
+            'count',
+            v_weekly_count,
+
+            'count_limit',
+            v_weekly_rule.maximum_transfer_count,
+
+            'amount',
+            v_weekly_amount,
+
+            'amount_limit',
+            v_weekly_rule.maximum_period_amount,
+
+            'remaining_count',
+            CASE
+                WHEN v_weekly_rule.maximum_transfer_count IS NULL
+                THEN NULL
+                ELSE GREATEST(
+                    v_weekly_rule.maximum_transfer_count
+                    - v_weekly_count,
+                    0
+                )
+            END,
+
+            'remaining_amount',
+            CASE
+                WHEN v_weekly_rule.maximum_period_amount IS NULL
+                THEN NULL
+                ELSE GREATEST(
+                    v_weekly_rule.maximum_period_amount
+                    - v_weekly_amount,
+                    0
+                )
+            END
+        ),
+
+
+        /* =========================
+           MONTHLY
+           ========================= */
+
+        'monthly',
+        jsonb_build_object(
+            'count',
+            v_monthly_count,
+
+            'count_limit',
+            v_monthly_rule.maximum_transfer_count,
+
+            'amount',
+            v_monthly_amount,
+
+            'amount_limit',
+            v_monthly_rule.maximum_period_amount,
+
+            'remaining_count',
+            CASE
+                WHEN v_monthly_rule.maximum_transfer_count IS NULL
+                THEN NULL
+                ELSE GREATEST(
+                    v_monthly_rule.maximum_transfer_count
+                    - v_monthly_count,
+                    0
+                )
+            END,
+
+            'remaining_amount',
+            CASE
+                WHEN v_monthly_rule.maximum_period_amount IS NULL
+                THEN NULL
+                ELSE GREATEST(
+                    v_monthly_rule.maximum_period_amount
+                    - v_monthly_amount,
+                    0
+                )
+            END
+        ),
+
+
+        /* =========================
+           QUARTERLY
+           ========================= */
+
+        'quarterly',
+        jsonb_build_object(
+            'count',
+            v_quarterly_count,
+
+            'count_limit',
+            v_quarterly_rule.maximum_transfer_count,
+
+            'amount',
+            v_quarterly_amount,
+
+            'amount_limit',
+            v_quarterly_rule.maximum_period_amount,
+
+            'remaining_count',
+            CASE
+                WHEN v_quarterly_rule.maximum_transfer_count IS NULL
+                THEN NULL
+                ELSE GREATEST(
+                    v_quarterly_rule.maximum_transfer_count
+                    - v_quarterly_count,
+                    0
+                )
+            END,
+
+            'remaining_amount',
+            CASE
+                WHEN v_quarterly_rule.maximum_period_amount IS NULL
+                THEN NULL
+                ELSE GREATEST(
+                    v_quarterly_rule.maximum_period_amount
+                    - v_quarterly_amount,
+                    0
+                )
+            END
+        ),
+
+
+        /* =========================
+           YEARLY
+           ========================= */
+
+        'yearly',
+        jsonb_build_object(
+            'count',
+            v_yearly_count,
+
+            'count_limit',
+            v_yearly_rule.maximum_transfer_count,
+
+            'amount',
+            v_yearly_amount,
+
+            'amount_limit',
+            v_yearly_rule.maximum_period_amount,
+
+            'remaining_count',
+            CASE
+                WHEN v_yearly_rule.maximum_transfer_count IS NULL
+                THEN NULL
+                ELSE GREATEST(
+                    v_yearly_rule.maximum_transfer_count
+                    - v_yearly_count,
+                    0
+                )
+            END,
+
+            'remaining_amount',
+            CASE
+                WHEN v_yearly_rule.maximum_period_amount IS NULL
+                THEN NULL
+                ELSE GREATEST(
+                    v_yearly_rule.maximum_period_amount
+                    - v_yearly_amount,
+                    0
+                )
+            END
+        )
+
+    );
+
+END;
+$$;
+
+
+ALTER FUNCTION public.get_transfer_limits(p_user_id integer, p_wallet_type character varying) OWNER TO neondb_owner;
 
 --
 -- Name: users; Type: TABLE; Schema: public; Owner: neondb_owner
@@ -6447,6 +6943,13 @@ CREATE UNIQUE INDEX uq_financial_transactions_idempotency ON public.financial_tr
 --
 
 CREATE UNIQUE INDEX uq_financial_transactions_reversal ON public.financial_transactions USING btree (reversed_transaction_id) WHERE (reversed_transaction_id IS NOT NULL);
+
+
+--
+-- Name: uq_transfer_rules_active_wallet_period; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE UNIQUE INDEX uq_transfer_rules_active_wallet_period ON public.transfer_rules USING btree (wallet_type, period) WHERE (is_active = true);
 
 
 --
