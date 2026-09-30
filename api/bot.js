@@ -3786,82 +3786,88 @@ bot.callbackQuery("user_deposit", async (ctx) =>
 // ============================================================
 // TRANSFER — OPEN
 // ============================================================
-async function showTransfer(
-  ctx
-) {
-
-  const user =
-    await db.getUserByTelegramId(
-      ctx.from.id
-    );
-
-
-  if (!user) {
-
-    return ctx.reply(
-      "Please /start to register first."
-    );
-
-  }
-
+async function showTransfer(ctx) {
   const telegramId = ctx.from.id;
 
-    clearPendingState(telegramId);
+  try {
+    const user =
+      await db.getUserByTelegramId(
+        telegramId
+      );
 
+    if (!user) {
+      await ctx.reply(
+        "Please /start to register first."
+      );
+      return;
+    }
+
+    if (
+      user.is_active !== true ||
+      user.is_blocked === true
+    ) {
+      await ctx.reply(
+        "🚫 Your account is not eligible for transfers."
+      );
+      return;
+    }
+
+    /*
+     * Clear any previous transfer session.
+     */
+    clearPendingState(
+      telegramId
+    );
+
+    /*
+     * Create a fresh transfer session.
+     */
+    createTransferState(
+      telegramId
+    );
+
+    /*
+     * Display transfer wallet selection.
+     */
+    await ctx.editMessageText(
+      "💸 *TRANSFER MONEY*\n\n" +
+      "Choose the wallet you want to transfer money from.\n\n" +
+      "💰 Main Wallet → another user's Main Wallet\n" +
+      "🎮 Play Wallet → another user's Play Wallet",
+      {
+        parse_mode: "Markdown",
+        reply_markup:
+          getTransferWalletKeyboard()
+      }
+    );
+
+  } catch (err) {
+
+    console.error(
+      "Open transfer error:",
+      err
+    );
+
+    console.error(
+      err?.stack
+    );
+
+    /*
+     * Don't send another message if Telegram
+     * already successfully edited the menu.
+     */
     try {
-      const user =
-        await db.getUserByTelegramId(
-          telegramId
-        );
-
-      if (!user) {
-        return ctx.reply(
-          "Please /start to register first."
-        );
-      }
-
-      if (
-        user.is_active !== true ||
-        user.is_blocked === true
-        
-      ) {
-        return ctx.reply(
-          "🚫 Your account is not eligible for transfers."
-        );
-      }
-
-      createTransferState(
-        telegramId
-      );
-
-      await ctx.editMessageText(
-        "💸 *TRANSFER MONEY*\n\n" +
-        "Choose the wallet you want to transfer money from.\n\n" +
-        "💰 Main Wallet → another user's Main Wallet\n" +
-        "🎮 Play Wallet → another user's Play Wallet",
-        {
-          parse_mode: "Markdown",
-          reply_markup:
-            getTransferWalletKeyboard()
-        }
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Open transfer error:",
-        err
-      );
-
-      delete pendingTransfer[
-        telegramId
-      ];
-
       await ctx.reply(
         "❌ Unable to start the transfer right now. Please try again."
       );
+    } catch (replyError) {
+      console.error(
+        "Transfer error reply failed:",
+        replyError
+      );
     }
   }
+}
 
 
 
@@ -3869,7 +3875,7 @@ bot.callbackQuery(
   "user_transfer",
   async (ctx) => {
     await answerCallback(ctx);
-    showTransfer(ctx);
+    await showTransfer(ctx);
   }
 );
 
