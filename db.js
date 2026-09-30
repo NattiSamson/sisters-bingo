@@ -550,8 +550,7 @@ async clearBotUserState(telegramId) {
           ),
           9
         ) = $1
-          AND is_active = TRUE
-          AND is_banned = FALSE
+          AND is_active = TRUE          
           AND is_blocked = FALSE
         LIMIT 1
         `,
