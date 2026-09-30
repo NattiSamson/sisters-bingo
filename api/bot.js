@@ -3610,26 +3610,7 @@ function getTransferCancelKeyboard() {
   };
 }
 
-async function showDeposit(
-  ctx
-) {
 
-  const user =
-    await db.getUserByTelegramId(
-      ctx.from.id
-    );
-
-
-  if (!user) {
-
-    return ctx.reply(
-      "Please /start to register first."
-    );
-
-  }
-
-  
-}
 
 
 // ============================================================
@@ -3805,13 +3786,25 @@ bot.callbackQuery("user_deposit", async (ctx) =>
 // ============================================================
 // TRANSFER — OPEN
 // ============================================================
+async function showDeposit(
+  ctx
+) {
 
-bot.callbackQuery(
-  "user_transfer",
-  async (ctx) => {
-    await answerCallback(ctx);
+  const user =
+    await db.getUserByTelegramId(
+      ctx.from.id
+    );
 
-    const telegramId = ctx.from.id;
+
+  if (!user) {
+
+    return ctx.reply(
+      "Please /start to register first."
+    );
+
+  }
+
+  const telegramId = ctx.from.id;
 
     clearPendingState(telegramId);
 
@@ -3829,8 +3822,8 @@ bot.callbackQuery(
 
       if (
         user.is_active !== true ||
-        user.is_blocked === true ||
-        user.is_banned === true
+        user.is_blocked === true
+        
       ) {
         return ctx.reply(
           "🚫 Your account is not eligible for transfers."
@@ -3868,6 +3861,15 @@ bot.callbackQuery(
         "❌ Unable to start the transfer right now. Please try again."
       );
     }
+  }
+
+
+
+bot.callbackQuery(
+  "user_transfer",
+  async (ctx) => {
+    await answerCallback(ctx);
+    showTransfer();
   }
 );
 
