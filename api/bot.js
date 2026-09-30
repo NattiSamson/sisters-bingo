@@ -3898,8 +3898,8 @@ async function startTransferWalletSelection(
 
     if (
       user.is_active !== true ||
-      user.is_blocked === true ||
-      user.is_banned === true
+      user.is_blocked === true
+      
     ) {
       return ctx.reply(
         "🚫 Your account is not eligible for transfers."
@@ -4034,16 +4034,27 @@ async function startTransferWalletSelection(
   } catch (err) {
 
     console.error(
-      "Transfer wallet selection error:",
-      err
-    );
+    "Transfer wallet selection error:",
+    err
+  );
 
-    delete pendingTransfer[
-      telegramId
-    ];
+  console.error(
+    "Transfer wallet selection stack:",
+    err?.stack
+  );
 
+  console.error(
+    "Transfer wallet selection state:",
+    pendingTransfer[telegramId]
+  );
+
+  /*
+   * Do NOT delete the transfer session here.
+   * The first message may already have been displayed.
+   */
+  if (!ctx.callbackQuery?.message) {
     await ctx.reply(
-      "❌ Unable to start the transfer. Please try again."
+      "❌ Unable to start the transfer right now. Please try again."
     );
   }
 }
