@@ -3869,7 +3869,7 @@ bot.callbackQuery(
   "user_transfer",
   async (ctx) => {
     await answerCallback(ctx);
-    showTransfer();
+    showTransfer(ctx);
   }
 );
 
