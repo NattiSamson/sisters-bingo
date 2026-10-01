@@ -2,8 +2,6 @@
 -- PostgreSQL database dump
 --
 
-
-
 -- Dumped from database version 18.6 (6569466)
 -- Dumped by pg_dump version 18.4
 
@@ -1937,8 +1935,10 @@ CREATE TABLE public.transfer_rules (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     maximum_period_amount numeric(18,2),
+    minimum_remaining_balance numeric(18,2) DEFAULT 0 NOT NULL,
     CONSTRAINT transfer_rules_maximum_check CHECK (((maximum_transfer_amount IS NULL) OR (maximum_transfer_amount > (0)::numeric))),
     CONSTRAINT transfer_rules_minimum_check CHECK ((minimum_transfer_amount >= (0)::numeric)),
+    CONSTRAINT transfer_rules_minimum_remaining_balance_check CHECK ((minimum_remaining_balance >= (0)::numeric)),
     CONSTRAINT transfer_rules_period_amount_check CHECK (((maximum_period_amount IS NULL) OR (maximum_period_amount > (0)::numeric))),
     CONSTRAINT transfer_rules_period_check CHECK (((period)::text = ANY ((ARRAY['daily'::character varying, 'weekly'::character varying, 'monthly'::character varying, 'quarterly'::character varying, 'yearly'::character varying])::text[]))),
     CONSTRAINT transfer_rules_wallet_type_check CHECK (((wallet_type)::text = ANY ((ARRAY['main'::character varying, 'play'::character varying])::text[])))
@@ -2132,40 +2132,24 @@ ALTER FUNCTION public.get_active_withdrawal_rule(p_payment_method_id integer, p_
 --
 
 CREATE FUNCTION public.get_transfer_limits(p_user_id integer, p_wallet_type character varying) RETURNS jsonb
-    LANGUAGE plpgsql STABLE
+    LANGUAGE plpgsql
     AS $$
+
 DECLARE
-    v_wallet_id BIGINT;
+
     v_balance NUMERIC(18,2);
+    v_rule public.transfer_rules%ROWTYPE;
 
-    v_daily_rule public.transfer_rules;
-    v_weekly_rule public.transfer_rules;
-    v_monthly_rule public.transfer_rules;
-    v_quarterly_rule public.transfer_rules;
-    v_yearly_rule public.transfer_rules;
-
-    v_daily_count INTEGER := 0;
-    v_weekly_count INTEGER := 0;
-    v_monthly_count INTEGER := 0;
-    v_quarterly_count INTEGER := 0;
-    v_yearly_count INTEGER := 0;
-
-    v_daily_amount NUMERIC(18,2) := 0;
-    v_weekly_amount NUMERIC(18,2) := 0;
-    v_monthly_amount NUMERIC(18,2) := 0;
-    v_quarterly_amount NUMERIC(18,2) := 0;
-    v_yearly_amount NUMERIC(18,2) := 0;
-
-    v_now TIMESTAMPTZ := NOW();
+    v_max_transferable NUMERIC(18,2);
+    v_balance_after_minimum NUMERIC(18,2);
 
 BEGIN
 
-    /* --------------------------------------------------------
-       Validate user
-       -------------------------------------------------------- */
+    -- ========================================================
+    -- 1. Validate user ID
+    -- ========================================================
 
-    IF p_user_id IS NULL
-       OR p_user_id <= 0 THEN
+    IF p_user_id IS NULL OR p_user_id <= 0 THEN
 
         RAISE EXCEPTION
             'Invalid user ID';
@@ -2173,423 +2157,179 @@ BEGIN
     END IF;
 
 
-    /* --------------------------------------------------------
-       Validate wallet
-       -------------------------------------------------------- */
+    -- ========================================================
+    -- 2. Validate wallet type
+    -- ========================================================
 
-    IF p_wallet_type IS NULL
-       OR p_wallet_type NOT IN ('main', 'play') THEN
+    IF p_wallet_type NOT IN ('main', 'play') THEN
 
         RAISE EXCEPTION
-            'Invalid wallet type: %',
-            p_wallet_type;
+            'Invalid wallet type. Use main or play';
 
     END IF;
 
 
-    /* --------------------------------------------------------
-       Validate user account
-       -------------------------------------------------------- */
+    -- ========================================================
+    -- 3. Get active daily transfer rule
+    -- ========================================================
 
-    IF NOT EXISTS (
-        SELECT 1
-        FROM public.users u
-        WHERE u.id = p_user_id
-          AND u.is_active = TRUE
-          AND u.is_banned = FALSE
-          AND u.is_blocked = FALSE
-    ) THEN
-
-        RAISE EXCEPTION
-            'User account is not eligible for transfers';
-
-    END IF;
-
-
-    /* --------------------------------------------------------
-       Wallet
-       -------------------------------------------------------- */
-
-    v_wallet_id :=
-        public.get_user_wallet_id(
-            p_user_id,
-            p_wallet_type
-        );
-
-
-    SELECT wb.balance
-    INTO v_balance
-    FROM public.wallet_balances wb
-    WHERE wb.wallet_id = v_wallet_id;
-
-
-    IF v_balance IS NULL THEN
-
-        RAISE EXCEPTION
-            '% wallet balance was not found',
-            p_wallet_type;
-
-    END IF;
-
-
-    /* --------------------------------------------------------
-       Rules
-       -------------------------------------------------------- */
-
-    v_daily_rule :=
+    v_rule :=
         public.get_active_transfer_rule(
             p_wallet_type,
             'daily'
         );
 
-    v_weekly_rule :=
-        public.get_active_transfer_rule(
-            p_wallet_type,
-            'weekly'
+
+    IF v_rule.id IS NULL THEN
+
+        RAISE EXCEPTION
+            'No active transfer rule exists for % wallet',
+            p_wallet_type;
+
+    END IF;
+
+
+    -- ========================================================
+    -- 4. Get user's wallet balance
+    -- ========================================================
+
+    SELECT wb.balance
+    INTO v_balance
+
+    FROM public.wallets w
+
+    JOIN public.wallet_balances wb
+        ON wb.wallet_id = w.id
+
+    WHERE w.user_id = p_user_id
+      AND w.wallet_type = p_wallet_type
+
+    LIMIT 1;
+
+
+    IF v_balance IS NULL THEN
+
+        RAISE EXCEPTION
+            '% wallet not found for user',
+            p_wallet_type;
+
+    END IF;
+
+
+    v_balance := ROUND(
+        v_balance,
+        2
+    );
+
+
+    -- ========================================================
+    -- 5. Calculate balance that can actually be transferred
+    --
+    -- Example:
+    --
+    -- Balance                  = 1000
+    -- Minimum remaining        = 200
+    --
+    -- Transferable from
+    -- remaining-balance rule  = 800
+    -- ========================================================
+
+    v_balance_after_minimum :=
+        GREATEST(
+            v_balance
+            - COALESCE(
+                v_rule.minimum_remaining_balance,
+                0
+            ),
+            0
         );
 
-    v_monthly_rule :=
-        public.get_active_transfer_rule(
-            p_wallet_type,
-            'monthly'
+
+    -- ========================================================
+    -- 6. Apply maximum per-transfer limit
+    --
+    -- Actual maximum is the smaller of:
+    --
+    -- balance - minimum remaining balance
+    -- OR
+    -- configured maximum transfer amount
+    -- ========================================================
+
+    IF v_rule.maximum_transfer_amount IS NULL THEN
+
+        v_max_transferable :=
+            v_balance_after_minimum;
+
+    ELSE
+
+        v_max_transferable :=
+            LEAST(
+                v_balance_after_minimum,
+                v_rule.maximum_transfer_amount
+            );
+
+    END IF;
+
+
+    v_max_transferable :=
+        GREATEST(
+            ROUND(
+                v_max_transferable,
+                2
+            ),
+            0
         );
 
-    v_quarterly_rule :=
-        public.get_active_transfer_rule(
-            p_wallet_type,
-            'quarterly'
-        );
 
-    v_yearly_rule :=
-        public.get_active_transfer_rule(
-            p_wallet_type,
-            'yearly'
-        );
-
-
-    /* --------------------------------------------------------
-       Daily usage
-       -------------------------------------------------------- */
-
-    SELECT
-        COUNT(*)::INTEGER,
-        COALESCE(SUM(t.amount), 0)::NUMERIC(18,2)
-    INTO
-        v_daily_count,
-        v_daily_amount
-    FROM public.transfers t
-    WHERE t.sender_user_id = p_user_id
-      AND t.wallet_type = p_wallet_type
-      AND t.status = 'completed'
-      AND t.created_at >= date_trunc('day', v_now);
-
-
-    /* --------------------------------------------------------
-       Weekly usage
-       -------------------------------------------------------- */
-
-    SELECT
-        COUNT(*)::INTEGER,
-        COALESCE(SUM(t.amount), 0)::NUMERIC(18,2)
-    INTO
-        v_weekly_count,
-        v_weekly_amount
-    FROM public.transfers t
-    WHERE t.sender_user_id = p_user_id
-      AND t.wallet_type = p_wallet_type
-      AND t.status = 'completed'
-      AND t.created_at >= date_trunc('week', v_now);
-
-
-    /* --------------------------------------------------------
-       Monthly usage
-       -------------------------------------------------------- */
-
-    SELECT
-        COUNT(*)::INTEGER,
-        COALESCE(SUM(t.amount), 0)::NUMERIC(18,2)
-    INTO
-        v_monthly_count,
-        v_monthly_amount
-    FROM public.transfers t
-    WHERE t.sender_user_id = p_user_id
-      AND t.wallet_type = p_wallet_type
-      AND t.status = 'completed'
-      AND t.created_at >= date_trunc('month', v_now);
-
-
-    /* --------------------------------------------------------
-       Quarterly usage
-       -------------------------------------------------------- */
-
-    SELECT
-        COUNT(*)::INTEGER,
-        COALESCE(SUM(t.amount), 0)::NUMERIC(18,2)
-    INTO
-        v_quarterly_count,
-        v_quarterly_amount
-    FROM public.transfers t
-    WHERE t.sender_user_id = p_user_id
-      AND t.wallet_type = p_wallet_type
-      AND t.status = 'completed'
-      AND t.created_at >= date_trunc('quarter', v_now);
-
-
-    /* --------------------------------------------------------
-       Yearly usage
-       -------------------------------------------------------- */
-
-    SELECT
-        COUNT(*)::INTEGER,
-        COALESCE(SUM(t.amount), 0)::NUMERIC(18,2)
-    INTO
-        v_yearly_count,
-        v_yearly_amount
-    FROM public.transfers t
-    WHERE t.sender_user_id = p_user_id
-      AND t.wallet_type = p_wallet_type
-      AND t.status = 'completed'
-      AND t.created_at >= date_trunc('year', v_now);
-
-
-    /* --------------------------------------------------------
-       Return
-       -------------------------------------------------------- */
+    -- ========================================================
+    -- 7. Return transfer limits
+    -- ========================================================
 
     RETURN jsonb_build_object(
+
+        'success',
+        TRUE,
+
+        'user_id',
+        p_user_id,
 
         'wallet_type',
         p_wallet_type,
 
-        'wallet_id',
-        v_wallet_id,
-
         'balance',
         v_balance,
 
-        /*
-         * Minimum and maximum per-transfer limits come from
-         * the DAILY rule.
-         */
         'minimum_transfer_amount',
-        v_daily_rule.minimum_transfer_amount,
+        COALESCE(
+            v_rule.minimum_transfer_amount,
+            0
+        ),
 
         'maximum_transfer_amount',
-        v_daily_rule.maximum_transfer_amount,
+        v_rule.maximum_transfer_amount,
 
-
-        /* =========================
-           DAILY
-           ========================= */
-
-        'daily',
-        jsonb_build_object(
-            'count',
-            v_daily_count,
-
-            'count_limit',
-            v_daily_rule.maximum_transfer_count,
-
-            'amount',
-            v_daily_amount,
-
-            'amount_limit',
-            v_daily_rule.maximum_period_amount,
-
-            'remaining_count',
-            CASE
-                WHEN v_daily_rule.maximum_transfer_count IS NULL
-                THEN NULL
-                ELSE GREATEST(
-                    v_daily_rule.maximum_transfer_count
-                    - v_daily_count,
-                    0
-                )
-            END,
-
-            'remaining_amount',
-            CASE
-                WHEN v_daily_rule.maximum_period_amount IS NULL
-                THEN NULL
-                ELSE GREATEST(
-                    v_daily_rule.maximum_period_amount
-                    - v_daily_amount,
-                    0
-                )
-            END
+        'minimum_remaining_balance',
+        COALESCE(
+            v_rule.minimum_remaining_balance,
+            0
         ),
 
+        'maximum_transferable_now',
+        v_max_transferable,
 
-        /* =========================
-           WEEKLY
-           ========================= */
+        'daily_transfer_count_limit',
+        v_rule.maximum_transfer_count,
 
-        'weekly',
-        jsonb_build_object(
-            'count',
-            v_weekly_count,
+        'daily_transfer_amount_limit',
+        v_rule.maximum_transfer_amount,
 
-            'count_limit',
-            v_weekly_rule.maximum_transfer_count,
-
-            'amount',
-            v_weekly_amount,
-
-            'amount_limit',
-            v_weekly_rule.maximum_period_amount,
-
-            'remaining_count',
-            CASE
-                WHEN v_weekly_rule.maximum_transfer_count IS NULL
-                THEN NULL
-                ELSE GREATEST(
-                    v_weekly_rule.maximum_transfer_count
-                    - v_weekly_count,
-                    0
-                )
-            END,
-
-            'remaining_amount',
-            CASE
-                WHEN v_weekly_rule.maximum_period_amount IS NULL
-                THEN NULL
-                ELSE GREATEST(
-                    v_weekly_rule.maximum_period_amount
-                    - v_weekly_amount,
-                    0
-                )
-            END
-        ),
-
-
-        /* =========================
-           MONTHLY
-           ========================= */
-
-        'monthly',
-        jsonb_build_object(
-            'count',
-            v_monthly_count,
-
-            'count_limit',
-            v_monthly_rule.maximum_transfer_count,
-
-            'amount',
-            v_monthly_amount,
-
-            'amount_limit',
-            v_monthly_rule.maximum_period_amount,
-
-            'remaining_count',
-            CASE
-                WHEN v_monthly_rule.maximum_transfer_count IS NULL
-                THEN NULL
-                ELSE GREATEST(
-                    v_monthly_rule.maximum_transfer_count
-                    - v_monthly_count,
-                    0
-                )
-            END,
-
-            'remaining_amount',
-            CASE
-                WHEN v_monthly_rule.maximum_period_amount IS NULL
-                THEN NULL
-                ELSE GREATEST(
-                    v_monthly_rule.maximum_period_amount
-                    - v_monthly_amount,
-                    0
-                )
-            END
-        ),
-
-
-        /* =========================
-           QUARTERLY
-           ========================= */
-
-        'quarterly',
-        jsonb_build_object(
-            'count',
-            v_quarterly_count,
-
-            'count_limit',
-            v_quarterly_rule.maximum_transfer_count,
-
-            'amount',
-            v_quarterly_amount,
-
-            'amount_limit',
-            v_quarterly_rule.maximum_period_amount,
-
-            'remaining_count',
-            CASE
-                WHEN v_quarterly_rule.maximum_transfer_count IS NULL
-                THEN NULL
-                ELSE GREATEST(
-                    v_quarterly_rule.maximum_transfer_count
-                    - v_quarterly_count,
-                    0
-                )
-            END,
-
-            'remaining_amount',
-            CASE
-                WHEN v_quarterly_rule.maximum_period_amount IS NULL
-                THEN NULL
-                ELSE GREATEST(
-                    v_quarterly_rule.maximum_period_amount
-                    - v_quarterly_amount,
-                    0
-                )
-            END
-        ),
-
-
-        /* =========================
-           YEARLY
-           ========================= */
-
-        'yearly',
-        jsonb_build_object(
-            'count',
-            v_yearly_count,
-
-            'count_limit',
-            v_yearly_rule.maximum_transfer_count,
-
-            'amount',
-            v_yearly_amount,
-
-            'amount_limit',
-            v_yearly_rule.maximum_period_amount,
-
-            'remaining_count',
-            CASE
-                WHEN v_yearly_rule.maximum_transfer_count IS NULL
-                THEN NULL
-                ELSE GREATEST(
-                    v_yearly_rule.maximum_transfer_count
-                    - v_yearly_count,
-                    0
-                )
-            END,
-
-            'remaining_amount',
-            CASE
-                WHEN v_yearly_rule.maximum_period_amount IS NULL
-                THEN NULL
-                ELSE GREATEST(
-                    v_yearly_rule.maximum_period_amount
-                    - v_yearly_amount,
-                    0
-                )
-            END
-        )
+        'rule_id',
+        v_rule.id
 
     );
 
 END;
+
 $$;
 
 
@@ -4222,7 +3962,9 @@ ALTER FUNCTION public.set_updated_at() OWNER TO neondb_owner;
 CREATE FUNCTION public.transfer_wallet(p_sender_user_id integer, p_receiver_phone character varying, p_wallet_type character varying, p_amount numeric, p_idempotency_key character varying, p_description text DEFAULT NULL::text) RETURNS jsonb
     LANGUAGE plpgsql
     AS $$
+
 DECLARE
+
     v_sender public.users%ROWTYPE;
     v_receiver public.users%ROWTYPE;
 
@@ -4257,7 +3999,10 @@ DECLARE
 
     v_normalized_phone VARCHAR(20);
 
+    v_remaining_balance NUMERIC(18,2);
+
     v_now TIMESTAMPTZ := NOW();
+
 
 BEGIN
 
@@ -4265,9 +4010,15 @@ BEGIN
     -- 1. Validate sender
     -- ========================================================
 
-    IF p_sender_user_id IS NULL OR p_sender_user_id <= 0 THEN
-        RAISE EXCEPTION 'Invalid sender user ID';
+    IF p_sender_user_id IS NULL
+       OR p_sender_user_id <= 0
+    THEN
+
+        RAISE EXCEPTION
+            'Invalid sender user ID';
+
     END IF;
+
 
     SELECT *
     INTO v_sender
@@ -4275,21 +4026,38 @@ BEGIN
     WHERE id = p_sender_user_id
     FOR UPDATE;
 
+
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'Sender user not found';
+
+        RAISE EXCEPTION
+            'Sender user not found';
+
     END IF;
+
 
     IF v_sender.is_active IS NOT TRUE THEN
-        RAISE EXCEPTION 'Sender account is inactive';
+
+        RAISE EXCEPTION
+            'Sender account is inactive';
+
     END IF;
+
 
     IF v_sender.is_blocked IS TRUE THEN
-        RAISE EXCEPTION 'Sender account is blocked';
+
+        RAISE EXCEPTION
+            'Sender account is blocked';
+
     END IF;
 
+
     IF v_sender.is_banned IS TRUE THEN
-        RAISE EXCEPTION 'Sender account is banned';
+
+        RAISE EXCEPTION
+            'Sender account is banned';
+
     END IF;
+
 
 
     -- ========================================================
@@ -4297,8 +4065,12 @@ BEGIN
     -- ========================================================
 
     IF p_wallet_type NOT IN ('main', 'play') THEN
-        RAISE EXCEPTION 'Invalid wallet type. Use main or play';
+
+        RAISE EXCEPTION
+            'Invalid wallet type. Use main or play';
+
     END IF;
+
 
 
     -- ========================================================
@@ -4307,9 +4079,16 @@ BEGIN
 
     v_amount := ROUND(p_amount, 2);
 
-    IF v_amount IS NULL OR v_amount <= 0 THEN
-        RAISE EXCEPTION 'Transfer amount must be greater than zero';
+
+    IF v_amount IS NULL
+       OR v_amount <= 0
+    THEN
+
+        RAISE EXCEPTION
+            'Transfer amount must be greater than zero';
+
     END IF;
+
 
 
     -- ========================================================
@@ -4317,15 +4096,18 @@ BEGIN
     -- ========================================================
 
     IF p_idempotency_key IS NULL
-       OR BTRIM(p_idempotency_key) = '' THEN
+       OR BTRIM(p_idempotency_key) = ''
+    THEN
 
-        RAISE EXCEPTION 'Transfer idempotency key is required';
+        RAISE EXCEPTION
+            'Transfer idempotency key is required';
 
     END IF;
 
 
+
     -- ========================================================
-    -- 5. Check if this transfer was already completed
+    -- 5. Check existing transfer / idempotency
     -- ========================================================
 
     SELECT *
@@ -4333,6 +4115,7 @@ BEGIN
     FROM public.transfers
     WHERE idempotency_key = p_idempotency_key
     FOR UPDATE;
+
 
     IF FOUND THEN
 
@@ -4344,6 +4127,7 @@ BEGIN
 
            OR v_existing_transfer.amount
                IS DISTINCT FROM v_amount
+
         THEN
 
             RAISE EXCEPTION
@@ -4352,9 +4136,6 @@ BEGIN
         END IF;
 
 
-        /*
-         * Load receiver information for the idempotent response.
-         */
         SELECT *
         INTO v_receiver
         FROM public.users
@@ -4363,9 +4144,11 @@ BEGIN
 
         RETURN jsonb_build_object(
 
-            'success', TRUE,
+            'success',
+            TRUE,
 
-            'idempotent', TRUE,
+            'idempotent',
+            TRUE,
 
             'transfer_id',
             v_existing_transfer.id,
@@ -4399,14 +4182,18 @@ BEGIN
     END IF;
 
 
+
     -- ========================================================
-    -- 6. Normalize phone
+    -- 6. Normalize receiver phone
     -- ========================================================
 
     v_normalized_phone :=
         RIGHT(
             REGEXP_REPLACE(
-                COALESCE(p_receiver_phone, ''),
+                COALESCE(
+                    p_receiver_phone,
+                    ''
+                ),
                 '[^0-9]',
                 '',
                 'g'
@@ -4414,30 +4201,32 @@ BEGIN
             9
         );
 
+
     IF LENGTH(v_normalized_phone) <> 9 THEN
-        RAISE EXCEPTION 'Invalid receiver phone number';
+
+        RAISE EXCEPTION
+            'Invalid receiver phone number';
+
     END IF;
+
 
 
     -- ========================================================
     -- 7. Find receiver
-    --
-    -- Only registered, active, non-banned,
-    -- non-blocked users are eligible.
     -- ========================================================
 
     SELECT *
     INTO v_receiver
     FROM public.users
     WHERE RIGHT(
-              REGEXP_REPLACE(
-                  COALESCE(phone, ''),
-                  '[^0-9]',
-                  '',
-                  'g'
-              ),
-              9
-          ) = v_normalized_phone
+        REGEXP_REPLACE(
+            COALESCE(phone, ''),
+            '[^0-9]',
+            '',
+            'g'
+        ),
+        9
+    ) = v_normalized_phone
 
       AND is_active = TRUE
       AND is_banned = FALSE
@@ -4455,14 +4244,18 @@ BEGIN
     END IF;
 
 
+
     -- ========================================================
-    -- 8. Sender cannot transfer to himself
+    -- 8. Prevent self transfer
     -- ========================================================
 
     IF v_receiver.id = v_sender.id THEN
+
         RAISE EXCEPTION
             'You cannot transfer money to yourself';
+
     END IF;
+
 
 
     -- ========================================================
@@ -4475,11 +4268,13 @@ BEGIN
             p_wallet_type
         );
 
+
     v_receiver_wallet_id :=
         public.get_user_wallet_id(
             v_receiver.id,
             p_wallet_type
         );
+
 
 
     -- ========================================================
@@ -4509,8 +4304,9 @@ BEGIN
     END IF;
 
 
+
     -- ========================================================
-    -- 11. Read balances after locking
+    -- 11. Read balances after wallet locking
     -- ========================================================
 
     SELECT balance
@@ -4527,6 +4323,27 @@ BEGIN
     FOR UPDATE;
 
 
+    IF v_sender_balance IS NULL THEN
+
+        RAISE EXCEPTION
+            'Sender wallet balance does not exist';
+
+    END IF;
+
+
+    IF v_receiver_balance IS NULL THEN
+
+        RAISE EXCEPTION
+            'Receiver wallet balance does not exist';
+
+    END IF;
+
+
+
+    -- ========================================================
+    -- 12. Basic sufficient balance check
+    -- ========================================================
+
     IF v_sender_balance < v_amount THEN
 
         RAISE EXCEPTION
@@ -4538,8 +4355,17 @@ BEGIN
     END IF;
 
 
+
     -- ========================================================
-    -- 12. Minimum / maximum transfer amount
+    -- 13. Get active DAILY transfer rule
+    --
+    -- This rule supplies:
+    --
+    -- minimum_transfer_amount
+    -- maximum_transfer_amount
+    -- minimum_remaining_balance
+    --
+    -- separately for main/play wallets.
     -- ========================================================
 
     v_rule :=
@@ -4558,6 +4384,11 @@ BEGIN
     END IF;
 
 
+
+    -- ========================================================
+    -- 14. Minimum transfer amount
+    -- ========================================================
+
     IF v_amount < v_rule.minimum_transfer_amount THEN
 
         RAISE EXCEPTION
@@ -4567,6 +4398,11 @@ BEGIN
 
     END IF;
 
+
+
+    -- ========================================================
+    -- 15. Maximum amount per individual transfer
+    -- ========================================================
 
     IF v_rule.maximum_transfer_amount IS NOT NULL
        AND v_amount > v_rule.maximum_transfer_amount
@@ -4580,13 +4416,64 @@ BEGIN
     END IF;
 
 
+
     -- ========================================================
-    -- 13. DAILY
+    -- 16. Minimum remaining sender balance
+    --
+    -- Example:
+    --
+    -- Sender balance       = 1000
+    -- Minimum remaining    = 200
+    -- Transfer              = 700
+    -- Remaining             = 300
+    --
+    -- Allowed.
+    --
+    -- Transfer              = 850
+    -- Remaining             = 150
+    --
+    -- Rejected.
+    -- ========================================================
+
+    v_remaining_balance :=
+        ROUND(
+            v_sender_balance - v_amount,
+            2
+        );
+
+
+    IF v_remaining_balance <
+       COALESCE(
+           v_rule.minimum_remaining_balance,
+           0
+       )
+    THEN
+
+        RAISE EXCEPTION
+            'Transfer would leave your % wallet below the required minimum remaining balance of %. Available balance: %, requested transfer: %, remaining balance would be: %',
+            p_wallet_type,
+            COALESCE(
+                v_rule.minimum_remaining_balance,
+                0
+            ),
+            v_sender_balance,
+            v_amount,
+            v_remaining_balance;
+
+    END IF;
+
+
+
+    -- ========================================================
+    -- 17. DAILY limits
     -- ========================================================
 
     SELECT
         COUNT(*),
-        COALESCE(SUM(amount), 0)
+        COALESCE(
+            SUM(amount),
+            0
+        )
 
     INTO
         v_daily_count,
@@ -4597,7 +4484,10 @@ BEGIN
     WHERE sender_user_id = v_sender.id
       AND wallet_type = p_wallet_type
       AND status = 'completed'
-      AND created_at >= date_trunc('day', v_now);
+      AND created_at >= date_trunc(
+          'day',
+          v_now
+      );
 
 
     IF v_rule.maximum_transfer_count IS NOT NULL
@@ -4620,16 +4510,17 @@ BEGIN
         RAISE EXCEPTION
             'Daily transfer amount limit reached. Remaining: %',
             GREATEST(
-                v_rule.maximum_transfer_amount -
-                v_daily_amount,
+                v_rule.maximum_transfer_amount
+                - v_daily_amount,
                 0
             );
 
     END IF;
 
 
+
     -- ========================================================
-    -- 14. WEEKLY
+    -- 18. WEEKLY limits
     -- ========================================================
 
     v_rule :=
@@ -4643,7 +4534,10 @@ BEGIN
 
         SELECT
             COUNT(*),
-            COALESCE(SUM(amount), 0)
+            COALESCE(
+                SUM(amount),
+                0
+            )
 
         INTO
             v_weekly_count,
@@ -4654,7 +4548,10 @@ BEGIN
         WHERE sender_user_id = v_sender.id
           AND wallet_type = p_wallet_type
           AND status = 'completed'
-          AND created_at >= date_trunc('week', v_now);
+          AND created_at >= date_trunc(
+              'week',
+              v_now
+          );
 
 
         IF v_rule.maximum_transfer_count IS NOT NULL
@@ -4677,8 +4574,8 @@ BEGIN
             RAISE EXCEPTION
                 'Weekly transfer amount limit reached. Remaining: %',
                 GREATEST(
-                    v_rule.maximum_transfer_amount -
-                    v_weekly_amount,
+                    v_rule.maximum_transfer_amount
+                    - v_weekly_amount,
                     0
                 );
 
@@ -4687,8 +4584,9 @@ BEGIN
     END IF;
 
 
+
     -- ========================================================
-    -- 15. MONTHLY
+    -- 19. MONTHLY limits
     -- ========================================================
 
     v_rule :=
@@ -4702,7 +4600,10 @@ BEGIN
 
         SELECT
             COUNT(*),
-            COALESCE(SUM(amount), 0)
+            COALESCE(
+                SUM(amount),
+                0
+            )
 
         INTO
             v_monthly_count,
@@ -4713,7 +4614,10 @@ BEGIN
         WHERE sender_user_id = v_sender.id
           AND wallet_type = p_wallet_type
           AND status = 'completed'
-          AND created_at >= date_trunc('month', v_now);
+          AND created_at >= date_trunc(
+              'month',
+              v_now
+          );
 
 
         IF v_rule.maximum_transfer_count IS NOT NULL
@@ -4736,8 +4640,8 @@ BEGIN
             RAISE EXCEPTION
                 'Monthly transfer amount limit reached. Remaining: %',
                 GREATEST(
-                    v_rule.maximum_transfer_amount -
-                    v_monthly_amount,
+                    v_rule.maximum_transfer_amount
+                    - v_monthly_amount,
                     0
                 );
 
@@ -4746,8 +4650,9 @@ BEGIN
     END IF;
 
 
+
     -- ========================================================
-    -- 16. QUARTERLY
+    -- 20. QUARTERLY limits
     -- ========================================================
 
     v_rule :=
@@ -4761,7 +4666,10 @@ BEGIN
 
         SELECT
             COUNT(*),
-            COALESCE(SUM(amount), 0)
+            COALESCE(
+                SUM(amount),
+                0
+            )
 
         INTO
             v_quarterly_count,
@@ -4772,7 +4680,10 @@ BEGIN
         WHERE sender_user_id = v_sender.id
           AND wallet_type = p_wallet_type
           AND status = 'completed'
-          AND created_at >= date_trunc('quarter', v_now);
+          AND created_at >= date_trunc(
+              'quarter',
+              v_now
+          );
 
 
         IF v_rule.maximum_transfer_count IS NOT NULL
@@ -4795,8 +4706,8 @@ BEGIN
             RAISE EXCEPTION
                 'Quarterly transfer amount limit reached. Remaining: %',
                 GREATEST(
-                    v_rule.maximum_transfer_amount -
-                    v_quarterly_amount,
+                    v_rule.maximum_transfer_amount
+                    - v_quarterly_amount,
                     0
                 );
 
@@ -4805,8 +4716,9 @@ BEGIN
     END IF;
 
 
+
     -- ========================================================
-    -- 17. YEARLY
+    -- 21. YEARLY limits
     -- ========================================================
 
     v_rule :=
@@ -4820,7 +4732,10 @@ BEGIN
 
         SELECT
             COUNT(*),
-            COALESCE(SUM(amount), 0)
+            COALESCE(
+                SUM(amount),
+                0
+            )
 
         INTO
             v_yearly_count,
@@ -4831,7 +4746,10 @@ BEGIN
         WHERE sender_user_id = v_sender.id
           AND wallet_type = p_wallet_type
           AND status = 'completed'
-          AND created_at >= date_trunc('year', v_now);
+          AND created_at >= date_trunc(
+              'year',
+              v_now
+          );
 
 
         IF v_rule.maximum_transfer_count IS NOT NULL
@@ -4854,8 +4772,8 @@ BEGIN
             RAISE EXCEPTION
                 'Yearly transfer amount limit reached. Remaining: %',
                 GREATEST(
-                    v_rule.maximum_transfer_amount -
-                    v_yearly_amount,
+                    v_rule.maximum_transfer_amount
+                    - v_yearly_amount,
                     0
                 );
 
@@ -4864,8 +4782,9 @@ BEGIN
     END IF;
 
 
+
     -- ========================================================
-    -- 18. Create financial transaction
+    -- 22. Create financial transaction
     -- ========================================================
 
     SELECT
@@ -4889,6 +4808,7 @@ BEGIN
             'Wallet transfer'
         ),
         jsonb_build_object(
+
             'sender_user_id',
             v_sender.id,
 
@@ -4903,12 +4823,14 @@ BEGIN
 
             'receiver_phone',
             v_receiver.phone
+
         )
     ) AS t;
 
 
+
     -- ========================================================
-    -- 19. Idempotent retry
+    -- 23. Idempotent retry
     -- ========================================================
 
     IF NOT v_transaction_created THEN
@@ -4932,13 +4854,11 @@ BEGIN
         END IF;
 
 
-        /*
-         * Load the receiver again so the bot can
-         * notify the correct Telegram account.
-         */
         SELECT *
         INTO v_receiver
+
         FROM public.users
+
         WHERE id = (
             SELECT receiver_user_id
             FROM public.transfers
@@ -4960,6 +4880,12 @@ BEGIN
             'transaction_id',
             v_transaction_id,
 
+            'sender_user_id',
+            v_sender.id,
+
+            'receiver_user_id',
+            v_receiver.id,
+
             'receiver_telegram_id',
             v_receiver.telegram_id,
 
@@ -4967,15 +4893,19 @@ BEGIN
             v_receiver.name,
 
             'amount',
-            v_amount
+            v_amount,
+
+            'wallet_type',
+            p_wallet_type
 
         );
 
     END IF;
 
 
+
     -- ========================================================
-    -- 20. Debit sender wallet
+    -- 24. Debit sender wallet
     -- ========================================================
 
     INSERT INTO public.ledger_entries (
@@ -4991,14 +4921,17 @@ BEGIN
 
 
     UPDATE public.wallet_balances
+
     SET
         balance = balance - v_amount,
         updated_at = NOW()
+
     WHERE wallet_id = v_sender_wallet_id;
 
 
+
     -- ========================================================
-    -- 21. Credit receiver wallet
+    -- 25. Credit receiver wallet
     -- ========================================================
 
     INSERT INTO public.ledger_entries (
@@ -5014,14 +4947,17 @@ BEGIN
 
 
     UPDATE public.wallet_balances
+
     SET
         balance = balance + v_amount,
         updated_at = NOW()
+
     WHERE wallet_id = v_receiver_wallet_id;
 
 
+
     -- ========================================================
-    -- 22. Create transfer record
+    -- 26. Create transfer record
     -- ========================================================
 
     INSERT INTO public.transfers (
@@ -5036,17 +4972,27 @@ BEGIN
         metadata,
         created_at
     )
+
     VALUES (
+
         v_transaction_id,
+
         v_sender.id,
+
         v_receiver.id,
+
         v_amount,
+
         p_wallet_type,
+
         v_rule.id,
+
         p_idempotency_key,
+
         'completed',
 
         jsonb_build_object(
+
             'sender_phone',
             v_sender.phone,
 
@@ -5055,23 +5001,37 @@ BEGIN
 
             'wallet_type',
             p_wallet_type
+
         ),
 
         v_now
+
     )
-    RETURNING id INTO v_transfer_id;
+
+    RETURNING id
+    INTO v_transfer_id;
+
 
 
     -- ========================================================
-    -- 23. Final consistency check
+    -- 27. Final consistency checks
     -- ========================================================
 
     IF NOT EXISTS (
+
         SELECT 1
+
         FROM public.ledger_entries
-        WHERE transaction_id = v_transaction_id
-          AND wallet_id = v_sender_wallet_id
-          AND amount = -v_amount
+
+        WHERE transaction_id =
+            v_transaction_id
+
+          AND wallet_id =
+              v_sender_wallet_id
+
+          AND amount =
+              -v_amount
+
     ) THEN
 
         RAISE EXCEPTION
@@ -5080,12 +5040,22 @@ BEGIN
     END IF;
 
 
+
     IF NOT EXISTS (
+
         SELECT 1
+
         FROM public.ledger_entries
-        WHERE transaction_id = v_transaction_id
-          AND wallet_id = v_receiver_wallet_id
-          AND amount = v_amount
+
+        WHERE transaction_id =
+            v_transaction_id
+
+          AND wallet_id =
+              v_receiver_wallet_id
+
+          AND amount =
+              v_amount
+
     ) THEN
 
         RAISE EXCEPTION
@@ -5094,8 +5064,9 @@ BEGIN
     END IF;
 
 
+
     -- ========================================================
-    -- 24. Return result
+    -- 28. Final return
     -- ========================================================
 
     RETURN jsonb_build_object(
@@ -5137,10 +5108,7 @@ BEGIN
         v_sender_balance,
 
         'sender_balance_after',
-        ROUND(
-            v_sender_balance - v_amount,
-            2
-        ),
+        v_remaining_balance,
 
         'receiver_balance_before',
         v_receiver_balance,
@@ -5151,12 +5119,23 @@ BEGIN
             2
         ),
 
+        'minimum_remaining_balance',
+        COALESCE(
+            (
+                SELECT minimum_remaining_balance
+                FROM public.transfer_rules
+                WHERE id = v_rule.id
+            ),
+            0
+        ),
+
         'status',
         'completed'
 
     );
 
 END;
+
 $$;
 
 
@@ -7566,6 +7545,4 @@ ALTER TABLE ONLY public.withdrawals
 --
 -- PostgreSQL database dump complete
 --
-
-
 
