@@ -1945,6 +1945,408 @@ body{padding:0!important}
   overflow-x:hidden!important;
 }
 </style>
+
+<style id="mela-selected-card-equal-sizing-final">
+/* FINAL selected-cartela sizing:
+   1 card = centered and slightly larger;
+   2/3/4 cards = equal-width columns;
+   every visible selected card in the same state has the same height. */
+#screenCards .selection-cards-wrap{
+  width:100%!important;
+  align-items:start!important;
+  justify-items:stretch!important;
+}
+
+#screenCards .selection-card-container{
+  box-sizing:border-box!important;
+  width:100%!important;
+  min-width:0!important;
+  max-width:none!important;
+  height:auto!important;
+  min-height:0!important;
+  align-self:start!important;
+}
+
+/* 2 cards: exactly half width each. */
+#screenCards.selection-preview-2 .selection-cards-wrap{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+}
+
+/* 3 cards: exactly one third width each. */
+#screenCards.selection-preview-3 .selection-cards-wrap{
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+}
+
+/* 4 cards: exactly one quarter width each. */
+#screenCards.selection-preview-4 .selection-cards-wrap{
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+}
+
+/* Keep all 2/3/4-card versions at one consistent compact height. */
+#screenCards.selection-preview-2 .selection-card-container .bingo-cell,
+#screenCards.selection-preview-3 .selection-card-container .bingo-cell,
+#screenCards.selection-preview-4 .selection-card-container .bingo-cell{
+  height:18px!important;
+  min-height:18px!important;
+  line-height:1!important;
+}
+#screenCards.selection-preview-2 .selection-card-container .bingo-col-head,
+#screenCards.selection-preview-3 .selection-card-container .bingo-col-head,
+#screenCards.selection-preview-4 .selection-card-container .bingo-col-head{
+  height:15px!important;
+  min-height:15px!important;
+}
+
+/* One card: centered and slightly larger, without becoming excessively tall. */
+#screenCards.selection-preview-1 .selection-cards-wrap{
+  grid-template-columns:minmax(0,1fr)!important;
+  justify-items:center!important;
+}
+#screenCards.selection-preview-1 .selection-card-container{
+  width:min(62%,300px)!important;
+  max-width:300px!important;
+}
+#screenCards.selection-preview-1 .selection-card-container .bingo-cell{
+  height:22px!important;
+  min-height:22px!important;
+  font-size:8px!important;
+  line-height:1!important;
+}
+#screenCards.selection-preview-1 .selection-card-container .bingo-col-head{
+  height:17px!important;
+  min-height:17px!important;
+  font-size:7px!important;
+}
+
+@media(max-width:360px){
+  #screenCards.selection-preview-1 .selection-card-container{
+    width:min(70%,260px)!important;
+  }
+  #screenCards.selection-preview-1 .selection-card-container .bingo-cell{
+    height:20px!important;
+    min-height:20px!important;
+  }
+  #screenCards.selection-preview-2 .selection-card-container .bingo-cell,
+  #screenCards.selection-preview-3 .selection-card-container .bingo-cell,
+  #screenCards.selection-preview-4 .selection-card-container .bingo-cell{
+    height:16px!important;
+    min-height:16px!important;
+  }
+}
+</style>
+
+<style id="mela-selected-card-true-grid-final">
+/* FINAL: selected cartelas use true equal-width columns and square cards.
+   1 card = centered 62%; 2 = 50/50; 3 = 33.33/33.33/33.33; 4 = 25% each. */
+#screenCards #selectionCardsSection.selection-preview-1 #selectionCardsWrap{
+  display:grid!important;
+  grid-template-columns:minmax(0,62%)!important;
+  justify-content:center!important;
+  gap:0!important;
+}
+#screenCards #selectionCardsSection.selection-preview-2 #selectionCardsWrap{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:6px!important;
+}
+#screenCards #selectionCardsSection.selection-preview-3 #selectionCardsWrap{
+  display:grid!important;
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  gap:6px!important;
+}
+#screenCards #selectionCardsSection.selection-preview-4 #selectionCardsWrap{
+  display:grid!important;
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  gap:6px!important;
+}
+
+#screenCards #selectionCardsSection.selection-preview-1 #selectionCardsWrap .selection-card-container,
+#screenCards #selectionCardsSection.selection-preview-2 #selectionCardsWrap .selection-card-container,
+#screenCards #selectionCardsSection.selection-preview-3 #selectionCardsWrap .selection-card-container,
+#screenCards #selectionCardsSection.selection-preview-4 #selectionCardsWrap .selection-card-container{
+  width:100%!important;
+  max-width:none!important;
+  min-width:0!important;
+  aspect-ratio:1 / 1!important;
+  height:auto!important;
+  min-height:0!important;
+  box-sizing:border-box!important;
+  overflow:hidden!important;
+}
+
+/* Make the 5x5 bingo grid fill the square card instead of forcing a tall card. */
+#screenCards #selectionCardsSection.selection-preview-1 #selectionCardsWrap .selection-card-container,
+#screenCards #selectionCardsSection.selection-preview-2 #selectionCardsWrap .selection-card-container,
+#screenCards #selectionCardsSection.selection-preview-3 #selectionCardsWrap .selection-card-container,
+#screenCards #selectionCardsSection.selection-preview-4 #selectionCardsWrap .selection-card-container{
+  display:flex!important;
+  flex-direction:column!important;
+}
+#screenCards #selectionCardsSection.selection-preview-1 #selectionCardsWrap .selection-card-container .bingo-body,
+#screenCards #selectionCardsSection.selection-preview-2 #selectionCardsWrap .selection-card-container .bingo-body,
+#screenCards #selectionCardsSection.selection-preview-3 #selectionCardsWrap .selection-card-container .bingo-body,
+#screenCards #selectionCardsSection.selection-preview-4 #selectionCardsWrap .selection-card-container .bingo-body{
+  flex:1 1 auto!important;
+  min-height:0!important;
+  display:grid!important;
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  grid-template-rows:repeat(5,minmax(0,1fr))!important;
+  gap:2px!important;
+}
+#screenCards #selectionCardsSection.selection-preview-1 #selectionCardsWrap .selection-card-container .bingo-cell,
+#screenCards #selectionCardsSection.selection-preview-2 #selectionCardsWrap .selection-card-container .bingo-cell,
+#screenCards #selectionCardsSection.selection-preview-3 #selectionCardsWrap .selection-card-container .bingo-cell,
+#screenCards #selectionCardsSection.selection-preview-4 #selectionCardsWrap .selection-card-container .bingo-cell{
+  height:auto!important;
+  min-height:0!important;
+  width:100%!important;
+  font-size:clamp(5px,1.6vw,9px)!important;
+  line-height:1!important;
+}
+
+@media(max-width:400px){
+  /* On narrow phones the card itself remains exactly square. */
+  #screenCards #selectionCardsSection.selection-preview-1 #selectionCardsWrap{
+    grid-template-columns:minmax(0,62%)!important;
+  }
+  #screenCards #selectionCardsSection.selection-preview-2 #selectionCardsWrap{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:4px!important;
+  }
+  #screenCards #selectionCardsSection.selection-preview-3 #selectionCardsWrap{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:4px!important;
+  }
+  #screenCards #selectionCardsSection.selection-preview-4 #selectionCardsWrap{
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;
+    gap:3px!important;
+  }
+  #screenCards #selectionCardsSection.selection-preview-1 #selectionCardsWrap .selection-card-container,
+  #screenCards #selectionCardsSection.selection-preview-2 #selectionCardsWrap .selection-card-container,
+  #screenCards #selectionCardsSection.selection-preview-3 #selectionCardsWrap .selection-card-container,
+  #screenCards #selectionCardsSection.selection-preview-4 #selectionCardsWrap .selection-card-container{
+    aspect-ratio:1 / 1!important;
+  }
+  #screenCards #selectionCardsSection.selection-preview-1 #selectionCardsWrap .selection-card-container .bingo-body,
+  #screenCards #selectionCardsSection.selection-preview-2 #selectionCardsWrap .selection-card-container .bingo-body,
+  #screenCards #selectionCardsSection.selection-preview-3 #selectionCardsWrap .selection-card-container .bingo-body,
+  #screenCards #selectionCardsSection.selection-preview-4 #selectionCardsWrap .selection-card-container .bingo-body{
+    gap:1px!important;
+  }
+}
+
+/* Hide unused selection-card slots even though the square-card layout uses display:flex!important.
+   The render function marks unused slots with inline display:none. */
+#screenCards #selectionCardsSection .selection-card-container[style*="display:none"]{
+  display:none!important;
+}
+</style>
+
+<style id="mela-remove-selection-scroll-wrapper-final">
+/* FINAL: the extra cardsSelectionViewport wrapper is removed.
+   The selected-cartela row itself never gets a scrollbar. */
+#screenCards #selectionCardsSection{
+  overflow:visible!important;
+  overflow-x:visible!important;
+  overflow-y:visible!important;
+  max-height:none!important;
+  height:auto!important;
+  scrollbar-width:none!important;
+  -ms-overflow-style:none!important;
+}
+#screenCards #selectionCardsSection::-webkit-scrollbar{
+  width:0!important;
+  height:0!important;
+  display:none!important;
+}
+
+/* The number pool remains the only scrolling area. */
+#screenCards #poolGrid{
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  scrollbar-width:thin;
+  -webkit-overflow-scrolling:touch;
+}
+
+/* With 3 or 4 selected cards, all selected cartelas fit horizontally, so
+   there is no reason for a vertical scrollbar in the selected-card area. */
+#screenCards:has(#selectionCardsSection.selection-preview-3) #selectionCardsSection,
+#screenCards:has(#selectionCardsSection.selection-preview-4) #selectionCardsSection{
+  overflow:visible!important;
+  height:auto!important;
+  max-height:none!important;
+}
+
+/* Keep the selected cards in one horizontal row. */
+#screenCards #selectionCardsSection.selection-preview-1 #selectionCardsWrap{
+  grid-template-columns:minmax(0,62%)!important;
+  justify-content:center!important;
+}
+#screenCards #selectionCardsSection.selection-preview-2 #selectionCardsWrap{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+}
+#screenCards #selectionCardsSection.selection-preview-3 #selectionCardsWrap{
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+}
+#screenCards #selectionCardsSection.selection-preview-4 #selectionCardsWrap{
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+}
+
+#screenCards #selectionCardsSection .selection-card-container[style*="display:none"]{
+  display:none!important;
+}
+</style>
+
+<style id="mela-selection-layout-repair-final">
+/* RESTORE THE SELECTION VIEWPORT.
+   Default: 90% number pool / 10% empty selected-card area.
+   After a selection: 70% number pool / 30% selected-cartela area.
+   The pool and selected area own their own scrollbars. */
+#screenCards{
+  min-height:0!important;
+  overflow:hidden!important;
+}
+#screenCards .cards-selection-viewport{
+  width:100%!important;
+  height:calc(100dvh - 225px)!important;
+  min-height:180px!important;
+  max-height:none!important;
+  display:grid!important;
+  grid-template-rows:minmax(0,9fr) minmax(0,1fr)!important;
+  gap:8px!important;
+  overflow:hidden!important;
+  box-sizing:border-box!important;
+}
+#screenCards .cards-selection-viewport.has-selection{
+  grid-template-rows:minmax(0,7fr) minmax(0,3fr)!important;
+}
+#screenCards .cards-selection-viewport > #poolGrid,
+#screenCards .cards-selection-viewport > #selectionCardsSection{
+  width:100%!important;
+  min-width:0!important;
+  min-height:0!important;
+  height:auto!important;
+  max-height:none!important;
+  box-sizing:border-box!important;
+}
+#screenCards .cards-selection-viewport > #poolGrid{
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  -webkit-overflow-scrolling:touch!important;
+  overscroll-behavior-y:contain!important;
+}
+#screenCards .cards-selection-viewport > #selectionCardsSection{
+  display:block!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  -webkit-overflow-scrolling:touch!important;
+  overscroll-behavior-y:contain!important;
+  margin:0!important;
+  padding:0 0 6px!important;
+}
+#screenCards .selection-cards-section.selection-preview-empty .selection-cards-wrap{
+  display:none!important;
+}
+#screenCards .cards-selection-viewport .selection-cards-heading{
+  display:none!important;
+}
+
+/* Only the 3-card state: the three square cards fit in one row, so do not show
+   a scrollbar in the selected-cartela area. Nothing else about the viewport changes. */
+#screenCards .cards-selection-viewport.has-selection > #selectionCardsSection.selection-preview-3{
+  overflow:hidden!important;
+  scrollbar-width:none!important;
+  -ms-overflow-style:none!important;
+}
+#screenCards .cards-selection-viewport.has-selection > #selectionCardsSection.selection-preview-3::-webkit-scrollbar{
+  width:0!important;
+  height:0!important;
+  display:none!important;
+}
+
+/* Keep the existing responsive card proportions. */
+#screenCards #selectionCardsSection.selection-preview-1 #selectionCardsWrap{
+  grid-template-columns:minmax(0,62%)!important;
+  justify-content:center!important;
+}
+#screenCards #selectionCardsSection.selection-preview-2 #selectionCardsWrap{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+}
+#screenCards #selectionCardsSection.selection-preview-3 #selectionCardsWrap{
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+}
+#screenCards #selectionCardsSection.selection-preview-4 #selectionCardsWrap{
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+}
+</style>
+
+<style id="mela-selection-final-empty-slot-and-fourth-fix">
+/* FINAL FIX:
+   Never allow an unused selection slot to reappear because another layout
+   rule uses display:flex!important. The JS marks each slot explicitly with
+   data-selection-visible. */
+#screenCards #selectionCardsSection .selection-card-container[data-selection-visible="0"],
+#screenCards #selectionCardsSection .selection-card-container[style*="display:none"]{
+  display:none!important;
+  visibility:hidden!important;
+  width:0!important;
+  min-width:0!important;
+  max-width:0!important;
+  height:0!important;
+  min-height:0!important;
+  margin:0!important;
+  padding:0!important;
+  overflow:hidden!important;
+}
+
+/* Four cards: keep the same equal-width, square treatment as 2 and 3 cards.
+   The fourth card's body stays inside its own container. */
+#screenCards #selectionCardsSection.selection-preview-4 #selectionCardsWrap{
+  display:grid!important;
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  gap:3px!important;
+  width:100%!important;
+  align-items:start!important;
+}
+#screenCards #selectionCardsSection.selection-preview-4 .selection-card-container[data-selection-visible="1"]{
+  display:flex!important;
+  width:100%!important;
+  min-width:0!important;
+  max-width:none!important;
+  aspect-ratio:1 / 1!important;
+  height:auto!important;
+  min-height:0!important;
+  box-sizing:border-box!important;
+  flex-direction:column!important;
+  overflow:hidden!important;
+}
+#screenCards #selectionCardsSection.selection-preview-4 .selection-card-container[data-selection-visible="1"] .bingo-body{
+  flex:1 1 auto!important;
+  min-height:0!important;
+  display:grid!important;
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  grid-template-rows:repeat(5,minmax(0,1fr))!important;
+  gap:1px!important;
+}
+#screenCards #selectionCardsSection.selection-preview-4 .selection-card-container[data-selection-visible="1"] .bingo-cell{
+  width:100%!important;
+  height:auto!important;
+  min-height:0!important;
+  padding:0!important;
+  font-size:clamp(4px,1.45vw,7px)!important;
+  line-height:1!important;
+}
+@media(max-width:400px){
+  #screenCards #selectionCardsSection.selection-preview-4 #selectionCardsWrap{
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;
+    gap:3px!important;
+  }
+  #screenCards #selectionCardsSection.selection-preview-4 .selection-card-container[data-selection-visible="1"]{
+    aspect-ratio:1 / 1!important;
+  }
+}
+</style>
+
 </head>
 <body>
 
@@ -2008,12 +2410,13 @@ body{padding:0!important}
   <div id="cdPrizePot" style="background:linear-gradient(135deg,rgba(250,204,21,.15),rgba(139,92,246,.15));border:1px solid rgba(250,204,21,.4);border-radius:10px;padding:10px 14px;text-align:center;font-weight:700;color:var(--gold);font-size:14px;margin-bottom:10px">
     🏆 ተጫዋቾች ሲቀላቀሉ የሽልማቱ ገንዘብ ይጨምራል
   </div>
-  <div id="cardsSelectionViewport" class="cards-selection-viewport">
-    <div id="poolGrid" class="pool-grid"></div>
+  
+    <div id="cardsSelectionViewport" class="cards-selection-viewport">
+      <div id="poolGrid" class="pool-grid"></div>
 
-  <!-- Selected cards preview: shown directly below the number pool.
-       This is a selection-screen preview; the live game cards remain in #screenGame. -->
-  <div id="selectionCardsSection" class="selection-cards-section" style="display:none">
+      <!-- Selected cards preview: shown directly below the number pool.
+           This is a selection-screen preview; the live game cards remain in #screenGame. -->
+      <div id="selectionCardsSection" class="selection-cards-section" style="display:none">
     <div id="selectionCardsWrap" class="selection-cards-wrap">
       <div class="selection-card-container" id="selectionCardContainer1" style="display:none">
         <div id="selectionCardLabel1" class="selection-card-id-tag">Cartela No: ---</div>
@@ -2053,7 +2456,7 @@ body{padding:0!important}
       </div>
     </div>
   </div>
-</div>
+
   </div>
 
 <div id="screenGame" class="screen">
@@ -3214,7 +3617,13 @@ function clearSelectionCardsPreview(){
     section.style.display='none';
     section.classList.remove('selection-preview-1','selection-preview-2','selection-preview-3','selection-preview-4','selection-preview-empty');
   }
-  if(wrap) wrap.classList.remove('cards-1','cards-2','cards-3','cards-4');
+  if(wrap){
+    wrap.classList.remove('cards-1','cards-2','cards-3','cards-4');
+    wrap.style.display='none';
+    wrap.style.gridTemplateColumns='';
+    wrap.style.justifyContent='';
+    wrap.style.gap='';
+  }
   if(viewport){
     viewport.classList.remove('has-selection');
     viewport.scrollTop=0;
@@ -3259,6 +3668,7 @@ function renderSelectionCardsPreview(){
     const visible=!!(id&&nums&&nums.length);
     if(!el) return;
     el.style.display=visible?'':'none';
+    el.setAttribute('data-selection-visible',visible?'1':'0');
     const labelEl=document.getElementById(label);
     if(labelEl) labelEl.innerText=`Cartela No: ${id||'---'}`;
     const bodyEl=document.getElementById(body);
@@ -3266,8 +3676,67 @@ function renderSelectionCardsPreview(){
     if(visible) renderCard(nums,body,pfx);
   });
 
-  // Keep the pool and selected cards synchronized after DOM changes.
-  requestAnimationFrame(syncCardPoolResponsiveLayout);
+  // Re-apply the responsive selected-card layout after every selection change.
+  // This is especially important after DESELECT: the previous 3/4-card grid
+  // must immediately collapse to the new 1/2/3-card layout.
+  applySelectionPreviewResponsiveLayout(selected);
+  requestAnimationFrame(()=>{
+    applySelectionPreviewResponsiveLayout(selected);
+    syncCardPoolResponsiveLayout();
+  });
+}
+
+function applySelectionPreviewResponsiveLayout(selected){
+  const section=document.getElementById('selectionCardsSection');
+  const wrap=document.getElementById('selectionCardsWrap');
+  const viewport=document.getElementById('cardsSelectionViewport');
+  if(!section||!wrap) return;
+
+  // Clear any inline layout left by the previous selected-card count.
+  wrap.style.display='grid';
+  wrap.style.justifyContent='';
+  wrap.style.alignItems='start';
+  wrap.style.width='100%';
+  wrap.style.gap='';
+  wrap.style.gridTemplateColumns='';
+
+  if(viewport) viewport.classList.toggle('has-selection',selected>0);
+
+  if(selected===0){
+    wrap.style.display='none';
+    return;
+  }
+
+  const narrow=window.innerWidth<=400;
+  const gap=narrow ? (selected===4 ? '3px' : '4px') : '6px';
+
+  if(selected===1){
+    wrap.style.gridTemplateColumns='minmax(0,62%)';
+    wrap.style.justifyContent='center';
+    wrap.style.gap='0px';
+  }else{
+    wrap.style.gridTemplateColumns=`repeat(${selected},minmax(0,1fr))`;
+    wrap.style.gap=gap;
+  }
+
+  // Only visible slots participate in the layout. This also prevents a
+  // deselected slot from leaving an empty grid cell.
+  for(let n=1;n<=4;n++){
+    const el=document.getElementById(`selectionCardContainer${n}`);
+    if(!el) continue;
+    const visible=el.getAttribute('data-selection-visible')==='1';
+    el.style.display=visible ? 'flex' : 'none';
+    if(visible){
+      el.style.width='100%';
+      el.style.maxWidth='none';
+      el.style.minWidth='0';
+      el.style.aspectRatio='1 / 1';
+      el.style.height='auto';
+      el.style.minHeight='0';
+      el.style.boxSizing='border-box';
+      el.style.flexDirection='column';
+    }
+  }
 }
 
 function renderBothCards(){
@@ -3679,3 +4148,4 @@ connect();
 </script>
 </body>
 </html>
+
