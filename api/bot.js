@@ -3427,6 +3427,85 @@ bot.callbackQuery(
 // TRANSFER HELPERS
 // ============================================================
 
+async function notifyTransferReceiver({
+  receiverTelegramId,
+  senderName,
+  senderPhone,
+  amount,
+  walletType,
+  transactionId
+}) {
+  if (!receiverTelegramId) {
+    console.warn(
+      "Transfer succeeded but receiver has no Telegram ID:",
+      transactionId
+    );
+
+    return false;
+  }
+
+  const walletName =
+    walletType === "main"
+      ? "💰 Main Wallet"
+      : "🎮 Play Wallet";
+
+  const message =
+    "💸 *MONEY RECEIVED*\n\n" +
+
+    `You received *${formatTransferAmount(
+      amount
+    )}* in your ${walletName}.\n\n` +
+
+    `👤 From: *${senderName || "A user"}*\n` +
+
+    `📱 Sender phone: *${senderPhone || "N/A"}*\n\n` +
+
+    `💰 Wallet: *${walletName}*\n` +
+
+    (
+      transactionId
+        ? `🧾 Transaction ID: \`${transactionId}\`\n`
+        : ""
+    ) +
+
+    "\nThe money has been added to your wallet successfully.";
+
+  try {
+
+    await bot.api.sendMessage(
+      receiverTelegramId,
+      message,
+      {
+        parse_mode: "Markdown"
+      }
+    );
+
+    console.log(
+      `Transfer notification sent to receiver ${receiverTelegramId}`
+    );
+
+    return true;
+
+  } catch (err) {
+
+    /*
+     * IMPORTANT:
+     *
+     * The transfer has already succeeded.
+     * Never throw this error back into the
+     * transfer transaction and never reverse
+     * the wallet transfer because Telegram
+     * notification failed.
+     */
+    console.error(
+      "Failed to notify transfer receiver:",
+      err
+    );
+
+    return false;
+  }
+}
+
 const TRANSFER_SESSION_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 
 const TRANSFER_STATES = {
@@ -4363,10 +4442,42 @@ bot.callbackQuery(
           "The transfer could not be completed."
         );
       }
+      
 
       /*
        * Transfer successful.
        */
+
+      const receiverTelegramId =
+  result.receiver_telegram_id ||
+  state.receiverTelegramId;
+
+await notifyTransferReceiver({
+  receiverTelegramId,
+
+  senderName:
+    user.name ||
+    user.full_name ||
+    "A user",
+
+  senderPhone:
+    user.phone ||
+    user.phone_number ||
+    "",
+
+  amount:
+    Number(
+      result.amount ||
+      state.amount
+    ),
+
+  walletType:
+    state.walletType,
+
+  transactionId:
+    result.transaction_id ||
+    null
+});
       delete pendingTransfer[
         telegramId
       ];
