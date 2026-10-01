@@ -2780,10 +2780,21 @@ function getMyCardSlot(cardId){
   return 0;
 }
 function getNextCardSlot(){
-  if(!myCardId) return 1;
-  if(!myCardId2) return 2;
-  if(!myCardId3) return 3;
-  if(!myCardId4) return 4;
+  // Include selections that are already on the way to the server. This is
+  // critical for very fast clicks: the second click must use slot 2 even if
+  // the server has not yet sent the cardSelected response for slot 1.
+  const occupied=new Set();
+  if(myCardId) occupied.add(1);
+  if(myCardId2) occupied.add(2);
+  if(myCardId3) occupied.add(3);
+  if(myCardId4) occupied.add(4);
+  Object.values(pendingCardSelections).forEach(slot=>{
+    const n=Number(slot);
+    if(n>=1&&n<=4) occupied.add(n);
+  });
+  for(let slot=1;slot<=4;slot++){
+    if(!occupied.has(slot)) return slot;
+  }
   return 0;
 }
 // Pending card selections are visual-only until the server confirms the charge.
