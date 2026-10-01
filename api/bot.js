@@ -3998,13 +3998,25 @@ async function startTransferWalletSelection(ctx, walletType) {
       return;
     }
 
+    // ========================================================
+    // Current wallet balance
+    // ========================================================
+
     const balance = Number(
       limits.balance || 0
     );
 
+    // ========================================================
+    // Minimum amount allowed for one transfer
+    // ========================================================
+
     const minimum = Number(
       limits.minimum_transfer_amount || 0
     );
+
+    // ========================================================
+    // Maximum amount allowed for ONE transfer
+    // ========================================================
 
     const maximum =
       limits.maximum_transfer_amount === null ||
@@ -4014,14 +4026,74 @@ async function startTransferWalletSelection(ctx, walletType) {
             limits.maximum_transfer_amount
           );
 
-    if (balance < minimum) {
+    // ========================================================
+    // Minimum balance that MUST remain in sender wallet
+    // ========================================================
+
+    const minimumRemaining = Number(
+      limits.minimum_remaining_balance || 0
+    );
+
+    // ========================================================
+    // Maximum user can actually transfer RIGHT NOW
+    //
+    // This should already be calculated by PostgreSQL.
+    // We calculate a fallback here as an extra safety measure.
+    // ========================================================
+
+    let maximumTransferable;
+
+    if (
+      limits.maximum_transferable_now !== null &&
+      limits.maximum_transferable_now !== undefined
+    ) {
+      maximumTransferable = Number(
+        limits.maximum_transferable_now
+      );
+    } else {
+
+      const balanceAvailableAfterMinimum =
+        Math.max(
+          balance - minimumRemaining,
+          0
+        );
+
+      maximumTransferable =
+        maximum === null
+          ? balanceAvailableAfterMinimum
+          : Math.min(
+              balanceAvailableAfterMinimum,
+              maximum
+            );
+    }
+
+    maximumTransferable = Math.max(
+      Number(maximumTransferable) || 0,
+      0
+    );
+
+    // ========================================================
+    // Check whether the user can make the minimum transfer
+    // while keeping the required minimum remaining balance.
+    // ========================================================
+
+    if (
+      balance < minimum ||
+      maximumTransferable < minimum
+    ) {
       delete pendingTransfer[telegramId];
 
       await ctx.editMessageText(
         `${getWalletDisplayName(walletType)}\n\n` +
         `💰 Available balance: *${formatTransferAmount(balance)}*\n` +
-        `📌 Minimum transfer: *${formatTransferAmount(minimum)}*\n\n` +
-        `❌ Your balance is below the minimum amount required to transfer.`,
+        `📌 Minimum transfer: *${formatTransferAmount(minimum)}*\n` +
+        `🔒 Minimum balance to keep: *${formatTransferAmount(
+          minimumRemaining
+        )}*\n` +
+        `📊 Maximum you can transfer: *${formatTransferAmount(
+          maximumTransferable
+        )}*\n\n` +
+        `❌ You do not have enough available balance to make the minimum transfer while keeping the required minimum balance.`,
         {
           parse_mode: "Markdown",
           reply_markup: getTransferCancelKeyboard()
@@ -4035,6 +4107,7 @@ async function startTransferWalletSelection(ctx, walletType) {
      * Create the transfer session only after all
      * preliminary checks have succeeded.
      */
+
     const state = createTransferState(
       telegramId,
       walletType
@@ -4042,17 +4115,45 @@ async function startTransferWalletSelection(ctx, walletType) {
 
     state.limits = limits;
 
+    // Store the calculated value as well.
+    state.limits.maximum_transferable_now =
+      maximumTransferable;
+
     refreshTransferExpiry(state);
+
+    // ========================================================
+    // Build transfer information message
+    // ========================================================
 
     let message =
       `${getWalletDisplayName(walletType)}\n\n` +
-      `💰 Available balance: *${formatTransferAmount(balance)}*\n` +
-      `📌 Minimum transfer: *${formatTransferAmount(minimum)}*\n`;
+      `💰 Available balance: *${formatTransferAmount(
+        balance
+      )}*\n` +
+      `📌 Minimum transfer: *${formatTransferAmount(
+        minimum
+      )}*\n` +
+      `🔒 Minimum balance to keep: *${formatTransferAmount(
+        minimumRemaining
+      )}*\n` +
+      `📊 Maximum you can transfer now: *${formatTransferAmount(
+        maximumTransferable
+      )}*\n`;
+
+    // ========================================================
+    // Maximum per-transfer rule
+    // ========================================================
 
     if (maximum !== null) {
       message +=
-        `📌 Maximum per transfer: *${formatTransferAmount(maximum)}*\n`;
+        `📌 Maximum per transfer: *${formatTransferAmount(
+          maximum
+        )}*\n`;
     }
+
+    // ========================================================
+    // Daily remaining transfer count
+    // ========================================================
 
     if (
       limits.daily &&
@@ -4062,6 +4163,10 @@ async function startTransferWalletSelection(ctx, walletType) {
       message +=
         `\n📅 Daily remaining transfers: *${limits.daily.remaining_count}*`;
     }
+
+    // ========================================================
+    // Daily remaining amount
+    // ========================================================
 
     if (
       limits.daily &&
@@ -4074,6 +4179,10 @@ async function startTransferWalletSelection(ctx, walletType) {
         )}*`;
     }
 
+    // ========================================================
+    // Ask for recipient phone
+    // ========================================================
+
     message +=
       "\n\n📱 *Enter the recipient's phone number.*\n\n" +
       "Example: `0912345678`\n" +
@@ -4083,6 +4192,7 @@ async function startTransferWalletSelection(ctx, walletType) {
     /*
      * Update the original menu message.
      */
+
     await ctx.editMessageText(
       message,
       {
