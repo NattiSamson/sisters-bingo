@@ -4414,6 +4414,78 @@ bot.callbackQuery(
 );
 
 // ============================================================
+// TRANSFER — RETRY AMOUNT
+// ============================================================
+
+bot.callbackQuery(
+  "transfer_retry_amount",
+  async (ctx) => {
+
+    await answerCallback(ctx);
+
+    const telegramId =
+      ctx.from.id;
+
+    const state =
+      getTransferState(
+        telegramId
+      );
+
+    if (!state) {
+      return ctx.reply(
+        "⏱ This transfer session has expired. Please start again."
+      );
+    }
+
+    refreshTransferExpiry(state);
+
+    state.amount = null;
+    state.idempotencyKey = null;
+    state.state =
+      TRANSFER_STATES.ENTER_AMOUNT;
+
+    await ctx.editMessageText(
+      `💵 *ENTER TRANSFER AMOUNT*\n\n` +
+      `👤 Recipient: *${state.receiverName}*\n` +
+      `📱 Phone: *${state.receiverPhone}*\n\n` +
+      `💰 Wallet: *${getWalletDisplayName(
+        state.walletType
+      )}*\n` +
+      `💰 Available: *${formatTransferAmount(
+        state.limits.balance
+      )}*\n\n` +
+      `📌 Minimum: *${formatTransferAmount(
+        state.limits.minimum_transfer_amount
+      )}*\n` +
+      (
+        state.limits.maximum_transfer_amount !== null &&
+        state.limits.maximum_transfer_amount !== undefined
+          ? `📌 Maximum: *${formatTransferAmount(
+              state.limits.maximum_transfer_amount
+            )}*\n`
+          : ""
+      ) +
+      `\nEnter the amount.\n\n` +
+      `❌ Send /cancel to cancel.`,
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "❌ Cancel",
+                callback_data:
+                  "transfer_cancel"
+              }
+            ]
+          ]
+        }
+      }
+    );
+  }
+);
+
+// ============================================================
 // TRANSFER — FINAL CONFIRMATION
 // ============================================================
 
