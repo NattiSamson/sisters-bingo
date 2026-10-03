@@ -4437,51 +4437,245 @@ bot.callbackQuery(
       );
     }
 
-    refreshTransferExpiry(state);
+    try {
 
-    state.amount = null;
-    state.idempotencyKey = null;
-    state.state =
-      TRANSFER_STATES.ENTER_AMOUNT;
+      // --------------------------------------------------------
+      // Reload current transfer limits from database
+      // --------------------------------------------------------
 
-    await ctx.editMessageText(
-      `💵 *ENTER TRANSFER AMOUNT*\n\n` +
-      `👤 Recipient: *${state.receiverName}*\n` +
-      `📱 Phone: *${state.receiverPhone}*\n\n` +
-      `💰 Wallet: *${getWalletDisplayName(
-        state.walletType
-      )}*\n` +
-      `💰 Available: *${formatTransferAmount(
-        state.limits.balance
-      )}*\n\n` +
-      `📌 Minimum: *${formatTransferAmount(
-        state.limits.minimum_transfer_amount
-      )}*\n` +
-      (
-        state.limits.maximum_transfer_amount !== null &&
-        state.limits.maximum_transfer_amount !== undefined
-          ? `📌 Maximum: *${formatTransferAmount(
-              state.limits.maximum_transfer_amount
-            )}*\n`
-          : ""
-      ) +
-      `\nEnter the amount.\n\n` +
-      `❌ Send /cancel to cancel.`,
-      {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "❌ Cancel",
-                callback_data:
-                  "transfer_cancel"
-              }
-            ]
-          ]
-        }
+      const user =
+        await db.getUserByTelegramId(
+          telegramId
+        );
+
+      if (!user) {
+        clearPendingState(telegramId);
+
+        return ctx.reply(
+          "Please /start to register first."
+        );
       }
-    );
+
+      if (
+        user.is_active !== true ||
+        user.is_blocked === true ||
+        user.is_banned === true
+      ) {
+        clearPendingState(telegramId);
+
+        return ctx.reply(
+          "🚫 Your account is not eligible for transfers."
+        );
+      }
+
+      const limits =
+        await db.getTransferLimits(
+          user.id,
+          state.walletType
+        );
+
+      if (!limits) {
+        return ctx.reply(
+          "❌ Transfer limits could not be loaded. Please try again."
+        );
+      }
+
+      // --------------------------------------------------------
+      // Update state with fresh limits
+      // --------------------------------------------------------
+
+      state.limits = limits;
+      state.amount = null;
+      state.idempotencyKey = null;
+      state.state =
+        TRANSFER_STATES.ENTER_AMOUNT;
+
+      refreshTransferExpiry(state);
+
+      // --------------------------------------------------------
+      // Calculate maximum transferable now
+      // --------------------------------------------------------
+
+      const balance =
+        Number(
+          limits.balance || 0
+        );
+
+      const minimum =
+        Number(
+          limits.minimum_transfer_amount || 0
+        );
+
+      const minimumRemaining =
+        Number(
+          limits.minimum_remaining_balance || 0
+        );
+
+      const maximum =
+        limits.maximum_transfer_amount === null ||
+        limits.maximum_transfer_amount === undefined
+          ? null
+          : Number(
+              limits.maximum_transfer_amount
+            );
+
+      let maximumTransferable;
+
+      if (
+        limits.maximum_transferable_now !== null &&
+        limits.maximum_transferable_now !== undefined
+      ) {
+        maximumTransferable =
+          Number(
+            limits.maximum_transferable_now
+          );
+      } else {
+
+        const balanceAvailableAfterMinimum =
+          Math.max(
+            balance - minimumRemaining,
+            0
+          );
+
+        maximumTransferable =
+          maximum === null
+            ? balanceAvailableAfterMinimum
+            : Math.min(
+                balanceAvailableAfterMinimum,
+                maximum
+              );
+      }
+
+      maximumTransferable =
+        Math.max(
+          Number(maximumTransferable) || 0,
+          0
+        );
+
+      state.limits.maximum_transferable_now =
+        maximumTransferable;
+
+      // --------------------------------------------------------
+      // Make sure minimum transfer is still possible
+      // --------------------------------------------------------
+
+      if (
+        balance < minimum ||
+        maximumTransferable < minimum
+      ) {
+
+        return ctx.editMessageText(
+          `${getWalletDisplayName(
+            state.walletType
+          )}\n\n` +
+
+          `💰 Available balance: *${formatTransferAmount(
+            balance
+          )}*\n` +
+
+          `📌 Minimum transfer: *${formatTransferAmount(
+            minimum
+          )}*\n` +
+
+          `🔒 Minimum balance to keep: *${formatTransferAmount(
+            minimumRemaining
+          )}*\n` +
+
+          `📊 Maximum you can transfer: *${formatTransferAmount(
+            maximumTransferable
+          )}*\n\n` +
+
+          `❌ You can no longer make the minimum transfer from this wallet.`,
+
+          {
+            parse_mode: "Markdown",
+            reply_markup: getTransferCancelKeyboard()
+          }
+        );
+      }
+
+      // --------------------------------------------------------
+      // Show amount entry screen
+      // --------------------------------------------------------
+
+      let message =
+        `💵 *ENTER TRANSFER AMOUNT*\n\n` +
+
+        `👤 Recipient: *${state.receiverName}*\n` +
+
+        `📱 Phone: *${state.receiverPhone}*\n\n` +
+
+        `💰 Wallet: *${getWalletDisplayName(
+          state.walletType
+        )}*\n` +
+
+        `💰 Available: *${formatTransferAmount(
+          balance
+        )}*\n` +
+
+        `🔒 Minimum balance to keep: *${formatTransferAmount(
+          minimumRemaining
+        )}*\n\n` +
+
+        `📌 Minimum: *${formatTransferAmount(
+          minimum
+        )}*\n` +
+
+        `📊 Maximum you can transfer now: *${formatTransferAmount(
+          maximumTransferable
+        )}*\n`;
+
+      if (maximum !== null) {
+        message +=
+          `📌 Maximum per transfer: *${formatTransferAmount(
+            maximum
+          )}*\n`;
+      }
+
+      message +=
+        `\nEnter the amount.\n\n` +
+        `❌ Send /cancel to cancel.`;
+
+      await ctx.editMessageText(
+        message,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "❌ Cancel",
+                  callback_data:
+                    "transfer_cancel"
+                }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Transfer retry amount error:",
+        err
+      );
+
+      console.error(
+        err?.stack
+      );
+
+      try {
+        await ctx.reply(
+          "❌ Unable to reload the transfer limits. Please try again."
+        );
+      } catch (replyError) {
+        console.error(
+          "Transfer retry error reply failed:",
+          replyError
+        );
+      }
+    }
   }
 );
 
