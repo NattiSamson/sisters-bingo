@@ -2,7 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 18.6 (6569466)
+
+-- Dumped from database version 18.6 (4e955f5)
 -- Dumped by pg_dump version 18.4
 
 SET statement_timeout = 0;
@@ -16,6 +17,867 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+
+--
+-- Name: award_bonus(integer, bigint, numeric, character varying, character varying, character varying, text, jsonb); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.award_bonus(p_user_id integer, p_campaign_id bigint, p_amount numeric, p_source_type character varying, p_source_id character varying, p_idempotency_key character varying, p_description text DEFAULT NULL::text, p_metadata jsonb DEFAULT '{}'::jsonb) RETURNS TABLE(bonus_id bigint, transaction_id bigint)
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_campaign public.bonus_campaigns%ROWTYPE;
+    v_wallet_id BIGINT;
+    v_transaction_id BIGINT;
+    v_transaction_created BOOLEAN;
+    v_bonus_id BIGINT;
+    v_wagering_requirement NUMERIC(18,2);
+    v_expires_at TIMESTAMPTZ;
+    v_effective_metadata JSONB;
+BEGIN
+    ----------------------------------------------------------------
+    -- 1. Validate input
+    ----------------------------------------------------------------
+    IF p_user_id IS NULL OR p_user_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid user ID';
+    END IF;
+
+    IF p_campaign_id IS NULL OR p_campaign_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid bonus campaign ID';
+    END IF;
+
+    IF p_amount IS NULL OR p_amount <= 0 THEN
+        RAISE EXCEPTION 'Bonus amount must be greater than zero';
+    END IF;
+
+    IF p_idempotency_key IS NULL
+       OR BTRIM(p_idempotency_key) = '' THEN
+        RAISE EXCEPTION 'Bonus idempotency key is required';
+    END IF;
+
+    ----------------------------------------------------------------
+    -- 2. Load and validate campaign
+    ----------------------------------------------------------------
+    SELECT *
+    INTO v_campaign
+    FROM public.bonus_campaigns
+    WHERE id = p_campaign_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Bonus campaign % was not found', p_campaign_id;
+    END IF;
+
+    IF NOT v_campaign.is_active THEN
+        RAISE EXCEPTION 'Bonus campaign % is not active', p_campaign_id;
+    END IF;
+
+    IF v_campaign.starts_at IS NOT NULL
+       AND v_campaign.starts_at > NOW() THEN
+        RAISE EXCEPTION 'Bonus campaign % has not started', p_campaign_id;
+    END IF;
+
+    IF v_campaign.ends_at IS NOT NULL
+       AND v_campaign.ends_at < NOW() THEN
+        RAISE EXCEPTION 'Bonus campaign % has expired', p_campaign_id;
+    END IF;
+
+    ----------------------------------------------------------------
+    -- 3. Resolve Bonus wallet
+    ----------------------------------------------------------------
+    v_wallet_id := public.get_user_wallet_id(
+        p_user_id,
+        'bonus'
+    );
+
+    IF v_wallet_id IS NULL THEN
+        RAISE EXCEPTION
+            'Bonus wallet not found for user %',
+            p_user_id;
+    END IF;
+
+    ----------------------------------------------------------------
+    -- 4. Lock Bonus wallet balance
+    ----------------------------------------------------------------
+    PERFORM public.lock_wallet(v_wallet_id);
+
+    ----------------------------------------------------------------
+    -- 5. Calculate wagering requirement
+    ----------------------------------------------------------------
+    v_wagering_requirement := ROUND(
+        p_amount * v_campaign.wagering_multiplier,
+        2
+    );
+
+    ----------------------------------------------------------------
+    -- 6. Calculate expiration
+    ----------------------------------------------------------------
+    IF v_campaign.validity_hours IS NOT NULL THEN
+        v_expires_at :=
+            NOW() + (v_campaign.validity_hours * INTERVAL '1 hour');
+    ELSE
+        v_expires_at := NULL;
+    END IF;
+
+    ----------------------------------------------------------------
+    -- 7. Build transaction metadata
+    ----------------------------------------------------------------
+    v_effective_metadata :=
+        COALESCE(p_metadata, '{}'::JSONB)
+        ||
+        jsonb_build_object(
+            'bonus_campaign_id', p_campaign_id,
+            'bonus_campaign_code', v_campaign.code,
+            'bonus_campaign_name', v_campaign.name,
+            'bonus_type', v_campaign.bonus_type,
+            'bonus_amount', ROUND(p_amount, 2),
+            'wagering_multiplier',
+                v_campaign.wagering_multiplier,
+            'wagering_requirement',
+                v_wagering_requirement
+        );
+
+    ----------------------------------------------------------------
+    -- 8. Create/retrieve financial transaction
+    ----------------------------------------------------------------
+    SELECT
+        t.transaction_id,
+        t.created
+    INTO
+        v_transaction_id,
+        v_transaction_created
+    FROM public.create_financial_transaction(
+        p_user_id,
+        'bonus',
+        'completed',
+        v_campaign.game_system_id,
+        p_source_type,
+        p_source_id,
+        p_idempotency_key,
+        p_description,
+        v_effective_metadata
+    ) AS t;
+
+    ----------------------------------------------------------------
+    -- 9. Idempotent retry
+    ----------------------------------------------------------------
+    IF NOT v_transaction_created THEN
+
+        SELECT ub.id
+        INTO v_bonus_id
+        FROM public.user_bonuses ub
+        WHERE ub.idempotency_key = p_idempotency_key;
+
+        IF v_bonus_id IS NULL THEN
+            RAISE EXCEPTION
+                'Bonus transaction % exists but user bonus was not found',
+                v_transaction_id;
+        END IF;
+
+        RETURN QUERY
+        SELECT
+            v_bonus_id,
+            v_transaction_id;
+
+        RETURN;
+    END IF;
+
+    ----------------------------------------------------------------
+    -- 10. Create user bonus entitlement
+    ----------------------------------------------------------------
+    INSERT INTO public.user_bonuses (
+        user_id,
+        campaign_id,
+        status,
+        awarded_amount,
+        wagering_requirement,
+        wagering_progress,
+        remaining_amount,
+        expires_at,
+        awarded_at,
+        activated_at,
+        source_type,
+        source_id,
+        idempotency_key,
+        metadata
+    )
+    VALUES (
+        p_user_id,
+        p_campaign_id,
+        'active',
+        ROUND(p_amount, 2),
+        v_wagering_requirement,
+        0,
+        ROUND(p_amount, 2),
+        v_expires_at,
+        NOW(),
+        NOW(),
+        p_source_type,
+        p_source_id,
+        p_idempotency_key,
+        v_effective_metadata
+    )
+    RETURNING id
+    INTO v_bonus_id;
+
+    ----------------------------------------------------------------
+    -- 11. Credit Bonus ledger
+    ----------------------------------------------------------------
+    INSERT INTO public.ledger_entries (
+        transaction_id,
+        wallet_id,
+        amount
+    )
+    VALUES (
+        v_transaction_id,
+        v_wallet_id,
+        ROUND(p_amount, 2)
+    );
+
+    ----------------------------------------------------------------
+    -- 12. Update Bonus wallet
+    ----------------------------------------------------------------
+    UPDATE public.wallet_balances
+    SET
+        balance = balance + ROUND(p_amount, 2),
+        updated_at = NOW()
+    WHERE wallet_id = v_wallet_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Wallet balance % not found while awarding bonus',
+            v_wallet_id;
+    END IF;
+
+    ----------------------------------------------------------------
+    -- 13. Return both IDs
+    ----------------------------------------------------------------
+    RETURN QUERY
+    SELECT
+        v_bonus_id,
+        v_transaction_id;
+END;
+$$;
+
+
+ALTER FUNCTION public.award_bonus(p_user_id integer, p_campaign_id bigint, p_amount numeric, p_source_type character varying, p_source_id character varying, p_idempotency_key character varying, p_description text, p_metadata jsonb) OWNER TO neondb_owner;
+
+--
+-- Name: complete_bonus_wagering(bigint); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.complete_bonus_wagering(p_user_bonus_id bigint) RETURNS numeric
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_bonus public.user_bonuses%ROWTYPE;
+    v_convertible_amount NUMERIC(18,2);
+BEGIN
+    IF p_user_bonus_id IS NULL THEN
+        RAISE EXCEPTION 'User bonus ID is required';
+    END IF;
+
+    SELECT *
+    INTO v_bonus
+    FROM public.user_bonuses
+    WHERE id = p_user_bonus_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'User bonus % does not exist',
+            p_user_bonus_id;
+    END IF;
+
+    IF v_bonus.status = 'completed' THEN
+        RETURN v_bonus.convertible_amount;
+    END IF;
+
+    IF v_bonus.status <> 'active' THEN
+        RAISE EXCEPTION
+            'User bonus % is not active. Current status: %',
+            p_user_bonus_id,
+            v_bonus.status;
+    END IF;
+
+    IF v_bonus.wagering_progress < v_bonus.wagering_requirement THEN
+        RAISE EXCEPTION
+            'Bonus % has not completed wagering. Progress: %, Required: %',
+            p_user_bonus_id,
+            v_bonus.wagering_progress,
+            v_bonus.wagering_requirement;
+    END IF;
+
+    /*
+     * Only bonus funds still remaining after wagering can be
+     * converted to Main.
+     *
+     * The amount already consumed for stakes is not itself
+     * recreated as withdrawable money.
+     */
+    v_convertible_amount := ROUND(
+        GREATEST(v_bonus.remaining_amount, 0),
+        2
+    );
+
+    UPDATE public.user_bonuses
+    SET
+        convertible_amount = v_convertible_amount,
+        status = 'completed',
+        completed_at = NOW(),
+        updated_at = NOW()
+    WHERE id = p_user_bonus_id;
+
+    RETURN v_convertible_amount;
+END;
+$$;
+
+
+ALTER FUNCTION public.complete_bonus_wagering(p_user_bonus_id bigint) OWNER TO neondb_owner;
+
+--
+-- Name: consume_bonus_for_stake(integer, bigint, numeric); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.consume_bonus_for_stake(p_user_id integer, p_stake_transaction_id bigint, p_bonus_amount numeric) RETURNS TABLE(consumed_amount numeric, wagering_amount numeric)
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_remaining NUMERIC(18,2);
+    v_available NUMERIC(18,2);
+    v_consume NUMERIC(18,2);
+
+    v_total_consumed NUMERIC(18,2) := 0;
+    v_total_wagering NUMERIC(18,2) := 0;
+
+    v_bonus RECORD;
+BEGIN
+    IF p_user_id IS NULL THEN
+        RAISE EXCEPTION 'User ID is required';
+    END IF;
+
+    IF p_stake_transaction_id IS NULL THEN
+        RAISE EXCEPTION 'Stake transaction ID is required';
+    END IF;
+
+    IF p_bonus_amount IS NULL OR p_bonus_amount <= 0 THEN
+        consumed_amount := 0;
+        wagering_amount := 0;
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    ----------------------------------------------------------------
+    -- Verify the stake transaction
+    ----------------------------------------------------------------
+    PERFORM 1
+    FROM public.financial_transactions ft
+    WHERE ft.id = p_stake_transaction_id
+      AND ft.user_id = p_user_id
+      AND ft.type = 'stake'
+      AND ft.status = 'completed';
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Stake transaction % does not exist, does not belong to user %, or is not a completed stake',
+            p_stake_transaction_id,
+            p_user_id;
+    END IF;
+
+    ----------------------------------------------------------------
+    -- Amount actually funded by Bonus
+    ----------------------------------------------------------------
+    v_remaining := ROUND(p_bonus_amount, 2);
+
+    ----------------------------------------------------------------
+    -- Consume active bonuses, oldest expiry first
+    ----------------------------------------------------------------
+    FOR v_bonus IN
+        SELECT
+            ub.id,
+            ub.awarded_amount,
+            ub.wagering_requirement,
+            ub.wagering_progress,
+            ub.remaining_amount,
+            ub.expires_at
+        FROM public.user_bonuses ub
+        WHERE ub.user_id = p_user_id
+          AND ub.status = 'active'
+          AND ub.remaining_amount > 0
+          AND (
+              ub.expires_at IS NULL
+              OR ub.expires_at >= NOW()
+          )
+        ORDER BY
+            CASE
+                WHEN ub.expires_at IS NULL THEN 1
+                ELSE 0
+            END,
+            ub.expires_at ASC,
+            ub.id ASC
+        FOR UPDATE
+    LOOP
+        EXIT WHEN v_remaining <= 0;
+
+        v_available := ROUND(
+            v_bonus.remaining_amount,
+            2
+        );
+
+        v_consume := LEAST(
+            v_remaining,
+            v_available
+        );
+
+        IF v_consume <= 0 THEN
+            CONTINUE;
+        END IF;
+
+        ----------------------------------------------------------------
+        -- Current rule:
+        -- 1 ETB Bonus consumed = 1 ETB qualifying wagering.
+        ----------------------------------------------------------------
+        INSERT INTO public.user_bonus_consumptions (
+            user_bonus_id,
+            stake_transaction_id,
+            amount,
+            wagering_amount
+        )
+        VALUES (
+            v_bonus.id,
+            p_stake_transaction_id,
+            v_consume,
+            v_consume
+        )
+        ON CONFLICT (user_bonus_id, stake_transaction_id)
+        DO UPDATE
+        SET
+            amount = EXCLUDED.amount,
+            wagering_amount = EXCLUDED.wagering_amount;
+
+        ----------------------------------------------------------------
+        -- Update bonus entitlement
+        ----------------------------------------------------------------
+        UPDATE public.user_bonuses
+        SET
+            remaining_amount = GREATEST(
+                remaining_amount - v_consume,
+                0
+            ),
+            wagering_progress = LEAST(
+                wagering_requirement,
+                wagering_progress + v_consume
+            ),
+            updated_at = NOW()
+        WHERE id = v_bonus.id;
+
+        ----------------------------------------------------------------
+        -- Accumulate results
+        ----------------------------------------------------------------
+        v_remaining := ROUND(
+            v_remaining - v_consume,
+            2
+        );
+
+        v_total_consumed := ROUND(
+            v_total_consumed + v_consume,
+            2
+        );
+
+        v_total_wagering := ROUND(
+            v_total_wagering + v_consume,
+            2
+        );
+    END LOOP;
+
+    ----------------------------------------------------------------
+    -- Return both values
+    ----------------------------------------------------------------
+    consumed_amount := v_total_consumed;
+    wagering_amount := v_total_wagering;
+
+    RETURN NEXT;
+    RETURN;
+END;
+$$;
+
+
+ALTER FUNCTION public.consume_bonus_for_stake(p_user_id integer, p_stake_transaction_id bigint, p_bonus_amount numeric) OWNER TO neondb_owner;
+
+--
+-- Name: convert_bonus_to_main(bigint); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.convert_bonus_to_main(p_user_bonus_id bigint) RETURNS bigint
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_bonus public.user_bonuses%ROWTYPE;
+    v_campaign public.bonus_campaigns%ROWTYPE;
+
+    v_bonus_wallet_id BIGINT;
+    v_main_wallet_id BIGINT;
+
+    v_bonus_balance NUMERIC(18,2);
+    v_main_balance NUMERIC(18,2);
+
+    v_conversion_base NUMERIC(18,2);
+    v_conversion_amount NUMERIC(18,2);
+
+    v_transaction_id BIGINT;
+    v_transaction_created BOOLEAN;
+
+    v_idempotency_key VARCHAR(255);
+    v_metadata JSONB;
+BEGIN
+    IF p_user_bonus_id IS NULL THEN
+        RAISE EXCEPTION 'User bonus ID is required';
+    END IF;
+
+    /*
+     * Lock the bonus first.
+     * This serializes conversion attempts for the same bonus.
+     */
+    SELECT *
+    INTO v_bonus
+    FROM public.user_bonuses
+    WHERE id = p_user_bonus_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'User bonus % does not exist',
+            p_user_bonus_id;
+    END IF;
+
+    /*
+     * Conversion operation has a deterministic idempotency key.
+     */
+    v_idempotency_key :=
+        'bonus-conversion:' || p_user_bonus_id::VARCHAR;
+
+    /*
+     * If this conversion was already completed, return its
+     * existing financial transaction.
+     */
+    SELECT ft.id
+    INTO v_transaction_id
+    FROM public.financial_transactions ft
+    WHERE ft.idempotency_key = v_idempotency_key
+    FOR UPDATE;
+
+    IF FOUND THEN
+        RETURN v_transaction_id;
+    END IF;
+
+    /*
+     * Wagering must already be complete.
+     */
+    IF v_bonus.status <> 'completed' THEN
+        RAISE EXCEPTION
+            'Bonus % is not ready for conversion. Current status: %',
+            p_user_bonus_id,
+            v_bonus.status;
+    END IF;
+
+    IF v_bonus.wagering_progress < v_bonus.wagering_requirement THEN
+        RAISE EXCEPTION
+            'Bonus % has incomplete wagering. Progress: %, Required: %',
+            p_user_bonus_id,
+            v_bonus.wagering_progress,
+            v_bonus.wagering_requirement;
+    END IF;
+
+    IF v_bonus.converted_amount > v_bonus.convertible_amount THEN
+        RAISE EXCEPTION
+            'Bonus % has invalid conversion state. Converted: %, Convertible: %',
+            p_user_bonus_id,
+            v_bonus.converted_amount,
+            v_bonus.convertible_amount;
+    END IF;
+
+    /*
+     * Load the campaign that governs this bonus.
+     */
+    SELECT *
+    INTO v_campaign
+    FROM public.bonus_campaigns
+    WHERE id = v_bonus.campaign_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Bonus campaign % does not exist',
+            v_bonus.campaign_id;
+    END IF;
+
+    /*
+     * Conversion is based on the amount currently eligible
+     * for conversion.
+     */
+    v_conversion_base := ROUND(
+        GREATEST(
+            v_bonus.convertible_amount - v_bonus.converted_amount,
+            0
+        ),
+        2
+    );
+
+    /*
+     * Apply the campaign conversion rule.
+     */
+    CASE v_campaign.conversion_type
+
+        WHEN 'percentage' THEN
+            v_conversion_amount := ROUND(
+                v_conversion_base
+                * v_campaign.conversion_percentage
+                / 100,
+                2
+            );
+
+        WHEN 'fixed' THEN
+            v_conversion_amount := LEAST(
+                v_conversion_base,
+                ROUND(v_campaign.conversion_percentage, 2)
+            );
+
+        WHEN 'none' THEN
+            v_conversion_amount := 0.00;
+
+        ELSE
+            RAISE EXCEPTION
+                'Unsupported conversion type "%" for campaign %',
+                v_campaign.conversion_type,
+                v_campaign.id;
+    END CASE;
+
+    /*
+     * Apply the optional maximum conversion cap.
+     */
+    IF v_campaign.conversion_max_amount IS NOT NULL THEN
+        v_conversion_amount := LEAST(
+            v_conversion_amount,
+            v_campaign.conversion_max_amount
+        );
+    END IF;
+
+    v_conversion_amount := ROUND(
+        GREATEST(v_conversion_amount, 0),
+        2
+    );
+
+    IF v_conversion_amount > v_conversion_base THEN
+        RAISE EXCEPTION
+            'Calculated conversion % exceeds eligible amount %',
+            v_conversion_amount,
+            v_conversion_base;
+    END IF;
+
+    /*
+     * Find both wallets.
+     */
+    SELECT id
+    INTO v_bonus_wallet_id
+    FROM public.wallets
+    WHERE user_id = v_bonus.user_id
+      AND wallet_type = 'bonus'
+      AND is_active = TRUE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Active Bonus wallet not found for user %',
+            v_bonus.user_id;
+    END IF;
+
+    SELECT id
+    INTO v_main_wallet_id
+    FROM public.wallets
+    WHERE user_id = v_bonus.user_id
+      AND wallet_type = 'main'
+      AND is_active = TRUE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Active Main wallet not found for user %',
+            v_bonus.user_id;
+    END IF;
+
+    /*
+     * Lock wallet balances deterministically by wallet ID.
+     * This prevents concurrent wallet mutations from racing.
+     */
+    IF v_bonus_wallet_id < v_main_wallet_id THEN
+
+        SELECT balance
+        INTO v_bonus_balance
+        FROM public.wallet_balances
+        WHERE wallet_id = v_bonus_wallet_id
+        FOR UPDATE;
+
+        SELECT balance
+        INTO v_main_balance
+        FROM public.wallet_balances
+        WHERE wallet_id = v_main_wallet_id
+        FOR UPDATE;
+
+    ELSE
+
+        SELECT balance
+        INTO v_main_balance
+        FROM public.wallet_balances
+        WHERE wallet_id = v_main_wallet_id
+        FOR UPDATE;
+
+        SELECT balance
+        INTO v_bonus_balance
+        FROM public.wallet_balances
+        WHERE wallet_id = v_bonus_wallet_id
+        FOR UPDATE;
+
+    END IF;
+
+    IF v_bonus_balance IS NULL THEN
+        RAISE EXCEPTION
+            'Bonus wallet balance row not found for wallet %',
+            v_bonus_wallet_id;
+    END IF;
+
+    IF v_main_balance IS NULL THEN
+        RAISE EXCEPTION
+            'Main wallet balance row not found for wallet %',
+            v_main_wallet_id;
+    END IF;
+
+    /*
+     * The Bonus wallet must contain the actual amount being
+     * converted. Never create Main-wallet money from the
+     * bonus entitlement alone.
+     */
+    IF v_conversion_amount > v_bonus_balance THEN
+        RAISE EXCEPTION
+            'Insufficient Bonus wallet balance for conversion. Required: %, Available: %',
+            v_conversion_amount,
+            v_bonus_balance;
+    END IF;
+
+    /*
+     * Create the auditable financial transaction.
+     */
+    v_metadata := jsonb_build_object(
+        'operation', 'bonus_conversion',
+        'user_bonus_id', v_bonus.id,
+        'bonus_campaign_id', v_campaign.id,
+        'bonus_campaign_code', v_campaign.code,
+        'bonus_campaign_name', v_campaign.name,
+        'conversion_type', v_campaign.conversion_type,
+        'conversion_percentage', v_campaign.conversion_percentage,
+        'conversion_max_amount', v_campaign.conversion_max_amount,
+        'conversion_base_amount', v_conversion_base,
+        'conversion_amount', v_conversion_amount,
+        'convertible_amount_before', v_bonus.convertible_amount,
+        'converted_amount_before', v_bonus.converted_amount,
+        'bonus_wallet_id', v_bonus_wallet_id,
+        'main_wallet_id', v_main_wallet_id
+    );
+
+    SELECT
+        r.transaction_id,
+        r.created
+    INTO
+        v_transaction_id,
+        v_transaction_created
+    FROM public.create_financial_transaction(
+        v_bonus.user_id,
+        'bonus',
+        'completed',
+        v_campaign.game_system_id,
+        'bonus_conversion',
+        v_bonus.id::VARCHAR,
+        v_idempotency_key,
+        'Bonus conversion to Main wallet',
+        v_metadata
+    ) AS r;
+
+    /*
+     * If the financial transaction already existed, return it.
+     * The idempotency key guarantees this operation cannot
+     * create a second financial transaction.
+     */
+    IF NOT v_transaction_created THEN
+        RETURN v_transaction_id;
+    END IF;
+
+    /*
+     * Move the actual money.
+     */
+    IF v_conversion_amount > 0 THEN
+
+        UPDATE public.wallet_balances
+        SET
+            balance = balance - v_conversion_amount,
+            updated_at = NOW()
+        WHERE wallet_id = v_bonus_wallet_id;
+
+        UPDATE public.wallet_balances
+        SET
+            balance = balance + v_conversion_amount,
+            updated_at = NOW()
+        WHERE wallet_id = v_main_wallet_id;
+
+        /*
+         * Bonus wallet debit.
+         */
+        INSERT INTO public.ledger_entries (
+            transaction_id,
+            wallet_id,
+            amount,
+            created_at
+        )
+        VALUES (
+            v_transaction_id,
+            v_bonus_wallet_id,
+            -v_conversion_amount,
+            NOW()
+        );
+
+        /*
+         * Main wallet credit.
+         */
+        INSERT INTO public.ledger_entries (
+            transaction_id,
+            wallet_id,
+            amount,
+            created_at
+        )
+        VALUES (
+            v_transaction_id,
+            v_main_wallet_id,
+            v_conversion_amount,
+            NOW()
+        );
+
+    END IF;
+
+    /*
+     * Record exactly how much of this bonus was converted.
+     */
+    UPDATE public.user_bonuses
+    SET
+        converted_amount =
+            ROUND(
+                converted_amount + v_conversion_amount,
+                2
+            ),
+        updated_at = NOW()
+    WHERE id = v_bonus.id;
+
+    RETURN v_transaction_id;
+END;
+$$;
+
+
+ALTER FUNCTION public.convert_bonus_to_main(p_user_bonus_id bigint) OWNER TO neondb_owner;
 
 --
 -- Name: create_bingo_game_from_selections(bigint, character varying, character varying, jsonb); Type: FUNCTION; Schema: public; Owner: neondb_owner
@@ -2128,6 +2990,98 @@ $$;
 ALTER FUNCTION public.get_active_withdrawal_rule(p_payment_method_id integer, p_payment_account_id integer, p_amount numeric) OWNER TO neondb_owner;
 
 --
+-- Name: stake_funding_policies; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.stake_funding_policies (
+    id bigint NOT NULL,
+    game_system_id bigint,
+    policy_code character varying(30) NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    starts_at timestamp with time zone,
+    ends_at timestamp with time zone,
+    priority integer DEFAULT 0 NOT NULL,
+    description text,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    name character varying(100) NOT NULL,
+    CONSTRAINT stake_funding_policies_dates_check CHECK (((starts_at IS NULL) OR (ends_at IS NULL) OR (starts_at <= ends_at))),
+    CONSTRAINT stake_funding_policies_metadata_object_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
+    CONSTRAINT stake_funding_policies_policy_check CHECK (((policy_code)::text = ANY ((ARRAY['play_first'::character varying, 'main_first'::character varying, 'play_only'::character varying, 'main_only'::character varying, 'bonus_first'::character varying])::text[]))),
+    CONSTRAINT stake_funding_policies_priority_check CHECK ((priority >= 0))
+);
+
+
+ALTER TABLE public.stake_funding_policies OWNER TO neondb_owner;
+
+--
+-- Name: get_stake_funding_policy(bigint); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.get_stake_funding_policy(p_game_system_id bigint) RETURNS public.stake_funding_policies
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+    v_policy public.stake_funding_policies;
+    v_now TIMESTAMPTZ := NOW();
+BEGIN
+
+    IF p_game_system_id IS NULL THEN
+        RAISE EXCEPTION
+            'Game system ID is required for stake funding policy';
+    END IF;
+
+
+    SELECT sfp.*
+    INTO v_policy
+    FROM public.stake_funding_policies sfp
+    WHERE sfp.is_active = TRUE
+
+      AND (
+            sfp.starts_at IS NULL
+            OR sfp.starts_at <= v_now
+          )
+
+      AND (
+            sfp.ends_at IS NULL
+            OR sfp.ends_at >= v_now
+          )
+
+      AND (
+            sfp.game_system_id = p_game_system_id
+            OR sfp.game_system_id IS NULL
+          )
+
+    ORDER BY
+        CASE
+            WHEN sfp.game_system_id = p_game_system_id
+            THEN 0
+            ELSE 1
+        END,
+
+        sfp.priority DESC,
+        sfp.id DESC
+
+    LIMIT 1;
+
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'No active stake funding policy found for game system %',
+            p_game_system_id;
+    END IF;
+
+
+    RETURN v_policy;
+
+END;
+$$;
+
+
+ALTER FUNCTION public.get_stake_funding_policy(p_game_system_id bigint) OWNER TO neondb_owner;
+
+--
 -- Name: get_transfer_limits(integer, character varying); Type: FUNCTION; Schema: public; Owner: neondb_owner
 --
 
@@ -2356,6 +3310,8 @@ CREATE TABLE public.users (
     admin_role character varying(20),
     is_blocked boolean DEFAULT false NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    referral_code character varying(50),
+    referred_by_user_id bigint,
     CONSTRAINT users_admin_role_check CHECK (((admin_role IS NULL) OR ((admin_role)::text = ANY ((ARRAY['main'::character varying, 'statistics'::character varying, 'withdrawal'::character varying, 'broadcast'::character varying])::text[]))))
 );
 
@@ -2388,7 +3344,7 @@ CREATE TABLE public.wallets (
     is_active boolean DEFAULT true NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT wallets_type_check CHECK (((wallet_type)::text = ANY ((ARRAY['main'::character varying, 'play'::character varying])::text[])))
+    CONSTRAINT wallets_wallet_type_check CHECK (((wallet_type)::text = ANY ((ARRAY['main'::character varying, 'play'::character varying, 'bonus'::character varying])::text[])))
 );
 
 
@@ -2472,6 +3428,50 @@ $$;
 ALTER FUNCTION public.get_user_wallet_id(p_user_id integer, p_wallet_type character varying) OWNER TO neondb_owner;
 
 --
+-- Name: get_user_wallet_id(bigint, character varying); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.get_user_wallet_id(p_user_id bigint, p_wallet_type character varying) RETURNS bigint
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_wallet_id BIGINT;
+BEGIN
+
+    IF p_wallet_type NOT IN (
+        'main',
+        'play',
+        'bonus'
+    ) THEN
+        RAISE EXCEPTION
+            'Invalid wallet type: %',
+            p_wallet_type;
+    END IF;
+
+    SELECT id
+    INTO v_wallet_id
+    FROM public.wallets
+    WHERE user_id = p_user_id
+      AND wallet_type = p_wallet_type
+      AND is_active = TRUE
+    LIMIT 1;
+
+    IF v_wallet_id IS NULL THEN
+        RAISE EXCEPTION
+            'Active % wallet not found for user %',
+            p_wallet_type,
+            p_user_id;
+    END IF;
+
+    RETURN v_wallet_id;
+
+END;
+$$;
+
+
+ALTER FUNCTION public.get_user_wallet_id(p_user_id bigint, p_wallet_type character varying) OWNER TO neondb_owner;
+
+--
 -- Name: lock_wallet(bigint); Type: FUNCTION; Schema: public; Owner: neondb_owner
 --
 
@@ -2508,77 +3508,316 @@ CREATE FUNCTION public.place_stake(p_user_id integer, p_amount numeric, p_game_s
     LANGUAGE plpgsql
     AS $$
 DECLARE
-    v_play_wallet_id BIGINT;
+    v_policy public.stake_funding_policies%ROWTYPE;
+
     v_main_wallet_id BIGINT;
+    v_play_wallet_id BIGINT;
+    v_bonus_wallet_id BIGINT;
 
-    v_play_balance NUMERIC(18,2);
-    v_main_balance NUMERIC(18,2);
+    v_main_balance NUMERIC(18,2) := 0;
+    v_play_balance NUMERIC(18,2) := 0;
+    v_bonus_balance NUMERIC(18,2) := 0;
 
-    v_play_charge NUMERIC(18,2);
-    v_main_charge NUMERIC(18,2);
+    v_main_charge NUMERIC(18,2) := 0;
+    v_play_charge NUMERIC(18,2) := 0;
+    v_bonus_charge NUMERIC(18,2) := 0;
+
+    v_total_available NUMERIC(18,2) := 0;
+    v_remaining NUMERIC(18,2) := 0;
+    v_charge NUMERIC(18,2) := 0;
 
     v_transaction_id BIGINT;
     v_transaction_created BOOLEAN;
+
+    v_bonus_consumed NUMERIC(18,2) := 0;
+    v_bonus_wagering NUMERIC(18,2) := 0;
+
+    v_effective_metadata JSONB;
+    v_contributions JSONB := '[]'::JSONB;
+
+    v_policy_wallet RECORD;
 BEGIN
-
-    -- --------------------------------------------------------
-    -- Validate amount
-    -- --------------------------------------------------------
-
+    ----------------------------------------------------------------
+    -- 1. Validate amount
+    ----------------------------------------------------------------
     IF p_amount IS NULL OR p_amount <= 0 THEN
-        RAISE EXCEPTION
-            'Stake amount must be greater than zero';
+        RAISE EXCEPTION 'Stake amount must be greater than zero';
     END IF;
 
+    IF p_user_id IS NULL OR p_user_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid user ID';
+    END IF;
 
-    -- --------------------------------------------------------
-    -- Get wallets
-    -- --------------------------------------------------------
+    IF p_game_system_id IS NULL THEN
+        RAISE EXCEPTION 'Game system ID is required for stake';
+    END IF;
 
-    v_play_wallet_id :=
-        get_user_wallet_id(
-            p_user_id,
-            'play'
-        );
+    ----------------------------------------------------------------
+    -- 2. Resolve applicable policy
+    ----------------------------------------------------------------
+    SELECT *
+    INTO v_policy
+    FROM public.get_stake_funding_policy(p_game_system_id);
 
-    v_main_wallet_id :=
-        get_user_wallet_id(
-            p_user_id,
-            'main'
-        );
+    ----------------------------------------------------------------
+    -- 3. Get wallets
+    ----------------------------------------------------------------
+    v_main_wallet_id := public.get_user_wallet_id(
+        p_user_id,
+        'main'
+    );
 
+    v_play_wallet_id := public.get_user_wallet_id(
+        p_user_id,
+        'play'
+    );
 
-    -- --------------------------------------------------------
-    -- Lock wallets deterministically
-    -- --------------------------------------------------------
+    v_bonus_wallet_id := public.get_user_wallet_id(
+        p_user_id,
+        'bonus'
+    );
 
-    IF v_play_wallet_id < v_main_wallet_id THEN
+    ----------------------------------------------------------------
+    -- 4. Lock wallets deterministically
+    ----------------------------------------------------------------
+    IF v_main_wallet_id < v_play_wallet_id
+       AND v_main_wallet_id < v_bonus_wallet_id THEN
 
-        PERFORM lock_wallet(v_play_wallet_id);
-        PERFORM lock_wallet(v_main_wallet_id);
+        PERFORM public.lock_wallet(v_main_wallet_id);
+
+        IF v_play_wallet_id < v_bonus_wallet_id THEN
+            PERFORM public.lock_wallet(v_play_wallet_id);
+            PERFORM public.lock_wallet(v_bonus_wallet_id);
+        ELSE
+            PERFORM public.lock_wallet(v_bonus_wallet_id);
+            PERFORM public.lock_wallet(v_play_wallet_id);
+        END IF;
+
+    ELSIF v_play_wallet_id < v_main_wallet_id
+          AND v_play_wallet_id < v_bonus_wallet_id THEN
+
+        PERFORM public.lock_wallet(v_play_wallet_id);
+
+        IF v_main_wallet_id < v_bonus_wallet_id THEN
+            PERFORM public.lock_wallet(v_main_wallet_id);
+            PERFORM public.lock_wallet(v_bonus_wallet_id);
+        ELSE
+            PERFORM public.lock_wallet(v_bonus_wallet_id);
+            PERFORM public.lock_wallet(v_main_wallet_id);
+        END IF;
 
     ELSE
 
-        PERFORM lock_wallet(v_main_wallet_id);
-        PERFORM lock_wallet(v_play_wallet_id);
+        PERFORM public.lock_wallet(v_bonus_wallet_id);
+
+        IF v_main_wallet_id < v_play_wallet_id THEN
+            PERFORM public.lock_wallet(v_main_wallet_id);
+            PERFORM public.lock_wallet(v_play_wallet_id);
+        ELSE
+            PERFORM public.lock_wallet(v_play_wallet_id);
+            PERFORM public.lock_wallet(v_main_wallet_id);
+        END IF;
 
     END IF;
 
+    ----------------------------------------------------------------
+    -- 5. Read locked balances
+    ----------------------------------------------------------------
+    SELECT balance
+    INTO v_main_balance
+    FROM public.wallet_balances
+    WHERE wallet_id = v_main_wallet_id;
 
-    -- --------------------------------------------------------
-    -- Create / retrieve transaction atomically
-    --
-    -- IMPORTANT:
-    -- This happens BEFORE calculating/debiting balances.
-    -- --------------------------------------------------------
+    SELECT balance
+    INTO v_play_balance
+    FROM public.wallet_balances
+    WHERE wallet_id = v_play_wallet_id;
 
+    SELECT balance
+    INTO v_bonus_balance
+    FROM public.wallet_balances
+    WHERE wallet_id = v_bonus_wallet_id;
+
+    v_main_balance := COALESCE(v_main_balance, 0);
+    v_play_balance := COALESCE(v_play_balance, 0);
+    v_bonus_balance := COALESCE(v_bonus_balance, 0);
+
+    ----------------------------------------------------------------
+    -- 6. Calculate total available
+    ----------------------------------------------------------------
+    SELECT COALESCE(
+        SUM(
+            CASE sfpw.wallet_type
+                WHEN 'main' THEN v_main_balance
+                WHEN 'play' THEN v_play_balance
+                WHEN 'bonus' THEN v_bonus_balance
+                ELSE 0
+            END
+        ),
+        0
+    )
+    INTO v_total_available
+    FROM public.stake_funding_policy_wallets sfpw
+    WHERE sfpw.policy_id = v_policy.id
+      AND sfpw.is_active = TRUE;
+
+    IF v_total_available < p_amount THEN
+        RAISE EXCEPTION
+            'Insufficient balance. Required: %, Available: %',
+            p_amount,
+            v_total_available;
+    END IF;
+
+    ----------------------------------------------------------------
+    -- 7. Determine funding
+    ----------------------------------------------------------------
+    v_remaining := ROUND(p_amount, 2);
+
+    FOR v_policy_wallet IN
+        SELECT
+            sfpw.wallet_type,
+            sfpw.funding_order
+        FROM public.stake_funding_policy_wallets sfpw
+        WHERE sfpw.policy_id = v_policy.id
+          AND sfpw.is_active = TRUE
+        ORDER BY sfpw.funding_order
+    LOOP
+        EXIT WHEN v_remaining <= 0;
+
+        CASE v_policy_wallet.wallet_type
+
+            WHEN 'play' THEN
+
+                v_charge := LEAST(
+                    v_play_balance,
+                    v_remaining
+                );
+
+                v_play_charge := ROUND(
+                    v_play_charge + v_charge,
+                    2
+                );
+
+                v_play_balance := ROUND(
+                    v_play_balance - v_charge,
+                    2
+                );
+
+            WHEN 'main' THEN
+
+                v_charge := LEAST(
+                    v_main_balance,
+                    v_remaining
+                );
+
+                v_main_charge := ROUND(
+                    v_main_charge + v_charge,
+                    2
+                );
+
+                v_main_balance := ROUND(
+                    v_main_balance - v_charge,
+                    2
+                );
+
+            WHEN 'bonus' THEN
+
+                v_charge := LEAST(
+                    v_bonus_balance,
+                    v_remaining
+                );
+
+                v_bonus_charge := ROUND(
+                    v_bonus_charge + v_charge,
+                    2
+                );
+
+                v_bonus_balance := ROUND(
+                    v_bonus_balance - v_charge,
+                    2
+                );
+
+            ELSE
+
+                RAISE EXCEPTION
+                    'Unsupported wallet type "%" in stake funding policy %',
+                    v_policy_wallet.wallet_type,
+                    v_policy.id;
+
+        END CASE;
+
+        IF v_charge > 0 THEN
+
+            v_contributions := v_contributions
+                || jsonb_build_object(
+                    'wallet_type',
+                    v_policy_wallet.wallet_type,
+                    'funding_order',
+                    v_policy_wallet.funding_order,
+                    'amount',
+                    ROUND(v_charge, 2)
+                );
+
+            v_remaining := ROUND(
+                v_remaining - v_charge,
+                2
+            );
+
+        END IF;
+    END LOOP;
+
+    ----------------------------------------------------------------
+    -- 8. Validate funding
+    ----------------------------------------------------------------
+    IF v_remaining <> 0 THEN
+        RAISE EXCEPTION
+            'Stake funding mismatch. Required: %, Unfunded: %',
+            p_amount,
+            v_remaining;
+    END IF;
+
+    IF ROUND(
+        v_play_charge
+        + v_main_charge
+        + v_bonus_charge,
+        2
+    ) <> ROUND(p_amount, 2) THEN
+
+        RAISE EXCEPTION
+            'Stake funding mismatch. Required: %, Funded: %',
+            p_amount,
+            v_play_charge
+            + v_main_charge
+            + v_bonus_charge;
+
+    END IF;
+
+    ----------------------------------------------------------------
+    -- 9. Build transaction metadata
+    ----------------------------------------------------------------
+    v_effective_metadata :=
+        COALESCE(p_metadata, '{}'::JSONB)
+        || jsonb_build_object(
+            'stake_funding_policy_id',
+            v_policy.id,
+
+            'stake_funding_policy_name',
+            v_policy.name,
+
+            'stake_funding_contributions',
+            v_contributions
+        );
+
+    ----------------------------------------------------------------
+    -- 10. Create / retrieve transaction
+    ----------------------------------------------------------------
     SELECT
         t.transaction_id,
         t.created
     INTO
         v_transaction_id,
         v_transaction_created
-    FROM create_financial_transaction(
+    FROM public.create_financial_transaction(
         p_user_id,
         'stake',
         'completed',
@@ -2587,77 +3826,22 @@ BEGIN
         p_source_id,
         p_idempotency_key,
         p_description,
-        p_metadata
+        v_effective_metadata
     ) AS t;
 
-
-    -- --------------------------------------------------------
-    -- Existing idempotent stake.
-    --
-    -- Do NOT debit wallets again.
-    -- --------------------------------------------------------
-
+    ----------------------------------------------------------------
+    -- 11. Idempotent retry
+    ----------------------------------------------------------------
     IF NOT v_transaction_created THEN
         RETURN v_transaction_id;
     END IF;
 
-
-    -- --------------------------------------------------------
-    -- Read locked balances
-    -- --------------------------------------------------------
-
-    SELECT balance
-    INTO v_play_balance
-    FROM wallet_balances
-    WHERE wallet_id = v_play_wallet_id;
-
-
-    SELECT balance
-    INTO v_main_balance
-    FROM wallet_balances
-    WHERE wallet_id = v_main_wallet_id;
-
-
-    -- --------------------------------------------------------
-    -- Check total available funds
-    -- --------------------------------------------------------
-
-    IF (v_play_balance + v_main_balance) < p_amount THEN
-
-        RAISE EXCEPTION
-            'Insufficient balance. Required: %, Available: %',
-            p_amount,
-            v_play_balance + v_main_balance;
-
-    END IF;
-
-
-    -- --------------------------------------------------------
-    -- PLAY first
-    -- --------------------------------------------------------
-
-    v_play_charge :=
-        LEAST(
-            v_play_balance,
-            p_amount
-        );
-
-
-    -- --------------------------------------------------------
-    -- MAIN remainder
-    -- --------------------------------------------------------
-
-    v_main_charge :=
-        p_amount - v_play_charge;
-
-
-    -- --------------------------------------------------------
-    -- PLAY ledger
-    -- --------------------------------------------------------
-
+    ----------------------------------------------------------------
+    -- 12. PLAY ledger
+    ----------------------------------------------------------------
     IF v_play_charge > 0 THEN
 
-        INSERT INTO ledger_entries (
+        INSERT INTO public.ledger_entries (
             transaction_id,
             wallet_id,
             amount
@@ -2668,8 +3852,7 @@ BEGIN
             -v_play_charge
         );
 
-
-        UPDATE wallet_balances
+        UPDATE public.wallet_balances
         SET
             balance = balance - v_play_charge,
             updated_at = NOW()
@@ -2677,14 +3860,12 @@ BEGIN
 
     END IF;
 
-
-    -- --------------------------------------------------------
-    -- MAIN ledger
-    -- --------------------------------------------------------
-
+    ----------------------------------------------------------------
+    -- 13. MAIN ledger
+    ----------------------------------------------------------------
     IF v_main_charge > 0 THEN
 
-        INSERT INTO ledger_entries (
+        INSERT INTO public.ledger_entries (
             transaction_id,
             wallet_id,
             amount
@@ -2695,8 +3876,7 @@ BEGIN
             -v_main_charge
         );
 
-
-        UPDATE wallet_balances
+        UPDATE public.wallet_balances
         SET
             balance = balance - v_main_charge,
             updated_at = NOW()
@@ -2704,7 +3884,100 @@ BEGIN
 
     END IF;
 
+    ----------------------------------------------------------------
+    -- 14. BONUS ledger + bonus accounting
+    ----------------------------------------------------------------
+    IF v_bonus_charge > 0 THEN
 
+        INSERT INTO public.ledger_entries (
+            transaction_id,
+            wallet_id,
+            amount
+        )
+        VALUES (
+            v_transaction_id,
+            v_bonus_wallet_id,
+            -v_bonus_charge
+        );
+
+        UPDATE public.wallet_balances
+        SET
+            balance = balance - v_bonus_charge,
+            updated_at = NOW()
+        WHERE wallet_id = v_bonus_wallet_id;
+
+        ----------------------------------------------------------------
+        -- Record Bonus consumption.
+        --
+        -- The function returns:
+        --   consumed_amount
+        --   wagering_amount
+        ----------------------------------------------------------------
+        SELECT
+            r.consumed_amount,
+            r.wagering_amount
+        INTO
+            v_bonus_consumed,
+            v_bonus_wagering
+        FROM public.consume_bonus_for_stake(
+            p_user_id,
+            v_transaction_id,
+            v_bonus_charge
+        ) AS r;
+
+        ----------------------------------------------------------------
+        -- The Bonus wallet debit must exactly match the amount
+        -- allocated to Bonus entitlements.
+        ----------------------------------------------------------------
+        IF ROUND(v_bonus_consumed, 2)
+           <> ROUND(v_bonus_charge, 2) THEN
+
+            RAISE EXCEPTION
+                'Bonus consumption mismatch. Bonus charge: %, Consumed: %',
+                v_bonus_charge,
+                v_bonus_consumed;
+
+        END IF;
+
+        ----------------------------------------------------------------
+        -- Add Bonus accounting details to transaction metadata.
+        ----------------------------------------------------------------
+        UPDATE public.financial_transactions
+        SET metadata =
+            metadata
+            || jsonb_build_object(
+                'bonus_consumed_amount',
+                v_bonus_consumed,
+
+                'bonus_wagering_amount',
+                v_bonus_wagering
+            )
+        WHERE id = v_transaction_id;
+
+    END IF;
+
+    ----------------------------------------------------------------
+    -- 15. Final safety check
+    ----------------------------------------------------------------
+    IF ROUND(
+        v_play_charge
+        + v_main_charge
+        + v_bonus_charge,
+        2
+    ) <> ROUND(p_amount, 2) THEN
+
+        RAISE EXCEPTION
+            'Stake funding mismatch. Required: %, funded: %',
+            p_amount,
+            v_play_charge
+            + v_main_charge
+            + v_bonus_charge;
+
+    END IF;
+
+    ----------------------------------------------------------------
+    -- 16. Return transaction ID
+    ----------------------------------------------------------------
     RETURN v_transaction_id;
 
 END;
@@ -5543,6 +6816,69 @@ ALTER TABLE public.bingo_winners ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDE
 
 
 --
+-- Name: bonus_campaigns; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.bonus_campaigns (
+    id bigint NOT NULL,
+    code character varying(100) NOT NULL,
+    name character varying(150) NOT NULL,
+    bonus_type character varying(50) NOT NULL,
+    game_system_id bigint,
+    amount numeric(18,2),
+    percentage numeric(8,4),
+    wagering_multiplier numeric(10,2) DEFAULT 0 NOT NULL,
+    min_deposit_amount numeric(18,2),
+    max_bonus_amount numeric(18,2),
+    validity_hours integer,
+    is_active boolean DEFAULT true NOT NULL,
+    starts_at timestamp with time zone,
+    ends_at timestamp with time zone,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    conversion_type character varying(30) DEFAULT 'percentage'::character varying NOT NULL,
+    conversion_percentage numeric(8,4) DEFAULT 100 NOT NULL,
+    conversion_max_amount numeric(18,2),
+    CONSTRAINT bonus_campaigns_amount_check CHECK (((amount IS NULL) OR (amount >= (0)::numeric))),
+    CONSTRAINT bonus_campaigns_bonus_type_check CHECK (((bonus_type)::text = ANY ((ARRAY['welcome'::character varying, 'deposit'::character varying, 'free_bet'::character varying, 'no_deposit'::character varying, 'reload'::character varying, 'cashback'::character varying, 'free_spins'::character varying, 'wagering'::character varying, 'odds_boost'::character varying, 'accumulator'::character varying, 'loyalty'::character varying, 'vip_tier'::character varying, 'referral'::character varying, 'promo_code'::character varying, 'tournament'::character varying, 'mission'::character varying, 'birthday'::character varying, 'free_entry'::character varying, 'insurance'::character varying, 'jackpot'::character varying])::text[]))),
+    CONSTRAINT bonus_campaigns_conversion_max_amount_check CHECK (((conversion_max_amount IS NULL) OR (conversion_max_amount >= (0)::numeric))),
+    CONSTRAINT bonus_campaigns_conversion_percentage_check CHECK (((conversion_percentage >= (0)::numeric) AND (conversion_percentage <= (100)::numeric))),
+    CONSTRAINT bonus_campaigns_conversion_type_check CHECK (((conversion_type)::text = ANY ((ARRAY['percentage'::character varying, 'fixed'::character varying, 'none'::character varying])::text[]))),
+    CONSTRAINT bonus_campaigns_date_check CHECK (((ends_at IS NULL) OR (starts_at IS NULL) OR (ends_at > starts_at))),
+    CONSTRAINT bonus_campaigns_max_bonus_amount_check CHECK (((max_bonus_amount IS NULL) OR (max_bonus_amount >= (0)::numeric))),
+    CONSTRAINT bonus_campaigns_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
+    CONSTRAINT bonus_campaigns_min_deposit_amount_check CHECK (((min_deposit_amount IS NULL) OR (min_deposit_amount >= (0)::numeric))),
+    CONSTRAINT bonus_campaigns_percentage_check CHECK (((percentage IS NULL) OR ((percentage >= (0)::numeric) AND (percentage <= (100)::numeric)))),
+    CONSTRAINT bonus_campaigns_validity_hours_check CHECK (((validity_hours IS NULL) OR (validity_hours > 0))),
+    CONSTRAINT bonus_campaigns_wagering_multiplier_check CHECK ((wagering_multiplier >= (0)::numeric))
+);
+
+
+ALTER TABLE public.bonus_campaigns OWNER TO neondb_owner;
+
+--
+-- Name: bonus_campaigns_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
+--
+
+CREATE SEQUENCE public.bonus_campaigns_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.bonus_campaigns_id_seq OWNER TO neondb_owner;
+
+--
+-- Name: bonus_campaigns_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
+--
+
+ALTER SEQUENCE public.bonus_campaigns_id_seq OWNED BY public.bonus_campaigns.id;
+
+
+--
 -- Name: broadcast_drafts; Type: TABLE; Schema: public; Owner: neondb_owner
 --
 
@@ -5928,6 +7264,89 @@ CREATE TABLE public.settings (
 ALTER TABLE public.settings OWNER TO neondb_owner;
 
 --
+-- Name: stake_funding_policies_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
+--
+
+CREATE SEQUENCE public.stake_funding_policies_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.stake_funding_policies_id_seq OWNER TO neondb_owner;
+
+--
+-- Name: stake_funding_policies_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
+--
+
+ALTER SEQUENCE public.stake_funding_policies_id_seq OWNED BY public.stake_funding_policies.id;
+
+
+--
+-- Name: stake_funding_policy_overview; Type: VIEW; Schema: public; Owner: neondb_owner
+--
+
+CREATE VIEW public.stake_funding_policy_overview AS
+ SELECT gs.id AS game_system_id,
+    gs.code AS game_system_code,
+    gs.name AS game_system_name,
+    sfp.id AS policy_id,
+    sfp.policy_code,
+    sfp.is_active,
+    sfp.priority,
+    sfp.starts_at,
+    sfp.ends_at,
+    sfp.description
+   FROM (public.game_systems gs
+     LEFT JOIN public.stake_funding_policies sfp ON (((sfp.game_system_id = gs.id) AND (sfp.is_active = true))));
+
+
+ALTER VIEW public.stake_funding_policy_overview OWNER TO neondb_owner;
+
+--
+-- Name: stake_funding_policy_wallets; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.stake_funding_policy_wallets (
+    id bigint NOT NULL,
+    policy_id bigint NOT NULL,
+    wallet_type character varying(30) NOT NULL,
+    funding_order integer NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT stake_funding_policy_wallets_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
+    CONSTRAINT stake_funding_policy_wallets_order_check CHECK ((funding_order > 0)),
+    CONSTRAINT stake_funding_policy_wallets_wallet_type_check CHECK (((wallet_type)::text = ANY ((ARRAY['main'::character varying, 'play'::character varying, 'bonus'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.stake_funding_policy_wallets OWNER TO neondb_owner;
+
+--
+-- Name: stake_funding_policy_wallets_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
+--
+
+CREATE SEQUENCE public.stake_funding_policy_wallets_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.stake_funding_policy_wallets_id_seq OWNER TO neondb_owner;
+
+--
+-- Name: stake_funding_policy_wallets_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
+--
+
+ALTER SEQUENCE public.stake_funding_policy_wallets_id_seq OWNED BY public.stake_funding_policy_wallets.id;
+
+
+--
 -- Name: transaction_ledger_totals; Type: VIEW; Schema: public; Owner: neondb_owner
 --
 
@@ -6002,6 +7421,168 @@ ALTER TABLE public.transfers ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTIT
     NO MAXVALUE
     CACHE 1
 );
+
+
+--
+-- Name: user_bonus_consumptions; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.user_bonus_consumptions (
+    id bigint NOT NULL,
+    user_bonus_id bigint NOT NULL,
+    stake_transaction_id bigint NOT NULL,
+    amount numeric(18,2) NOT NULL,
+    wagering_amount numeric(18,2) NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT user_bonus_consumptions_amount_check CHECK ((amount > (0)::numeric)),
+    CONSTRAINT user_bonus_consumptions_wagering_amount_check CHECK ((wagering_amount >= (0)::numeric))
+);
+
+
+ALTER TABLE public.user_bonus_consumptions OWNER TO neondb_owner;
+
+--
+-- Name: user_bonus_consumptions_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
+--
+
+CREATE SEQUENCE public.user_bonus_consumptions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.user_bonus_consumptions_id_seq OWNER TO neondb_owner;
+
+--
+-- Name: user_bonus_consumptions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
+--
+
+ALTER SEQUENCE public.user_bonus_consumptions_id_seq OWNED BY public.user_bonus_consumptions.id;
+
+
+--
+-- Name: user_bonuses; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.user_bonuses (
+    id bigint NOT NULL,
+    user_id integer NOT NULL,
+    campaign_id bigint NOT NULL,
+    status character varying(30) DEFAULT 'pending'::character varying NOT NULL,
+    awarded_amount numeric(18,2) DEFAULT 0 NOT NULL,
+    wagering_requirement numeric(18,2) DEFAULT 0 NOT NULL,
+    wagering_progress numeric(18,2) DEFAULT 0 NOT NULL,
+    remaining_amount numeric(18,2) DEFAULT 0 NOT NULL,
+    expires_at timestamp with time zone,
+    awarded_at timestamp with time zone,
+    activated_at timestamp with time zone,
+    completed_at timestamp with time zone,
+    cancelled_at timestamp with time zone,
+    source_type character varying(50),
+    source_id character varying(100),
+    idempotency_key character varying(255),
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    convertible_amount numeric(18,2) DEFAULT 0 NOT NULL,
+    converted_amount numeric(18,2) DEFAULT 0 NOT NULL,
+    CONSTRAINT user_bonuses_awarded_amount_check CHECK ((awarded_amount >= (0)::numeric)),
+    CONSTRAINT user_bonuses_converted_amount_check CHECK ((converted_amount >= (0)::numeric)),
+    CONSTRAINT user_bonuses_convertible_amount_check CHECK ((convertible_amount >= (0)::numeric)),
+    CONSTRAINT user_bonuses_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
+    CONSTRAINT user_bonuses_remaining_amount_check CHECK ((remaining_amount >= (0)::numeric)),
+    CONSTRAINT user_bonuses_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'active'::character varying, 'completed'::character varying, 'expired'::character varying, 'cancelled'::character varying, 'forfeited'::character varying])::text[]))),
+    CONSTRAINT user_bonuses_wagering_progress_check CHECK ((wagering_progress >= (0)::numeric)),
+    CONSTRAINT user_bonuses_wagering_requirement_check CHECK ((wagering_requirement >= (0)::numeric))
+);
+
+
+ALTER TABLE public.user_bonuses OWNER TO neondb_owner;
+
+--
+-- Name: user_bonuses_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
+--
+
+CREATE SEQUENCE public.user_bonuses_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.user_bonuses_id_seq OWNER TO neondb_owner;
+
+--
+-- Name: user_bonuses_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
+--
+
+ALTER SEQUENCE public.user_bonuses_id_seq OWNED BY public.user_bonuses.id;
+
+
+--
+-- Name: user_game_statistics; Type: TABLE; Schema: public; Owner: neondb_owner
+--
+
+CREATE TABLE public.user_game_statistics (
+    id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    game_system_id bigint NOT NULL,
+    games_played bigint DEFAULT 0 NOT NULL,
+    games_completed bigint DEFAULT 0 NOT NULL,
+    games_cancelled bigint DEFAULT 0 NOT NULL,
+    games_abandoned bigint DEFAULT 0 NOT NULL,
+    bets_count bigint DEFAULT 0 NOT NULL,
+    total_staked numeric(18,2) DEFAULT 0 NOT NULL,
+    total_refunded numeric(18,2) DEFAULT 0 NOT NULL,
+    wins_count bigint DEFAULT 0 NOT NULL,
+    losses_count bigint DEFAULT 0 NOT NULL,
+    draws_count bigint DEFAULT 0 NOT NULL,
+    total_winnings numeric(18,2) DEFAULT 0 NOT NULL,
+    total_losses numeric(18,2) DEFAULT 0 NOT NULL,
+    net_result numeric(18,2) DEFAULT 0 NOT NULL,
+    bonus_count bigint DEFAULT 0 NOT NULL,
+    total_bonus_received numeric(18,2) DEFAULT 0 NOT NULL,
+    total_bonus_wagered numeric(18,2) DEFAULT 0 NOT NULL,
+    jackpot_wins bigint DEFAULT 0 NOT NULL,
+    jackpot_amount_won numeric(18,2) DEFAULT 0 NOT NULL,
+    largest_stake numeric(18,2) DEFAULT 0 NOT NULL,
+    largest_win numeric(18,2) DEFAULT 0 NOT NULL,
+    largest_loss numeric(18,2) DEFAULT 0 NOT NULL,
+    first_played_at timestamp with time zone,
+    last_played_at timestamp with time zone,
+    first_win_at timestamp with time zone,
+    last_win_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT user_game_statistics_amounts_non_negative CHECK (((total_staked >= (0)::numeric) AND (total_refunded >= (0)::numeric) AND (total_winnings >= (0)::numeric) AND (total_losses >= (0)::numeric) AND (total_bonus_received >= (0)::numeric) AND (total_bonus_wagered >= (0)::numeric) AND (jackpot_amount_won >= (0)::numeric) AND (largest_stake >= (0)::numeric) AND (largest_win >= (0)::numeric) AND (largest_loss >= (0)::numeric))),
+    CONSTRAINT user_game_statistics_counts_non_negative CHECK (((games_played >= 0) AND (games_completed >= 0) AND (games_cancelled >= 0) AND (games_abandoned >= 0) AND (bets_count >= 0) AND (wins_count >= 0) AND (losses_count >= 0) AND (draws_count >= 0) AND (bonus_count >= 0) AND (jackpot_wins >= 0)))
+);
+
+
+ALTER TABLE public.user_game_statistics OWNER TO neondb_owner;
+
+--
+-- Name: user_game_statistics_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
+--
+
+CREATE SEQUENCE public.user_game_statistics_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.user_game_statistics_id_seq OWNER TO neondb_owner;
+
+--
+-- Name: user_game_statistics_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
+--
+
+ALTER SEQUENCE public.user_game_statistics_id_seq OWNED BY public.user_game_statistics.id;
 
 
 --
@@ -6163,6 +7744,13 @@ ALTER SEQUENCE public."withdrawals _id_seq" OWNED BY public.withdrawals.id;
 
 
 --
+-- Name: bonus_campaigns id; Type: DEFAULT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bonus_campaigns ALTER COLUMN id SET DEFAULT nextval('public.bonus_campaigns_id_seq'::regclass);
+
+
+--
 -- Name: deposit_rules id; Type: DEFAULT; Schema: public; Owner: neondb_owner
 --
 
@@ -6216,6 +7804,41 @@ ALTER TABLE ONLY public.payment_methods ALTER COLUMN id SET DEFAULT nextval('pub
 --
 
 ALTER TABLE ONLY public.payment_types ALTER COLUMN id SET DEFAULT nextval('public.payment_type_id_seq'::regclass);
+
+
+--
+-- Name: stake_funding_policies id; Type: DEFAULT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.stake_funding_policies ALTER COLUMN id SET DEFAULT nextval('public.stake_funding_policies_id_seq'::regclass);
+
+
+--
+-- Name: stake_funding_policy_wallets id; Type: DEFAULT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.stake_funding_policy_wallets ALTER COLUMN id SET DEFAULT nextval('public.stake_funding_policy_wallets_id_seq'::regclass);
+
+
+--
+-- Name: user_bonus_consumptions id; Type: DEFAULT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.user_bonus_consumptions ALTER COLUMN id SET DEFAULT nextval('public.user_bonus_consumptions_id_seq'::regclass);
+
+
+--
+-- Name: user_bonuses id; Type: DEFAULT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.user_bonuses ALTER COLUMN id SET DEFAULT nextval('public.user_bonuses_id_seq'::regclass);
+
+
+--
+-- Name: user_game_statistics id; Type: DEFAULT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.user_game_statistics ALTER COLUMN id SET DEFAULT nextval('public.user_game_statistics_id_seq'::regclass);
 
 
 --
@@ -6367,6 +7990,22 @@ ALTER TABLE ONLY public.bingo_winners
 
 
 --
+-- Name: bonus_campaigns bonus_campaigns_code_key; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bonus_campaigns
+    ADD CONSTRAINT bonus_campaigns_code_key UNIQUE (code);
+
+
+--
+-- Name: bonus_campaigns bonus_campaigns_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bonus_campaigns
+    ADD CONSTRAINT bonus_campaigns_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: broadcast_drafts broadcast_drafts_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
@@ -6495,6 +8134,38 @@ ALTER TABLE ONLY public.settings
 
 
 --
+-- Name: stake_funding_policies stake_funding_policies_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.stake_funding_policies
+    ADD CONSTRAINT stake_funding_policies_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: stake_funding_policy_wallets stake_funding_policy_wallets_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.stake_funding_policy_wallets
+    ADD CONSTRAINT stake_funding_policy_wallets_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: stake_funding_policy_wallets stake_funding_policy_wallets_unique_order; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.stake_funding_policy_wallets
+    ADD CONSTRAINT stake_funding_policy_wallets_unique_order UNIQUE (policy_id, funding_order);
+
+
+--
+-- Name: stake_funding_policy_wallets stake_funding_policy_wallets_unique_wallet; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.stake_funding_policy_wallets
+    ADD CONSTRAINT stake_funding_policy_wallets_unique_wallet UNIQUE (policy_id, wallet_type);
+
+
+--
 -- Name: transfer_rules transfer_rules_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
@@ -6511,6 +8182,54 @@ ALTER TABLE ONLY public.transfers
 
 
 --
+-- Name: user_bonus_consumptions user_bonus_consumptions_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.user_bonus_consumptions
+    ADD CONSTRAINT user_bonus_consumptions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_bonus_consumptions user_bonus_consumptions_unique_stake_bonus; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.user_bonus_consumptions
+    ADD CONSTRAINT user_bonus_consumptions_unique_stake_bonus UNIQUE (user_bonus_id, stake_transaction_id);
+
+
+--
+-- Name: user_bonuses user_bonuses_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.user_bonuses
+    ADD CONSTRAINT user_bonuses_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_bonuses user_bonuses_unique_idempotency; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.user_bonuses
+    ADD CONSTRAINT user_bonuses_unique_idempotency UNIQUE (idempotency_key);
+
+
+--
+-- Name: user_game_statistics user_game_statistics_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.user_game_statistics
+    ADD CONSTRAINT user_game_statistics_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_game_statistics user_game_statistics_unique_user_game; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.user_game_statistics
+    ADD CONSTRAINT user_game_statistics_unique_user_game UNIQUE (user_id, game_system_id);
+
+
+--
 -- Name: users users_phone_unique; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
@@ -6524,6 +8243,14 @@ ALTER TABLE ONLY public.users
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: users users_referral_code_key; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_referral_code_key UNIQUE (referral_code);
 
 
 --
@@ -6716,6 +8443,27 @@ CREATE INDEX idx_bingo_winners_user ON public.bingo_winners USING btree (user_id
 
 
 --
+-- Name: idx_bonus_campaigns_active; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_bonus_campaigns_active ON public.bonus_campaigns USING btree (is_active);
+
+
+--
+-- Name: idx_bonus_campaigns_dates; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_bonus_campaigns_dates ON public.bonus_campaigns USING btree (starts_at, ends_at);
+
+
+--
+-- Name: idx_bonus_campaigns_game_system; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_bonus_campaigns_game_system ON public.bonus_campaigns USING btree (game_system_id);
+
+
+--
 -- Name: idx_deposit_rules_account; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
@@ -6856,6 +8604,41 @@ CREATE INDEX idx_payment_accounts_method_active ON public.payment_accounts USING
 
 
 --
+-- Name: idx_stake_funding_policies_active; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_stake_funding_policies_active ON public.stake_funding_policies USING btree (game_system_id, is_active, priority DESC);
+
+
+--
+-- Name: idx_stake_funding_policies_dates; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_stake_funding_policies_dates ON public.stake_funding_policies USING btree (starts_at, ends_at);
+
+
+--
+-- Name: idx_stake_funding_policies_game_system; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_stake_funding_policies_game_system ON public.stake_funding_policies USING btree (game_system_id);
+
+
+--
+-- Name: idx_stake_funding_policy_wallets_policy; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_stake_funding_policy_wallets_policy ON public.stake_funding_policy_wallets USING btree (policy_id, funding_order);
+
+
+--
+-- Name: idx_stake_funding_policy_wallets_wallet_type; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_stake_funding_policy_wallets_wallet_type ON public.stake_funding_policy_wallets USING btree (wallet_type);
+
+
+--
 -- Name: idx_transfer_rules_dates; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
@@ -6919,6 +8702,76 @@ CREATE INDEX idx_transfers_status ON public.transfers USING btree (status, creat
 
 
 --
+-- Name: idx_user_bonus_consumptions_bonus; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_user_bonus_consumptions_bonus ON public.user_bonus_consumptions USING btree (user_bonus_id);
+
+
+--
+-- Name: idx_user_bonus_consumptions_stake; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_user_bonus_consumptions_stake ON public.user_bonus_consumptions USING btree (stake_transaction_id);
+
+
+--
+-- Name: idx_user_bonuses_campaign; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_user_bonuses_campaign ON public.user_bonuses USING btree (campaign_id);
+
+
+--
+-- Name: idx_user_bonuses_expiry; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_user_bonuses_expiry ON public.user_bonuses USING btree (expires_at);
+
+
+--
+-- Name: idx_user_bonuses_user; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_user_bonuses_user ON public.user_bonuses USING btree (user_id);
+
+
+--
+-- Name: idx_user_bonuses_user_status; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_user_bonuses_user_status ON public.user_bonuses USING btree (user_id, status);
+
+
+--
+-- Name: idx_user_game_statistics_game_system; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_user_game_statistics_game_system ON public.user_game_statistics USING btree (game_system_id);
+
+
+--
+-- Name: idx_user_game_statistics_last_played; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_user_game_statistics_last_played ON public.user_game_statistics USING btree (last_played_at);
+
+
+--
+-- Name: idx_user_game_statistics_user; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_user_game_statistics_user ON public.user_game_statistics USING btree (user_id);
+
+
+--
+-- Name: idx_user_game_statistics_user_last_played; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_user_game_statistics_user_last_played ON public.user_game_statistics USING btree (user_id, last_played_at);
+
+
+--
 -- Name: idx_users_admin_role_active; Type: INDEX; Schema: public; Owner: neondb_owner
 --
 
@@ -6930,6 +8783,20 @@ CREATE INDEX idx_users_admin_role_active ON public.users USING btree (admin_role
 --
 
 CREATE INDEX idx_users_phone ON public.users USING btree (phone);
+
+
+--
+-- Name: idx_users_referral_code; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_users_referral_code ON public.users USING btree (referral_code);
+
+
+--
+-- Name: idx_users_referred_by; Type: INDEX; Schema: public; Owner: neondb_owner
+--
+
+CREATE INDEX idx_users_referred_by ON public.users USING btree (referred_by_user_id);
 
 
 --
@@ -7108,6 +8975,13 @@ CREATE TRIGGER ledger_entries_immutable BEFORE DELETE OR UPDATE ON public.ledger
 
 
 --
+-- Name: stake_funding_policies stake_funding_policies_set_updated_at; Type: TRIGGER; Schema: public; Owner: neondb_owner
+--
+
+CREATE TRIGGER stake_funding_policies_set_updated_at BEFORE UPDATE ON public.stake_funding_policies FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+
+--
 -- Name: transfer_rules transfer_rules_set_updated_at; Type: TRIGGER; Schema: public; Owner: neondb_owner
 --
 
@@ -7268,6 +9142,14 @@ ALTER TABLE ONLY public.bingo_winners
 
 ALTER TABLE ONLY public.bingo_winners
     ADD CONSTRAINT bingo_winners_user_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: bonus_campaigns bonus_campaigns_game_system_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bonus_campaigns
+    ADD CONSTRAINT bonus_campaigns_game_system_id_fkey FOREIGN KEY (game_system_id) REFERENCES public.game_systems(id) ON DELETE SET NULL;
 
 
 --
@@ -7455,6 +9337,22 @@ ALTER TABLE ONLY public.payment_methods
 
 
 --
+-- Name: stake_funding_policies stake_funding_policies_game_system_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.stake_funding_policies
+    ADD CONSTRAINT stake_funding_policies_game_system_id_fkey FOREIGN KEY (game_system_id) REFERENCES public.game_systems(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: stake_funding_policy_wallets stake_funding_policy_wallets_policy_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.stake_funding_policy_wallets
+    ADD CONSTRAINT stake_funding_policy_wallets_policy_id_fkey FOREIGN KEY (policy_id) REFERENCES public.stake_funding_policies(id) ON DELETE CASCADE;
+
+
+--
 -- Name: transfers transfers_receiver_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
@@ -7484,6 +9382,62 @@ ALTER TABLE ONLY public.transfers
 
 ALTER TABLE ONLY public.transfers
     ADD CONSTRAINT transfers_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES public.financial_transactions(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- Name: user_bonus_consumptions user_bonus_consumptions_stake_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.user_bonus_consumptions
+    ADD CONSTRAINT user_bonus_consumptions_stake_transaction_id_fkey FOREIGN KEY (stake_transaction_id) REFERENCES public.financial_transactions(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: user_bonus_consumptions user_bonus_consumptions_user_bonus_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.user_bonus_consumptions
+    ADD CONSTRAINT user_bonus_consumptions_user_bonus_id_fkey FOREIGN KEY (user_bonus_id) REFERENCES public.user_bonuses(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: user_bonuses user_bonuses_campaign_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.user_bonuses
+    ADD CONSTRAINT user_bonuses_campaign_id_fkey FOREIGN KEY (campaign_id) REFERENCES public.bonus_campaigns(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: user_bonuses user_bonuses_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.user_bonuses
+    ADD CONSTRAINT user_bonuses_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: user_game_statistics user_game_statistics_game_system_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.user_game_statistics
+    ADD CONSTRAINT user_game_statistics_game_system_id_fkey FOREIGN KEY (game_system_id) REFERENCES public.game_systems(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: user_game_statistics user_game_statistics_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.user_game_statistics
+    ADD CONSTRAINT user_game_statistics_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: users users_referred_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_referred_by_user_id_fkey FOREIGN KEY (referred_by_user_id) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
@@ -7545,4 +9499,3 @@ ALTER TABLE ONLY public.withdrawals
 --
 -- PostgreSQL database dump complete
 --
-
