@@ -4,22 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none">
 <title>Mela Bingo</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="preconnect" href="https://api2.cockpitaviations.com">
-<script>
-/* Open the game-server WebSocket IMMEDIATELY (before the big page and CSS are parsed) so the
-   stakes arrive sooner. connect() adopts this socket and replays what it already received. */
-(function(){try{
-  var q=new URLSearchParams(location.search).get('api'),base;
-  if(q) base=q.replace(/\/+$/,'');
-  else if(/^(localhost|127\.0\.0\.1|\[::1\]|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)$/.test(location.hostname)) base=location.origin;
-  else base='https://api2.cockpitaviations.com';
-  var w=new WebSocket((base.indexOf('https:')===0?'wss://':'ws://')+new URL(base).host), buf=[];
-  w.addEventListener('message',function(e){ if(window.__earlyWS===w) buf.push(e.data); });
-  window.__earlyWS=w; window.__earlyWSBuf=buf;
-}catch(e){}})();
-</script>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -3179,50 +3163,36 @@ body.game-screen-active > .bottom-nav{
 </div>
 
 <div id="screenLobby" class="screen active">
-  <div class="lb-hello">
-    <div class="lb-av" id="lobbyAvatar">M</div>
-    <div class="lb-hello-txt">
-      <div class="lb-hello-1" data-lt="hello">እንኳን ደህና ተመለሱ</div>
-      <div class="lb-hello-2"><span id="welcomeName">ተጫዋች</span></div>
-      <span id="welcomeStatus" hidden></span>
+  <div class="welcome-banner">
+    <div class="lobby-hero-art" aria-hidden="true">
+      <div class="lobby-crown">♛</div>
+      <div class="lobby-ball lobby-ball-b">B</div>
+      <div class="lobby-ball lobby-ball-n">N</div>
+      <div class="lobby-ball lobby-ball-o">O</div>
     </div>
-    <div class="lb-live">
-      <span class="lb-live-label" data-lt="online">Online now</span>
-      <b id="lobbyActivePlayers">0</b>
-      <small data-lt="active">ንቁ ተጫዋቾች</small>
-    </div>
-  </div>
-  <div class="lb-hero" aria-hidden="false">
-    <div class="lb-balls" aria-hidden="true">
-      <div class="lb-ball b">B</div><div class="lb-ball i">I</div><div class="lb-ball n">N</div><div class="lb-ball g">G</div><div class="lb-ball o">O</div>
-    </div>
-    <div class="lb-hero-txt"><b data-lt="heroTitle">ክፍል ይምረጡ፣ ትልቅ ያሸንፉ</b><span data-lt="heroSub">ምልክት ማድረግ በራስ-ሰር ነው</span></div>
-  </div>
-  <div class="lb-sec"><span data-lt="choose">የውርርድ መጠን ይምረጡ</span></div>
-  <div id="lobbyConn" class="lobby-conn" hidden></div>
-  <div id="stakesGrid" class="stakes-grid">
-    <div class="lb-card lb-c5 lb-skel" aria-hidden="true">
-      <div class="lb-coin"><b>5</b><i>ETB</i></div>
-      <div class="lb-mid"><div class="lb-line w60"></div><div class="lb-line w80"></div><div class="lb-bar"><u style="width:0"></u></div></div>
-      <div class="lb-go lb-go-skel"></div>
-    </div>
-    <div class="lb-card lb-c10 lb-skel" aria-hidden="true">
-      <div class="lb-coin"><b>10</b><i>ETB</i></div>
-      <div class="lb-mid"><div class="lb-line w60"></div><div class="lb-line w80"></div><div class="lb-bar"><u style="width:0"></u></div></div>
-      <div class="lb-go lb-go-skel"></div>
-    </div>
-    <div class="lb-card lb-c20 lb-skel" aria-hidden="true">
-      <div class="lb-coin"><b>20</b><i>ETB</i></div>
-      <div class="lb-mid"><div class="lb-line w60"></div><div class="lb-line w80"></div><div class="lb-bar"><u style="width:0"></u></div></div>
-      <div class="lb-go lb-go-skel"></div>
+    <div class="lobby-hero-copy">
+      <div class="lobby-kicker"><span></span> WELCOME TO <span></span></div>
+      <div class="mela-welcome-title">Mela Bingo</div>
+      <div class="mela-welcome-player">Welcome, <span id="welcomeName">Player</span>!</div>
+      <div id="welcomeStatus">Good luck and have fun! 🍀</div>
     </div>
   </div>
-  <div class="lb-tip">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffd21a" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
-    <div data-lt="tip">በተመሳሳይ ሰዓት በአንድ ጊዜ ውስጥ <b>እስከ 3 ጨዋታዎችን</b> መጫወት ይቻላል።</div>
+  <div class="lobby-stake-panel">
+    <div class="lobby-stake-heading"><span></span>Choose Your Stake<span></span></div>
+    <div id="stakesGrid" class="stakes-grid"></div>
+  </div>
+  <div class="lobby-players-card">
+    <div class="lobby-players-icon" aria-hidden="true">
+      <span></span><span></span><span></span>
+    </div>
+    <div class="lobby-players-divider"></div>
+    <div class="lobby-players-copy">
+      <div class="lobby-players-label">Active Players</div>
+      <div class="lobby-players-number" id="lobbyActivePlayers">0</div>
+    </div>
+    <div class="lobby-online"><span></span><strong>Online Now</strong></div>
   </div>
 </div>
-
 
 <div id="screenCards" class="screen">
  <span id="cdCountdown" style="display:none" aria-hidden="true"></span>
@@ -3472,12 +3442,12 @@ body.game-screen-active > .bottom-nav{
 <div class="bottom-nav">
   <div class="nav-item" id="navGame" onclick="goToGame()">
     <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 8h10c2.2 0 3.7 1.2 4.4 3.2l1 3.2c.5 1.7-.4 3.4-2.1 3.9-1.2.4-2.5 0-3.3-.9L15.5 16h-7l-3.5 3.4c-.8.9-2.1 1.3-3.3.9-1.7-.5-2.6-2.2-2.1-3.9l1-3.2C1.3 9.2 2.8 8 5 8h2z"/><path d="M7.5 11.5v4M5.5 13.5h4M16.5 12.5h.01M19 15h.01"/></svg></span>
-    <span data-lt="navGame">ጨዋታ</span>
+    <span>Game</span>
   </div>
 
   <div class="nav-item" id="navProfile" onclick="gotoProfile()">
     <span class="nav-icon nav-svg" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 5v5h5"/><path d="M12 7v5l3.5 2"/></svg></span>
-    <span data-lt="navProfile">መገለጫ</span>
+    <span>Profile</span>
   </div>
 </div>
 
@@ -3623,7 +3593,8 @@ async function refreshAccountProfile(retries=10, delayMs=600){
         }
         if(name){
           myName=name;
-          setLobbyName(name);
+          const welcome=document.getElementById('welcomeName');
+          if(welcome) welcome.innerText=name;
         }
         if(Number.isFinite(balance) && balance>=0) return true;
       }
@@ -3655,7 +3626,7 @@ function navGo(screen, navId){
   document.body.classList.toggle('cards-screen-active',screen==='screenCards');
   goScreen(screen);
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  document.getElementById(navId==='navHome'?'navGame':navId)?.classList.add('active');
+  document.getElementById(navId)?.classList.add('active');
 
   // Re-apply the known balance after the new screen becomes visible so a
   // screen's default "ETB 0.00" never overwrites the real displayed balance.
@@ -3969,69 +3940,36 @@ function formatHistoryDate(value){
 
 
 // ─── WEBSOCKET ────────────────────────────────────────────────
-// ─── LOBBY TEXT (Amharic by default, ?lang=en for English; "Online now" stays English) ───
-const LOBBY_LANG=((new URLSearchParams(location.search).get('lang')||'am').toLowerCase()==='en')?'en':'am';
-const LOBBY_I18N={
-  am:{hello:'እንኳን ደህና ተመለሱ',player:'ተጫዋች',online:'Online now',active:'ንቁ ተጫዋቾች',
-      heroTitle:'ክፍል ይምረጡ፣ ትልቅ ያሸንፉ',heroSub:'ምልክት ማድረግ በራስ-ሰር ነው',choose:'የውርርድ መጠን ይምረጡ',
-      tip:'በተመሳሳይ ሰዓት በአንድ ጊዜ ውስጥ <b>እስከ 3 ጨዋታዎችን</b> መጫወት ይቻላል።',navGame:'ጨዋታ',navProfile:'መገለጫ',
-      game:n=>`የ${n} ብር ጨዋታ`,startsIn:n=>`በ${n} ሰከንድ ይጀምራል`,starting:'በመጀመር ላይ…',inProgress:'በመካሄድ ላይ',
-      waiting:'ተጫዋቾችን በመጠበቅ ላይ',finished:'ጨዋታው አብቅቷል',players:n=>`${n} ተጫዋቾች`,
-      play:'ተጫወት',open:'ክፈት',watch:'ተመልከት',yours:'የእርስዎ ጨዋታ',unavailable:'አሁን አይገኝም',
-      connecting:'ከጨዋታ አገልጋዩ ጋር በመገናኘት ላይ…',noconn:h=>`ከጨዋታ አገልጋዩ (${h}) ጋር መገናኘት አልተቻለም። እንደገና በመሞከር ላይ…`},
-  en:{hello:'Welcome back',player:'Player',online:'Online now',active:'active players',
-      heroTitle:'Pick a room, win big',heroSub:'Marking is automatic',choose:'Choose your stake',
-      tip:'You can play <b>up to 3 games at once</b> \u2014 one in each stake.',navGame:'Game',navProfile:'Profile',
-      game:n=>`Play ${n}`,startsIn:n=>`Starts in ${n}s`,starting:'Starting\u2026',inProgress:'In progress',
-      waiting:'Waiting for players',finished:'Game finished',players:n=>`${n} players`,
-      play:'Play',open:'Open',watch:'Watch',yours:'YOUR GAME',unavailable:'Not available',
-      connecting:'Connecting to the game server\u2026',noconn:h=>`Cannot reach the game server (${h}). Retrying\u2026`}
-}[LOBBY_LANG];
-function applyLobbyText(){
-  document.querySelectorAll('[data-lt]').forEach(el=>{ const v=LOBBY_I18N[el.dataset.lt]; if(typeof v==='string') el.innerHTML=v; });
-  const w=document.getElementById('welcomeName'); if(w&&!myName) w.textContent=LOBBY_I18N.player;
-}
-function setLobbyName(name){
-  const nm=String(name||'').trim()||LOBBY_I18N.player;
-  const w=document.getElementById('welcomeName'); if(w) w.textContent=nm;
-  const av=document.getElementById('lobbyAvatar'); if(av) av.textContent=(Array.from(nm)[0]||'M').toUpperCase();
-}
-
-let lobbyHasStakes=false, lobbyFromCache=false;
-// One slim line above the stake cards says what the connection is doing (never hides the cards).
+let lobbyHasStakes=false;
+// Show what the connection is doing instead of an empty "Choose Your Stake" box.
 function showLobbyStatus(text,isError){
-  const el=document.getElementById('lobbyConn'); if(!el) return;
-  if(!text||(lobbyHasStakes&&!lobbyFromCache&&!isError)){ el.hidden=true; return; }
-  el.textContent=text; el.className='lobby-conn'+(isError?' error':''); el.hidden=false;
+  const grid=document.getElementById('stakesGrid');
+  if(!grid) return;
+  if(lobbyHasStakes&&!isError) return;
+  lobbyHasStakes=false;
+  grid.innerHTML='';
+  const d=document.createElement('div');
+  d.className='lobby-status'+(isError?' error':'');
+  d.textContent=text;
+  grid.appendChild(d);
 }
 function connect(){
   const proto=API_BASE.startsWith('https:')?'wss://':'ws://';
   const wsUrl=proto+new URL(API_BASE).host;
-  const wsHost=new URL(API_BASE).host;
-  showLobbyStatus(LOBBY_I18N.connecting,false);
-  // Adopt the socket that was opened at the very top of the page (saves the connection time).
-  const early=window.__earlyWS; let adopted=false;
-  if(early && !window.__earlyWSUsed && early.readyState<=1 && early.url===wsUrl+'/'){ window.__earlyWSUsed=true; ws=early; adopted=true; }
-  else{
-    if(early && early.readyState<=1 && early.url!==wsUrl+'/'){ try{early.close();}catch(e){} }
-    try{ ws=new WebSocket(wsUrl); }
-    catch(e){ console.error('[ws] cannot open',wsUrl,e); showLobbyStatus(LOBBY_I18N.noconn(wsHost),true); setTimeout(connect,3000); return; }
-  }
-  ws.onopen=()=>{ document.getElementById('connDot').classList.add('on'); };
+  showLobbyStatus('Connecting to the game server\u2026',false);
+  try{ ws=new WebSocket(wsUrl); }
+  catch(e){ console.error('[ws] cannot open',wsUrl,e); showLobbyStatus('Cannot open '+wsUrl,true); setTimeout(connect,3000); return; }
+  ws.onopen=()=>{
+  document.getElementById('connDot').classList.add('on');
+};
   ws.onclose=()=>{
     document.getElementById('connDot').classList.remove('on');
     console.warn('[ws] closed / cannot connect to',wsUrl);
-    showLobbyStatus(LOBBY_I18N.noconn(wsHost),true);
+    showLobbyStatus('Cannot reach the game server ('+new URL(API_BASE).host+'). Retrying\u2026',true);
     setTimeout(connect,3000);
   };
   ws.onerror=()=>{ console.warn('[ws] error talking to',wsUrl); };
   ws.onmessage=e=>{try{handle(JSON.parse(e.data));}catch(err){console.error(err);}};
-  if(adopted){
-    const buffered=(window.__earlyWSBuf||[]).splice(0);
-    window.__earlyWS=null;                              // stop buffering
-    if(ws.readyState===1) ws.onopen();
-    buffered.forEach(d=>ws.onmessage({data:d}));         // replay what arrived before the page was ready
-  }
 }
 const ROOM_SCOPED_SEND=new Set(['selectCard','deselectCard','claimBingo','leaveRoom']);
 function wsSend(obj){
@@ -4265,7 +4203,7 @@ function handle(msg){
     setBalance(msg.balance);
   }
   //document.getElementById('welcomeName').innerText=myName||'Player';
-  setLobbyName(myName||'Player');
+  document.getElementById('welcomeName').innerText=myName||'Player';
   //document.getElementById('welcomeStatus').innerText=msg.isRegistered?'Welcome back! 👋':'Registered!';
 
   // Restore an active room first. The server decides whether it is still
@@ -5332,48 +5270,28 @@ function deselectCard(slot){
 
 
 // ─── STAKES ───────────────────────────────────────────────────
-function renderStakes(arr,fromCache){
+function renderStakes(arr){
   const grid=document.getElementById('stakesGrid');
-  if(!grid) return;
+  lobbyHasStakes=true;
+  grid.innerHTML='';
   const stakes=Array.isArray(arr)?arr:[];
-  lobbyHasStakes=true; lobbyFromCache=!!fromCache;
-  if(!fromCache){
-    showLobbyStatus('',false);
-    try{ localStorage.setItem('melaLobbyStakes',JSON.stringify({t:Date.now(),stakes})); }catch(e){}
-  }
   const activeEl=document.getElementById('lobbyActivePlayers');
   if(activeEl){
     const total=stakes.reduce((sum,s)=>sum+(parseInt(s.playerCount,10)||0),0);
     activeEl.innerText=total.toLocaleString();
   }
-  const L=LOBBY_I18N;
-  const frag=document.createDocumentFragment();
   [5,10,20].forEach((amount)=>{
     const s=stakes.find(x=>Number(x.amount)===amount);
     const d=document.createElement('div');
-    d.className='lb-card lb-c'+amount;
-    let chipCls='wait', chipTxt=L.waiting, cd=0, pct=0, players=0, mine=false, btnTxt=L.play, btnCls='lb-go';
-    if(s){
-      const st=String(s.status||'waiting');
-      players=Number(s.playerCount)||0;
-      const max=Number(s.maxPlayers)||0;
-      pct=max?Math.min(100,Math.max(players?3:0,Math.round(players/max*100))):0;
-      mine=joinedStakes.has(s.stakeId);
-      if(st==='countdown'){ chipCls='start'; cd=Math.max(0,Number(s.countdown)||0); chipTxt=L.startsIn(cd); }
-      else if(st==='playing'||st==='starting'){ chipCls='play'; chipTxt=L.inProgress; btnTxt=L.watch; btnCls='lb-go watch'; }
-      else if(st==='finished'){ chipTxt=L.finished; }
-      if(mine){ btnTxt=L.open; btnCls='lb-go open'; d.classList.add('mine'); }
-    }else{
-      d.classList.add('lb-off'); chipTxt=L.unavailable; btnTxt='\u2014'; btnCls='lb-go off';
-    }
-    d.innerHTML=
-      (mine?`<div class="lb-tag">${L.yours}</div>`:'')+
-      `<div class="lb-coin"><b>${amount}</b><i>ETB</i></div>`+
-      `<div class="lb-mid"><div class="lb-title">${L.game(amount)}</div>`+
-      `<div class="lb-row"><span class="lb-chip ${chipCls}"${cd?` data-cd="${cd}"`:''}>${chipTxt}</span>`+
-      (s?`<span class="lb-pl">${L.players(players)}</span>`:'')+`</div>`+
-      `<div class="lb-bar"><u style="width:${pct}%"></u></div></div>`+
-      `<div class="${btnCls}">${btnTxt}</div>`;
+    d.className='stake-card';
+    d.innerHTML=`
+      <div class="stake-play-icon" aria-hidden="true">▶</div>
+      <div class="stake-copy">
+        <div class="stake-etb">Play ${amount}</div>
+        <div class="stake-info">${s ? `${Number(s.playerCount)||0} players · ${Number(s.maxPlayers)||0} max` : 'Currently unavailable'}</div>
+      </div>
+      ${s&&joinedStakes.has(s.stakeId)?'<span class="stake-live-tag">\u25CF In game</span>':''}
+      <div class="stake-arrow" aria-hidden="true">›</div>`;
     if(s){
       d.onclick=()=>{
         const tid=telegramId||getTelegramId();
@@ -5392,28 +5310,12 @@ function renderStakes(arr,fromCache){
           wsSend({type:'joinRoom',stakeId:s.stakeId,telegramId:tid});
         }
       };
+    }else{
+      d.classList.add('stake-unavailable');
+      d.title=`Play ${amount} is not currently available`;
     }
-    frag.appendChild(d);
+    grid.appendChild(d);
   });
-  grid.replaceChildren(frag);
-}
-// countdown chips tick every second between server updates
-setInterval(()=>{
-  document.querySelectorAll('#stakesGrid .lb-chip[data-cd]').forEach(el=>{
-    let v=Number(el.dataset.cd)-1;
-    if(v>0){ el.dataset.cd=v; el.textContent=LOBBY_I18N.startsIn(v); }
-    else{ el.removeAttribute('data-cd'); el.textContent=LOBBY_I18N.starting; }
-  });
-},1000);
-// show the stakes from the last visit right away, until the server sends fresh ones
-function renderCachedStakes(){
-  try{
-    const c=JSON.parse(localStorage.getItem('melaLobbyStakes')||'null');
-    if(c&&Array.isArray(c.stakes)&&Date.now()-Number(c.t||0)<15*60*1000){
-      // cached rooms may be stale: show them as "waiting" with the counts of the last visit
-      renderStakes(c.stakes.map(x=>({...x,status:x.status==='countdown'?'waiting':x.status,countdown:0})),true);
-    }
-  }catch(e){}
 }
 
 // ─── PLAYER COUNT ───────────────────────────────────────────────
@@ -5563,8 +5465,6 @@ syncInitialSoundButton();
 buildTracker();
 buildSpectatorTracker();
 restoreCachedBalance();
-applyLobbyText();
-renderCachedStakes();
 connect();
 //--------------------------------------------------------------
 
@@ -6736,102 +6636,4 @@ html body #screenGame:not(#q1):not(#q2):not(#q3):not(#q4).spectator-mode .game-a
 .lobby-status{padding:14px 12px;text-align:center;color:#e4e0f6;font-size:14px;font-weight:600;line-height:1.4;border-radius:12px;
   background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2)}
 .lobby-status.error{color:#ffd6d6;border-color:rgba(255,120,120,.55);background:rgba(255,80,80,.1)}
-</style>
-
-<style id="mela-lobby-design-a-final">
-/* ===== LOBBY - Design A (room cards) ===== */
-html body{font-family:'Inter','Noto Sans Ethiopic','Abyssinica SIL','Nyala',system-ui,-apple-system,'Segoe UI',sans-serif}
-html body #screenLobby:not(#q1):not(#q2){background:transparent!important;max-width:500px!important;padding:12px clamp(10px,3.4vw,14px) 22px!important;min-height:0!important;
-  overflow:visible!important;gap:0!important}
-html body #screenLobby:not(#q1):not(#q2) .lb-hello{display:flex;align-items:center;gap:12px;margin:2px 2px 8px}
-html body #screenLobby:not(#q1):not(#q2) .lb-av{flex:0 0 auto;width:clamp(42px,12.4vw,50px);height:clamp(42px,12.4vw,50px);border-radius:50%;display:grid;place-items:center;
-  background:linear-gradient(145deg,#8a5cff,#5b2fd0);border:2px solid rgba(255,255,255,.55);font-weight:900;font-size:clamp(18px,5.2vw,21px);
-  box-shadow:0 4px 12px rgba(0,0,0,.35)}
-html body #screenLobby:not(#q1):not(#q2) .lb-hello-txt{min-width:0;flex:1 1 auto}
-html body #screenLobby:not(#q1):not(#q2) .lb-hello-1{font-size:12px;color:#c9c5ee;font-weight:600;line-height:1.3}
-html body #screenLobby:not(#q1):not(#q2) .lb-hello-2{font-size:clamp(17px,4.9vw,19px);font-weight:800;margin-top:1px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-html body #screenLobby:not(#q1):not(#q2) .lb-live{flex:0 0 auto;margin-left:auto;text-align:right;font-size:11px;color:#c9c5ee;font-weight:600;line-height:1.3}
-html body #screenLobby:not(#q1):not(#q2) .lb-live-label{display:inline-flex;align-items:center;gap:5px}
-html body #screenLobby:not(#q1):not(#q2) .lb-live-label:before{content:"";width:7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px #22c55e}
-html body #screenLobby:not(#q1):not(#q2) .lb-live b{display:block;font-size:clamp(17px,5vw,19px);color:#ffd21a;font-weight:800;line-height:1.15}
-html body #screenLobby:not(#q1):not(#q2) .lb-live small{font-size:11px}
-
-html body #screenLobby:not(#q1):not(#q2) .lb-hero{margin:10px 0 4px;min-height:80px;border-radius:16px;position:relative;overflow:hidden;display:flex;align-items:center;gap:14px;padding:10px 16px;
-  background:linear-gradient(120deg,rgba(124,58,237,.55),rgba(37,99,235,.35));border:1px solid rgba(255,255,255,.22)}
-html body #screenLobby:not(#q1):not(#q2) .lb-hero:after{content:"";position:absolute;right:-30px;top:-40px;width:130px;height:130px;border-radius:50%;background:radial-gradient(circle,rgba(255,210,26,.35),transparent 70%);pointer-events:none}
-html body #screenLobby:not(#q1):not(#q2) .lb-balls{display:flex;gap:5px;transform:rotate(-4deg);flex:0 0 auto}
-html body #screenLobby:not(#q1):not(#q2) .lb-ball{width:clamp(28px,8.4vw,34px);height:clamp(28px,8.4vw,34px);border-radius:50%;display:grid;place-items:center;font-weight:900;font-size:clamp(13px,3.7vw,15px);color:#fff;
-  box-shadow:inset 0 3px 4px rgba(255,255,255,.35),0 4px 8px rgba(0,0,0,.35);animation:lbFloat 3.2s ease-in-out infinite}
-html body #screenLobby:not(#q1):not(#q2) .lb-ball.b{background:radial-gradient(circle at 35% 28%,#6aa5ff,var(--mela-b,#2f7cff) 62%)}
-html body #screenLobby:not(#q1):not(#q2) .lb-ball.i{background:radial-gradient(circle at 35% 28%,#8f92ff,var(--mela-i,#5b5ff0) 62%);animation-delay:.25s}
-html body #screenLobby:not(#q1):not(#q2) .lb-ball.n{background:radial-gradient(circle at 35% 28%,#c98aff,var(--mela-n,#a24bf0) 62%);animation-delay:.5s}
-html body #screenLobby:not(#q1):not(#q2) .lb-ball.g{background:radial-gradient(circle at 35% 28%,#47e07e,var(--mela-g,#16b84a) 62%);animation-delay:.75s}
-html body #screenLobby:not(#q1):not(#q2) .lb-ball.o{background:radial-gradient(circle at 35% 28%,#ffa65a,var(--mela-o,#ff7410) 62%);animation-delay:1s}
-@keyframes lbFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
-html body #screenLobby:not(#q1):not(#q2) .lb-hero-txt{margin-left:auto;text-align:right;min-width:0;position:relative;z-index:1}
-html body #screenLobby:not(#q1):not(#q2) .lb-hero-txt b{display:block;font-size:clamp(14px,4.2vw,17px);font-weight:900;line-height:1.3}
-html body #screenLobby:not(#q1):not(#q2) .lb-hero-txt span{display:block;font-size:12px;color:#e4defb;margin-top:2px}
-
-html body #screenLobby:not(#q1):not(#q2) .lb-sec{display:flex;align-items:center;gap:10px;margin:14px 2px 8px;font-size:15px;font-weight:800}
-html body #screenLobby:not(#q1):not(#q2) .lb-sec:after{content:"";flex:1;height:1px;background:linear-gradient(90deg,rgba(255,255,255,.35),transparent)}
-html body #screenLobby:not(#q1):not(#q2) .lobby-conn{margin:-2px 2px 8px;padding:7px 10px;border-radius:10px;font-size:12px;font-weight:600;text-align:center;color:#e4e0f6;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18)}
-html body #screenLobby:not(#q1):not(#q2) .lobby-conn[hidden]{display:none}
-html body #screenLobby:not(#q1):not(#q2) .lobby-conn.error{color:#ffd6d6;border-color:rgba(255,120,120,.55);background:rgba(255,80,80,.1)}
-
-html body #screenLobby:not(#q1):not(#q2) .stakes-grid{display:block!important;margin:0!important;padding:0!important}
-html body #screenLobby:not(#q1):not(#q2) .lb-card{position:relative;display:flex;align-items:center;gap:clamp(9px,3vw,13px);margin:0 0 11px;padding:clamp(10px,3vw,12px);border-radius:18px;cursor:pointer;
-  background:linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.04));border:1px solid rgba(255,255,255,.2);box-shadow:0 6px 16px rgba(0,0,0,.25);
-  -webkit-tap-highlight-color:transparent;transition:transform .12s ease,border-color .2s}
-html body #screenLobby:not(#q1):not(#q2) .lb-card:active{transform:scale(.985)}
-html body #screenLobby:not(#q1):not(#q2) .lb-card.mine{border-color:#4ade80;box-shadow:0 0 0 1px rgba(74,222,128,.5),0 6px 16px rgba(0,0,0,.25)}
-html body #screenLobby:not(#q1):not(#q2) .lb-card.lb-off{opacity:.55;cursor:default}
-html body #screenLobby:not(#q1):not(#q2) .lb-coin{flex:0 0 clamp(56px,16.5vw,66px);width:clamp(56px,16.5vw,66px);height:clamp(56px,16.5vw,66px);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  border:3px solid rgba(255,255,255,.55);color:#fff;box-shadow:inset 0 3px 6px rgba(255,255,255,.35),0 6px 12px rgba(0,0,0,.35);
-  background:radial-gradient(circle at 35% 28%,#9aa4ff,#4f46e5 72%)}
-html body #screenLobby:not(#q1):not(#q2) .lb-coin b{font-size:clamp(21px,6.2vw,25px);font-weight:900;line-height:1}
-html body #screenLobby:not(#q1):not(#q2) .lb-coin i{font-style:normal;font-size:10px;font-weight:800;letter-spacing:.8px;margin-top:2px;opacity:.95}
-html body #screenLobby:not(#q1):not(#q2) .lb-c5 .lb-coin{background:radial-gradient(circle at 35% 28%,#6aa5ff,#2563eb 70%)}
-html body #screenLobby:not(#q1):not(#q2) .lb-c10 .lb-coin{background:radial-gradient(circle at 35% 28%,#5fe3f5,#4f46e5 75%)}
-html body #screenLobby:not(#q1):not(#q2) .lb-c20 .lb-coin{background:radial-gradient(circle at 35% 28%,#d28bff,#7c3aed 72%)}
-html body #screenLobby:not(#q1):not(#q2) .lb-mid{flex:1 1 auto;min-width:0}
-html body #screenLobby:not(#q1):not(#q2) .lb-title{font-size:clamp(16px,4.7vw,18px);font-weight:800;line-height:1.25}
-html body #screenLobby:not(#q1):not(#q2) .lb-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin-top:5px;font-size:11.5px;font-weight:700}
-html body #screenLobby:not(#q1):not(#q2) .lb-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap}
-html body #screenLobby:not(#q1):not(#q2) .lb-chip:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
-html body #screenLobby:not(#q1):not(#q2) .lb-chip.wait{color:#8fc2ff;background:rgba(80,140,255,.16)}
-html body #screenLobby:not(#q1):not(#q2) .lb-chip.start{color:#ffd54a;background:rgba(255,200,40,.16)}
-html body #screenLobby:not(#q1):not(#q2) .lb-chip.play{color:#7dffb0;background:rgba(34,197,94,.18)}
-html body #screenLobby:not(#q1):not(#q2) .lb-pl{color:#d5d0f3;font-weight:600;white-space:nowrap}
-html body #screenLobby:not(#q1):not(#q2) .lb-bar{height:5px;margin-top:9px;border-radius:5px;background:rgba(255,255,255,.12);overflow:hidden}
-html body #screenLobby:not(#q1):not(#q2) .lb-bar u{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#4ade80,#22d3ee);transition:width .4s ease}
-html body #screenLobby:not(#q1):not(#q2) .lb-go{flex:0 0 auto;min-width:clamp(70px,20vw,84px);height:42px;padding:0 clamp(12px,3.6vw,17px);border-radius:999px;display:grid;place-items:center;
-  font-weight:900;font-size:clamp(13px,3.8vw,15px);color:#fff;white-space:nowrap;background:linear-gradient(135deg,#ff6a6a,#ff4b1f);box-shadow:0 5px 12px rgba(255,75,31,.35)}
-html body #screenLobby:not(#q1):not(#q2) .lb-go.open{background:linear-gradient(135deg,#2fdc6e,#14a843);box-shadow:0 5px 12px rgba(20,168,67,.4)}
-html body #screenLobby:not(#q1):not(#q2) .lb-go.watch{background:linear-gradient(135deg,#7c8cff,#4f46e5);box-shadow:0 5px 12px rgba(79,70,229,.4)}
-html body #screenLobby:not(#q1):not(#q2) .lb-go.off{background:rgba(255,255,255,.12);box-shadow:none;color:#aeb4e8}
-html body #screenLobby:not(#q1):not(#q2) .lb-tag{position:absolute;top:-9px;right:16px;font-size:10px;font-weight:900;letter-spacing:.4px;padding:3px 9px;border-radius:999px;background:#22c55e;color:#04210f}
-html body #screenLobby:not(#q1):not(#q2) .lb-tip{margin:2px 0 0;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);
-  font-size:12px;line-height:1.5;color:#d8d4f4;display:flex;gap:10px;align-items:center}
-html body #screenLobby:not(#q1):not(#q2) .lb-tip svg{flex:0 0 auto}
-html body #screenLobby:not(#q1):not(#q2) .lb-tip b{color:#ffd21a}
-
-/* loading placeholders (visible instantly, before the server answers) */
-html body #screenLobby:not(#q1):not(#q2) .lb-skel{pointer-events:none}
-html body #screenLobby:not(#q1):not(#q2) .lb-line{height:12px;border-radius:6px;margin-bottom:8px;background:linear-gradient(90deg,rgba(255,255,255,.08),rgba(255,255,255,.2),rgba(255,255,255,.08));background-size:200% 100%;animation:lbShimmer 1.2s linear infinite}
-html body #screenLobby:not(#q1):not(#q2) .lb-line.w60{width:60%}html body #screenLobby:not(#q1):not(#q2) .lb-line.w80{width:80%;height:9px}
-html body #screenLobby:not(#q1):not(#q2) .lb-go-skel{background:rgba(255,255,255,.1)!important;box-shadow:none!important}
-@keyframes lbShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-
-/* small / short screens */
-@media(max-width:360px){
-  html body #screenLobby:not(#q1):not(#q2) .lb-live small{display:none}
-  html body #screenLobby:not(#q1):not(#q2) .lb-hero{padding:8px 12px;gap:10px}
-}
-@media(max-height:720px){ html body #screenLobby:not(#q1):not(#q2) .lb-hero{display:none} }
-@media(max-height:600px){ html body #screenLobby:not(#q1):not(#q2) .lb-tip{display:none} html body #screenLobby:not(#q1):not(#q2) .lb-hello{margin-bottom:2px} }
-@media(prefers-reduced-motion:reduce){ html body #screenLobby:not(#q1):not(#q2) .lb-ball,html body #screenLobby:not(#q1):not(#q2) .lb-line{animation:none} }
-</style>
-
-<style id="mela-navbar-roomy-final">
-html body > .navbar{min-height:48px!important;padding-top:6px!important;padding-bottom:6px!important;box-sizing:border-box!important;align-items:center!important}
 </style>

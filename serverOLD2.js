@@ -44,13 +44,6 @@ function isAdminPhone(phone) {
 const HOUSE_CUT   = 0.20; // 20% house, 80% winner
 // Prize pool that players actually see/win — total pot minus house cut
 function prizePoolOf(room){ return Math.floor(room.pot*(1-HOUSE_CUT)); }
-// NOTE: room.pot is ALREADY the prize pool (gross pot minus the 20% house cut, see startGame).
-// Never pass it through prizePoolOf() again, or the cut is applied twice.
-// "Players" shown in the game = players who paid and are in this round (spectators excluded),
-// so players and spectators always see the same number.
-function paidPlayersOf(room){ return room.players.filter(p=>p.hasPaid); }
-function livePlayerCount(room){ return paidPlayersOf(room).length; }
-function paidPlayerList(room){ return paidPlayersOf(room).map(p=>({playerId:p.playerId,playerName:p.playerName})); }
 
 // ─── PAYMENT INFO (admin-editable) ─────────────────────────────
 let PAYMENT_INFO = { telebirrNumber: '0967423275', telebirrName: 'Lidetua' };
@@ -530,44 +523,7 @@ function getOrCreateRoom(sid){
   rooms[roomId]=r; return r;
 }
 const send=(ws,msg)=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(msg));};
-// A player can be in SEVERAL rooms at once (one per stake: 5 / 10 / 20 = up to 3 games at a time).
-// Every room message carries roomId + stakeId so the app can handle each game separately.
-const sendRoom=(room,ws,msg)=>send(ws,{roomId:room.roomId,stakeId:room.stakeId,...msg});
-function clientRooms(client){
-  if(!client.rooms) client.rooms=new Set();
-  return Array.from(client.rooms).map(id=>rooms[id]).filter(Boolean);
-}
-// the room a message is about: msg.roomId if the client belongs to it, else the room it is viewing
-function roomForMsg(client,msg){
-  const id=(msg&&msg.roomId&&client.rooms&&client.rooms.has(msg.roomId))?msg.roomId:client.roomId;
-  return id?rooms[id]:null;
-}
-// money already reserved by this client's card picks in OTHER rooms that have not started yet
-function reservedElsewhere(client,room){
-  return clientRooms(client).reduce((sum,r)=>{
-    if(r.roomId===room.roomId||(r.status!=='waiting'&&r.status!=='countdown')) return sum;
-    const pl=r.players.find(pp=>pp.playerId===client.playerId);
-    return sum+(pl?Number(r.stake)*getPlayerCardCount(pl):0);
-  },0);
-}
-// re-link every room entry of a Telegram account to this connection (after a reload / reconnect)
-function relinkAllRooms(client,ws,tid){
-  if(!tid) return;
-  if(!client.rooms) client.rooms=new Set();
-  Object.values(rooms).forEach(r=>{
-    r.players.forEach(pl=>{
-      if(String(pl.telegramId||'')!==String(tid)) return;
-      if(pl.playerId!==client.playerId){
-        const old=clients[pl.playerId];
-        if(old&&old!==client&&old.rooms) old.rooms.delete(r.roomId);
-        pl.playerId=client.playerId;
-      }
-      pl.ws=ws;
-      client.rooms.add(r.roomId);
-    });
-  });
-}
-const broadcast=(room,msg)=>{const s=JSON.stringify({roomId:room.roomId,stakeId:room.stakeId,...msg});room.players.forEach(p=>{if(p.ws&&p.ws.readyState===WebSocket.OPEN)p.ws.send(s);});};
+const broadcast=(room,msg)=>{const s=JSON.stringify(msg);room.players.forEach(p=>{if(p.ws&&p.ws.readyState===WebSocket.OPEN)p.ws.send(s);});};
 function broadcastLobby(){
   // Debounced: many joins/leaves happening in quick succession (busy lobby with
   // hundreds of players) will collapse into a single broadcast every 250ms,
@@ -578,12 +534,8 @@ function broadcastLobby(){
     broadcastLobby._pending=false;
     const payload=STAKES.map(s=>{const r=Object.values(rooms).find(r=>r.stakeId===s.id);
       return{stakeId:s.id,amount:s.amount,maxPlayers:s.maxPlayers,playerCount:r?r.players.length:0,status:r?r.status:'waiting',countdown:r&&r.status==='countdown'?r.countdownLeft:0};});
-    Object.values(clients).forEach(c=>{
-      if(!c.ws||c.ws.readyState!==WebSocket.OPEN) return;
-      // stakes where this player has a game running (shown as "In game" in the lobby)
-      const joined=clientRooms(c).filter(r=>r.status==='playing'&&r.players.some(pl=>pl.playerId===c.playerId&&(getPlayerCardCount(pl)>0||pl.hasPaid))).map(r=>r.stakeId);
-      c.ws.send(JSON.stringify({type:'lobbyUpdate',stakes:payload,joined}));
-    });
+    const payloadStr=JSON.stringify({type:'lobbyUpdate',stakes:payload});
+    Object.values(clients).forEach(c=>{if(!c.roomId&&c.ws&&c.ws.readyState===WebSocket.OPEN)c.ws.send(payloadStr);});
   },250);
 }
 function getPlayerCardIds(p){
@@ -597,7 +549,7 @@ function broadcastCardPool(room){
   // Send only the FULL pool once when needed (e.g. on join); for live picks use broadcastCardDiff instead.
   const base=getCardPoolForRoom(room).map(c=>({id:c.id,taken:room.takenCardIds.has(c.id)}));
   const cardCount=room.players.reduce((sum,p)=>sum+getPlayerCardCount(p),0);
-  room.players.forEach(p=>send(p.ws,{roomId:room.roomId,stakeId:room.stakeId,type:'cardPoolUpdate',pool:base.map(c=>({...c,takenByMe:getPlayerCardIds(p).includes(c.id)})),playerCount:cardCount,stakeAmount:room.stake}));
+  room.players.forEach(p=>send(p.ws,{type:'cardPoolUpdate',pool:base.map(c=>({...c,takenByMe:getPlayerCardIds(p).includes(c.id)})),playerCount:cardCount,stakeAmount:room.stake}));
 }
 // Lightweight update: tell everyone in the room only WHICH card(s) changed state,
 // instead of re-sending the entire 400-card array on every single pick.
@@ -606,7 +558,6 @@ function broadcastCardDiff(room, changedCardIds){
   const cardCount=room.players.reduce((sum,p)=>sum+getPlayerCardCount(p),0);
   const changes=changedCardIds.map(id=>({id,taken:room.takenCardIds.has(id)}));
   room.players.forEach(p=>send(p.ws,{
-    roomId:room.roomId,stakeId:room.stakeId,
     type:'cardPoolDiff',
     changes:changes.map(c=>({...c,takenByMe:getPlayerCardIds(p).includes(c.id)})),
     playerCount:cardCount,
@@ -672,18 +623,18 @@ async function startGame(room){
     if(getPlayerCardCount(p)>0){
       const card=p.cardId?getCard(p.cardId):null;
       const card2=p.cardId2?getCard(p.cardId2):null;
-      sendRoom(room,p.ws,{type:'yourCard',
+      send(p.ws,{type:'yourCard',
         cardId:p.cardId,cardNumbers:card?card.numbers:[],
         cardId2:p.cardId2||null,cardNumbers2:card2?card2.numbers:[],
         cardId3:p.cardId3||null,cardNumbers3:p.cardId3?getCard(p.cardId3).numbers:[],
         cardId4:p.cardId4||null,cardNumbers4:p.cardId4?getCard(p.cardId4).numbers:[],
-        pot:room.pot,playerCount:livePlayerCount(room),spectator:false});
+        pot:room.pot,playerCount:room.players.length,spectator:false});
     }else{
-      sendRoom(room,p.ws,{type:'spectating',pot:room.pot,playerCount:room.players.filter(p=>p.hasPaid).length,calledNumbers:room.calledNumbers});
+      send(p.ws,{type:'spectating',pot:room.pot,playerCount:room.players.filter(p=>p.hasPaid).length,calledNumbers:room.calledNumbers});
     }
   });
 
-  broadcast(room,{type:'gameStart',pot:room.pot,playerCount:livePlayerCount(room),players:paidPlayerList(room)});
+  broadcast(room,{type:'gameStart',pot:room.pot,players:room.players.map(p=>({playerId:p.playerId,playerName:p.playerName}))});
   broadcastLobby(); scheduleNextCall(room);
 }
 
@@ -700,37 +651,8 @@ function callNumber(room){
   const idx=Math.floor(Math.random()*room.availableNumbers.length);
   const drawn=room.availableNumbers.splice(idx,1)[0];
   room.calledNumbers.push(drawn);
-  broadcast(room,{type:'numberCalled',number:drawn,calledNumbers:room.calledNumbers,callCount:room.calledNumbers.length,claimWindowMs:CLAIM_WINDOW_MS,pot:room.pot,playerCount:livePlayerCount(room),players:paidPlayerList(room)});
+  broadcast(room,{type:'numberCalled',number:drawn,calledNumbers:room.calledNumbers,callCount:room.calledNumbers.length,claimWindowMs:CLAIM_WINDOW_MS,players:room.players.map(p=>({playerId:p.playerId,playerName:p.playerName}))});
   room.claimWindowOpen=true; scheduleNextCall(room);
-  autoClaimForAll(room);
-}
-
-// The game is fully automatic: every called number is marked on every cartela.
-// The server therefore claims BINGO for any winning player itself. This is what lets a
-// player run 2-3 games at the same time: a game he is not looking at (or whose screen is
-// closed) is still claimed and paid correctly. Duplicate claims from the app are ignored.
-function autoClaimForAll(room){
-  if(room.status!=='playing') return;
-  room.players.forEach(p=>{
-    if(p.disqualified||!p.hasPaid||getPlayerCardCount(p)===0) return;
-    if(room.claimedThisRound.find(c=>c.playerId===p.playerId)) return;
-    const claim={playerId:p.playerId,markedIndices:[],cardId2:null,markedIndices2:[],cardId3:null,markedIndices3:[],cardId4:null,markedIndices4:[]};
-    let wins=false;
-    [1,2,3,4].forEach(slot=>{
-      const id=p[getCardField(slot)]; if(!id) return;
-      const card=getCard(id); if(!card) return;
-      const marks=[]; card.numbers.forEach((num,i)=>{ if(i===12||room.calledNumbers.includes(num)) marks.push(i); });
-      claim['markedIndices'+(slot===1?'':slot)]=marks;
-      if(slot>1) claim['cardId'+slot]=id;
-      if(checkWin(card.numbers,room.calledNumbers,marks)) wins=true;
-    });
-    if(wins) room.claimedThisRound.push(claim);
-  });
-  if(room.claimedThisRound.length){
-    if(room.callTimer) clearTimeout(room.callTimer);
-    if(room.claimEvalTimer) clearTimeout(room.claimEvalTimer);
-    room.claimEvalTimer=setTimeout(()=>evaluateClaims(room),CLAIM_COLLECT_MS);
-  }
 }
 
 function evaluateClaims(room){
@@ -755,7 +677,7 @@ function evaluateClaims(room){
 
   cheaters.forEach(p=>{
     p.disqualified=true;
-    sendRoom(room,p.ws,{type:'disqualified',message:'🚫 የተሳሳተ BINGO ጥያቄ — ከጨዋታው ተሰርዘዋል!'});
+    send(p.ws,{type:'disqualified',message:'🚫 የተሳሳተ BINGO ጥያቄ — ከጨዋታው ተሰርዘዋል!'});
   });
 
   room.claimedThisRound=[]; room.claimWindowOpen=false;
@@ -886,18 +808,6 @@ async function endGame(room, winners, customMsg, noWinner){
       p.disqualified=false;
     });
 
-    // Players who had LEFT this game's screen (detached, usually playing another game now)
-    // are removed from the finished room instead of being pulled back into it.
-    room.players=room.players.filter(p=>{
-      if(!p.detached) return true;
-      const cl=clients[p.playerId];
-      if(cl&&cl.rooms) cl.rooms.delete(room.roomId);
-      if(cl&&cl.roomId===room.roomId) cl.roomId=null;
-      sendRoom(room,p.ws,{type:'roomClosed'});
-      return false;
-    });
-    if(room.players.length===0){ delete rooms[room.roomId]; broadcastLobby(); return; }
-
     room.players.forEach(p=>{
       const cl=clients[p.playerId];
       send(p.ws,{
@@ -920,12 +830,10 @@ async function endGame(room, winners, customMsg, noWinner){
   },RESET_SECONDS*1000);
 }
 
-async function leaveRoom(client,roomId){
-  const rid=roomId||client.roomId;
-  if(!rid) return;
-  if(client.rooms) client.rooms.delete(rid);
-  const room=rooms[rid];
-  if(!room){ if(client.roomId===rid) client.roomId=null; return; }
+async function leaveRoom(client){
+  if(!client.roomId) return;
+  const room=rooms[client.roomId];
+  if(!room){client.roomId=null;return;}
   const p=room.players.find(p=>p.playerId===client.playerId);
   if(p){
     if(p.cardId) room.takenCardIds.delete(p.cardId);
@@ -944,7 +852,7 @@ async function leaveRoom(client,roomId){
     }
   }
   room.players=room.players.filter(p=>p.playerId!==client.playerId);
-  if(client.roomId===rid) client.roomId=null;
+  client.roomId=null;
   if(room.players.length===0){
     if(room.callTimer)clearTimeout(room.callTimer);
     if(room.countdownTimer)clearInterval(room.countdownTimer);
@@ -958,7 +866,7 @@ async function leaveRoom(client,roomId){
 // ─── WEBSOCKET ────────────────────────────────────────────────
 wss.on('connection',(ws)=>{
   const playerId=uuidv4();
-  const client={playerId,playerName:'',telegramId:null,balance:0,roomId:null,rooms:new Set(),isAdmin:false,ws};
+  const client={playerId,playerName:'',telegramId:null,balance:0,roomId:null,isAdmin:false,ws};
   clients[playerId]=client; ws._pid=playerId;
 
   const lobbyStakes=STAKES.map(s=>{const r=Object.values(rooms).find(r=>r.stakeId===s.id);
@@ -1019,7 +927,6 @@ wss.on('connection',(ws)=>{
                 client.playerName=user.name||client.playerName||'Player';
                 client.balance=Number.isFinite(Number(user.balance))?Number(user.balance):0;
                 client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
-                relinkAllRooms(client,ws,tid);   // keep receiving every game this account is playing
                 send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
               } else {
                 // Never convert a failed/late database lookup into a fake zero wallet.
@@ -1081,9 +988,7 @@ wss.on('connection',(ws)=>{
 
         await refreshClientBalance(client);
 
-        ep.ws=ws; client.roomId=msg.roomId; ep.detached=false;
-        if(!client.rooms) client.rooms=new Set(); client.rooms.add(msg.roomId);
-        relinkAllRooms(client,ws,String(msg.telegramId||client.telegramId||''));
+        ep.ws=ws; client.roomId=msg.roomId;
 
         const card=ep.cardId?getCard(ep.cardId):null;
 
@@ -1098,7 +1003,7 @@ wss.on('connection',(ws)=>{
             cardId3:ep.cardId3||null,cardNumbers3:ep.cardId3?getCard(ep.cardId3).numbers:[],
             cardId4:ep.cardId4||null,cardNumbers4:ep.cardId4?getCard(ep.cardId4).numbers:[],
 
-            calledNumbers:room.calledNumbers,pot:room.pot,playerCount:livePlayerCount(room),balance:client.balance});
+            calledNumbers:room.calledNumbers,pot:room.pot,playerCount:room.players.length,balance:client.balance});
         }else{
           // WAITING/COUNTDOWN room: show fresh card selection state.
           send(ws,{type:'joinedRoom',roomId:room.roomId,stakeId:room.stakeId,
@@ -1165,14 +1070,7 @@ wss.on('connection',(ws)=>{
                  }
 
 
-                 // A player may play several games at once (one room per stake). Rooms where he
-                 // has a RUNNING game stay open. Any other room (card selection not started yet,
-                 // or just watching) is left, which releases the picked cards as before.
-                 for(const r of clientRooms(client)){
-                   const pl=r.players.find(pp=>pp.playerId===client.playerId);
-                   const runningGame=pl&&(r.status==='playing'||r.status==='starting')&&(getPlayerCardCount(pl)>0||pl.hasPaid);
-                   if(!runningGame) await leaveRoom(client,r.roomId);
-                 }
+                 await leaveRoom(client);
 
               // ── Re-link an existing player before spectator handling. ──
               // A page/app reload creates a new WebSocket/playerId. If this Telegram
@@ -1193,9 +1091,7 @@ wss.on('connection',(ws)=>{
                   ep.ws=ws;
                   ep.telegramId=reconnectTid;
                   client.telegramId=reconnectTid;
-                  client.roomId=existingRoom.roomId; ep.detached=false;
-                  if(!client.rooms) client.rooms=new Set(); client.rooms.add(existingRoom.roomId);
-                  relinkAllRooms(client,ws,reconnectTid);
+                  client.roomId=existingRoom.roomId;
                   await refreshClientBalance(client);
                   const card=ep.cardId?getCard(ep.cardId):null;
                   const card2=ep.cardId2?getCard(ep.cardId2):null;
@@ -1206,7 +1102,7 @@ wss.on('connection',(ws)=>{
             cardId3:ep.cardId3||null,cardNumbers3:ep.cardId3?getCard(ep.cardId3).numbers:[],
             cardId4:ep.cardId4||null,cardNumbers4:ep.cardId4?getCard(ep.cardId4).numbers:[],
                       calledNumbers:existingRoom.calledNumbers,pot:existingRoom.pot,
-                      playerCount:livePlayerCount(existingRoom),balance:client.balance});
+                      playerCount:existingRoom.players.length,balance:client.balance});
                   }else{
                     send(ws,{type:'joinedRoom',roomId:existingRoom.roomId,stakeId:existingRoom.stakeId,
                       balance:client.balance,status:existingRoom.status,
@@ -1231,11 +1127,11 @@ wss.on('connection',(ws)=>{
                 if(liveRoom.players.length>=liveRoom.maxPlayers) return send(ws,{type:'error',message:`ይህ ክፍል ሙሉ ነው። ከፍተኛው ተጫዋቾች: ${liveRoom.maxPlayers}`});
                 liveRoom.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,ws,cardId:null,cardId2:null,cardId3:null,cardId4:null,hasPaid:false,disqualified:false});
 
-                client.roomId=liveRoom.roomId; client.rooms.add(liveRoom.roomId);
+                client.roomId=liveRoom.roomId;
 
                 send(ws,{type:'joinedRoom',roomId:liveRoom.roomId,stakeId:liveRoom.stakeId,balance:client.balance,status:liveRoom.status});
 
-                sendRoom(liveRoom,ws,{type:'spectating',pot:liveRoom.pot,playerCount:liveRoom.players.filter(p=>p.hasPaid).length,calledNumbers:liveRoom.calledNumbers});
+                send(ws,{type:'spectating',pot:prizePoolOf(liveRoom),playerCount:liveRoom.players.filter(p=>p.hasPaid).length,calledNumbers:liveRoom.calledNumbers});
 
                 broadcastLobby();
 
@@ -1251,7 +1147,7 @@ wss.on('connection',(ws)=>{
 
               room.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,ws,cardId:null,cardId2:null,cardId3:null,cardId4:null,hasPaid:false,disqualified:false});
 
-              client.roomId=room.roomId; client.rooms.add(room.roomId);
+              client.roomId=room.roomId;
 
               send(ws,{type:'joinedRoom',roomId:room.roomId,stakeId:room.stakeId,balance:client.balance,status:room.status,playerCount:room.players.reduce((sum,p)=>sum+getPlayerCardCount(p),0),stakeAmount:room.stake});
 
@@ -1266,8 +1162,8 @@ wss.on('connection',(ws)=>{
             }
 
             case 'selectCard':{
-              const room=roomForMsg(client,msg);
-              if(!room) break;
+              if(!client.roomId) break;
+              const room=rooms[client.roomId];
               // Selecting a card is intentionally memory-only. Never wait for the DB here.
               if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
               const cardId=parseInt(msg.cardId);
@@ -1289,7 +1185,7 @@ wss.on('connection',(ws)=>{
               // and no database call happens here, so rapid clicks are safe.
               if(!previous){
                 const reservedAfter=getPlayerCardCount(p)+1;
-                const required=Number(room.stake)*reservedAfter+reservedElsewhere(client,room);
+                const required=Number(room.stake)*reservedAfter;
                 // Fast local guard only. The authoritative DB balance is checked again
                 // once, when the game actually starts.
                 if(Number(client.balance)<required){
@@ -1301,15 +1197,15 @@ wss.on('connection',(ws)=>{
               p[field]=cardId;
               room.takenCardIds.add(cardId);
               const card=getCard(cardId);
-              sendRoom(room,ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot});
+              send(ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot});
               broadcastCardDiff(room,Array.from(changedIds));
               const readyCount=room.players.filter(p=>p.cardId).length;
               if(readyCount>=2&&room.status==='waiting') startCountdown(room);
               break;
             }
             case 'deselectCard':{
-              const room=roomForMsg(client,msg);
-              if(!room) break;
+              if(!client.roomId) break;
+              const room=rooms[client.roomId];
               if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
               const p=room.players.find(p=>p.playerId===client.playerId);
               if(!p) break;
@@ -1327,8 +1223,9 @@ wss.on('connection',(ws)=>{
             }
             case 'claimBingo':{
 
-              const room=roomForMsg(client,msg);
-              if(!room) return;
+              if(!client.roomId) return;
+
+              const room=rooms[client.roomId];
 
               if(!room||room.status!=='playing') return;
 
@@ -1336,7 +1233,7 @@ wss.on('connection',(ws)=>{
 
               if(!p||p.disqualified||getPlayerCardCount(p)===0) return;
 
-              if(!room.claimWindowOpen) return sendRoom(room,ws,{type:'claimTooLate',message:'ጊዜው አልፏል!'});
+              if(!room.claimWindowOpen) return send(ws,{type:'claimTooLate',message:'ጊዜው አልፏል!'});
 
               if(!room.claimedThisRound.find(c=>c.playerId===client.playerId))
 
@@ -1372,19 +1269,7 @@ wss.on('connection',(ws)=>{
 
             case 'leaveRoom':
 
-              await leaveRoom(client,msg.roomId); send(ws,{type:'leftRoom',roomId:msg.roomId||null,balance:client.balance}); break;
-
-            // The player left the screen of a running game but is still playing it
-            // (usually because he opened another game). Used to clean up after that game ends.
-            case 'detachRoom':{
-              const room=roomForMsg(client,msg);
-              if(!room) break;
-              const pl=room.players.find(pp=>pp.playerId===client.playerId);
-              if(pl) pl.detached=true;
-              if(client.roomId===room.roomId) client.roomId=null;
-              broadcastLobby();
-              break;
-            }
+              await leaveRoom(client); send(ws,{type:'leftRoom',balance:client.balance}); break;
 
 
             // ── Deposit request ──
@@ -1486,13 +1371,7 @@ wss.on('connection',(ws)=>{
   ws.on('close',()=>{
     const c=clients[ws._pid];
     if(!c) return;
-    let keepClient=false;
-    clientRooms(c).forEach(room=>{
-      const p=room.players.find(p=>p.playerId===c.playerId);
-      if(room.status==='playing'&&p){ p.ws=null; keepClient=true; }     // running games stay alive
-      else leaveRoom(c,room.roomId);
-    });
-    if(keepClient) return;
+    if(c.roomId){const room=rooms[c.roomId];if(room&&room.status==='playing'){const p=room.players.find(p=>p.playerId===c.playerId);if(p)p.ws=null;return;}leaveRoom(c);}
     delete clients[ws._pid]; broadcastLobby();
   });
   ws.on('error',()=>{});
@@ -1989,5 +1868,5 @@ bot.on('contact', async msg => {
     );
   });
 
-  console.log('🤖 Telegram bot started!!');
+  console.log('🤖 Telegram bot started!');
 }

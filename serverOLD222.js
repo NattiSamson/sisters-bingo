@@ -1989,5 +1989,5 @@ bot.on('contact', async msg => {
     );
   });
 
-  console.log('🤖 Telegram bot started!!');
+  console.log('🤖 Telegram bot started!');
 }
