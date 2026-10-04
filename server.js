@@ -35,7 +35,7 @@ app.use((req, res, next) => {
   next();
 });
 
-const ADMIN_PHONE = '251965666656';
+const ADMIN_PHONE = '251934255415';
 function isAdminPhone(phone) {
   if (!phone) return false;
   const normalized = String(phone).replace(/^\+/, '');
