@@ -1178,7 +1178,7 @@ body{
     font-size:12px!important;
   }
 }
-/* If the  dfhhfactive game state does not exist, GAME always returns to the lobby. */
+/* If the active game state does not exist, GAME always returns to the lobby. */
 .card-pending{opacity:.88;transform:scale(.98);transition:transform .08s ease,opacity .08s ease;}
 </style>
 
@@ -3182,21 +3182,102 @@ body.game-screen-active > .bottom-nav{
   <div class="lb-hello">
     <div class="lb-av" id="lobbyAvatar">M</div>
     <div class="lb-hello-txt">
-      <div class="lb-hello-1" data-lt="hello">እንኳን ደህና ተመለሱ</div>
       <div class="lb-hello-2"><span id="welcomeName">ተጫዋች</span></div>
       <span id="welcomeStatus" hidden></span>
     </div>
     <div class="lb-live">
       <span class="lb-live-label" data-lt="online">Online now</span>
       <b id="lobbyActivePlayers">0</b>
-      <small data-lt="active">ንቁ ተጫዋቾች</small>
     </div>
   </div>
   <div class="lb-hero" aria-hidden="false">
-    <div class="lb-balls" aria-hidden="true">
-      <div class="lb-ball b">B</div><div class="lb-ball i">I</div><div class="lb-ball n">N</div><div class="lb-ball g">G</div><div class="lb-ball o">O</div>
-    </div>
-    <div class="lb-hero-txt"><b data-lt="heroTitle">ክፍል ይምረጡ፣ ትልቅ ያሸንፉ</b><span data-lt="heroSub">ምልክት ማድረግ በራስ-ሰር ነው</span></div>
+    <svg class="lb-art" focusable="false" viewBox="0 0 230 150" role="img" aria-label="Bingo">
+  <style>
+.a-glow{transform-box:fill-box;transform-origin:center;animation:lbArtGlow 3.4s ease-in-out infinite}
+.a-card{transform-box:fill-box;transform-origin:50% 92%;animation:lbArtCardIn .7s cubic-bezier(.34,1.4,.64,1) both,lbArtSway 5.2s ease-in-out .8s infinite}
+.a-ball{transform-box:fill-box;transform-origin:50% 50%;animation:lbArtPop .75s cubic-bezier(.34,1.56,.64,1) both,lbArtFloat 4s ease-in-out .9s infinite}
+.a-ball.d1{animation-delay:.15s,1.05s;animation-duration:.75s,4.4s}
+.a-ball.d2{animation-delay:.3s,1.2s;animation-duration:.75s,3.7s}
+.a-ball.d3{animation-delay:.45s,1.35s;animation-duration:.75s,4.9s}
+.a-ball.d4{animation-delay:.6s,1.5s;animation-duration:.75s,3.9s}
+.a-label{transform-box:fill-box;transform-origin:center}
+.a-label.pop{animation:lbArtNum .55s cubic-bezier(.34,1.56,.64,1)}
+.win{transform-box:fill-box;transform-origin:center;animation:lbArtWin 2.6s ease-in-out infinite}
+.win.w2{animation-delay:.25s}.win.w3{animation-delay:.5s}.win.w4{animation-delay:.75s}.win.w5{animation-delay:1s}
+.a-shine{animation:lbArtShine 5.2s ease-in-out 1.4s infinite}
+.sp{transform-box:fill-box;transform-origin:center;animation:lbArtTw 2.4s ease-in-out infinite}
+.sp2{animation-delay:.8s}.sp3{animation-delay:1.5s}
+.spin{transform-box:fill-box;transform-origin:center;animation:lbArtSpin 3.2s linear infinite}
+.cf{transform-box:fill-box;transform-origin:center;animation:lbArtDrift 5s ease-in-out infinite alternate}
+.cf2{animation-delay:-1.7s;animation-duration:6.2s}.cf3{animation-delay:-3s;animation-duration:4.4s}
+@keyframes lbArtGlow{0%,100%{opacity:.65;transform:scale(.92)}50%{opacity:1;transform:scale(1.08)}}
+@keyframes lbArtCardIn{from{opacity:0;transform:translateY(22px) scale(.8) rotate(-8deg)}to{opacity:1;transform:none}}
+@keyframes lbArtSway{0%,100%{transform:rotate(-2.2deg) translateY(0)}50%{transform:rotate(2.2deg) translateY(-2px)}}
+@keyframes lbArtPop{from{opacity:0;transform:translateY(-34px) scale(.3)}to{opacity:1;transform:none}}
+@keyframes lbArtFloat{0%,100%{transform:translateY(0) rotate(0)}25%{transform:translateY(-5px) rotate(4deg)}50%{transform:translateY(-8px) rotate(0)}75%{transform:translateY(-3px) rotate(-4deg)}}
+@keyframes lbArtNum{0%{transform:scale(.35) rotate(-25deg);opacity:.2}70%{transform:scale(1.14) rotate(4deg);opacity:1}100%{transform:none}}
+@keyframes lbArtWin{0%,100%{transform:scale(1);filter:none}50%{transform:scale(1.16);filter:brightness(1.25) drop-shadow(0 0 3px #4ade80)}}
+@keyframes lbArtShine{0%{transform:translateX(-70px)}38%,100%{transform:translateX(210px)}}
+@keyframes lbArtTw{0%,100%{opacity:.3;transform:scale(.6) rotate(0)}50%{opacity:1;transform:scale(1.2) rotate(45deg)}}
+@keyframes lbArtSpin{to{transform:rotate(360deg)}}
+@keyframes lbArtDrift{from{transform:translateY(-4px) rotate(-30deg)}to{transform:translateY(7px) rotate(70deg)}}
+@media(prefers-reduced-motion:reduce){.a-glow,.a-card,.a-ball,.win,.a-shine,.sp,.spin,.cf,.a-label{animation:none!important}}
+</style>
+  <defs>
+    <radialGradient id="lbArt-glow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ffd21a" stop-opacity=".5"/><stop offset="1" stop-color="#ffd21a" stop-opacity="0"/></radialGradient>
+    <linearGradient id="lbArt-card" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dcd6fa"/></linearGradient>
+    <linearGradient id="lbArt-green" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2fe070"/><stop offset="1" stop-color="#14a843"/></linearGradient>
+    <linearGradient id="lbArt-shine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".85"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <clipPath id="lbArt-clip"><rect x="19" y="17" width="106" height="124" rx="11"/></clipPath>
+    <radialGradient id="lbArt-B" cx="35%" cy="28%" r="80%"><stop offset="0" stop-color="#7db2ff"/><stop offset=".6" stop-color="#2f7cff"/><stop offset="1" stop-color="#1b52c9"/></radialGradient>
+    <radialGradient id="lbArt-I" cx="35%" cy="28%" r="80%"><stop offset="0" stop-color="#a5a8ff"/><stop offset=".6" stop-color="#5b5ff0"/><stop offset="1" stop-color="#3a3ec2"/></radialGradient>
+    <radialGradient id="lbArt-N" cx="35%" cy="28%" r="80%"><stop offset="0" stop-color="#d49cff"/><stop offset=".6" stop-color="#a24bf0"/><stop offset="1" stop-color="#6d24c4"/></radialGradient>
+    <radialGradient id="lbArt-G" cx="35%" cy="28%" r="80%"><stop offset="0" stop-color="#5cea8e"/><stop offset=".6" stop-color="#16b84a"/><stop offset="1" stop-color="#0c8534"/></radialGradient>
+    <radialGradient id="lbArt-O" cx="35%" cy="28%" r="80%"><stop offset="0" stop-color="#ffb36b"/><stop offset=".6" stop-color="#ff7410"/><stop offset="1" stop-color="#c94f00"/></radialGradient>
+    <filter id="lbArt-sh" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#000" flood-opacity=".38"/></filter>
+  </defs>
+  <ellipse class="a-glow" cx="122" cy="78" rx="112" ry="66" fill="url(#lbArt-glow)"/>
+  <g class="a-card"><g transform="rotate(-9 72 86)" filter="url(#lbArt-sh)">
+    <rect x="19" y="17" width="106" height="124" rx="11" fill="url(#lbArt-card)" stroke="#fff" stroke-width="1.6"/>
+    <rect x="26.0" y="26" width="15.8" height="15.6" rx="4" fill="#2f7cff"/><text x="33.9" y="37.6" text-anchor="middle" font-size="10.5" font-weight="900" fill="#fff" font-family="Inter,Arial,sans-serif">B</text><rect x="44.6" y="26" width="15.8" height="15.6" rx="4" fill="#5b5ff0"/><text x="52.5" y="37.6" text-anchor="middle" font-size="10.5" font-weight="900" fill="#fff" font-family="Inter,Arial,sans-serif">I</text><rect x="63.2" y="26" width="15.8" height="15.6" rx="4" fill="#a24bf0"/><text x="71.1" y="37.6" text-anchor="middle" font-size="10.5" font-weight="900" fill="#fff" font-family="Inter,Arial,sans-serif">N</text><rect x="81.8" y="26" width="15.8" height="15.6" rx="4" fill="#16b84a"/><text x="89.7" y="37.6" text-anchor="middle" font-size="10.5" font-weight="900" fill="#fff" font-family="Inter,Arial,sans-serif">G</text><rect x="100.4" y="26" width="15.8" height="15.6" rx="4" fill="#ff7410"/><text x="108.3" y="37.6" text-anchor="middle" font-size="10.5" font-weight="900" fill="#fff" font-family="Inter,Arial,sans-serif">O</text>
+    <g class="win w1"><rect x="26.0" y="46.0" width="15.8" height="15.2" rx="3.5" fill="url(#lbArt-green)"/><text x="33.9" y="56.6" text-anchor="middle" font-size="8.4" font-weight="800" fill="#fff" font-family="Inter,Arial,sans-serif">7</text></g><rect x="26.0" y="64.4" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="33.9" y="75.0" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">12</text><rect x="26.0" y="82.8" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="33.9" y="93.4" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">3</text><rect x="26.0" y="101.2" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="33.9" y="111.8" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">9</text><rect x="26.0" y="119.6" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="33.9" y="130.2" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">14</text><rect x="44.6" y="46.0" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="52.5" y="56.6" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">22</text><g class="win w2"><rect x="44.6" y="64.4" width="15.8" height="15.2" rx="3.5" fill="url(#lbArt-green)"/><text x="52.5" y="75.0" text-anchor="middle" font-size="8.4" font-weight="800" fill="#fff" font-family="Inter,Arial,sans-serif">17</text></g><rect x="44.6" y="82.8" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="52.5" y="93.4" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">25</text><rect x="44.6" y="101.2" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="52.5" y="111.8" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">19</text><rect x="44.6" y="119.6" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="52.5" y="130.2" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">28</text><rect x="63.2" y="46.0" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="71.1" y="56.6" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">38</text><rect x="63.2" y="64.4" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="71.1" y="75.0" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">41</text><g class="win w3"><rect x="63.2" y="82.8" width="15.8" height="15.2" rx="3.5" fill="url(#lbArt-green)"/><path class="spin" d="M71.1 84.2 L72.8 88.7 L77.3 90.4 L72.8 92.1 L71.1 96.6 L69.4 92.1 L64.9 90.4 L69.4 88.7 Z" fill="#fff7b0"/></g><rect x="63.2" y="101.2" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="71.1" y="111.8" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">44</text><rect x="63.2" y="119.6" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="71.1" y="130.2" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">35</text><rect x="81.8" y="46.0" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="89.7" y="56.6" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">52</text><rect x="81.8" y="64.4" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="89.7" y="75.0" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">48</text><rect x="81.8" y="82.8" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="89.7" y="93.4" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">56</text><g class="win w4"><rect x="81.8" y="101.2" width="15.8" height="15.2" rx="3.5" fill="url(#lbArt-green)"/><text x="89.7" y="111.8" text-anchor="middle" font-size="8.4" font-weight="800" fill="#fff" font-family="Inter,Arial,sans-serif">60</text></g><rect x="81.8" y="119.6" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="89.7" y="130.2" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">51</text><rect x="100.4" y="46.0" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="108.3" y="56.6" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">71</text><rect x="100.4" y="64.4" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="108.3" y="75.0" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">66</text><rect x="100.4" y="82.8" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="108.3" y="93.4" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">69</text><rect x="100.4" y="101.2" width="15.8" height="15.2" rx="3.5" fill="#efecfb" stroke="#d9d3f5" stroke-width=".6"/><text x="108.3" y="111.8" text-anchor="middle" font-size="8.4" font-weight="800" fill="#4a257f" font-family="Inter,Arial,sans-serif">63</text><g class="win w5"><rect x="100.4" y="119.6" width="15.8" height="15.2" rx="3.5" fill="url(#lbArt-green)"/><text x="108.3" y="130.2" text-anchor="middle" font-size="8.4" font-weight="800" fill="#fff" font-family="Inter,Arial,sans-serif">75</text></g>
+    <g clip-path="url(#lbArt-clip)"><g transform="skewX(-18)"><rect class="a-shine" x="-40" y="10" width="34" height="140" fill="url(#lbArt-shine)"/></g></g>
+  </g></g>
+  <g class="a-ball d1"><g filter="url(#lbArt-sh)">
+    <circle id="lbArt-bigC" cx="172" cy="86" r="31" fill="url(#lbArt-N)"/>
+    <ellipse cx="162.1" cy="72.0" rx="13.0" ry="7.4" fill="#fff" opacity=".38" transform="rotate(-25 162.1 72.0)"/>
+    <g id="lbArt-bigG" class="a-label">
+      <circle cx="172" cy="86" r="19.8" fill="#fff"/>
+      <text id="lbArt-bigL" x="172" y="83.5" text-anchor="middle" font-size="12.4" font-weight="900" fill="url(#lbArt-N)" font-family="Inter,Arial,sans-serif">N</text>
+      <text id="lbArt-bigN" x="172" y="98.4" text-anchor="middle" font-size="16.1" font-weight="900" fill="#2b1a5a" font-family="Inter,Arial,sans-serif">38</text>
+    </g></g></g>
+  <g class="a-ball d2"><g filter="url(#lbArt-sh)">
+    <circle cx="136" cy="36" r="20" fill="url(#lbArt-B)"/>
+    <ellipse cx="129.6" cy="27.0" rx="8.4" ry="4.8" fill="#fff" opacity=".38" transform="rotate(-25 129.6 27.0)"/>
+    <g class="a-label">
+      <circle cx="136" cy="36" r="12.8" fill="#fff"/>
+      <text x="136" y="34.4" text-anchor="middle" font-size="8.0" font-weight="900" fill="url(#lbArt-B)" font-family="Inter,Arial,sans-serif">B</text>
+      <text x="136" y="44.0" text-anchor="middle" font-size="10.4" font-weight="900" fill="#2b1a5a" font-family="Inter,Arial,sans-serif">7</text>
+    </g></g></g>
+  <g class="a-ball d3"><g filter="url(#lbArt-sh)">
+    <circle cx="204" cy="34" r="17" fill="url(#lbArt-G)"/>
+    <ellipse cx="198.6" cy="26.4" rx="7.1" ry="4.1" fill="#fff" opacity=".38" transform="rotate(-25 198.6 26.4)"/>
+    <g class="a-label">
+      <circle cx="204" cy="34" r="10.9" fill="#fff"/>
+      <text x="204" y="32.6" text-anchor="middle" font-size="6.8" font-weight="900" fill="url(#lbArt-G)" font-family="Inter,Arial,sans-serif">G</text>
+      <text x="204" y="40.8" text-anchor="middle" font-size="8.8" font-weight="900" fill="#2b1a5a" font-family="Inter,Arial,sans-serif">52</text>
+    </g></g></g>
+  <g class="a-ball d4"><g filter="url(#lbArt-sh)">
+    <circle cx="200" cy="126" r="18" fill="url(#lbArt-O)"/>
+    <ellipse cx="194.2" cy="117.9" rx="7.6" ry="4.3" fill="#fff" opacity=".38" transform="rotate(-25 194.2 117.9)"/>
+    <g class="a-label">
+      <circle cx="200" cy="126" r="11.5" fill="#fff"/>
+      <text x="200" y="124.6" text-anchor="middle" font-size="7.2" font-weight="900" fill="url(#lbArt-O)" font-family="Inter,Arial,sans-serif">O</text>
+      <text x="200" y="133.2" text-anchor="middle" font-size="9.4" font-weight="900" fill="#2b1a5a" font-family="Inter,Arial,sans-serif">71</text>
+    </g></g></g>
+  <path class="sp" d="M112.0 5.0 L114.0 10.0 L119.0 12.0 L114.0 14.0 L112.0 19.0 L110.0 14.0 L105.0 12.0 L110.0 10.0 Z" fill="#fff7b0"/><path class="sp sp2" d="M224.0 65.0 L225.4 68.6 L229.0 70.0 L225.4 71.4 L224.0 75.0 L222.6 71.4 L219.0 70.0 L222.6 68.6 Z" fill="#fff"/><path class="sp sp3" d="M14.0 5.0 L15.4 8.6 L19.0 10.0 L15.4 11.4 L14.0 15.0 L12.6 11.4 L9.0 10.0 L12.6 8.6 Z" fill="#ffd21a"/><path class="sp sp2" d="M150.0 133.0 L151.4 136.6 L155.0 138.0 L151.4 139.4 L150.0 143.0 L148.6 139.4 L145.0 138.0 L148.6 136.6 Z" fill="#ffd21a"/><path class="sp" d="M10.0 114.0 L11.1 116.9 L14.0 118.0 L11.1 119.1 L10.0 122.0 L8.9 119.1 L6.0 118.0 L8.9 116.9 Z" fill="#fff"/><path class="sp sp3" d="M176.0 8.0 L177.1 10.9 L180.0 12.0 L177.1 13.1 L176.0 16.0 L174.9 13.1 L172.0 12.0 L174.9 10.9 Z" fill="#fff"/>
+  <circle class="cf" cx="98" cy="8" r="2.2" fill="#ff5c8a"/><circle class="cf cf2" cx="226" cy="100" r="2.4" fill="#4ade80"/><rect class="cf cf3" x="152" y="8" width="5" height="5" rx="1" fill="#38bdf8"/><rect class="cf cf2" x="8" y="136" width="5" height="5" rx="1" fill="#ff7410"/><rect class="cf" x="212" y="52" width="4" height="4" rx="1" fill="#ffd21a"/>
+</svg>
   </div>
   <div class="lb-sec"><span data-lt="choose">የውርርድ መጠን ይምረጡ</span></div>
   <div id="lobbyConn" class="lobby-conn" hidden></div>
@@ -5562,6 +5643,28 @@ function syncInitialSoundButton(){
 syncInitialSoundButton();
 buildTracker();
 buildSpectatorTracker();
+
+// The big ball in the lobby banner "calls" a new number every few seconds (pure decoration).
+(function lobbyBingoCaller(){
+  const circle=document.getElementById('lbArt-bigC'), L=document.getElementById('lbArt-bigL'),
+        N=document.getElementById('lbArt-bigN'), grp=document.getElementById('lbArt-bigG');
+  if(!circle||!L||!N||!grp) return;
+  try{ if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches) return; }catch(e){}
+  const ranges=[['B',1,15],['I',16,30],['N',31,45],['G',46,60],['O',61,75]];
+  let last=38;
+  setInterval(()=>{
+    if(document.hidden) return;
+    const lobby=document.getElementById('screenLobby');
+    if(!lobby||!lobby.classList.contains('active')) return;       // only while the lobby is on screen
+    const r=ranges[(Math.random()*5)|0]; let n;
+    do{ n=r[1]+((Math.random()*(r[2]-r[1]+1))|0); }while(n===last);
+    last=n;
+    circle.setAttribute('fill','url(#lbArt-'+r[0]+')');
+    L.setAttribute('fill','url(#lbArt-'+r[0]+')');
+    L.textContent=r[0]; N.textContent=n;
+    grp.classList.remove('pop'); void grp.getBoundingClientRect(); grp.classList.add('pop');
+  },2600);
+})();
 restoreCachedBalance();
 applyLobbyText();
 renderCachedStakes();
@@ -6827,11 +6930,83 @@ html body #screenLobby:not(#q1):not(#q2) .lb-go-skel{background:rgba(255,255,255
   html body #screenLobby:not(#q1):not(#q2) .lb-live small{display:none}
   html body #screenLobby:not(#q1):not(#q2) .lb-hero{padding:8px 12px;gap:10px}
 }
-@media(max-height:720px){ html body #screenLobby:not(#q1):not(#q2) .lb-hero{display:none} }
-@media(max-height:600px){ html body #screenLobby:not(#q1):not(#q2) .lb-tip{display:none} html body #screenLobby:not(#q1):not(#q2) .lb-hello{margin-bottom:2px} }
+
+
 @media(prefers-reduced-motion:reduce){ html body #screenLobby:not(#q1):not(#q2) .lb-ball,html body #screenLobby:not(#q1):not(#q2) .lb-line{animation:none} }
 </style>
 
 <style id="mela-navbar-roomy-final">
 html body > .navbar{min-height:48px!important;padding-top:6px!important;padding-bottom:6px!important;box-sizing:border-box!important;align-items:center!important}
+</style>
+
+<style id="mela-lobby-art-final">
+/* bingo illustration in the lobby banner */
+html body #screenLobby:not(#q1):not(#q2) .lb-hero{min-height:118px;padding:6px 14px 6px 6px;gap:6px}
+html body #screenLobby:not(#q1):not(#q2) .lb-art{flex:0 0 auto;width:clamp(138px,42vw,172px);height:auto;display:block;
+  filter:drop-shadow(0 6px 10px rgba(0,0,0,.28));animation:lbBob 4.6s ease-in-out infinite}
+@keyframes lbBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@media(prefers-reduced-motion:reduce){html body #screenLobby .lb-art{animation:none}}
+</style>
+
+<style id="mela-lobby-short-screens-final">
+/* The banner with the bingo image is NEVER hidden any more. On short screens everything gets
+   more compact instead (smaller image, tighter cards); the tip is dropped first. */
+@media(max-height:760px){
+  html body #screenLobby:not(#q1):not(#q2) .lb-hero{min-height:92px;padding:4px 12px 4px 4px;margin-top:6px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-art{width:clamp(116px,34vw,140px)}
+  html body #screenLobby:not(#q1):not(#q2) .lb-hero-txt b{font-size:clamp(13px,3.9vw,15px)}
+  html body #screenLobby:not(#q1):not(#q2) .lb-hello{margin-bottom:4px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-sec{margin-top:10px;margin-bottom:6px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-card{padding:8px 11px;margin-bottom:9px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-coin{flex-basis:54px;width:54px;height:54px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-coin b{font-size:21px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-row{margin-top:3px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-bar{margin-top:6px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-go{height:38px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-tip{padding:8px 11px;font-size:11.5px;line-height:1.45}
+}
+@media(max-height:600px){
+  html body #screenLobby:not(#q1):not(#q2) .lb-hero{min-height:78px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-art{width:clamp(100px,30vw,120px)}
+  html body #screenLobby:not(#q1):not(#q2) .lb-hero-txt span{display:none}
+  html body #screenLobby:not(#q1):not(#q2) .lb-hello-1{display:none}
+}
+</style>
+
+<style id="mela-lobby-art-animated-final">
+html body #screenLobby:not(#q1):not(#q2) .lb-hero{justify-content:center;min-height:132px;padding:8px 10px;gap:0;
+  background:linear-gradient(120deg,rgba(124,58,237,.6),rgba(37,99,235,.38) 55%,rgba(124,58,237,.5));background-size:200% 100%;animation:lbHeroBg 9s ease-in-out infinite alternate}
+html body #screenLobby:not(#q1):not(#q2) .lb-hero:before{content:"";position:absolute;top:0;bottom:0;left:-40%;width:40%;pointer-events:none;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.14),transparent);transform:skewX(-18deg);animation:lbHeroSweep 6s ease-in-out 1s infinite}
+html body #screenLobby:not(#q1):not(#q2) .lb-art{width:clamp(176px,56vw,236px);animation:none}
+@keyframes lbHeroBg{from{background-position:0 0}to{background-position:100% 0}}
+@keyframes lbHeroSweep{0%{left:-45%}45%,100%{left:120%}}
+@media(max-height:760px){
+  html body #screenLobby:not(#q1):not(#q2) .lb-hero{min-height:104px;padding:4px 8px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-art{width:clamp(140px,44vw,178px)}
+}
+@media(max-height:700px){
+  html body #screenLobby:not(#q1):not(#q2) .lb-hero{min-height:88px;padding:2px 8px;margin-top:4px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-art{width:clamp(118px,36vw,146px)}
+  html body #screenLobby:not(#q1):not(#q2) .lb-hello{margin-bottom:2px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-sec{margin-top:8px;margin-bottom:5px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-card{padding:7px 10px;margin-bottom:8px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-coin{flex-basis:50px;width:50px;height:50px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-coin b{font-size:19px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-go{height:36px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-tip{padding:6px 10px;margin-top:0}
+  html body #screenLobby:not(#q1):not(#q2){padding-top:6px!important;padding-bottom:10px!important}
+  html body #screenLobby:not(#q1):not(#q2) .lb-av{width:36px;height:36px;font-size:16px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-hello{margin:0 2px 2px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-hero{min-height:78px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-art{width:clamp(108px,32vw,130px)}
+  html body #screenLobby:not(#q1):not(#q2) .lb-card{margin-bottom:7px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-row{margin-top:2px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-bar{margin-top:5px}
+}
+@media(max-height:600px){
+  html body #screenLobby:not(#q1):not(#q2) .lb-hero{min-height:84px}
+  html body #screenLobby:not(#q1):not(#q2) .lb-art{width:clamp(112px,34vw,136px)}
+}
+@media(prefers-reduced-motion:reduce){html body #screenLobby .lb-hero,html body #screenLobby .lb-hero:before{animation:none}}
 </style>
