@@ -28,36 +28,65 @@ CREATE FUNCTION public.award_bonus(p_user_id integer, p_campaign_id bigint, p_am
     AS $$
 DECLARE
     v_campaign public.bonus_campaigns%ROWTYPE;
+
     v_wallet_id BIGINT;
     v_transaction_id BIGINT;
     v_transaction_created BOOLEAN;
     v_bonus_id BIGINT;
+
+    v_base_amount NUMERIC(18,2);
+    v_bonus_amount NUMERIC(18,2);
     v_wagering_requirement NUMERIC(18,2);
+
     v_expires_at TIMESTAMPTZ;
     v_effective_metadata JSONB;
+
+    v_existing_bonus_id BIGINT;
 BEGIN
     ----------------------------------------------------------------
-    -- 1. Validate input
+    -- 1. Validate user
     ----------------------------------------------------------------
     IF p_user_id IS NULL OR p_user_id <= 0 THEN
         RAISE EXCEPTION 'Invalid user ID';
     END IF;
 
+    ----------------------------------------------------------------
+    -- 2. Validate campaign ID
+    ----------------------------------------------------------------
     IF p_campaign_id IS NULL OR p_campaign_id <= 0 THEN
         RAISE EXCEPTION 'Invalid bonus campaign ID';
     END IF;
 
-    IF p_amount IS NULL OR p_amount <= 0 THEN
-        RAISE EXCEPTION 'Bonus amount must be greater than zero';
-    END IF;
-
+    ----------------------------------------------------------------
+    -- 3. Validate idempotency key
+    ----------------------------------------------------------------
     IF p_idempotency_key IS NULL
        OR BTRIM(p_idempotency_key) = '' THEN
         RAISE EXCEPTION 'Bonus idempotency key is required';
     END IF;
 
     ----------------------------------------------------------------
-    -- 2. Load and validate campaign
+    -- 4. Base amount
+    --
+    -- p_amount represents the qualifying amount.
+    --
+    -- Examples:
+    --   Deposit bonus  -> deposit amount
+    --   Reload bonus   -> reload deposit amount
+    --   Welcome fixed  -> can be 0
+    --   No-deposit     -> can be 0
+    ----------------------------------------------------------------
+    v_base_amount := ROUND(
+        COALESCE(p_amount, 0),
+        2
+    );
+
+    IF v_base_amount < 0 THEN
+        RAISE EXCEPTION 'Base amount cannot be negative';
+    END IF;
+
+    ----------------------------------------------------------------
+    -- 5. Load and lock campaign
     ----------------------------------------------------------------
     SELECT *
     INTO v_campaign
@@ -66,25 +95,187 @@ BEGIN
     FOR UPDATE;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'Bonus campaign % was not found', p_campaign_id;
+        RAISE EXCEPTION
+            'Bonus campaign % was not found',
+            p_campaign_id;
     END IF;
 
+    ----------------------------------------------------------------
+    -- 6. Validate campaign status
+    ----------------------------------------------------------------
     IF NOT v_campaign.is_active THEN
-        RAISE EXCEPTION 'Bonus campaign % is not active', p_campaign_id;
+        RAISE EXCEPTION
+            'Bonus campaign % is not active',
+            p_campaign_id;
     END IF;
 
     IF v_campaign.starts_at IS NOT NULL
        AND v_campaign.starts_at > NOW() THEN
-        RAISE EXCEPTION 'Bonus campaign % has not started', p_campaign_id;
+        RAISE EXCEPTION
+            'Bonus campaign % has not started',
+            p_campaign_id;
     END IF;
 
     IF v_campaign.ends_at IS NOT NULL
        AND v_campaign.ends_at < NOW() THEN
-        RAISE EXCEPTION 'Bonus campaign % has expired', p_campaign_id;
+        RAISE EXCEPTION
+            'Bonus campaign % has expired',
+            p_campaign_id;
     END IF;
 
     ----------------------------------------------------------------
-    -- 3. Resolve Bonus wallet
+    -- 7. Idempotency check at bonus level
+    --
+    -- This prevents creating a duplicate user_bonus if the same
+    -- request has already been processed.
+    ----------------------------------------------------------------
+    SELECT ub.id
+    INTO v_existing_bonus_id
+    FROM public.user_bonuses ub
+    WHERE ub.idempotency_key = p_idempotency_key
+    LIMIT 1;
+
+    IF v_existing_bonus_id IS NOT NULL THEN
+
+        SELECT ft.id
+        INTO v_transaction_id
+        FROM public.financial_transactions ft
+        WHERE ft.idempotency_key = p_idempotency_key
+        LIMIT 1;
+
+        IF v_transaction_id IS NULL THEN
+            RAISE EXCEPTION
+                'Bonus % exists but its financial transaction was not found',
+                v_existing_bonus_id;
+        END IF;
+
+        RETURN QUERY
+        SELECT
+            v_existing_bonus_id,
+            v_transaction_id;
+
+        RETURN;
+    END IF;
+
+    ----------------------------------------------------------------
+    -- 8. Validate minimum deposit
+    --
+    -- This applies to deposit/reload bonuses.
+    -- The value being checked is the qualifying deposit amount,
+    -- NOT the user's wallet balance.
+    ----------------------------------------------------------------
+    IF v_campaign.bonus_type IN ('deposit', 'reload')
+       AND v_campaign.min_deposit_amount IS NOT NULL
+       AND v_base_amount < v_campaign.min_deposit_amount THEN
+
+        RAISE EXCEPTION
+            'Deposit amount % does not meet minimum deposit requirement of % for campaign %',
+            v_base_amount,
+            v_campaign.min_deposit_amount,
+            v_campaign.id;
+    END IF;
+
+    ----------------------------------------------------------------
+    -- 9. Calculate actual bonus amount
+    --
+    -- Priority:
+    --   multiplier
+    --   percentage
+    --   fixed amount
+    --
+    -- Only ONE of these should normally be configured on a campaign.
+    ----------------------------------------------------------------
+
+    IF v_campaign.multiplier IS NOT NULL THEN
+
+        ------------------------------------------------------------
+        -- Multiplier bonus
+        --
+        -- Example:
+        --   deposit = 100
+        --   multiplier = 2
+        --   bonus = 200
+        ------------------------------------------------------------
+        v_bonus_amount := ROUND(
+            v_base_amount * v_campaign.multiplier,
+            2
+        );
+
+    ELSIF v_campaign.percentage IS NOT NULL THEN
+
+        ------------------------------------------------------------
+        -- Percentage bonus
+        --
+        -- Example:
+        --   deposit = 100
+        --   percentage = 50
+        --   bonus = 50
+        ------------------------------------------------------------
+        v_bonus_amount := ROUND(
+            v_base_amount
+            * v_campaign.percentage
+            / 100,
+            2
+        );
+
+    ELSIF v_campaign.amount IS NOT NULL THEN
+
+        ------------------------------------------------------------
+        -- Fixed bonus
+        --
+        -- Example:
+        --   amount = 100
+        --   bonus = 100
+        ------------------------------------------------------------
+        v_bonus_amount := ROUND(
+            v_campaign.amount,
+            2
+        );
+
+    ELSE
+
+        RAISE EXCEPTION
+            'Campaign % has no bonus calculation configured. Set amount, percentage, or multiplier.',
+            v_campaign.id;
+
+    END IF;
+
+    ----------------------------------------------------------------
+    -- 10. Validate calculated bonus
+    ----------------------------------------------------------------
+    IF v_bonus_amount IS NULL OR v_bonus_amount <= 0 THEN
+        RAISE EXCEPTION
+            'Calculated bonus amount must be greater than zero for campaign %',
+            v_campaign.id;
+    END IF;
+
+    ----------------------------------------------------------------
+    -- 11. Apply maximum bonus cap
+    ----------------------------------------------------------------
+    IF v_campaign.max_bonus_amount IS NOT NULL THEN
+
+        v_bonus_amount := LEAST(
+            v_bonus_amount,
+            ROUND(v_campaign.max_bonus_amount, 2)
+        );
+
+    END IF;
+
+    ----------------------------------------------------------------
+    -- 12. Final bonus amount validation
+    ----------------------------------------------------------------
+    v_bonus_amount := ROUND(
+        GREATEST(v_bonus_amount, 0),
+        2
+    );
+
+    IF v_bonus_amount <= 0 THEN
+        RAISE EXCEPTION
+            'Calculated bonus amount is zero after applying campaign limits';
+    END IF;
+
+    ----------------------------------------------------------------
+    -- 13. Resolve Bonus wallet
     ----------------------------------------------------------------
     v_wallet_id := public.get_user_wallet_id(
         p_user_id,
@@ -98,48 +289,96 @@ BEGIN
     END IF;
 
     ----------------------------------------------------------------
-    -- 4. Lock Bonus wallet balance
+    -- 14. Lock Bonus wallet
     ----------------------------------------------------------------
     PERFORM public.lock_wallet(v_wallet_id);
 
     ----------------------------------------------------------------
-    -- 5. Calculate wagering requirement
+    -- 15. Calculate wagering requirement
+    --
+    -- This is DIFFERENT from the bonus calculation multiplier.
+    --
+    -- Example:
+    --   bonus = 100
+    --   wagering_multiplier = 5
+    --   wagering requirement = 500
     ----------------------------------------------------------------
     v_wagering_requirement := ROUND(
-        p_amount * v_campaign.wagering_multiplier,
+        v_bonus_amount
+        * v_campaign.wagering_multiplier,
         2
     );
 
     ----------------------------------------------------------------
-    -- 6. Calculate expiration
+    -- 16. Calculate expiration
     ----------------------------------------------------------------
     IF v_campaign.validity_hours IS NOT NULL THEN
+
         v_expires_at :=
-            NOW() + (v_campaign.validity_hours * INTERVAL '1 hour');
+            NOW()
+            + (
+                v_campaign.validity_hours
+                * INTERVAL '1 hour'
+            );
+
     ELSE
+
         v_expires_at := NULL;
+
     END IF;
 
     ----------------------------------------------------------------
-    -- 7. Build transaction metadata
+    -- 17. Build transaction metadata
     ----------------------------------------------------------------
     v_effective_metadata :=
-        COALESCE(p_metadata, '{}'::JSONB)
+        COALESCE(
+            p_metadata,
+            '{}'::JSONB
+        )
         ||
         jsonb_build_object(
-            'bonus_campaign_id', p_campaign_id,
-            'bonus_campaign_code', v_campaign.code,
-            'bonus_campaign_name', v_campaign.name,
-            'bonus_type', v_campaign.bonus_type,
-            'bonus_amount', ROUND(p_amount, 2),
+            'bonus_campaign_id',
+                p_campaign_id,
+
+            'bonus_campaign_code',
+                v_campaign.code,
+
+            'bonus_campaign_name',
+                v_campaign.name,
+
+            'bonus_type',
+                v_campaign.bonus_type,
+
+            'base_amount',
+                v_base_amount,
+
+            'bonus_amount',
+                v_bonus_amount,
+
+            'campaign_amount',
+                v_campaign.amount,
+
+            'campaign_percentage',
+                v_campaign.percentage,
+
+            'campaign_multiplier',
+                v_campaign.multiplier,
+
+            'min_deposit_amount',
+                v_campaign.min_deposit_amount,
+
+            'max_bonus_amount',
+                v_campaign.max_bonus_amount,
+
             'wagering_multiplier',
                 v_campaign.wagering_multiplier,
+
             'wagering_requirement',
                 v_wagering_requirement
         );
 
     ----------------------------------------------------------------
-    -- 8. Create/retrieve financial transaction
+    -- 18. Create financial transaction
     ----------------------------------------------------------------
     SELECT
         t.transaction_id,
@@ -160,14 +399,15 @@ BEGIN
     ) AS t;
 
     ----------------------------------------------------------------
-    -- 9. Idempotent retry
+    -- 19. Handle idempotent transaction retry
     ----------------------------------------------------------------
     IF NOT v_transaction_created THEN
 
         SELECT ub.id
         INTO v_bonus_id
         FROM public.user_bonuses ub
-        WHERE ub.idempotency_key = p_idempotency_key;
+        WHERE ub.idempotency_key = p_idempotency_key
+        LIMIT 1;
 
         IF v_bonus_id IS NULL THEN
             RAISE EXCEPTION
@@ -181,10 +421,11 @@ BEGIN
             v_transaction_id;
 
         RETURN;
+
     END IF;
 
     ----------------------------------------------------------------
-    -- 10. Create user bonus entitlement
+    -- 20. Create user bonus entitlement
     ----------------------------------------------------------------
     INSERT INTO public.user_bonuses (
         user_id,
@@ -206,23 +447,34 @@ BEGIN
         p_user_id,
         p_campaign_id,
         'active',
-        ROUND(p_amount, 2),
+
+        v_bonus_amount,
+
         v_wagering_requirement,
+
         0,
-        ROUND(p_amount, 2),
+
+        v_bonus_amount,
+
         v_expires_at,
+
         NOW(),
+
         NOW(),
+
         p_source_type,
+
         p_source_id,
+
         p_idempotency_key,
+
         v_effective_metadata
     )
     RETURNING id
     INTO v_bonus_id;
 
     ----------------------------------------------------------------
-    -- 11. Credit Bonus ledger
+    -- 21. Credit Bonus ledger
     ----------------------------------------------------------------
     INSERT INTO public.ledger_entries (
         transaction_id,
@@ -232,15 +484,15 @@ BEGIN
     VALUES (
         v_transaction_id,
         v_wallet_id,
-        ROUND(p_amount, 2)
+        v_bonus_amount
     );
 
     ----------------------------------------------------------------
-    -- 12. Update Bonus wallet
+    -- 22. Credit Bonus wallet
     ----------------------------------------------------------------
     UPDATE public.wallet_balances
     SET
-        balance = balance + ROUND(p_amount, 2),
+        balance = balance + v_bonus_amount,
         updated_at = NOW()
     WHERE wallet_id = v_wallet_id;
 
@@ -251,12 +503,13 @@ BEGIN
     END IF;
 
     ----------------------------------------------------------------
-    -- 13. Return both IDs
+    -- 23. Return IDs
     ----------------------------------------------------------------
     RETURN QUERY
     SELECT
         v_bonus_id,
         v_transaction_id;
+
 END;
 $$;
 
@@ -6841,8 +7094,10 @@ CREATE TABLE public.bonus_campaigns (
     conversion_type character varying(30) DEFAULT 'percentage'::character varying NOT NULL,
     conversion_percentage numeric(8,4) DEFAULT 100 NOT NULL,
     conversion_max_amount numeric(18,2),
+    multiplier numeric(18,4),
     CONSTRAINT bonus_campaigns_amount_check CHECK (((amount IS NULL) OR (amount >= (0)::numeric))),
     CONSTRAINT bonus_campaigns_bonus_type_check CHECK (((bonus_type)::text = ANY ((ARRAY['welcome'::character varying, 'deposit'::character varying, 'free_bet'::character varying, 'no_deposit'::character varying, 'reload'::character varying, 'cashback'::character varying, 'free_spins'::character varying, 'wagering'::character varying, 'odds_boost'::character varying, 'accumulator'::character varying, 'loyalty'::character varying, 'vip_tier'::character varying, 'referral'::character varying, 'promo_code'::character varying, 'tournament'::character varying, 'mission'::character varying, 'birthday'::character varying, 'free_entry'::character varying, 'insurance'::character varying, 'jackpot'::character varying])::text[]))),
+    CONSTRAINT bonus_campaigns_calculation_rule_check CHECK ((((multiplier IS NOT NULL) AND (amount IS NULL) AND (percentage IS NULL)) OR ((multiplier IS NULL) AND (amount IS NOT NULL) AND (percentage IS NULL)) OR ((multiplier IS NULL) AND (amount IS NULL) AND (percentage IS NOT NULL)))),
     CONSTRAINT bonus_campaigns_conversion_max_amount_check CHECK (((conversion_max_amount IS NULL) OR (conversion_max_amount >= (0)::numeric))),
     CONSTRAINT bonus_campaigns_conversion_percentage_check CHECK (((conversion_percentage >= (0)::numeric) AND (conversion_percentage <= (100)::numeric))),
     CONSTRAINT bonus_campaigns_conversion_type_check CHECK (((conversion_type)::text = ANY ((ARRAY['percentage'::character varying, 'fixed'::character varying, 'none'::character varying])::text[]))),
@@ -6850,6 +7105,7 @@ CREATE TABLE public.bonus_campaigns (
     CONSTRAINT bonus_campaigns_max_bonus_amount_check CHECK (((max_bonus_amount IS NULL) OR (max_bonus_amount >= (0)::numeric))),
     CONSTRAINT bonus_campaigns_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
     CONSTRAINT bonus_campaigns_min_deposit_amount_check CHECK (((min_deposit_amount IS NULL) OR (min_deposit_amount >= (0)::numeric))),
+    CONSTRAINT bonus_campaigns_multiplier_check CHECK (((multiplier IS NULL) OR (multiplier >= (0)::numeric))),
     CONSTRAINT bonus_campaigns_percentage_check CHECK (((percentage IS NULL) OR ((percentage >= (0)::numeric) AND (percentage <= (100)::numeric)))),
     CONSTRAINT bonus_campaigns_validity_hours_check CHECK (((validity_hours IS NULL) OR (validity_hours > 0))),
     CONSTRAINT bonus_campaigns_wagering_multiplier_check CHECK ((wagering_multiplier >= (0)::numeric))
@@ -7094,7 +7350,6 @@ DO UPDATE SET
     status = EXCLUDED.status,
     metadata = EXCLUDED.metadata,
     updated_at = NOW();
-
 
 ALTER TABLE public.game_systems OWNER TO neondb_owner;
 
