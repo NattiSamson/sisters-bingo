@@ -3,7 +3,6 @@
 --
 
 
-
 -- Dumped from database version 18.6 (4e955f5)
 -- Dumped by pg_dump version 18.4
 
@@ -5199,6 +5198,539 @@ $$;
 ALTER FUNCTION public.get_active_withdrawal_rule(p_payment_method_id integer, p_payment_account_id integer, p_amount numeric) OWNER TO neondb_owner;
 
 --
+-- Name: get_bingo_user_dashboard(integer); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.get_bingo_user_dashboard(p_user_id integer) RETURNS jsonb
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_user public.users%ROWTYPE;
+    v_result JSONB;
+BEGIN
+
+    ----------------------------------------------------------------
+    -- 1. Validate user ID
+    ----------------------------------------------------------------
+
+    IF p_user_id IS NULL OR p_user_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid user ID';
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 2. Load user
+    ----------------------------------------------------------------
+
+    SELECT *
+    INTO v_user
+    FROM public.users
+    WHERE id = p_user_id;
+
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'User % was not found',
+            p_user_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 3. Blocked users
+    --
+    -- Blocked takes priority over inactive.
+    ----------------------------------------------------------------
+
+    IF v_user.is_blocked = TRUE THEN
+
+        RETURN jsonb_build_object(
+            'status', 'blocked'
+        );
+
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 4. Inactive users
+    ----------------------------------------------------------------
+
+    IF COALESCE(v_user.is_active, FALSE) = FALSE THEN
+
+        RETURN jsonb_build_object(
+            'status', 'inactive'
+        );
+
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 5. Build active-user dashboard
+    ----------------------------------------------------------------
+
+    v_result := jsonb_build_object(
+
+        ----------------------------------------------------------------
+        -- User status
+        ----------------------------------------------------------------
+
+        'status',
+        'active',
+
+
+        ----------------------------------------------------------------
+        -- User information
+        ----------------------------------------------------------------
+
+        'user',
+        jsonb_build_object(
+
+            'id',
+            v_user.id,
+
+            'name',
+            v_user.name,
+
+            'telegram_id',
+            v_user.telegram_id,
+
+            'phone',
+            v_user.phone,
+
+            'is_active',
+            v_user.is_active,
+
+            'is_blocked',
+            v_user.is_blocked,
+
+            'created_at',
+            v_user.created_at,
+
+            'last_seen',
+            v_user.last_seen,
+
+            'vip_tier_id',
+            v_user.vip_tier_id
+
+        ),
+
+
+        ----------------------------------------------------------------
+        -- All account balances
+        --
+        -- Current wallet types are:
+        --   main
+        --   play
+        --   bonus
+        ----------------------------------------------------------------
+
+        'balances',
+        COALESCE(
+            (
+                SELECT jsonb_agg(
+                    jsonb_build_object(
+
+                        'wallet_id',
+                        w.id,
+
+                        'wallet_type',
+                        w.wallet_type,
+
+                        'currency',
+                        w.currency,
+
+                        'balance',
+                        COALESCE(
+                            wb.balance,
+                            0
+                        ),
+
+                        'is_active',
+                        w.is_active,
+
+                        'created_at',
+                        w.created_at,
+
+                        'updated_at',
+                        w.updated_at
+
+                    )
+                    ORDER BY
+                        CASE w.wallet_type
+                            WHEN 'main' THEN 1
+                            WHEN 'play' THEN 2
+                            WHEN 'bonus' THEN 3
+                            ELSE 4
+                        END,
+                        w.id
+                )
+                FROM public.wallets w
+                LEFT JOIN public.wallet_balances wb
+                    ON wb.wallet_id = w.id
+                WHERE w.user_id = v_user.id
+            ),
+            '[]'::jsonb
+        ),
+
+
+        ----------------------------------------------------------------
+        -- Overall Bingo statistics
+        ----------------------------------------------------------------
+
+        'summary',
+        jsonb_build_object(
+
+            'games_played',
+            (
+                SELECT COUNT(
+                    DISTINCT bp.game_id
+                )
+                FROM public.bingo_participants bp
+                JOIN public.bingo_games bg
+                    ON bg.id = bp.game_id
+                WHERE bp.user_id = v_user.id
+                  AND bg.status <> 'cancelled'
+            ),
+
+
+            'games_won',
+            (
+                SELECT COUNT(
+                    DISTINCT bw.game_id
+                )
+                FROM public.bingo_winners bw
+                JOIN public.bingo_games bg
+                    ON bg.id = bw.game_id
+                WHERE bw.user_id = v_user.id
+                  AND bg.status <> 'cancelled'
+            ),
+
+
+            'total_earned',
+            COALESCE(
+                (
+                    SELECT ROUND(
+                        SUM(bw.payout),
+                        2
+                    )
+                    FROM public.bingo_winners bw
+                    JOIN public.bingo_games bg
+                        ON bg.id = bw.game_id
+                    WHERE bw.user_id = v_user.id
+                      AND bg.status <> 'cancelled'
+                ),
+                0.00
+            )
+
+        ),
+
+
+        ----------------------------------------------------------------
+        -- Active stakes
+        --
+        -- Every active stake is returned, even if the user has
+        -- never played that stake.
+        ----------------------------------------------------------------
+
+        'stakes',
+        COALESCE(
+            (
+                SELECT jsonb_agg(
+                    jsonb_build_object(
+
+                        ----------------------------------------------------------------
+                        -- Stake properties
+                        ----------------------------------------------------------------
+
+                        'stake_id',
+                        s.id,
+
+                        'name',
+                        s.name,
+
+                        'display_name',
+                        s.display_name,
+
+                        'amount',
+                        s.amount,
+
+                        'display_order',
+                        s.display_order,
+
+                        'is_active',
+                        s.is_active,
+
+                        'created_at',
+                        s.created_at,
+
+                        'updated_at',
+                        s.updated_at,
+
+
+                        ----------------------------------------------------------------
+                        -- User statistics for this stake
+                        ----------------------------------------------------------------
+
+                        'games_played',
+                        COALESCE(
+                            (
+                                SELECT COUNT(
+                                    DISTINCT bp.game_id
+                                )
+                                FROM public.bingo_participants bp
+                                JOIN public.bingo_games bg
+                                    ON bg.id = bp.game_id
+                                WHERE bp.user_id = v_user.id
+                                  AND bp.game_id IS NOT NULL
+                                  AND bg.stake_id = s.id
+                                  AND bg.status <> 'cancelled'
+                            ),
+                            0
+                        ),
+
+
+                        'games_won',
+                        COALESCE(
+                            (
+                                SELECT COUNT(
+                                    DISTINCT bw.game_id
+                                )
+                                FROM public.bingo_winners bw
+                                JOIN public.bingo_games bg
+                                    ON bg.id = bw.game_id
+                                WHERE bw.user_id = v_user.id
+                                  AND bg.stake_id = s.id
+                                  AND bg.status <> 'cancelled'
+                            ),
+                            0
+                        ),
+
+
+                        'total_earned',
+                        COALESCE(
+                            (
+                                SELECT ROUND(
+                                    SUM(bw.payout),
+                                    2
+                                )
+                                FROM public.bingo_winners bw
+                                JOIN public.bingo_games bg
+                                    ON bg.id = bw.game_id
+                                WHERE bw.user_id = v_user.id
+                                  AND bg.stake_id = s.id
+                                  AND bg.status <> 'cancelled'
+                            ),
+                            0.00
+                        ),
+
+
+                        ----------------------------------------------------------------
+                        -- Active rooms available for this stake
+                        ----------------------------------------------------------------
+
+                        'rooms',
+                        COALESCE(
+                            (
+                                SELECT jsonb_agg(
+                                    jsonb_build_object(
+
+                                        ----------------------------------------------------------------
+                                        -- Room properties
+                                        ----------------------------------------------------------------
+
+                                        'room_id',
+                                        r.id,
+
+                                        'name',
+                                        r.name,
+
+                                        'code',
+                                        r.code,
+
+                                        'description',
+                                        r.description,
+
+                                        'status',
+                                        r.status,
+
+                                        'min_players',
+                                        r.min_players,
+
+                                        'max_players',
+                                        r.max_players,
+
+                                        'card_count',
+                                        r.card_count,
+
+                                        'max_cards_per_player',
+                                        r.max_cards_per_player,
+
+                                        'selection_seconds',
+                                        r.selection_seconds,
+
+                                        'disqualification_policy',
+                                        r.disqualification_policy,
+
+                                        'bingo_mode_policy',
+                                        r.bingo_mode_policy,
+
+                                        'bingo_button_scope',
+                                        r.bingo_button_scope,
+
+                                        'commission_rule_id',
+                                        r.commission_rule_id,
+
+                                        'created_at',
+                                        r.created_at,
+
+                                        'updated_at',
+                                        r.updated_at,
+
+
+                                        ----------------------------------------------------------------
+                                        -- Commission configuration
+                                        ----------------------------------------------------------------
+
+                                        'commission_rule',
+                                        (
+                                            SELECT jsonb_build_object(
+
+                                                'id',
+                                                cr.id,
+
+                                                'name',
+                                                cr.name,
+
+                                                'code',
+                                                cr.code,
+
+                                                'commission_rate',
+                                                cr.commission_rate,
+
+                                                'stake_id',
+                                                cr.stake_id,
+
+                                                'room_id',
+                                                cr.room_id,
+
+                                                'priority',
+                                                cr.priority,
+
+                                                'is_active',
+                                                cr.is_active,
+
+                                                'starts_at',
+                                                cr.starts_at,
+
+                                                'ends_at',
+                                                cr.ends_at
+
+                                            )
+                                            FROM public.bingo_commission_rules cr
+                                            WHERE cr.id = r.commission_rule_id
+                                        ),
+
+
+                                        ----------------------------------------------------------------
+                                        -- User statistics for this room
+                                        ----------------------------------------------------------------
+
+                                        'games_played',
+                                        COALESCE(
+                                            (
+                                                SELECT COUNT(
+                                                    DISTINCT bp.game_id
+                                                )
+                                                FROM public.bingo_participants bp
+                                                JOIN public.bingo_games bg
+                                                    ON bg.id = bp.game_id
+                                                WHERE bp.user_id = v_user.id
+                                                  AND bg.room_id = r.id
+                                                  AND bg.stake_id = s.id
+                                                  AND bg.status <> 'cancelled'
+                                            ),
+                                            0
+                                        ),
+
+
+                                        'games_won',
+                                        COALESCE(
+                                            (
+                                                SELECT COUNT(
+                                                    DISTINCT bw.game_id
+                                                )
+                                                FROM public.bingo_winners bw
+                                                JOIN public.bingo_games bg
+                                                    ON bg.id = bw.game_id
+                                                WHERE bw.user_id = v_user.id
+                                                  AND bg.room_id = r.id
+                                                  AND bg.stake_id = s.id
+                                                  AND bg.status <> 'cancelled'
+                                            ),
+                                            0
+                                        ),
+
+
+                                        'total_earned',
+                                        COALESCE(
+                                            (
+                                                SELECT ROUND(
+                                                    SUM(bw.payout),
+                                                    2
+                                                )
+                                                FROM public.bingo_winners bw
+                                                JOIN public.bingo_games bg
+                                                    ON bg.id = bw.game_id
+                                                WHERE bw.user_id = v_user.id
+                                                  AND bg.room_id = r.id
+                                                  AND bg.stake_id = s.id
+                                                  AND bg.status <> 'cancelled'
+                                            ),
+                                            0.00
+                                        )
+
+                                    )
+                                    ORDER BY
+                                        r.name,
+                                        r.id
+                                )
+                                FROM public.bingo_room_stakes brs
+                                JOIN public.bingo_rooms r
+                                    ON r.id = brs.room_id
+                                WHERE brs.stake_id = s.id
+                                  AND brs.status = 'active'
+                                  AND r.status = 'active'
+                            ),
+                            '[]'::jsonb
+                        )
+
+                    )
+                    ORDER BY
+                        s.display_order,
+                        s.amount,
+                        s.id
+                )
+                FROM public.bingo_stakes s
+                WHERE s.is_active = TRUE
+            ),
+            '[]'::jsonb
+        )
+
+    );
+
+
+    ----------------------------------------------------------------
+    -- 6. Return dashboard
+    ----------------------------------------------------------------
+
+    RETURN v_result;
+
+END;
+$$;
+
+
+ALTER FUNCTION public.get_bingo_user_dashboard(p_user_id integer) OWNER TO neondb_owner;
+
+--
 -- Name: get_eligible_deposit_bonus_campaigns(integer, integer, numeric); Type: FUNCTION; Schema: public; Owner: neondb_owner
 --
 
@@ -9899,7 +10431,7 @@ DO UPDATE SET
     status = EXCLUDED.status,
     metadata = EXCLUDED.metadata,
     updated_at = NOW();
-
+	
 
 ALTER TABLE public.game_systems OWNER TO neondb_owner;
 
