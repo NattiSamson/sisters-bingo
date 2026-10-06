@@ -3309,7 +3309,7 @@ body.game-screen-active > .bottom-nav{
  <span id="cdCountdown" style="display:none" aria-hidden="true"></span>
   <div class="sel-topbar" aria-label="Number selection actions">
     <button type="button" class="sel-topbtn sel-back" onclick="leaveRoom()" aria-label="Back"><span class="sel-ico" aria-hidden="true">&#8592;</span><span>Back</span></button>
-    <button type="button" class="sel-topbtn sel-refresh" onclick="refreshCardsForNewRound()" aria-label="Refresh"><span class="sel-ico" aria-hidden="true">&#8635;</span><span>Refresh</span></button>
+    <button type="button" class="sel-topbtn sel-refresh" onclick="refreshSocketOnly()" aria-label="Refresh"><span class="sel-ico" aria-hidden="true">&#8635;</span><span>Refresh</span></button>
   </div>
   <div class="selection-page-header" aria-label="Number selection header">
     <button type="button" class="selection-back-btn" onclick="leaveRoom()" aria-label="Back">‹</button>
@@ -3949,6 +3949,7 @@ function goToGame(){
     navGo('screenCards','navGame');
     if(activeGamePhase==='countdown') showSavedCountdown();
   }
+  captureSelection();
   if(telegramId) wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
 }
 
@@ -3985,8 +3986,7 @@ function clearCardSelectionsBeforeGame(){
 }
 function goToWallet(){gotoProfile();}
 function gotoProfile(){
-  if(document.getElementById('screenCards')?.classList.contains('active')) clearCardSelectionsBeforeGame();
-  navGo('screenProfile','navProfile');
+  navGo('screenProfile','navProfile');   // the cartelas picked so far stay selected while the player is away
   // Show the profile immediately. The server refresh runs silently in the background.
   loadUserProfile(false).catch(()=>{});
 }
@@ -4194,16 +4194,36 @@ function refreshGameScreenOnly(){
 // ─── POST-GAME RESET / SAME-STAKE RETURN ───────────────────────
 let postGameAutoRefreshTimer=null;
 
+// Top "Refresh" on the number-selection page: re-open the connection ONLY. The cartelas the player picked
+// are kept: the server holds his seat for a few seconds, and after signing in again the page re-joins the
+// same room and receives its current state (pool, countdown and his own selection).
+// The picks the player had when he left the page or refreshed the connection. If the server does not
+// know his seat any more (restart, long outage), the page joins the same stake again and re-picks them.
+let restoreSelection=null;
+function captureSelection(){
+  const cards=[[1,myCardId],[2,myCardId2],[3,myCardId3],[4,myCardId4]].filter(x=>x[1]).map(x=>({slot:x[0],cardId:x[1]}));
+  const stakeId=myStakeId||localStorage.getItem('stakeId');
+  restoreSelection=(cards.length&&stakeId&&activeGamePhase!=='playing'&&activeGamePhase!=='spectating')?{stakeId,cards,t:Date.now(),joining:false}:null;
+}
+let socketRefreshing=false;
+function refreshSocketOnly(){
+  if(socketRefreshing) return;
+  captureSelection();
+  socketRefreshing=true;
+  try{
+    const old=ws;
+    if(old){ old.onclose=null; old.onerror=null; old.onmessage=null; try{ old.close(); }catch(e){} }
+    const dot=document.getElementById('connDot'); if(dot) dot.classList.remove('on');
+  }catch(e){}
+  connect();                                   // new connection; the saved room is re-joined after sign-in
+  setTimeout(()=>{ socketRefreshing=false; },1500);
+}
+
 function refreshCardsForNewRound(){
   if(postGameAutoRefreshTimer){
     clearTimeout(postGameAutoRefreshTimer);
     postGameAutoRefreshTimer=null;
   }
-
-  // Before the game starts, Refresh releases the player's selected cartelas on
-  // the server too (deselectCard is sent before the reconnect below), so the
-  // pool comes back with no selection.
-  clearCardSelectionsBeforeGame();
 
   // Clear the previous round locally first.
   myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null;
@@ -4243,6 +4263,7 @@ function updatePostGameCountdown(seconds){
 }
 
 function finishPostGameReset(msg={}){
+  currentGameCode=null;
   if(postGameAutoRefreshTimer){ clearTimeout(postGameAutoRefreshTimer); postGameAutoRefreshTimer=null; }
   if(postGameResetTimer){ clearInterval(postGameResetTimer); postGameResetTimer=null; }
   if(postGameResetRejoinTimer){ clearTimeout(postGameResetRejoinTimer); postGameResetRejoinTimer=null; }
@@ -4281,7 +4302,7 @@ function finishPostGameReset(msg={}){
 // game (myRoomId). Every message that belongs to ANOTHER game is handled here, so its numbers,
 // result and reset never touch the game that is on screen. Each game ends on its own.
 const ROOM_SCOPED_MESSAGES=new Set(['numberCalled','gameStart','yourCard','spectating','countdown','waitingForPlayers',
-  'cardPoolUpdate','cardPoolDiff','cardSelected','playerLeft','gameOver','resetCountdown','backToCardSelection',
+  'cardPoolUpdate','cardPoolDiff','cardSelected','cardDeselected','playerLeft','gameOver','resetCountdown','backToCardSelection',
   'disqualified','claimTooLate']);
 const bgGames={};                 // roomId -> {stakeId, called, phase}
 let pendingStakeJoin=null;        // stake tapped while a saved game was being reconnected
@@ -4418,6 +4439,14 @@ function handle(msg){
   break;
 
     case 'reconnectFailed':
+      // The server no longer holds my seat but I had cartelas picked before the round: stay on the page,
+      // join the same stake again and pick the same cartelas (Refresh / coming back must not lose them).
+      if(restoreSelection && !restoreSelection.joining && restoreSelection.cards.length && Date.now()-restoreSelection.t<120000){
+        restoreSelection.joining=true; restoringActiveGame=false;
+        myRoomId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; myCardNumbers=[]; myCardNumbers2=[]; myCardNumbers3=[]; myCardNumbers4=[];
+        wsSend({type:'joinRoom',stakeId:restoreSelection.stakeId,telegramId:telegramId||getTelegramId()});
+        break;
+      }
       restoringActiveGame=false; clearActiveGameState(); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; myCardNumbers=[]; myCardNumbers2=[]; goScreen('screenLobby');
       // The saved game is gone (server restarted / game finished). If the player had just tapped a
       // stake, open that stake now instead of silently doing nothing.
@@ -4434,10 +4463,25 @@ function handle(msg){
 
    case 'joinedRoom':
       pendingStakeJoin=null;
+      if(msg.status!=='playing') currentGameCode=null;
+      if(restoreSelection){
+        if(restoreSelection.joining && (msg.status==='waiting'||msg.status==='countdown') && !(msg.cardId||msg.cardId2||msg.cardId3||msg.cardId4)){
+          const r=restoreSelection; restoreSelection=null;
+          setTimeout(()=>{ r.cards.forEach(c=>{ pendingCardSelections[String(c.cardId)]=c.slot; wsSend({type:'selectCard',cardId:c.cardId,slot:c.slot}); }); },0);
+        } else if(msg.cardId||msg.cardId2||msg.cardId3||msg.cardId4){ restoreSelection=null; }   // the server still had my picks
+      }
       if(String(myRoomId||'')!==String(msg.roomId||'')){
         clearSelectionCardsPreview();
         myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null;
         myCardNumbers=[]; myCardNumbers2=[]; myCardNumbers3=[]; myCardNumbers4=[];
+      }
+      // Same account on another device: the server sends the cartelas already chosen, show them here too.
+      msg._hasCards=!!(msg.cardId||msg.cardId2||msg.cardId3||msg.cardId4);
+      if(msg._hasCards && msg.status!=='playing'){
+        myCardId=msg.cardId||null;   myCardNumbers=msg.cardNumbers||[];
+        myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
+        myCardId3=msg.cardId3||null; myCardNumbers3=msg.cardNumbers3||[];
+        myCardId4=msg.cardId4||null; myCardNumbers4=msg.cardNumbers4||[];
       }
       localStorage.setItem('roomId', msg.roomId);
       myRoomId=msg.roomId; myStakeId=msg.stakeId; localStorage.setItem('roomId',msg.roomId); localStorage.setItem('stakeId',msg.stakeId);
@@ -4449,7 +4493,7 @@ function handle(msg){
         activeGamePhase='none'; activeCountdownLeft=0;
       }
       saveActiveGameState(activeGamePhase);
-      if(msg.status!=='countdown' && msg.status!=='playing') { myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; }
+      if(msg.status!=='countdown' && msg.status!=='playing' && !msg._hasCards) { myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; }
       resetAutomaticGameState();
       activePlayers=[]; updateActivePlayers(msg.players||msg.activePlayers||[]);
       if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
@@ -4469,12 +4513,19 @@ function handle(msg){
         }
       } else {
         navGo('screenCards','navCards');
+        if(msg._hasCards){ updateSlotUI(); renderSelectionCardsPreview(); }
         if(msg.status==='countdown') showSavedCountdown();
       }
       break;
 
     case 'cardPoolUpdate':
       cardPool=msg.pool; renderCardPool(msg.pool);
+      {
+        const known=new Set([myCardId,myCardId2,myCardId3,myCardId4].filter(Boolean));
+        const unknown=msg.pool.filter(c=>c.takenByMe&&!known.has(c.id)&&!pendingCardSelections[String(c.id)]);
+        if(!unknown.length) resyncTries=0;
+        else if(resyncTries<3&&myRoomId&&telegramId){ resyncTries++; wsSend({type:'reconnect',roomId:myRoomId,telegramId}); }
+      }
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
       break;
 
@@ -4501,6 +4552,18 @@ function handle(msg){
       if(activeGamePhase!=='playing' && activeGamePhase!=='spectating') { activeGamePhase='countdown'; saveActiveGameState('countdown'); }
       break;
 
+    case 'cardDeselected': {
+      // the same account released a cartela on another device
+      const slot=Number(msg.slot)||1;
+      delete pendingCardSelections[String(msg.cardId)];
+      if(slot===2){ myCardId2=null; myCardNumbers2=[]; }
+      else if(slot===3){ myCardId3=null; myCardNumbers3=[]; }
+      else if(slot===4){ myCardId4=null; myCardNumbers4=[]; }
+      else { myCardId=null; myCardNumbers=[]; }
+      updateSlotUI(); renderCardPool(cardPool); renderSelectionCardsPreview();
+      break;
+    }
+
     case 'countdown': {
       const sec=Math.max(0,Number(msg.seconds)||0);
       activeGamePhase='countdown'; activeCountdownLeft=sec; saveActiveGameState('countdown');
@@ -4524,6 +4587,7 @@ function handle(msg){
     }
 
     case 'yourCard':
+      restoreSelection=null;
       myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
       myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
       myCardId3=msg.cardId3||null; myCardNumbers3=msg.cardNumbers3||[];
@@ -4655,6 +4719,7 @@ function handle(msg){
       break;
 
     case 'leftRoom': if(msg.roomId && myRoomId && String(msg.roomId)!==String(myRoomId)) break;
+      restoreSelection=null;
       clearSelectionCardsPreview(); clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; myCardNumbers=[]; myCardNumbers2=[]; myCardNumbers3=[]; myCardNumbers4=[]; navGo('screenLobby'); break;
 
     case 'notification': showToast(msg.message, msg.message.startsWith('✅')?'':'error'); break;
@@ -4697,8 +4762,10 @@ function getGameBetAmount(msg={}){
   const m=sid.match(/(?:st|stake|room)[^0-9]*([0-9]+(?:\.[0-9]+)?)/i);
   return m ? Number(m[1]) : 10;
 }
+let currentGameCode=null;      // e.g. BG-7K2QX9AB, sent by the server once the round has been created
 function syncPlayerAreaStats(msg={}){
-  const gameId=msg.gameId ?? msg.gameID ?? msg.roomId ?? myRoomId ?? localStorage.getItem('roomId') ?? '---';
+  if(msg.gameId!==undefined&&msg.gameId!==null&&String(msg.gameId)!==String(msg.roomId||'')) currentGameCode=String(msg.gameId);
+  const gameId=currentGameCode ?? msg.gameId ?? msg.gameID ?? msg.roomId ?? myRoomId ?? localStorage.getItem('roomId') ?? '---';
   const gameIdEl=document.getElementById('gameIdVal');
   if(gameIdEl) gameIdEl.innerText=String(gameId||'---');
   const players=msg.playerCount ?? (Array.isArray(msg.players)?msg.players.length:undefined);
@@ -5402,15 +5469,27 @@ function getNextCardSlot(){
 // This makes the card feel instant while keeping the server/database authoritative.
 const pendingCardSelections={};
 
+// A cartela is MINE (green) when the page knows it as one of my picks OR the server marks it takenByMe.
+// (takenByMe is the server's own truth: it keeps my cartelas green even if the page lost track of them.)
+let resyncTries=0;
+function mySlotOf(c){ return getMyCardSlot(c.id) || (c.takenByMe===true ? 1 : 0); }
+// release one of my cartelas by its number (works even when the page does not know its slot)
+function deselectCardById(id){
+  const slot=getMyCardSlot(id);
+  if(slot){ deselectCard(slot); return; }
+  wsSend({type:'deselectCard',cardId:id,slot:1});
+  const idx=cardPool.findIndex(x=>x.id===id); if(idx>=0) cardPool[idx]={...cardPool[idx],taken:false,takenByMe:false};
+  patchCardButton({id,taken:false,takenByMe:false});
+}
 function renderCardPool(pool){
   const grid=document.getElementById('poolGrid'); grid.innerHTML='';
   pool.forEach(c=>{
     const btn=document.createElement('div'); btn.className='pool-btn'; btn.id='cardbtn-'+c.id; btn.innerText=`${c.id}`;
-    const slot=getMyCardSlot(c.id);
+    const slot=mySlotOf(c);
     const pendingSlot=Number(pendingCardSelections[String(c.id)]||0);
     if(slot) {
       btn.classList.add('mine'+slot);
-      btn.onclick=()=>deselectCard(slot);
+      btn.onclick=()=>deselectCardById(c.id);
     } else if(pendingSlot) {
       btn.classList.add('mine'+pendingSlot,'card-pending');
       btn.onclick=null;
@@ -5423,10 +5502,10 @@ function renderCardPool(pool){
 function patchCardButton(c){
   const btn=document.getElementById('cardbtn-'+c.id); if(!btn) return;
   btn.classList.remove('mine1','mine2','mine3','mine4','taken','card-pending'); btn.onclick=null;
-  const slot=getMyCardSlot(c.id);
+  const slot=mySlotOf(c);
   const pendingSlot=Number(pendingCardSelections[String(c.id)]||0);
   if(slot) {
-    btn.classList.add('mine'+slot); btn.onclick=()=>deselectCard(slot);
+    btn.classList.add('mine'+slot); btn.onclick=()=>deselectCardById(c.id);
   } else if(pendingSlot) {
     btn.classList.add('mine'+pendingSlot,'card-pending');
   } else if(c.taken) btn.classList.add('taken');

@@ -10,6 +10,17 @@
  */
 
 require('dotenv').config();
+const crypto=require('crypto');
+
+// Fair random pick for the number draw: an unbiased integer in [0, n) from the operating system's
+// cryptographic random generator (not Math.random, whose internal state can be reconstructed from its output).
+function randomIndex(n){
+  n=Math.max(1,Math.floor(Number(n)||1));
+  if(typeof crypto.randomInt==='function') return crypto.randomInt(n);       // Node 14.10+
+  const limit=Math.floor(0x100000000/n)*n;                                   // older Node: rejection sampling, no modulo bias
+  let x; do{ x=crypto.randomBytes(4).readUInt32BE(0); }while(x>=limit);
+  return x%n;
+}
 
 const express   = require('express');
 const http      = require('http');
@@ -390,7 +401,7 @@ const LOBBY_WAIT_MS    = 30000;
 const CALL_INTERVAL_MS = 5000;
 const CLAIM_WINDOW_MS  = 4800;
 const CLAIM_COLLECT_MS = 700; // grace period to gather simultaneous BINGO claims
-const TOTAL_CARDS      = 400;
+const TOTAL_CARDS      = 600;   // largest card_count a room may use (your rooms use 600)
 
 const STAKES = [
   { id:'st5',  amount:5,  maxPlayers:400, cardLimit:400 },
@@ -400,16 +411,18 @@ const STAKES = [
 
 // Stakes / rooms come from the database (bingo_stakes + bingo_rooms). They are loaded ONCE at
 // start-up and refreshed every 10 minutes; the constants above are only the fallback.
+// The app names a stake by its amount (st5, st10, st20); the database's own id (S5, S10, ...) is kept in dbStakeId.
+const stakeKey=a=>'st'+(Number.isInteger(Number(a))?Number(a):String(a).replace('.','p'));
 async function loadStakesFromDb(){
   if(!bingoDb) return false;
   try{
     const list=await bingoDb.getActiveStakes();
     const seen=new Set(), next=[];
     for(const s of list){
-      if(seen.has(s.id)) continue;               // one room per stake
-      seen.add(s.id);
+      if(seen.has(stakeKey(s.amount))) continue;   // one room per stake
+      seen.add(stakeKey(s.amount));
       next.push({
-        id:s.id, dbStakeId:s.dbId, dbRoomId:s.roomId, name:s.displayName||s.name,
+        id:stakeKey(s.amount), dbStakeId:s.dbId, dbRoomId:s.roomId, name:s.displayName||s.name,
         amount:s.amount,
         maxPlayers:s.maxPlayers||400,
         cardLimit:Math.max(1,Math.min(TOTAL_CARDS,s.cardCount||TOTAL_CARDS)),
@@ -426,7 +439,13 @@ async function loadStakesFromDb(){
   }catch(e){ console.error('loadStakesFromDb:',e.message); return false; }
 }
 
-if(bingoDb){ loadStakesFromDb(); setInterval(loadStakesFromDb,10*60*1000); }
+if(bingoDb){
+  loadStakesFromDb(); loadFundingWallets();
+  setInterval(()=>{ loadStakesFromDb(); loadFundingWallets(); },10*60*1000);
+  // clean up games left open by an earlier run (restart / crash); young ones are left alone
+  setTimeout(()=>recoverOrphanedGames({minAgeSec:600,reason:'startup_cleanup'}),20*1000);
+  setInterval(()=>recoverOrphanedGames({minAgeSec:900,reason:'stale_game'}),10*60*1000);
+}
 
 // ─── FIXED CARDS ─────────────────────────────────────────────
 function seededRandom(seed) {
@@ -466,12 +485,26 @@ function walletsFromRow(r){
   const n=v=>{const x=Number.parseFloat(v);return Number.isFinite(x)&&x>0?x:0;};
   return {main:n(r.main_balance),play:n(r.play_balance),bonus:n(r.bonus_balance)};
 }
+// Wallets the stake funding policy may charge, in order (read once from the database; refreshed with the stakes).
+// place_stake() only counts these wallets, so a wallet that is not in the list cannot pay for a cartela.
+let FUNDING_WALLETS=['main','play','bonus'];
+async function loadFundingWallets(){
+  if(!bingoDb||typeof bingoDb.getBingoFundingWallets!=='function') return false;
+  try{
+    const list=(await bingoDb.getBingoFundingWallets()).filter(x=>['main','play','bonus'].includes(x));
+    if(!list.length){ console.warn('⚠️ the stake funding policy lists no wallets - keeping the default'); return false; }
+    FUNDING_WALLETS=list;
+    console.log('✅ Stakes are paid from:',list.join(' -> '));
+    return true;
+  }catch(e){ console.error('loadFundingWallets:',e.message); return false; }
+}
 // balance   = main + play   (the amount shown in the header)
-// spendable = main+play+bonus (fast local check before picking cartelas; the database makes the final call)
+// spendable = the wallets the funding policy can charge (fast local check before picking cartelas;
+//             the database makes the final call)
 function applyWallets(target,w){
   target.wallets={main:round2(w.main),play:round2(w.play),bonus:round2(w.bonus)};
   target.balance=round2(w.main+w.play);
-  target.spendable=round2(w.main+w.play+w.bonus);
+  target.spendable=round2(FUNDING_WALLETS.reduce((t,k)=>t+(Number(w[k])||0),0));
 }
 // Cached per-user profile answers (a game start/end clears the entry)
 const profileCache=new Map();
@@ -657,10 +690,47 @@ function getOrCreateRoom(sid){
      takenCardIds:new Set(),pot:0,grossPot:0,dbGameId:null,dbGameCode:null,participantCards:null,startFailures:0};
   rooms[roomId]=r; return r;
 }
-const send=(ws,msg)=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(msg));};
+const send=(ws,msg)=>{
+  if(!ws||ws.readyState!==WebSocket.OPEN) return;
+  // every message about a running game carries the game code returned by createBingoGame (shown as "Game ID")
+  if(msg&&msg.roomId&&msg.gameId===undefined){ const r=rooms[msg.roomId]; if(r&&r.dbGameCode) msg={...msg,gameId:r.dbGameCode}; }
+  ws.send(JSON.stringify(msg));
+};
 // A player can be in SEVERAL rooms at once (one per stake: 5 / 10 / 20 = up to 3 games at a time).
 // Every room message carries roomId + stakeId so the app can handle each game separately.
 const sendRoom=(room,ws,msg)=>send(ws,{roomId:room.roomId,stakeId:room.stakeId,...msg});
+// How long a player who lost his connection before the round starts keeps his seat and cartelas.
+// (A page "Refresh" closes and re-opens the connection; the player must not lose his picks.)
+const DISCONNECT_GRACE_MS = 20000;
+
+// ── One account = one player, on any number of devices ───────────────────────
+// A player's `ws` is a small multiplexer that holds every open connection (device) of that account,
+// so every message sent to the player reaches all of his devices and they always show the same state.
+function makeMux(initial){
+  const socks=new Set(initial||[]);
+  return {
+    sockets:socks,
+    get readyState(){ for(const x of socks) if(x&&x.readyState===1) return 1; return 3; },
+    send(data){ for(const x of socks){ if(x&&x.readyState===1){ try{ x.send(data); }catch(e){} } } }
+  };
+}
+function attachSocket(p,ws){ if(p.graceTimer){ clearTimeout(p.graceTimer); p.graceTimer=null; } if(!p.ws||!p.ws.sockets) p.ws=makeMux(p.ws?[p.ws]:[]); p.ws.sockets.add(ws); }
+function detachSocket(p,ws){ if(p&&p.ws&&p.ws.sockets) p.ws.sockets.delete(ws); }
+function openSockets(p){ return (p&&p.ws&&p.ws.sockets)?[...p.ws.sockets].filter(x=>x&&x.readyState===1):[]; }
+// the room player that belongs to this connection: same connection id, else same Telegram account
+function playerOf(room,client){
+  if(!room||!client) return null;
+  let p=room.players.find(x=>x.playerId===client.playerId);
+  if(!p&&client.telegramId) p=room.players.find(x=>String(x.telegramId||'')===String(client.telegramId));
+  return p||null;
+}
+// everything a device needs to show the player's current cartelas
+function selectionPayload(p){
+  const num=id=>{const c=id?getCard(id):null;return c?c.numbers:[];};
+  return {cardId:p.cardId||null,cardNumbers:num(p.cardId),cardId2:p.cardId2||null,cardNumbers2:num(p.cardId2),
+          cardId3:p.cardId3||null,cardNumbers3:num(p.cardId3),cardId4:p.cardId4||null,cardNumbers4:num(p.cardId4)};
+}
+
 function clientRooms(client){
   if(!client.rooms) client.rooms=new Set();
   return Array.from(client.rooms).map(id=>rooms[id]).filter(Boolean);
@@ -674,7 +744,7 @@ function roomForMsg(client,msg){
 function reservedElsewhere(client,room){
   return clientRooms(client).reduce((sum,r)=>{
     if(r.roomId===room.roomId||(r.status!=='waiting'&&r.status!=='countdown')) return sum;
-    const pl=r.players.find(pp=>pp.playerId===client.playerId);
+    const pl=playerOf(r,client);
     return sum+(pl?Number(r.stake)*getPlayerCardCount(pl):0);
   },0);
 }
@@ -685,17 +755,13 @@ function relinkAllRooms(client,ws,tid){
   Object.values(rooms).forEach(r=>{
     r.players.forEach(pl=>{
       if(String(pl.telegramId||'')!==String(tid)) return;
-      if(pl.playerId!==client.playerId){
-        const old=clients[pl.playerId];
-        if(old&&old!==client&&old.rooms) old.rooms.delete(r.roomId);
-        pl.playerId=client.playerId;
-      }
-      pl.ws=ws;
+      attachSocket(pl,ws);                 // this device joins the same player (other devices keep working)
+      pl.playerId=client.playerId;         // the newest device is the primary one
       client.rooms.add(r.roomId);
     });
   });
 }
-const broadcast=(room,msg)=>{const s=JSON.stringify({roomId:room.roomId,stakeId:room.stakeId,...msg});room.players.forEach(p=>{if(p.ws&&p.ws.readyState===WebSocket.OPEN)p.ws.send(s);});};
+const broadcast=(room,msg)=>{const s=JSON.stringify({roomId:room.roomId,stakeId:room.stakeId,gameId:room.dbGameCode||undefined,...msg});room.players.forEach(p=>{if(p.ws&&p.ws.readyState===WebSocket.OPEN)p.ws.send(s);});};
 function broadcastLobby(){
   // Debounced: many joins/leaves happening in quick succession (busy lobby with
   // hundreds of players) will collapse into a single broadcast every 250ms,
@@ -766,6 +832,11 @@ async function collectDbEntries(room){
   const entries=[];
   for(const p of room.players){
     if(getPlayerCardCount(p)===0) continue;
+    if(openSockets(p).length===0){                  // disconnected right now: no charge, no cartelas in this round
+      console.warn(`player ${p.telegramId} was not connected when the round started - cartelas released`);
+      releasePlayerCards(room,p);
+      continue;
+    }
     if(!p.userId){
       const u=await loadUser(p.telegramId,2,200);
       p.userId=u?.userId||null;
@@ -798,11 +869,54 @@ async function dropUnaffordablePlayers(room){
   if(dropped) broadcastCardPool(room);
   return dropped;
 }
+// Short, friendly reason + code for players. Admins also get the database's own message.
+function startFailureInfo(reason){
+  const r=String(reason||'');
+  if(/at least \d+ players|players are required|minimum.*players|min.*players/i.test(r))
+    return {code:'MIN_PLAYERS',text:'ጨዋታውን ለመጀመር ቢያንስ 2 የተለያዩ ተጫዋቾች ያስፈልጋሉ።'};
+  if(/room.*(not found|not active)|stake.*(not active|not exist|not available)|game system|funding policy|commission rule|ids are missing|configuration/i.test(r))
+    return {code:'SETUP',text:'የክፍሉ ማዋቀር አልተጠናቀቀም። እባክዎ አስተዳዳሪን ያነጋግሩ።'};
+  if(/uq_bingo_games_active_room_stake|active game/i.test(r))
+    return {code:'STUCK_GAME',text:'ለዚህ ክፍል ያልተጠናቀቀ የቀድሞ ጨዋታ አለ። እባክዎ ትንሽ ቆይተው ይሞክሩ።'};
+  if(/bonus consumption mismatch/i.test(r))
+    return {code:'BONUS',text:'የቦነስ ሂሳብ ችግር አለ። እባክዎ አስተዳዳሪን ያነጋግሩ።'};
+  if(/insufficient|balance/i.test(r))
+    return {code:'BALANCE',text:'አንዳንድ ተጫዋቾች በቂ ቀሪ ሂሳብ የላቸውም።'};
+  if(/no cartelas/i.test(r))
+    return {code:'NO_CARTELAS',text:'ካርቴላ አልተመረጠም።'};
+  return {code:'UNKNOWN',text:'ጨዋታው መጀመር አልተቻለም። እባክዎ እንደገና ይሞክሩ።'};
+}
+// A player whose Bonus wallet is not covered by active bonus awards would make place_stake() raise
+// "Bonus consumption mismatch" and block the round for EVERYONE. Take only those players out.
+async function dropBonusMismatchPlayers(room){
+  if(typeof bingoDb.getBingoBonusStatus!=='function') return false;
+  const players=room.players.filter(p=>getPlayerCardCount(p)>0&&p.userId);
+  if(!players.length) return false;
+  let rows;
+  try{ rows=await bingoDb.getBingoBonusStatus(players.map(p=>p.userId)); }
+  catch(e){ console.error('getBingoBonusStatus:',e.message); return false; }
+  const bad=new Set(rows.filter(r=>Number(r.bonus_balance)-Number(r.usable)>0.009).map(r=>Number(r.user_id)));
+  if(!bad.size) return false;
+  for(const p of players){
+    if(!bad.has(Number(p.userId))) continue;
+    const r=rows.find(x=>Number(x.user_id)===Number(p.userId));
+    console.error(`⚠️ user ${p.userId}: Bonus wallet ${r.bonus_balance} is not covered by active bonuses (${r.usable}); removed from the round`);
+    releasePlayerCards(room,p);
+    sendRoom(room,p.ws,{type:'error',message:'የቦነስ ሂሳብዎ ላይ ችግር ስላለ በዚህ ዙር መሳተፍ አልተቻለም። እባክዎ ድጋፍን ያነጋግሩ። (BONUS)'});
+  }
+  broadcastCardPool(room);
+  return true;
+}
 function failStart(room,reason){
   console.error(`⚠️ Round could not start (${room.stakeId}): ${reason}`);
   room.status='waiting';
   room.startFailures=(room.startFailures||0)+1;
-  broadcast(room,{type:'error',message:'ጨዋታው መጀመር አልተቻለም። እባክዎ ካርቴላዎን ይመልከቱ።'});
+  room.lastStartError=String(reason||'');
+  const info=startFailureInfo(reason);
+  room.players.forEach(p=>{
+    const admin=Object.values(clients).some(c=>c.isAdmin&&String(c.telegramId)===String(p.telegramId));
+    sendRoom(room,p.ws,{type:'error',message:`${info.text} (${info.code})`+(admin?`\n${String(reason).slice(0,160)}`:'')});
+  });
   broadcast(room,{type:'waitingForPlayers'});
   broadcastCardPool(room);
   broadcastLobby();
@@ -813,8 +927,40 @@ function failStart(room,reason){
   }
   return false;
 }
+// ── Orphaned games ──────────────────────────────────────────────────────────
+// A game is created as "selection" and only end_bingo_game() closes it. If this server restarted in the
+// middle of a round, the round is lost from memory but the game stays open in the database, and the unique
+// index uq_bingo_games_active_room_stake then refuses every new game for that room + stake.
+// Open games that no room of THIS server owns are cancelled with a full refund (cancel_bingo_game).
+function ownedGameIds(){
+  const ids=new Set();
+  Object.values(rooms).forEach(r=>{ if(r.dbGameId) ids.add(Number(r.dbGameId)); });
+  return ids;
+}
+async function recoverOrphanedGames({roomId=null,stakeId=null,minAgeSec=0,reason='orphaned_game'}={}){
+  if(!bingoDb||typeof bingoDb.getUnfinishedBingoGames!=='function'||typeof bingoDb.cancelBingoGame!=='function') return 0;
+  let games;
+  try{ games=await bingoDb.getUnfinishedBingoGames(roomId,stakeId); }
+  catch(e){ console.error('getUnfinishedBingoGames:',e.message); return 0; }
+  const owned=ownedGameIds();
+  let cancelled=0;
+  for(const g of games){
+    if(owned.has(Number(g.id))) continue;                 // a round of this server is still running it
+    if(g.winners>0){ console.warn(`⚠️ Game ${g.game_code} has winners but is still open: finish it with end_bingo_game(), it is not cancelled automatically.`); continue; }
+    if(g.age_seconds<minAgeSec) continue;                 // too young: it may belong to another instance during a deploy
+    try{
+      const r=await bingoDb.cancelBingoGame(g.id,reason);
+      console.warn(`🧹 Cancelled unfinished game ${g.game_code} (${g.status}, ${g.age_seconds}s old, ${reason}): refunded ${r&&r.refunded_cards} cartela(s), ${r&&r.refunded_total} ETB`);
+      cancelled++;
+    }catch(e){
+      console.error(`cancel_bingo_game(${g.id}) failed:`,e.message,e.message&&/cancel_bingo_game/.test(e.message)?'- install cancel_bingo_game.sql in the database':'');
+    }
+  }
+  return cancelled;
+}
+
 async function startDbGame(room){
-  for(let attempt=1;attempt<=2;attempt++){
+  for(let attempt=1;attempt<=3;attempt++){
     const entries=await collectDbEntries(room);
     if(!entries.length) return failStart(room,'no cartelas selected');
     if(!room.dbRoomId||!room.dbStakeId) return failStart(room,'room/stake ids are missing (stakes not loaded from the database)');
@@ -829,7 +975,13 @@ async function startDbGame(room){
     }catch(e){
       console.error(`createBingoGame failed (attempt ${attempt}):`,e.message);
       if(/is_banned/.test(e.message)) console.error('DATABASE FIX NEEDED: create_bingo_game_from_selections reads users.is_banned but the column does not exist. Run: ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_banned boolean NOT NULL DEFAULT false;');
-      if(attempt<2 && await dropUnaffordablePlayers(room)) continue;   // retry once without the players who cannot pay
+      // an older game of this room + stake was never closed: cancel it (refunding its players) and try again
+      if(/uq_bingo_games_active_room_stake/i.test(e.message) && attempt<3){
+        const n=await recoverOrphanedGames({roomId:room.dbRoomId,stakeId:room.dbStakeId,minAgeSec:120,reason:'orphaned_game'});
+        if(n>0) continue;
+      }
+      // retry without the players who cannot pay / whose bonus is inconsistent (up to 2 retries)
+      if(attempt<3 && ((await dropBonusMismatchPlayers(room)) || (await dropUnaffordablePlayers(room)))) continue;
       return failStart(room,e.message);
     }
 
@@ -856,13 +1008,6 @@ async function startDbGame(room){
     room.dbGameCode=result.game_code||null;
     room.startFailures=0;
     console.log(`🎮 Game ${room.dbGameCode||room.dbGameId} created (${room.stakeId}): ${result.total_participants} players, ${result.total_cards} cartelas, gross ${result.gross_pot}, prize ${result.prize_pool}`);
-
-    // end_bingo_game() needs the database ids of the cartelas: load them once.
-    room.participantCards=new Map();
-    try{
-      const rows=await bingoDb.getBingoGameCardIds(room.dbGameId);
-      rows.forEach(r=>room.participantCards.set(`${r.user_id}:${r.card_id}`,r.participant_card_id));
-    }catch(e){ console.error('getBingoGameCardIds:',e.message); }
 
     // Everyone's wallets changed: reload them once and push them to the apps.
     forEachLimit(room.players.filter(p=>p.hasPaid),10,pushWallets).catch(()=>{});
@@ -950,7 +1095,7 @@ function callNumber(room){
   if(room.claimedThisRound.length>0){evaluateClaims(room);return;}
   room.claimWindowOpen=false; room.claimedThisRound=[];
   if(room.availableNumbers.length===0){endGame(room,[],null,true);return;}
-  const idx=Math.floor(Math.random()*room.availableNumbers.length);
+  const idx=randomIndex(room.availableNumbers.length);
   const drawn=room.availableNumbers.splice(idx,1)[0];
   room.calledNumbers.push(drawn);
   broadcast(room,{type:'numberCalled',number:drawn,calledNumbers:room.calledNumbers,callCount:room.calledNumbers.length,claimWindowMs:CLAIM_WINDOW_MS,pot:room.pot,playerCount:livePlayerCount(room),players:paidPlayerList(room)});
@@ -1018,42 +1163,37 @@ function evaluateClaims(room){
 }
 
 // Pay the winners with db.js. Returns {winAmount, names, tids} or null if the database call failed.
+// end_bingo_game(game, winning CARTELA numbers, numbers called in this round) pays every winner from the prize
+// pool in one transaction and stores the called numbers with the game.
 async function settleDbGame(room,winners){
   if(!room.dbGameId){ console.error('settleDbGame: this round has no database game id'); return null; }
-  // make sure we know the database ids of the winning cartelas
-  if(!room.participantCards||room.participantCards.size===0){
-    try{
-      room.participantCards=new Map();
-      (await bingoDb.getBingoGameCardIds(room.dbGameId)).forEach(r=>room.participantCards.set(`${r.user_id}:${r.card_id}`,r.participant_card_id));
-    }catch(e){ console.error('getBingoGameCardIds (settle):',e.message); }
-  }
-  const ids=[...new Set(winners.map(w=>room.participantCards.get(`${w.userId}:${w._winningCardId||w.cardId}`)).filter(Boolean))];
-  if(!ids.length){
-    console.error(`CRITICAL: no database card ids for the winners of game ${room.dbGameCode||room.dbGameId}`,winners.map(w=>({tid:w.telegramId,card:w._winningCardId})));
+  const ids=[...new Set(winners.map(w=>Number(w._winningCardId||w.cardId)).filter(n=>Number.isInteger(n)&&n>0))];
+  const called=(room.calledNumbers||[]).map(Number).filter(n=>Number.isInteger(n)&&n>=1&&n<=75);   // snapshot at the moment of the win
+  if(!ids.length||!called.length){
+    console.error(`CRITICAL: cannot settle game ${room.dbGameCode||room.dbGameId}: winning cartelas ${JSON.stringify(ids)}, called numbers ${called.length}`);
     return null;
   }
   let result=null;
   for(let attempt=1;attempt<=3&&!result;attempt++){
-    try{ result=await bingoDb.endBingoGame(room.dbGameId,ids); }
+    try{ result=await bingoDb.endBingoGame(room.dbGameId,ids,called); }
     catch(e){
       console.error(`endBingoGame failed (attempt ${attempt}/3) game ${room.dbGameCode||room.dbGameId}:`,e.message);
-      if(/already completed/i.test(e.message)){ result={winners:[],already:true}; break; }
+      if(/already completed|already been settled/i.test(e.message)){ result={winner_details:[],already:true}; break; }
       if(attempt<3) await new Promise(r=>setTimeout(r,attempt*1500));
     }
   }
   if(!result){
-    console.error(`CRITICAL: winners of game ${room.dbGameCode||room.dbGameId} were NOT paid. Run: SELECT public.end_bingo_game(${room.dbGameId}, ARRAY[${ids.join(',')}]::bigint[]);`);
+    console.error(`CRITICAL: winners of game ${room.dbGameCode||room.dbGameId} were NOT paid. Run: SELECT public.end_bingo_game(${room.dbGameId}, ARRAY[${ids.join(',')}]::integer[], ARRAY[${called.join(',')}]::integer[]);`);
     return null;
   }
-  const rows=Array.isArray(result.winners)?result.winners:[];
-  const payoutOf=uid=>rows.filter(r=>Number(r.user_id)===Number(uid)).reduce((t,r)=>t+(Number(r.payout)||0),0);
+  const rows=Array.isArray(result.winner_details)?result.winner_details:(Array.isArray(result.winners)?result.winners:[]);
   const names=winners.map(w=>w.playerName);
   const tids=winners.map(w=>String(w.telegramId||'')).filter(Boolean);
   const first=rows.length?Number(rows[0].payout):Math.floor((room.pot||0)/winners.length);
-  console.log(`🏆 Game ${room.dbGameCode||room.dbGameId} settled: paid ${result.total_paid??'?'} to ${rows.length||winners.length} winning cartela(s)`);
+  console.log(`🏆 Game ${room.dbGameCode||room.dbGameId} settled: paid ${result.total_payout??result.total_paid??'?'} to ${rows.length||winners.length} winning cartela(s), ${called.length} numbers called`);
   // the winners' wallets changed: reload once and push
   forEachLimit(winners,10,async w=>{ await pushWallets(w); }).catch(()=>{});
-  return {winAmount:first,names,tids,payoutOf};
+  return {winAmount:first,names,tids};
 }
 
 async function endGame(room, winners, customMsg, noWinner){
@@ -1071,9 +1211,19 @@ async function endGame(room, winners, customMsg, noWinner){
       if(paid){ winAmount=paid.winAmount; winnerNames=paid.names; winnerTids=paid.tids; }
       else{ winnerNames=winners.map(w=>w.playerName); winnerTids=winners.map(w=>String(w.telegramId||'')).filter(Boolean); winAmount=Math.floor((room.pot||0)/winners.length); }
     }else if(room.dbGameId){
-      console.warn(`⚠️ Game ${room.dbGameCode||room.dbGameId} ended with NO winner - the stakes stay in the game and need manual handling.`);
+      // nobody won (all numbers called): close the game and give every stake back
+      try{
+        if(typeof bingoDb.cancelBingoGame!=='function') throw new Error('cancelBingoGame is not available in db.js');
+        const r=await bingoDb.cancelBingoGame(room.dbGameId,'no_winner');
+        console.warn(`↩️ Game ${room.dbGameCode||room.dbGameId} ended with no winner: refunded ${r&&r.refunded_cards} cartela(s), ${r&&r.refunded_total} ETB`);
+        forEachLimit(room.players.filter(p=>p.hasPaid),10,pushWallets).catch(()=>{});
+      }catch(e){
+        console.error(`⚠️ Game ${room.dbGameCode||room.dbGameId} ended with no winner and could not be cancelled: ${e.message}. The game stays open and blocks this stake: install cancel_bingo_game.sql (adds cancel_bingo_game) and cancelBingoGame in db.js, or cancel it by hand.`);
+      }
     }
-    if(room.dbGameId){ room.players.forEach(p=>{ if(p.telegramId) profileCache.delete(String(p.telegramId)); }); }
+    if(room.dbGameId){
+      room.players.forEach(p=>{ if(p.telegramId) profileCache.delete(String(p.telegramId)); });
+    }
   }else{
   if(winners&&winners.length>0){
     const prizePool=room.pot;
@@ -1235,8 +1385,12 @@ async function leaveRoom(client,roomId){
   if(client.rooms) client.rooms.delete(rid);
   const room=rooms[rid];
   if(!room){ if(client.roomId===rid) client.roomId=null; return; }
-  const p=room.players.find(p=>p.playerId===client.playerId);
+  const p=playerOf(room,client);
   if(p){
+    // another device of the same account is still in this room: only THIS device leaves,
+    // the player and his cartelas stay for the other device(s)
+    detachSocket(p,client.ws);
+    if(openSockets(p).length){ if(client.roomId===rid) client.roomId=null; return; }
     if(p.cardId) room.takenCardIds.delete(p.cardId);
     getPlayerCardIds(p).forEach(id=>room.takenCardIds.delete(id));
 
@@ -1252,7 +1406,7 @@ async function leaveRoom(client,roomId){
       p.hasPaid=false;
     }
   }
-  room.players=room.players.filter(p=>p.playerId!==client.playerId);
+  room.players=room.players.filter(x=>x!==p);
   if(client.roomId===rid) client.roomId=null;
   if(room.players.length===0){
     if(room.callTimer)clearTimeout(room.callTimer);
@@ -1361,35 +1515,16 @@ wss.on('connection',(ws)=>{
 
       // Try by playerId first, fall back to telegramId for page-reload reconnects
 
-      let ep=room.players.find(p=>p.playerId===client.playerId);
-
-    if(!ep&&msg.telegramId){
-
-      const tid=String(msg.telegramId);
-
-      ep=room.players.find(p=>String(p.telegramId)===tid);
-
-        if(ep){
-
-          // Re-link this new ws/client to the existing player slot
-
-          const oldClient=Object.values(clients).find(c=>c.telegramId===tid&&c.playerId!==client.playerId);
-
-          if(oldClient) delete clients[oldClient.playerId];
-
-          ep.playerId=client.playerId;
-
-          client.telegramId=String(msg.telegramId);
-
-        }
-
+      let ep=playerOf(room,client);
+      if(!ep&&msg.telegramId){
+        const tid=String(msg.telegramId);
+        ep=room.players.find(p=>String(p.telegramId)===tid);
+        if(ep) client.telegramId=tid;       // another device (or a reload) of the same account SHARES this player
       }
-
       if(ep){
-
         await refreshClientBalance(client);
-
-        ep.ws=ws; client.roomId=msg.roomId; ep.detached=false;
+        attachSocket(ep,ws); ep.playerId=client.playerId; client.roomId=msg.roomId; ep.detached=false;
+        if(ep.detachedSockets) ep.detachedSockets.delete(ws);
         if(!client.rooms) client.rooms=new Set(); client.rooms.add(msg.roomId);
         relinkAllRooms(client,ws,String(msg.telegramId||client.telegramId||''));
 
@@ -1414,7 +1549,8 @@ wss.on('connection',(ws)=>{
             countdownLeft:room.status==='countdown'?room.countdownLeft:0,
             countdown:room.status==='countdown'?room.countdownLeft:0,
             playerCount:room.players.reduce((sum,p)=>getPlayerCardCount(p)+sum,0),
-            stakeAmount:room.stake});
+            stakeAmount:room.stake,
+            ...selectionPayload(ep)});
           broadcastCardPool(room);
           broadcastLobby();
         }
@@ -1431,8 +1567,13 @@ wss.on('connection',(ws)=>{
 
            case 'joinRoom':{
 
-                  const sc=STAKES.find(s=>s.id===msg.stakeId);
-
+                  let sc=STAKES.find(s=>s.id===msg.stakeId);
+                 if(!sc){
+                   // an older / differently written name ("s5", "S5", "stake5") still finds the stake with that amount
+                   const m=String(msg.stakeId||'').match(/([0-9]+(?:\.[0-9]+)?)/);
+                   if(m) sc=STAKES.find(s=>Number(s.amount)===Number(m[1]));
+                   if(sc) msg.stakeId=sc.id;
+                 }
                  if(!sc) return send(ws,{type:'error',message:'የተሳሳተ የውርርድ መጠን።'});
 
 
@@ -1473,9 +1614,10 @@ wss.on('connection',(ws)=>{
                  // has a RUNNING game stay open. Any other room (card selection not started yet,
                  // or just watching) is left, which releases the picked cards as before.
                  for(const r of clientRooms(client)){
-                   const pl=r.players.find(pp=>pp.playerId===client.playerId);
+                   const pl=playerOf(r,client);
                    const runningGame=pl&&(r.status==='playing'||r.status==='starting')&&(getPlayerCardCount(pl)>0||pl.hasPaid);
-                   if(!runningGame) await leaveRoom(client,r.roomId);
+                   // the room of the stake being joined is kept: a second device of the same account shares it
+                   if(!runningGame && r.stakeId!==msg.stakeId) await leaveRoom(client,r.roomId);
                  }
 
               // ── Re-link an existing player before spectator handling. ──
@@ -1487,15 +1629,15 @@ wss.on('connection',(ws)=>{
                 const existingRoom=Object.values(rooms).find(r=>
                   r.stakeId===msg.stakeId &&
                   (r.status==='waiting'||r.status==='countdown'||r.status==='playing') &&
-                  r.players.some(p=>String(p.telegramId||'')===reconnectTid && (getPlayerCardCount(p)>0||p.hasPaid))
+                  r.players.some(p=>String(p.telegramId||'')===reconnectTid)
                 );
                 if(existingRoom){
                   const ep=existingRoom.players.find(p=>String(p.telegramId||'')===reconnectTid);
-                  const oldClient=Object.values(clients).find(c=>c.telegramId===reconnectTid&&c.playerId!==client.playerId);
-                  if(oldClient) delete clients[oldClient.playerId];
+                  // second device of the same account: it joins the SAME player and sees the same cartelas
+                  attachSocket(ep,ws);
                   ep.playerId=client.playerId;
-                  ep.ws=ws;
                   ep.telegramId=reconnectTid;
+                  if(ep.detachedSockets) ep.detachedSockets.delete(ws);
                   client.telegramId=reconnectTid;
                   client.roomId=existingRoom.roomId; ep.detached=false;
                   if(!client.rooms) client.rooms=new Set(); client.rooms.add(existingRoom.roomId);
@@ -1518,8 +1660,7 @@ wss.on('connection',(ws)=>{
                       countdown:existingRoom.status==='countdown'?existingRoom.countdownLeft:0,
                       playerCount:existingRoom.players.filter(p=>p.hasPaid).length,
                       stakeAmount:existingRoom.stake,
-                      cardId:ep.cardId||null,cardNumbers:card?card.numbers:[],
-                      cardId2:ep.cardId2||null,cardNumbers2:card2?card2.numbers:[]});
+                      ...selectionPayload(ep)});
                     broadcastCardPool(existingRoom);
                   }
                   broadcastLobby();
@@ -1533,7 +1674,7 @@ wss.on('connection',(ws)=>{
 
               if(liveRoom){
                 if(liveRoom.players.length>=liveRoom.maxPlayers) return send(ws,{type:'error',message:`ይህ ክፍል ሙሉ ነው። ከፍተኛው ተጫዋቾች: ${liveRoom.maxPlayers}`});
-                liveRoom.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,userId:client.userId||userCache[String(client.telegramId)]?.userId||null,ws,cardId:null,cardId2:null,cardId3:null,cardId4:null,hasPaid:false,disqualified:false});
+                liveRoom.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,userId:client.userId||userCache[String(client.telegramId)]?.userId||null,ws:makeMux([ws]),cardId:null,cardId2:null,cardId3:null,cardId4:null,hasPaid:false,disqualified:false});
 
                 client.roomId=liveRoom.roomId; client.rooms.add(liveRoom.roomId);
 
@@ -1553,7 +1694,7 @@ wss.on('connection',(ws)=>{
 
               if(room.status!=='waiting'&&room.status!=='countdown') return send(ws,{type:'error',message:'ጨዋታው ቀድሞውኑ ተጀምሯል።'});
 
-              room.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,userId:client.userId||userCache[String(client.telegramId)]?.userId||null,ws,cardId:null,cardId2:null,cardId3:null,cardId4:null,hasPaid:false,disqualified:false});
+              room.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,userId:client.userId||userCache[String(client.telegramId)]?.userId||null,ws:makeMux([ws]),cardId:null,cardId2:null,cardId3:null,cardId4:null,hasPaid:false,disqualified:false});
 
               client.roomId=room.roomId; client.rooms.add(room.roomId);
 
@@ -1578,7 +1719,7 @@ wss.on('connection',(ws)=>{
               const slot=Math.max(1,Math.min(4,parseInt(msg.slot)||1));
               if(cardId<1||cardId>room.cardLimit) break;
               if(slot>(room.maxCards||4)) return send(ws,{type:'error',message:`በዚህ ክፍል እስከ ${room.maxCards||4} ካርቴላ ብቻ መምረጥ ይቻላል።`});
-              const p=room.players.find(p=>p.playerId===client.playerId);
+              const p=playerOf(room,client);
               if(!p) break;
               if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'ይህ ካርቴላ ቀድሞውኑ ተመርጧል!'});
 
@@ -1615,7 +1756,7 @@ wss.on('connection',(ws)=>{
               p[field]=cardId;
               room.takenCardIds.add(cardId);
               const card=getCard(cardId);
-              sendRoom(room,ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot});
+              sendRoom(room,p.ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot});
               broadcastCardDiff(room,Array.from(changedIds));
               const readyCount=room.players.filter(p=>p.cardId).length;
               if(readyCount>=(room.minPlayers||2)&&room.status==='waiting') startCountdown(room);
@@ -1625,9 +1766,14 @@ wss.on('connection',(ws)=>{
               const room=roomForMsg(client,msg);
               if(!room) break;
               if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
-              const p=room.players.find(p=>p.playerId===client.playerId);
+              const p=playerOf(room,client);
               if(!p) break;
-              const slot=Math.max(1,Math.min(4,parseInt(msg.slot)||1));
+              let slot=Math.max(1,Math.min(4,parseInt(msg.slot)||1));
+              const wanted=parseInt(msg.cardId);
+              if(wanted&&p[getCardField(slot)]!==wanted){                  // the slot sent does not hold this cartela: find the one that does
+                const found=[1,2,3,4].find(sl=>p[getCardField(sl)]===wanted);
+                if(found) slot=found;
+              }
               const field=getCardField(slot);
               const releasedId=p[field];
               if(!releasedId) break;
@@ -1636,6 +1782,7 @@ wss.on('connection',(ws)=>{
               room.takenCardIds.delete(releasedId);
               p[field]=null;
               if(getPlayerCardCount(p)===0) p.hasPaid=false;
+              sendRoom(room,p.ws,{type:'cardDeselected',cardId:releasedId,slot});   // all devices drop it
               broadcastCardDiff(room,[releasedId]);
               break;
             }
@@ -1646,17 +1793,17 @@ wss.on('connection',(ws)=>{
 
               if(!room||room.status!=='playing') return;
 
-              const p=room.players.find(p=>p.playerId===client.playerId);
+              const p=playerOf(room,client);
 
               if(!p||p.disqualified||getPlayerCardCount(p)===0) return;
 
               if(!room.claimWindowOpen) return sendRoom(room,ws,{type:'claimTooLate',message:'ጊዜው አልፏል!'});
 
-              if(!room.claimedThisRound.find(c=>c.playerId===client.playerId))
+              if(!room.claimedThisRound.find(c=>c.playerId===p.playerId))
 
                 room.claimedThisRound.push({
 
-                  playerId:client.playerId,
+                  playerId:p.playerId,
 
                   markedIndices:msg.markedIndices||[],
 
@@ -1693,8 +1840,11 @@ wss.on('connection',(ws)=>{
             case 'detachRoom':{
               const room=roomForMsg(client,msg);
               if(!room) break;
-              const pl=room.players.find(pp=>pp.playerId===client.playerId);
-              if(pl) pl.detached=true;
+              const pl=playerOf(room,client);
+              if(pl){
+                pl.detachedSockets=(pl.detachedSockets||new Set()).add(ws);
+                pl.detached=openSockets(pl).every(x=>pl.detachedSockets.has(x));
+              }
               if(client.roomId===room.roomId) client.roomId=null;
               broadcastLobby();
               break;
@@ -1802,8 +1952,22 @@ wss.on('connection',(ws)=>{
     if(!c) return;
     let keepClient=false;
     clientRooms(c).forEach(room=>{
-      const p=room.players.find(p=>p.playerId===c.playerId);
-      if(room.status==='playing'&&p){ p.ws=null; keepClient=true; }     // running games stay alive
+      const p=playerOf(room,c);
+      if(p) detachSocket(p,ws);
+      if(p&&openSockets(p).length) return;                              // another device of this account is still connected
+      if(room.status==='playing'&&p){ keepClient=true; }                // running games stay alive
+      else if(p&&(room.status==='waiting'||room.status==='countdown')){
+        // keep the seat and the cartelas for a short while: a quick reconnect (Refresh) gets everything back
+        keepClient=true;
+        if(p.graceTimer) clearTimeout(p.graceTimer);
+        p.graceTimer=setTimeout(()=>{
+          p.graceTimer=null;
+          if(openSockets(p).length) return;                              // he came back (maybe on another connection)
+          leaveRoom(c,room.roomId).catch(()=>{});
+          if(!clientRooms(c).length) delete clients[c.playerId];
+          broadcastLobby();
+        },DISCONNECT_GRACE_MS);
+      }
       else leaveRoom(c,room.roomId);
     });
     if(keepClient) return;
