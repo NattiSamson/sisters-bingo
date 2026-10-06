@@ -3,6 +3,7 @@
 --
 
 
+
 -- Dumped from database version 18.6 (4e955f5)
 -- Dumped by pg_dump version 18.4
 
@@ -2301,28 +2302,6 @@ BEGIN
             CONTINUE;
 
         END IF;
-
-
-        IF v_user.is_banned THEN
-
-            v_rejected :=
-                v_rejected
-                ||
-                jsonb_build_array(
-                    jsonb_build_object(
-                        'user_id',
-                        v_user_id,
-                        'card_id',
-                        v_card_id,
-                        'reason',
-                        'user_banned'
-                    )
-                );
-
-            CONTINUE;
-
-        END IF;
-
 
         ----------------------------------------------------------------
         -- Maximum cards per player
@@ -4838,7 +4817,6 @@ CREATE FUNCTION public.find_transfer_recipient(p_phone character varying) RETURN
         9
     )
     AND u.is_active = TRUE
-    AND u.is_banned = FALSE
     AND u.is_blocked = FALSE
     LIMIT 1;
 $$;
@@ -8622,16 +8600,6 @@ BEGIN
 
     END IF;
 
-
-    IF v_sender.is_banned IS TRUE THEN
-
-        RAISE EXCEPTION
-            'Sender account is banned';
-
-    END IF;
-
-
-
     -- ========================================================
     -- 2. Validate wallet type
     -- ========================================================
@@ -8801,7 +8769,6 @@ BEGIN
     ) = v_normalized_phone
 
       AND is_active = TRUE
-      AND is_banned = FALSE
       AND is_blocked = FALSE
 
     LIMIT 1
@@ -10431,7 +10398,7 @@ DO UPDATE SET
     status = EXCLUDED.status,
     metadata = EXCLUDED.metadata,
     updated_at = NOW();
-	
+
 
 ALTER TABLE public.game_systems OWNER TO neondb_owner;
 
@@ -12731,6 +12698,4 @@ ALTER TABLE ONLY public.withdrawals
 --
 -- PostgreSQL database dump complete
 --
-
-
 
