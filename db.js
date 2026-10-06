@@ -5160,47 +5160,88 @@ async approveDeposit(receipt, telegramId) {
   // GAMES
   // ============================================================
 
-  async createBingoGame(
-  roomId,
-  stakeId,
-  stakeAmount
-) {
-  const amount = toPositiveAmount(
-    stakeAmount,
-    "stakeAmount"
-  );
-
-  const { rows } = await pool.query(
-    `
-    INSERT INTO bingo_games (	  
-      game_code,
-      room_id,
-      stake_id,
-      stake_amount,
-      pot,
-      status,
-      started_at
-    )
-    VALUES (	  
-      generate_bingo_game_code(),
-      $1,
-      $2,
-      $3,
-      0,
-      'waiting',
-      NOW()
-    )
-    RETURNING *
-    `,
-    [
+    async createBingoGame(
+    roomId,
+    stakeId,
+    selectedCards
+  ) {
+    const room = toPositiveInteger(
       roomId,
-      stakeId,
-      amount
-    ]
-  );
+      "roomId"
+    );
 
-  return rows[0] || null;
-},
+    if (
+      stakeId === null ||
+      stakeId === undefined ||
+      String(stakeId).trim() === ""
+    ) {
+      throw new Error("stakeId is required.");
+    }
+
+    const stake = String(stakeId).trim();
+
+    if (!Array.isArray(selectedCards)) {
+      throw new Error(
+        "selectedCards must be an array."
+      );
+    }
+
+    if (selectedCards.length === 0) {
+      throw new Error(
+        "At least one selected card is required."
+      );
+    }
+
+    /*
+     * The PostgreSQL function is now responsible for:
+     *
+     * - validating the room
+     * - validating the stake
+     * - validating room/stake availability
+     * - reading card_count from bingo_rooms
+     * - reading max_cards_per_player from bingo_rooms
+     * - reading commission_rule_id from bingo_rooms
+     * - reading commission_rate from bingo_commission_rules
+     * - reading stake amount from bingo_stakes
+     * - reading Bingo game-system configuration
+     * - generating the game code
+     * - generating the internal idempotency key
+     * - charging each accepted card
+     * - creating participants
+     * - creating participant cards
+     * - calculating gross pot
+     * - calculating commission
+     * - calculating prize pool
+     *
+     * Node.js should NOT duplicate any of that logic.
+     */
+
+    const { rows } = await pool.query(
+      `
+      SELECT public.create_bingo_game_from_selections(
+        $1::bigint,
+        $2::varchar,
+        $3::jsonb
+      ) AS result
+      `,
+      [
+        room,
+        stake,
+        JSON.stringify(selectedCards)
+      ]
+    );
+
+    const result =
+      rows[0]?.result;
+
+    if (!result) {
+      throw new Error(
+        "Failed to create Bingo game."
+      );
+    }
+
+    return result;
+  },
 
   async getBingoGameByCode(
   gameCode
