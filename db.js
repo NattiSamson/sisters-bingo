@@ -647,183 +647,151 @@ async clearBotUserState(telegramId) {
     return rows[0] || null;
   },
 
-  async registerUser(
-    telegramId,
-    name,
-    phone
-  ) {
+async registerUser(telegramId, name, phone) {
+  const normalizedPhone = normalizeEthiopianPhone(phone);
 
-    const normalizedPhone =
-      normalizeEthiopianPhone(phone);
+  if (!normalizedPhone) {
+    throw new Error("Invalid Ethiopian phone number");
+  }
 
-    if (!normalizedPhone) {
-      throw new Error(
-        "Invalid Ethiopian phone number"
-      );
-    }
+  const client = await pool.connect();
 
-    const client =
-      await pool.connect();
+  try {
+    await client.query("BEGIN");
 
-    try {
+    const telegramResult = await client.query(
+      `
+      SELECT *
+      FROM users
+      WHERE telegram_id = $1
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [telegramId]
+    );
 
-      await client.query("BEGIN");
-
-      const telegramResult =
-        await client.query(
-          `
-          SELECT *
-          FROM users
-          WHERE telegram_id = $1
-          LIMIT 1
-          FOR UPDATE
-          `,
-          [telegramId]
-        );
-
-      if (
-        telegramResult.rows.length
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        return {
-          status:
-            "existing_telegram",
-          user:
-            telegramResult.rows[0]
-        };
-      }
-
-      const phoneResult =
-        await client.query(
-          `
-          SELECT *
-          FROM users
-          WHERE RIGHT(
-            REGEXP_REPLACE(
-              phone,
-              '[^0-9]',
-              '',
-              'g'
-            ),
-            9
-          ) = $1
-          LIMIT 1
-          FOR UPDATE
-          `,
-          [normalizedPhone.slice(-9)]
-        );
-
-      if (
-        phoneResult.rows.length
-      ) {
-
-        const existingUser =
-          phoneResult.rows[0];
-
-          return {
-            status: "banned",
-            user: existingUser
-          };
-        }
-
-        const updated =
-          await client.query(
-            `
-            UPDATE users
-            SET
-              telegram_id = $1,
-              name = $2,
-              phone = $3,
-              is_active = TRUE,
-              last_seen = NOW()
-            WHERE id = $4
-            RETURNING *
-            `,
-            [
-              telegramId,
-              name,
-              normalizedPhone,
-              existingUser.id
-            ]
-          );
-
-        await client.query(
-          "COMMIT"
-        );
-
-        return {
-          status: "reconnected",
-          user: updated.rows[0]
-        };
-      }
-
-      const inserted =
-        await client.query(
-          `
-          INSERT INTO users (
-            telegram_id,
-            name,
-            phone,            
-            is_active,            
-            is_admin,
-            is_blocked,
-            last_seen
-          )
-          VALUES (
-            $1,
-            $2,
-            $3,
-            TRUE,
-            FALSE,
-            FALSE,
-            NOW()
-          )
-          RETURNING *
-          `,
-          [
-            telegramId,
-            name,
-            normalizedPhone
-          ]
-        );
-
-      await client.query(
-        "COMMIT"
-      );
+    if (telegramResult.rows.length) {
+      await client.query("ROLLBACK");
 
       return {
-        status: "new",
-        user: inserted.rows[0]
+        status: "existing_telegram",
+        user: telegramResult.rows[0]
       };
+    }
 
-    } catch (err) {
+    const phoneResult = await client.query(
+      `
+      SELECT *
+      FROM users
+      WHERE RIGHT(
+        REGEXP_REPLACE(
+          phone,
+          '[^0-9]',
+          '',
+          'g'
+        ),
+        9
+      ) = $1
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [normalizedPhone.slice(-9)]
+    );
 
-      await safeRollback(
-        client
-      );
+    if (phoneResult.rows.length) {
+      const existingUser = phoneResult.rows[0];
 
-      if (
-        err.code === "23505"
-      ) {
+      // If the existing account is blocked/banned
+      if (existingUser.is_blocked) {
+        await client.query("ROLLBACK");
 
         return {
-          status: "already_exists",
-          user: null
+          status: "banned",
+          user: existingUser
         };
       }
 
-      throw err;
+      const updated = await client.query(
+        `
+        UPDATE users
+        SET
+          telegram_id = $1,
+          name = $2,
+          phone = $3,
+          is_active = TRUE,
+          last_seen = NOW()
+        WHERE id = $4
+        RETURNING *
+        `,
+        [
+          telegramId,
+          name,
+          normalizedPhone,
+          existingUser.id
+        ]
+      );
 
-    } finally {
+      await client.query("COMMIT");
 
-      client.release();
-
+      return {
+        status: "reconnected",
+        user: updated.rows[0]
+      };
     }
-  },
+
+    const inserted = await client.query(
+      `
+      INSERT INTO users (
+        telegram_id,
+        name,
+        phone,
+        is_active,
+        is_admin,
+        is_blocked,
+        last_seen
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        TRUE,
+        FALSE,
+        FALSE,
+        NOW()
+      )
+      RETURNING *
+      `,
+      [
+        telegramId,
+        name,
+        normalizedPhone
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      status: "new",
+      user: inserted.rows[0]
+    };
+
+  } catch (err) {
+    await safeRollback(client);
+
+    if (err.code === "23505") {
+      return {
+        status: "already_exists",
+        user: null
+      };
+    }
+
+    throw err;
+
+  } finally {
+    client.release();
+  }
+}
+
 
   async reconnectUserByPhone(
     telegramId,
