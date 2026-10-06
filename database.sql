@@ -2391,44 +2391,56 @@ CREATE FUNCTION public.end_bingo_game(p_game_id integer, p_winner_card_ids integ
     LANGUAGE plpgsql
     AS $$
 DECLARE
-    v_game bingo_games%ROWTYPE;
+    v_game public.bingo_games%ROWTYPE;
+
+    v_game_system_id bigint;
 
     v_winner_count integer;
-    v_pot numeric(18,2);
 
+    v_prize_pool numeric(18,2);
     v_base_payout numeric(18,2);
     v_remainder_cents integer;
 
-    v_game_system_id bigint;
-	
-	v_win_transaction_id bigint;
+    v_total_payout numeric(18,2) := 0;
 
     v_winner record;
 
-    v_winner_user_ids integer[];
+    v_transaction_id bigint;
 
-    v_total_payout numeric(18,2) := 0;
+    v_winner_details jsonb := '[]'::jsonb;
+
 BEGIN
 
     ----------------------------------------------------------------
-    -- 1. Validate input
+    -- 1. Validate arguments
     ----------------------------------------------------------------
 
     IF p_game_id IS NULL OR p_game_id <= 0 THEN
-        RAISE EXCEPTION 'Invalid Bingo game ID';
+        RAISE EXCEPTION
+            'Invalid game ID: %',
+            p_game_id;
     END IF;
+
 
     IF p_winner_card_ids IS NULL
        OR cardinality(p_winner_card_ids) = 0 THEN
+
         RAISE EXCEPTION
             'At least one winning card is required';
+
     END IF;
 
 
     ----------------------------------------------------------------
     -- 2. Remove duplicate card IDs
     --
-    -- Duplicate cards should never be processed twice.
+    -- If the caller accidentally sends:
+    --
+    -- [101, 102, 102, 103]
+    --
+    -- it becomes:
+    --
+    -- [101, 102, 103]
     ----------------------------------------------------------------
 
     p_winner_card_ids := ARRAY(
@@ -2439,6 +2451,7 @@ BEGIN
         ORDER BY card_id
     );
 
+
     IF cardinality(p_winner_card_ids) = 0 THEN
         RAISE EXCEPTION
             'No valid winning card IDs supplied';
@@ -2447,11 +2460,576 @@ BEGIN
 
     ----------------------------------------------------------------
     -- 3. Lock the game
+    --
+    -- This is extremely important.
+    --
+    -- Two requests cannot settle the same game simultaneously.
     ----------------------------------------------------------------
 
     SELECT *
     INTO v_game
-    FROM bingo_games
+    FROM public.bingo_games
+    WHERE id = p_game_id
+    FOR UPDATE;
+
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Bingo game % does not exist',
+            p_game_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 4. Make sure the game has not already been settled
+    ----------------------------------------------------------------
+
+    IF v_game.status = 'completed' THEN
+        RAISE EXCEPTION
+            'Bingo game % is already completed',
+            p_game_id;
+    END IF;
+
+
+    IF v_game.status = 'cancelled' THEN
+        RAISE EXCEPTION
+            'Bingo game % is cancelled',
+            p_game_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 5. Get the Bingo game system
+    ----------------------------------------------------------------
+
+    SELECT gs.id
+    INTO v_game_system_id
+    FROM public.game_systems gs
+    WHERE gs.code = 'bingo'
+      AND gs.status = 'active'
+    LIMIT 1;
+
+
+    IF v_game_system_id IS NULL THEN
+        RAISE EXCEPTION
+            'Active Bingo game system was not found';
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 6. Make sure every winning card belongs to this game
+    ----------------------------------------------------------------
+
+    IF EXISTS (
+        SELECT 1
+        FROM unnest(p_winner_card_ids) AS x(card_id)
+
+        LEFT JOIN public.bingo_participant_cards bpc
+            ON bpc.card_id = x.card_id
+           AND bpc.game_id = p_game_id
+
+        WHERE bpc.card_id IS NULL
+    ) THEN
+
+        RAISE EXCEPTION
+            'One or more winning cards do not belong to game %',
+            p_game_id;
+
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 7. Make sure every winning card belongs to a valid participant
+    ----------------------------------------------------------------
+
+    IF EXISTS (
+        SELECT 1
+
+        FROM public.bingo_participant_cards bpc
+
+        INNER JOIN public.bingo_participants bp
+            ON bp.id = bpc.participant_id
+           AND bp.game_id = p_game_id
+
+        WHERE bpc.game_id = p_game_id
+          AND bpc.card_id = ANY(p_winner_card_ids)
+
+          AND (
+              bp.status <> 'active'
+              OR bp.is_disqualified = TRUE
+          )
+    ) THEN
+
+        RAISE EXCEPTION
+            'One or more winning cards belong to an invalid/disqualified participant';
+
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 8. Make sure none of the cards has already been paid
+    ----------------------------------------------------------------
+
+    IF EXISTS (
+        SELECT 1
+        FROM public.bingo_winners bw
+        WHERE bw.game_id = p_game_id
+          AND bw.card_id = ANY(p_winner_card_ids)
+    ) THEN
+
+        RAISE EXCEPTION
+            'One or more winning cards have already been settled for game %',
+            p_game_id;
+
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 9. Lock all winning cards
+    ----------------------------------------------------------------
+
+    PERFORM 1
+    FROM public.bingo_participant_cards bpc
+    WHERE bpc.game_id = p_game_id
+      AND bpc.card_id = ANY(p_winner_card_ids)
+    FOR UPDATE;
+
+
+    ----------------------------------------------------------------
+    -- 10. Lock their participants
+    ----------------------------------------------------------------
+
+    PERFORM 1
+    FROM public.bingo_participants bp
+    WHERE bp.game_id = p_game_id
+      AND bp.id IN (
+          SELECT bpc.participant_id
+          FROM public.bingo_participant_cards bpc
+          WHERE bpc.game_id = p_game_id
+            AND bpc.card_id = ANY(p_winner_card_ids)
+      )
+    FOR UPDATE;
+
+
+    ----------------------------------------------------------------
+    -- 11. Use the prize pool calculated when the game was created
+    --
+    -- DO NOT use gross_pot here.
+    --
+    -- create_bingo_game_from_selections() already calculated:
+    --
+    -- gross_pot
+    -- commission_amount
+    -- prize_pool
+    --
+    -- Winners receive prize_pool.
+    ----------------------------------------------------------------
+
+    v_prize_pool :=
+        ROUND(
+            COALESCE(v_game.prize_pool, 0),
+            2
+        );
+
+
+    IF v_prize_pool <= 0 THEN
+        RAISE EXCEPTION
+            'Game % has no prize pool',
+            p_game_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 12. Count winning cards
+    --
+    -- IMPORTANT:
+    --
+    -- This is the number of WINNING CARDS,
+    -- not the number of winning USERS.
+    --
+    -- One user may therefore appear multiple times.
+    ----------------------------------------------------------------
+
+    v_winner_count :=
+        cardinality(p_winner_card_ids);
+
+
+    ----------------------------------------------------------------
+    -- 13. Calculate payout per card
+    --
+    -- We work in cents to guarantee:
+    --
+    -- SUM(all payouts) = prize_pool
+    --
+    -- Example:
+    --
+    -- prize_pool = 100
+    -- winners    = 3
+    --
+    -- payouts:
+    -- 33.34
+    -- 33.33
+    -- 33.33
+    ----------------------------------------------------------------
+
+    v_base_payout :=
+        FLOOR(
+            (v_prize_pool * 100)
+            / v_winner_count
+        ) / 100;
+
+
+    v_remainder_cents :=
+        ROUND(v_prize_pool * 100)
+        -
+        (
+            ROUND(v_base_payout * 100)
+            * v_winner_count
+        );
+
+
+    ----------------------------------------------------------------
+    -- 14. Settle every winning card
+    ----------------------------------------------------------------
+
+    FOR v_winner IN
+
+        SELECT
+            bpc.id AS participant_card_id,
+
+            bpc.card_id,
+
+            bpc.participant_id,
+
+            bp.user_id,
+
+            (
+                v_base_payout
+
+                +
+
+                CASE
+                    WHEN ROW_NUMBER() OVER (
+                        ORDER BY bpc.card_id
+                    ) <= v_remainder_cents
+                    THEN 0.01
+                    ELSE 0
+                END
+
+            )::numeric(18,2) AS payout
+
+        FROM public.bingo_participant_cards bpc
+
+        INNER JOIN public.bingo_participants bp
+            ON bp.id = bpc.participant_id
+           AND bp.game_id = p_game_id
+
+        WHERE bpc.game_id = p_game_id
+          AND bpc.card_id = ANY(p_winner_card_ids)
+
+        ORDER BY bpc.card_id
+
+    LOOP
+
+
+        ----------------------------------------------------------------
+        -- 14a. Credit the winner
+        --
+        -- This should be the existing financial function responsible
+        -- for creating the winning transaction and crediting the
+        -- user's main wallet.
+        ----------------------------------------------------------------
+
+        v_transaction_id :=
+            public.record_game_win(
+                p_user_id        => v_winner.user_id,
+
+                p_amount         => v_winner.payout,
+
+                p_game_system_id => v_game_system_id,
+
+                p_source_type    => 'bingo_game',
+
+                p_source_id      => p_game_id::text,
+
+                p_idempotency_key =>
+                    'bingo:game:'
+                    || p_game_id
+                    || ':card:'
+                    || v_winner.card_id,
+
+                p_description =>
+                    'Bingo winning payout - game #'
+                    || p_game_id
+                    || ', card #'
+                    || v_winner.card_id,
+
+                p_metadata =>
+                    jsonb_build_object(
+                        'game_id',
+                        p_game_id,
+
+                        'card_id',
+                        v_winner.card_id,
+
+                        'participant_id',
+                        v_winner.participant_id,
+
+                        'participant_card_id',
+                        v_winner.participant_card_id,
+
+                        'stake_id',
+                        v_game.stake_id,
+
+                        'stake_amount',
+                        v_game.stake_amount,
+
+                        'gross_pot',
+                        v_game.gross_pot,
+
+                        'commission_amount',
+                        v_game.commission_amount,
+
+                        'prize_pool',
+                        v_game.prize_pool
+                    )
+            );
+
+
+        ----------------------------------------------------------------
+        -- 14b. Record the winning card
+        ----------------------------------------------------------------
+
+        INSERT INTO public.bingo_winners (
+            game_id,
+            participant_id,
+            user_id,
+            card_id,
+            payout,
+            transaction_id
+        )
+        VALUES (
+            p_game_id,
+            v_winner.participant_id,
+            v_winner.user_id,
+            v_winner.card_id,
+            v_winner.payout,
+            v_transaction_id
+        );
+
+
+        ----------------------------------------------------------------
+        -- 14c. Accumulate total payout
+        ----------------------------------------------------------------
+
+        v_total_payout :=
+            ROUND(
+                v_total_payout + v_winner.payout,
+                2
+            );
+
+
+        ----------------------------------------------------------------
+        -- 14d. Add result to returned JSON
+        ----------------------------------------------------------------
+
+        v_winner_details :=
+            v_winner_details
+            ||
+            jsonb_build_array(
+                jsonb_build_object(
+                    'card_id',
+                    v_winner.card_id,
+
+                    'participant_id',
+                    v_winner.participant_id,
+
+                    'user_id',
+                    v_winner.user_id,
+
+                    'payout',
+                    v_winner.payout,
+
+                    'transaction_id',
+                    v_transaction_id
+                )
+            );
+
+    END LOOP;
+
+
+    ----------------------------------------------------------------
+    -- 15. Final accounting safety check
+    ----------------------------------------------------------------
+
+    IF ROUND(v_total_payout, 2)
+       <> ROUND(v_prize_pool, 2) THEN
+
+        RAISE EXCEPTION
+            'Payout mismatch for game %. Prize pool: %, total payout: %',
+            p_game_id,
+            v_prize_pool,
+            v_total_payout;
+
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 16. Mark participants as completed
+    --
+    -- This does NOT modify users.
+    ----------------------------------------------------------------
+
+    UPDATE public.bingo_participants
+    SET status = 'completed'
+    WHERE game_id = p_game_id;
+
+
+    ----------------------------------------------------------------
+    -- 17. Complete the Bingo game
+    ----------------------------------------------------------------
+
+    UPDATE public.bingo_games
+    SET
+        status = 'completed',
+
+        is_split =
+            v_winner_count > 1,
+
+        ended_at = NOW()
+
+    WHERE id = p_game_id;
+
+
+    ----------------------------------------------------------------
+    -- 18. Return settlement information
+    ----------------------------------------------------------------
+
+    RETURN jsonb_build_object(
+
+        'success',
+        TRUE,
+
+        'game_id',
+        p_game_id,
+
+        'status',
+        'completed',
+
+        'stake_id',
+        v_game.stake_id,
+
+        'stake_amount',
+        v_game.stake_amount,
+
+        'gross_pot',
+        v_game.gross_pot,
+
+        'commission_amount',
+        v_game.commission_amount,
+
+        'prize_pool',
+        v_prize_pool,
+
+        'winning_card_count',
+        v_winner_count,
+
+        'total_payout',
+        v_total_payout,
+
+        'winner_details',
+        v_winner_details
+
+    );
+
+END;
+$$;
+
+
+ALTER FUNCTION public.end_bingo_game(p_game_id integer, p_winner_card_ids integer[]) OWNER TO neondb_owner;
+
+--
+-- Name: end_bingo_game(integer, bigint[]); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.end_bingo_game(p_game_id integer, p_winner_card_ids bigint[]) RETURNS jsonb
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_game                    public.bingo_games%ROWTYPE;
+    v_disqualification_policy varchar(30);
+    v_game_system_id          bigint;
+
+    v_candidate_card_ids      bigint[];
+    v_eligible_card_ids       bigint[];
+
+    v_winner_count            integer;
+
+    v_prize_pool_cents        bigint;
+    v_base_payout_cents       bigint;
+    v_remainder_cents         bigint;
+
+    v_index                   integer;
+    v_payout_cents            bigint;
+    v_payout                  numeric;
+
+    v_card                    RECORD;
+    v_transaction_id          bigint;
+
+    v_total_paid              numeric := 0;
+    v_result_winners          jsonb := '[]'::jsonb;
+BEGIN
+
+    ----------------------------------------------------------------------
+    -- Validate arguments
+    ----------------------------------------------------------------------
+
+    IF p_game_id IS NULL THEN
+        RAISE EXCEPTION 'Game ID is required';
+    END IF;
+
+    IF p_winner_card_ids IS NULL
+       OR cardinality(p_winner_card_ids) = 0 THEN
+        RAISE EXCEPTION 'At least one winning card is required';
+    END IF;
+
+
+    ----------------------------------------------------------------------
+    -- Get Bingo game system
+    ----------------------------------------------------------------------
+
+    SELECT gs.id
+    INTO v_game_system_id
+    FROM public.game_systems gs
+    WHERE gs.code = 'bingo'
+      AND gs.status = 'active'
+    LIMIT 1;
+
+    IF v_game_system_id IS NULL THEN
+        RAISE EXCEPTION
+            'Active Bingo game system was not found';
+    END IF;
+
+
+    ----------------------------------------------------------------------
+    -- Deduplicate candidate participant-card IDs
+    ----------------------------------------------------------------------
+
+    SELECT ARRAY_AGG(card_id ORDER BY card_id)
+    INTO v_candidate_card_ids
+    FROM (
+        SELECT DISTINCT card_id
+        FROM unnest(p_winner_card_ids) AS card_id
+    ) x;
+
+
+    ----------------------------------------------------------------------
+    -- Lock the game
+    ----------------------------------------------------------------------
+
+    SELECT *
+    INTO v_game
+    FROM public.bingo_games
     WHERE id = p_game_id
     FOR UPDATE;
 
@@ -2462,394 +3040,914 @@ BEGIN
     END IF;
 
 
-    ----------------------------------------------------------------
-    -- 4. Game must still be active
-    ----------------------------------------------------------------
+    ----------------------------------------------------------------------
+    -- Validate game state
+    ----------------------------------------------------------------------
 
     IF v_game.status = 'completed' THEN
         RAISE EXCEPTION
-            'Bingo game % has already ended',
+            'Bingo game % is already completed',
             p_game_id;
     END IF;
 
-    IF v_game.status NOT IN ('waiting', 'playing') THEN
+    IF v_game.status = 'cancelled' THEN
         RAISE EXCEPTION
-            'Cannot end Bingo game % with status %',
-            p_game_id,
-            v_game.status;
+            'Bingo game % is cancelled',
+            p_game_id;
     END IF;
 
 
-    ----------------------------------------------------------------
-    -- 5. Game must have participants
-    ----------------------------------------------------------------
+    ----------------------------------------------------------------------
+    -- Get room disqualification policy
+    ----------------------------------------------------------------------
 
-    IF NOT EXISTS (
-        SELECT 1
-        FROM bingo_participants
-        WHERE game_id = p_game_id
+    SELECT br.disqualification_policy
+    INTO v_disqualification_policy
+    FROM public.bingo_rooms br
+    WHERE br.id = v_game.room_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Room % for game % was not found',
+            v_game.room_id,
+            p_game_id;
+    END IF;
+
+
+    ----------------------------------------------------------------------
+    -- Validate disqualification policy
+    ----------------------------------------------------------------------
+
+    IF v_disqualification_policy NOT IN (
+        'exclude_card',
+        'exclude_participant',
+        'include'
     ) THEN
         RAISE EXCEPTION
-            'Cannot end Bingo game % without participants',
+            'Invalid disqualification policy: %',
+            v_disqualification_policy;
+    END IF;
+
+
+    ----------------------------------------------------------------------
+    -- Validate prize pool
+    ----------------------------------------------------------------------
+
+    IF COALESCE(v_game.prize_pool, 0) <= 0 THEN
+        RAISE EXCEPTION
+            'Bingo game % has no prize pool',
             p_game_id;
     END IF;
 
 
-    ----------------------------------------------------------------
-    -- 6. Validate winning cards
-    --
-    -- Every supplied card:
-    --   - must belong to this game
-    --   - must be active
-    --   - must not be disqualified
-    --   - must not already be a winner
-    ----------------------------------------------------------------
+    ----------------------------------------------------------------------
+    -- Validate that every supplied participant-card belongs to this game
+    ----------------------------------------------------------------------
 
     IF EXISTS (
         SELECT 1
-        FROM unnest(p_winner_card_ids) AS x(card_id)
-        LEFT JOIN bingo_participants bp
-          ON bp.game_id = p_game_id
-         AND bp.card_id = x.card_id
-        WHERE bp.id IS NULL
-           OR bp.status <> 'active'
-           OR bp.is_disqualified = TRUE
-           OR bp.is_winner = TRUE
+        FROM unnest(v_candidate_card_ids) AS submitted_card_id
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM public.bingo_participant_cards pc
+            WHERE pc.id = submitted_card_id
+              AND pc.game_id = p_game_id
+        )
     ) THEN
         RAISE EXCEPTION
-            'One or more winning cards are invalid for Bingo game %',
+            'One or more winning cards do not belong to game %',
             p_game_id;
     END IF;
 
 
-    ----------------------------------------------------------------
-    -- 7. Lock all participants
-    ----------------------------------------------------------------
+    ----------------------------------------------------------------------
+    -- Lock candidate cards and their participants
+    ----------------------------------------------------------------------
 
     PERFORM 1
-    FROM bingo_participants
-    WHERE game_id = p_game_id
-    FOR UPDATE;
+    FROM public.bingo_participant_cards pc
+    JOIN public.bingo_participants bp
+      ON bp.id = pc.participant_id
+    WHERE pc.id = ANY(v_candidate_card_ids)
+    ORDER BY pc.id
+    FOR UPDATE OF pc, bp;
 
 
-    ----------------------------------------------------------------
-    -- 8. Validate the pot
-    --
-    -- Only active cards contribute to the pot.
-    ----------------------------------------------------------------
+    ----------------------------------------------------------------------
+    -- Determine eligible winning cards according to room policy
+    ----------------------------------------------------------------------
 
-    SELECT COALESCE(
-        SUM(amount),
-        0
-    )
-    INTO v_pot
-    FROM bingo_participants
-    WHERE game_id = p_game_id
-      AND status = 'active';
+    SELECT ARRAY_AGG(pc.id ORDER BY pc.id)
+    INTO v_eligible_card_ids
+    FROM public.bingo_participant_cards pc
+    JOIN public.bingo_participants bp
+      ON bp.id = pc.participant_id
+    WHERE pc.id = ANY(v_candidate_card_ids)
+      AND
+      (
+          ----------------------------------------------------------------
+          -- Ignore disqualification entirely
+          ----------------------------------------------------------------
+          v_disqualification_policy = 'include'
 
-    v_pot := ROUND(v_pot, 2);
+          OR
 
-    IF v_pot <> ROUND(v_game.pot, 2) THEN
+          ----------------------------------------------------------------
+          -- Exclude only the specific disqualified card
+          ----------------------------------------------------------------
+          (
+              v_disqualification_policy = 'exclude_card'
+              AND bp.status = 'active'
+              AND pc.is_disqualified = FALSE
+          )
+
+          OR
+
+          ----------------------------------------------------------------
+          -- Exclude every card belonging to a disqualified participant
+          ----------------------------------------------------------------
+          (
+              v_disqualification_policy = 'exclude_participant'
+              AND bp.status = 'active'
+              AND bp.is_disqualified = FALSE
+          )
+      );
+
+
+    ----------------------------------------------------------------------
+    -- No eligible winners
+    ----------------------------------------------------------------------
+
+    IF v_eligible_card_ids IS NULL
+       OR cardinality(v_eligible_card_ids) = 0 THEN
         RAISE EXCEPTION
-            'Bingo pot mismatch. Game pot: %, calculated pot: %',
-            v_game.pot,
-            v_pot;
+            'No eligible winning cards remain after applying disqualification policy "%"',
+            v_disqualification_policy;
     END IF;
 
 
-    ----------------------------------------------------------------
-    -- 9. Count winning cards
-    ----------------------------------------------------------------
+    ----------------------------------------------------------------------
+    -- Prevent previously settled winning cards
+    ----------------------------------------------------------------------
 
-    SELECT cardinality(p_winner_card_ids)
-    INTO v_winner_count;
-
-
-    IF v_winner_count <= 0 THEN
+    IF EXISTS (
+        SELECT 1
+        FROM public.bingo_participant_cards pc
+        JOIN public.bingo_winners bw
+          ON bw.game_id = p_game_id
+         AND bw.card_id = pc.card_id
+        WHERE pc.id = ANY(v_eligible_card_ids)
+    ) THEN
         RAISE EXCEPTION
-            'Winning card count must be greater than zero';
+            'One or more winning cards have already been settled for game %',
+            p_game_id;
     END IF;
 
 
-    ----------------------------------------------------------------
-    -- 10. Calculate equal payout per winning card
-    --
-    -- Work in cents to guarantee that:
-    --
-    -- SUM(all payouts) = exact pot
-    --
-    -- Example:
-    --
-    -- 100 / 3
-    --
-    -- Base = 33.33
-    -- Remainder = 1 cent
-    --
-    -- First card gets 33.34
-    -- Remaining cards get 33.33
-    ----------------------------------------------------------------
+    ----------------------------------------------------------------------
+    -- Number of winning cards
+    ----------------------------------------------------------------------
 
-    v_base_payout :=
-        FLOOR(
-            (v_pot * 100)
-            / v_winner_count
-        ) / 100;
+    v_winner_count :=
+        cardinality(v_eligible_card_ids);
+
+
+    ----------------------------------------------------------------------
+    -- Convert prize pool to cents
+    ----------------------------------------------------------------------
+
+    v_prize_pool_cents :=
+        ROUND(v_game.prize_pool * 100)::bigint;
+
+    v_base_payout_cents :=
+        v_prize_pool_cents / v_winner_count;
 
     v_remainder_cents :=
-        ROUND(v_pot * 100)
-        -
-        (
-            ROUND(v_base_payout * 100)
-            * v_winner_count
-        );
+        v_prize_pool_cents % v_winner_count;
 
 
-    ----------------------------------------------------------------
-    -- 11. Find Bingo game system
-    ----------------------------------------------------------------
+    ----------------------------------------------------------------------
+    -- Pay every eligible winning card
+    ----------------------------------------------------------------------
 
-    SELECT id
-    INTO v_game_system_id
-    FROM game_systems
-    WHERE code = 'bingo'
-      AND status = 'active'
-    LIMIT 1;
+    v_index := 0;
 
-    IF v_game_system_id IS NULL THEN
-        RAISE EXCEPTION
-            'Active Bingo game system is not configured';
-    END IF;
-
-
-    ----------------------------------------------------------------
-    -- 12. Settle every winning CARD
-    ----------------------------------------------------------------
-
-    FOR v_winner IN
+    FOR v_card IN
         SELECT
-            bp.id AS participant_id,
-            bp.user_id,
-            bp.card_id,
-
-            (
-                v_base_payout
-                +
-                CASE
-                    WHEN ROW_NUMBER() OVER (
-                        ORDER BY bp.card_id
-                    ) <= v_remainder_cents
-                    THEN 0.01
-                    ELSE 0
-                END
-            )::numeric(18,2) AS payout
-
-        FROM bingo_participants bp
-        WHERE bp.game_id = p_game_id
-          AND bp.card_id = ANY(p_winner_card_ids)
-
-        ORDER BY bp.card_id
+            pc.id AS participant_card_id,
+            pc.card_id,
+            pc.participant_id,
+            bp.user_id
+        FROM public.bingo_participant_cards pc
+        JOIN public.bingo_participants bp
+          ON bp.id = pc.participant_id
+        WHERE pc.id = ANY(v_eligible_card_ids)
+        ORDER BY pc.id
     LOOP
 
-        ----------------------------------------------------------------
-        -- 12a. Mark card as winner
-        ----------------------------------------------------------------
-
-        UPDATE bingo_participants
-        SET
-            is_winner = TRUE,
-            amount_won = v_winner.payout
-        WHERE id = v_winner.participant_id;
+        v_index := v_index + 1;
 
 
-        ----------------------------------------------------------------
-        -- 12b. Credit winner wallet
-        --
-        -- IMPORTANT:
-        -- card_id is part of the idempotency key.
-        ----------------------------------------------------------------
+        ------------------------------------------------------------------
+        -- Equal payout per winning card.
+        -- Remainder cents are distributed one-by-one.
+        ------------------------------------------------------------------
 
-        v_win_transaction_id := record_game_win(
-            p_user_id         => v_winner.user_id,
-            p_amount          => v_winner.payout,
-            p_game_system_id  => v_game_system_id,
-            p_source_type     => 'bingo_game',
-            p_source_id       => p_game_id::text,
-            p_idempotency_key =>
-                'bingo:win:'
-                || p_game_id
-                || ':card:'
-                || v_winner.card_id,
-            p_description =>
-                'Bingo game #'
-                || p_game_id
-                || ' card #'
-                || v_winner.card_id
-                || ' win',
-            p_metadata =>
+        v_payout_cents :=
+            v_base_payout_cents
+            +
+            CASE
+                WHEN v_index <= v_remainder_cents THEN 1
+                ELSE 0
+            END;
+
+        v_payout :=
+            v_payout_cents / 100.0;
+
+
+        ------------------------------------------------------------------
+        -- Record financial win
+        ------------------------------------------------------------------
+
+        v_transaction_id :=
+            public.record_game_win(
+                v_card.user_id,
+                v_payout,
+                v_game_system_id,
+                'bingo_game',
+                v_game.id::text,
+
+                format(
+                    'bingo-win:%s:participant-card:%s',
+                    v_game.id,
+                    v_card.participant_card_id
+                ),
+
+                format(
+                    'Bingo win for game %s, card %s',
+                    v_game.game_code,
+                    v_card.card_id
+                ),
+
                 jsonb_build_object(
-                    'game_id',
-                    p_game_id,
-                    'card_id',
-                    v_winner.card_id,
-                    'participant_id',
-                    v_winner.participant_id
+                    'game_id', v_game.id,
+                    'game_code', v_game.game_code,
+                    'room_id', v_game.room_id,
+                    'participant_id', v_card.participant_id,
+                    'participant_card_id', v_card.participant_card_id,
+                    'card_id', v_card.card_id,
+                    'payout', v_payout,
+                    'disqualification_policy',
+                        v_disqualification_policy
                 )
+            );
+
+
+        ------------------------------------------------------------------
+        -- Record winning card
+        ------------------------------------------------------------------
+
+        INSERT INTO public.bingo_winners (
+            game_id,
+            participant_id,
+            user_id,
+            card_id,
+            payout,
+            transaction_id
+        )
+        VALUES (
+            v_game.id,
+            v_card.participant_id,
+            v_card.user_id,
+            v_card.card_id,
+            v_payout,
+            v_transaction_id
         );
-		
-		INSERT INTO bingo_winners (
-			game_id,
-			participant_id,
-			user_id,
-			card_id,
-			payout,
-			transaction_id
-		)
-		VALUES (
-			p_game_id,
-			v_winner.participant_id,
-			v_winner.user_id,
-			v_winner.card_id,
-			v_winner.payout,
-			v_win_transaction_id
-		);
 
 
-        v_total_payout :=
-            v_total_payout + v_winner.payout;
+        ------------------------------------------------------------------
+        -- Maintain participant settlement total
+        ------------------------------------------------------------------
+
+        UPDATE public.bingo_participants
+        SET amount_won =
+            COALESCE(amount_won, 0) + v_payout
+        WHERE id = v_card.participant_id;
+
+
+        ------------------------------------------------------------------
+        -- Add winner to result
+        ------------------------------------------------------------------
+
+        v_result_winners :=
+            v_result_winners ||
+            jsonb_build_array(
+                jsonb_build_object(
+                    'participant_card_id',
+                    v_card.participant_card_id,
+
+                    'card_id',
+                    v_card.card_id,
+
+                    'participant_id',
+                    v_card.participant_id,
+
+                    'user_id',
+                    v_card.user_id,
+
+                    'payout',
+                    v_payout,
+
+                    'transaction_id',
+                    v_transaction_id
+                )
+            );
+
+
+        v_total_paid :=
+            v_total_paid + v_payout;
 
     END LOOP;
 
 
-    ----------------------------------------------------------------
-    -- 13. Safety check
-    ----------------------------------------------------------------
+    ----------------------------------------------------------------------
+    -- Accounting safety check
+    ----------------------------------------------------------------------
 
-    IF v_total_payout <> v_pot THEN
+    IF ROUND(v_total_paid * 100)::bigint <> v_prize_pool_cents THEN
         RAISE EXCEPTION
-            'Payout mismatch. Pot: %, total payout: %',
-            v_pot,
-            v_total_payout;
+            'Settlement mismatch for game %. Prize pool: %, total paid: %',
+            p_game_id,
+            v_game.prize_pool,
+            v_total_paid;
     END IF;
 
 
-    ----------------------------------------------------------------
-    -- 14. Update user statistics
-    --
-    -- A user can win multiple cards.
-    ----------------------------------------------------------------
+    ----------------------------------------------------------------------
+    -- Complete participants
+    ----------------------------------------------------------------------
 
-    UPDATE users u
-    SET
-        total_wins =
-            COALESCE(u.total_wins, 0)
-            + winner_stats.winning_cards,
-
-        total_winnings =
-            COALESCE(u.total_winnings, 0)
-            + winner_stats.total_winnings
-
-    FROM (
-        SELECT
-            bp.user_id,
-            COUNT(*) AS winning_cards,
-            SUM(bp.amount_won) AS total_winnings
-        FROM bingo_participants bp
-        WHERE bp.game_id = p_game_id
-          AND bp.is_winner = TRUE
-        GROUP BY bp.user_id
-    ) AS winner_stats
-
-    WHERE u.id = winner_stats.user_id;
+    UPDATE public.bingo_participants
+    SET status = 'completed'
+    WHERE game_id = p_game_id
+      AND status = 'active';
 
 
-    ----------------------------------------------------------------
-    -- 15. Every participating USER gets one game played
-    ----------------------------------------------------------------
+    ----------------------------------------------------------------------
+    -- Complete game
+    ----------------------------------------------------------------------
 
-    UPDATE users u
-    SET total_games =
-        COALESCE(u.total_games, 0) + 1
-    WHERE u.id IN (
-        SELECT DISTINCT user_id
-        FROM bingo_participants
-        WHERE game_id = p_game_id
-    );
-
-
-    ----------------------------------------------------------------
-    -- 16. Get distinct winning USER IDs
-    ----------------------------------------------------------------
-
-    SELECT ARRAY_AGG(
-        DISTINCT bp.user_id
-        ORDER BY bp.user_id
-    )
-    INTO v_winner_user_ids
-    FROM bingo_participants bp
-    WHERE bp.game_id = p_game_id
-      AND bp.is_winner = TRUE;
-
-
-    ----------------------------------------------------------------
-    -- 17. Complete the game
-    ----------------------------------------------------------------
-
-    UPDATE bingo_games
+    UPDATE public.bingo_games
     SET
         status = 'completed',
-
-        -- These are CARD IDs, not user IDs.
-        winner_ids = p_winner_card_ids,
-
-        win_amount = v_total_payout,
-
-        -- Multiple winning cards = split
-        is_split = v_winner_count > 1,
-
+        is_split = (v_winner_count > 1),
         ended_at = NOW()
-
     WHERE id = p_game_id;
 
 
-    ----------------------------------------------------------------
-    -- 18. Return complete settlement result
-    ----------------------------------------------------------------
+    ----------------------------------------------------------------------
+    -- Return settlement result
+    ----------------------------------------------------------------------
 
     RETURN jsonb_build_object(
+        'success', TRUE,
+
         'game_id',
-        p_game_id,
+        v_game.id,
 
-        'status',
-        'completed',
+        'game_code',
+        v_game.game_code,
 
-        'pot',
-        v_pot,
+        'room_id',
+        v_game.room_id,
 
-        'total_payout',
-        v_total_payout,
+        'stake_id',
+        v_game.stake_id,
 
-        'winner_card_count',
+        'stake_amount',
+        v_game.stake_amount,
+
+        'gross_pot',
+        v_game.gross_pot,
+
+        'commission_amount',
+        v_game.commission_amount,
+
+        'prize_pool',
+        v_game.prize_pool,
+
+        'disqualification_policy',
+        v_disqualification_policy,
+
+        'candidate_winning_card_count',
+        cardinality(v_candidate_card_ids),
+
+        'eligible_winning_card_count',
         v_winner_count,
 
-        'winner_card_ids',
-        to_jsonb(p_winner_card_ids),
+        'total_paid',
+        v_total_paid,
 
-        'winner_user_ids',
-        to_jsonb(v_winner_user_ids),
+        'is_split',
+        (v_winner_count > 1),
 
-        'payout_per_card',
-        CASE
-            WHEN v_winner_count = 1
-            THEN v_pot
-            ELSE v_base_payout
-        END
+        'winners',
+        v_result_winners
     );
 
 END;
 $$;
 
 
-ALTER FUNCTION public.end_bingo_game(p_game_id integer, p_winner_card_ids integer[]) OWNER TO neondb_owner;
+ALTER FUNCTION public.end_bingo_game(p_game_id integer, p_winner_card_ids bigint[]) OWNER TO neondb_owner;
+
+--
+-- Name: end_bingo_game(integer, bigint[], bigint); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.end_bingo_game(p_game_id integer, p_winner_card_ids bigint[], p_game_system_id bigint) RETURNS jsonb
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_game                  public.bingo_games%ROWTYPE;
+    v_disqualification_policy varchar(30);
+
+    v_candidate_card_ids    bigint[];
+    v_eligible_card_ids     bigint[];
+
+    v_winner_count           integer;
+
+    v_prize_pool_cents       bigint;
+    v_base_payout_cents      bigint;
+    v_remainder_cents        bigint;
+
+    v_index                  integer;
+    v_payout_cents           bigint;
+    v_payout                 numeric;
+
+    v_card                  RECORD;
+    v_transaction_id        bigint;
+
+    v_total_paid             numeric := 0;
+    v_result_winners         jsonb := '[]'::jsonb;
+BEGIN
+    ----------------------------------------------------------------------
+    -- Validate arguments
+    ----------------------------------------------------------------------
+
+    IF p_game_id IS NULL THEN
+        RAISE EXCEPTION 'Game ID is required';
+    END IF;
+
+    IF p_game_system_id IS NULL THEN
+        RAISE EXCEPTION 'Game system ID is required';
+    END IF;
+
+    IF p_winner_card_ids IS NULL
+       OR cardinality(p_winner_card_ids) = 0 THEN
+        RAISE EXCEPTION 'At least one winning card is required';
+    END IF;
+
+
+    ----------------------------------------------------------------------
+    -- Normalize / deduplicate submitted participant-card IDs
+    ----------------------------------------------------------------------
+
+    SELECT ARRAY_AGG(card_id ORDER BY card_id)
+    INTO v_candidate_card_ids
+    FROM (
+        SELECT DISTINCT card_id
+        FROM unnest(p_winner_card_ids) AS card_id
+    ) x;
+
+
+    ----------------------------------------------------------------------
+    -- Lock game
+    ----------------------------------------------------------------------
+
+    SELECT *
+    INTO v_game
+    FROM public.bingo_games
+    WHERE id = p_game_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Bingo game % not found',
+            p_game_id;
+    END IF;
+
+
+    ----------------------------------------------------------------------
+    -- Validate game state
+    ----------------------------------------------------------------------
+
+    IF v_game.status = 'completed' THEN
+        RAISE EXCEPTION
+            'Bingo game % is already completed',
+            p_game_id;
+    END IF;
+
+    IF v_game.status = 'cancelled' THEN
+        RAISE EXCEPTION
+            'Bingo game % is cancelled',
+            p_game_id;
+    END IF;
+
+
+    ----------------------------------------------------------------------
+    -- Get disqualification policy from the room
+    ----------------------------------------------------------------------
+
+    SELECT br.disqualification_policy
+    INTO v_disqualification_policy
+    FROM public.bingo_rooms br
+    WHERE br.id = v_game.room_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Room % for game % was not found',
+            v_game.room_id,
+            p_game_id;
+    END IF;
+
+
+    ----------------------------------------------------------------------
+    -- Validate policy
+    ----------------------------------------------------------------------
+
+    IF v_disqualification_policy NOT IN (
+        'exclude_card',
+        'exclude_participant',
+        'include'
+    ) THEN
+        RAISE EXCEPTION
+            'Invalid disqualification policy: %',
+            v_disqualification_policy;
+    END IF;
+
+
+    ----------------------------------------------------------------------
+    -- Validate prize pool
+    ----------------------------------------------------------------------
+
+    IF COALESCE(v_game.prize_pool, 0) <= 0 THEN
+        RAISE EXCEPTION
+            'Bingo game % has no prize pool',
+            p_game_id;
+    END IF;
+
+
+    ----------------------------------------------------------------------
+    -- Make sure every submitted participant-card belongs to this game
+    ----------------------------------------------------------------------
+
+    IF EXISTS (
+        SELECT 1
+        FROM unnest(v_candidate_card_ids) AS submitted_card_id
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM public.bingo_participant_cards pc
+            WHERE pc.id = submitted_card_id
+              AND pc.game_id = p_game_id
+        )
+    ) THEN
+        RAISE EXCEPTION
+            'One or more winning cards do not belong to game %',
+            p_game_id;
+    END IF;
+
+
+    ----------------------------------------------------------------------
+    -- Lock candidate cards and their participants.
+    ----------------------------------------------------------------------
+
+    PERFORM 1
+    FROM public.bingo_participant_cards pc
+    JOIN public.bingo_participants bp
+      ON bp.id = pc.participant_id
+    WHERE pc.id = ANY(v_candidate_card_ids)
+    ORDER BY pc.id
+    FOR UPDATE OF pc, bp;
+
+
+    ----------------------------------------------------------------------
+    -- Determine eligible winners according to room policy.
+    --
+    -- exclude_card:
+    --     A disqualified participant's candidate card is excluded.
+    --
+    -- exclude_participant:
+    --     ALL candidate cards belonging to a disqualified participant
+    --     are excluded.
+    --
+    -- include:
+    --     Disqualification is ignored for settlement.
+    ----------------------------------------------------------------------
+
+    SELECT ARRAY_AGG(pc.id ORDER BY pc.id)
+    INTO v_eligible_card_ids
+    FROM public.bingo_participant_cards pc
+    JOIN public.bingo_participants bp
+      ON bp.id = pc.participant_id
+    WHERE pc.id = ANY(v_candidate_card_ids)
+      AND (
+            v_disqualification_policy = 'include'
+
+            OR (
+                v_disqualification_policy = 'exclude_card'
+                AND bp.is_disqualified = FALSE
+            )
+
+            OR (
+                v_disqualification_policy = 'exclude_participant'
+                AND bp.is_disqualified = FALSE
+            )
+      );
+
+
+    ----------------------------------------------------------------------
+    -- No eligible winners
+    ----------------------------------------------------------------------
+
+    IF v_eligible_card_ids IS NULL
+       OR cardinality(v_eligible_card_ids) = 0 THEN
+
+        RAISE EXCEPTION
+            'No eligible winning cards remain after applying disqualification policy "%"',
+            v_disqualification_policy;
+    END IF;
+
+
+    ----------------------------------------------------------------------
+    -- Make sure an eligible card has not already been settled.
+    --
+    -- bingo_winners stores card_id rather than participant_card_id,
+    -- so compare against the actual card_id.
+    ----------------------------------------------------------------------
+
+    IF EXISTS (
+        SELECT 1
+        FROM public.bingo_participant_cards pc
+        WHERE pc.id = ANY(v_eligible_card_ids)
+          AND EXISTS (
+              SELECT 1
+              FROM public.bingo_winners bw
+              WHERE bw.game_id = p_game_id
+                AND bw.card_id = pc.card_id
+          )
+    ) THEN
+        RAISE EXCEPTION
+            'One or more eligible winning cards have already been settled for game %',
+            p_game_id;
+    END IF;
+
+
+    ----------------------------------------------------------------------
+    -- Number of winning cards.
+    --
+    -- IMPORTANT:
+    -- This is CARD count, not USER count.
+    --
+    -- If User A wins 3 cards and User B wins 1 card,
+    -- winner_count = 4.
+    ----------------------------------------------------------------------
+
+    v_winner_count := cardinality(v_eligible_card_ids);
+
+
+    ----------------------------------------------------------------------
+    -- Convert prize pool to cents.
+    ----------------------------------------------------------------------
+
+    v_prize_pool_cents :=
+        ROUND(v_game.prize_pool * 100)::bigint;
+
+    v_base_payout_cents :=
+        v_prize_pool_cents / v_winner_count;
+
+    v_remainder_cents :=
+        v_prize_pool_cents % v_winner_count;
+
+
+    ----------------------------------------------------------------------
+    -- Pay each eligible winning card.
+    ----------------------------------------------------------------------
+
+    v_index := 0;
+
+    FOR v_card IN
+        SELECT
+            pc.id AS participant_card_id,
+            pc.card_id,
+            pc.participant_id,
+            bp.user_id
+        FROM public.bingo_participant_cards pc
+        JOIN public.bingo_participants bp
+          ON bp.id = pc.participant_id
+        WHERE pc.id = ANY(v_eligible_card_ids)
+        ORDER BY pc.id
+    LOOP
+
+        v_index := v_index + 1;
+
+
+        ------------------------------------------------------------------
+        -- Distribute remainder cents across first cards.
+        ------------------------------------------------------------------
+
+        v_payout_cents :=
+            v_base_payout_cents
+            + CASE
+                WHEN v_index <= v_remainder_cents THEN 1
+                ELSE 0
+              END;
+
+        v_payout :=
+            v_payout_cents / 100.0;
+
+
+        ------------------------------------------------------------------
+        -- Record financial win.
+        ------------------------------------------------------------------
+
+        v_transaction_id :=
+            public.record_game_win(
+                v_card.user_id,
+                v_payout,
+                p_game_system_id,
+                'bingo_game',
+                v_game.id::text,
+
+                format(
+                    'bingo-win:%s:participant-card:%s',
+                    v_game.id,
+                    v_card.participant_card_id
+                ),
+
+                format(
+                    'Bingo win for game %s, card %s',
+                    v_game.game_code,
+                    v_card.card_id
+                ),
+
+                jsonb_build_object(
+                    'game_id', v_game.id,
+                    'game_code', v_game.game_code,
+                    'room_id', v_game.room_id,
+                    'participant_id', v_card.participant_id,
+                    'participant_card_id', v_card.participant_card_id,
+                    'card_id', v_card.card_id,
+                    'payout', v_payout,
+                    'disqualification_policy',
+                        v_disqualification_policy
+                )
+            );
+
+
+        ------------------------------------------------------------------
+        -- Record winning card.
+        ------------------------------------------------------------------
+
+        INSERT INTO public.bingo_winners (
+            game_id,
+            participant_id,
+            user_id,
+            card_id,
+            payout,
+            transaction_id
+        )
+        VALUES (
+            v_game.id,
+            v_card.participant_id,
+            v_card.user_id,
+            v_card.card_id,
+            v_payout,
+            v_transaction_id
+        );
+
+
+        ------------------------------------------------------------------
+        -- Participant-level settlement total.
+        ------------------------------------------------------------------
+
+        UPDATE public.bingo_participants
+        SET amount_won =
+            COALESCE(amount_won, 0) + v_payout
+        WHERE id = v_card.participant_id;
+
+
+        ------------------------------------------------------------------
+        -- Add winner to response.
+        ------------------------------------------------------------------
+
+        v_result_winners :=
+            v_result_winners ||
+            jsonb_build_array(
+                jsonb_build_object(
+                    'participant_card_id',
+                    v_card.participant_card_id,
+
+                    'card_id',
+                    v_card.card_id,
+
+                    'participant_id',
+                    v_card.participant_id,
+
+                    'user_id',
+                    v_card.user_id,
+
+                    'payout',
+                    v_payout,
+
+                    'transaction_id',
+                    v_transaction_id
+                )
+            );
+
+
+        v_total_paid :=
+            v_total_paid + v_payout;
+
+    END LOOP;
+
+
+    ----------------------------------------------------------------------
+    -- Final accounting safety check.
+    ----------------------------------------------------------------------
+
+    IF ROUND(v_total_paid * 100)::bigint <> v_prize_pool_cents THEN
+        RAISE EXCEPTION
+            'Settlement mismatch for game %. Prize pool: %, total paid: %',
+            p_game_id,
+            v_game.prize_pool,
+            v_total_paid;
+    END IF;
+
+
+    ----------------------------------------------------------------------
+    -- Complete participants.
+    ----------------------------------------------------------------------
+
+    UPDATE public.bingo_participants
+    SET status = 'completed'
+    WHERE game_id = p_game_id
+      AND status = 'active';
+
+
+    ----------------------------------------------------------------------
+    -- Complete game.
+    ----------------------------------------------------------------------
+
+    UPDATE public.bingo_games
+    SET
+        status = 'completed',
+        is_split = (v_winner_count > 1),
+        ended_at = NOW()
+    WHERE id = p_game_id;
+
+
+    ----------------------------------------------------------------------
+    -- Return settlement result.
+    ----------------------------------------------------------------------
+
+    RETURN jsonb_build_object(
+        'success', TRUE,
+        'game_id', v_game.id,
+        'game_code', v_game.game_code,
+        'room_id', v_game.room_id,
+
+        'stake_id', v_game.stake_id,
+        'stake_amount', v_game.stake_amount,
+
+        'gross_pot', v_game.gross_pot,
+        'commission_amount', v_game.commission_amount,
+        'prize_pool', v_game.prize_pool,
+
+        'disqualification_policy',
+            v_disqualification_policy,
+
+        'candidate_winning_card_count',
+            cardinality(v_candidate_card_ids),
+
+        'eligible_winning_card_count',
+            v_winner_count,
+
+        'total_paid',
+            v_total_paid,
+
+        'is_split',
+            (v_winner_count > 1),
+
+        'winners',
+            v_result_winners
+    );
+
+END;
+$$;
+
+
+ALTER FUNCTION public.end_bingo_game(p_game_id integer, p_winner_card_ids bigint[], p_game_system_id bigint) OWNER TO neondb_owner;
 
 --
 -- Name: find_transfer_recipient(character varying); Type: FUNCTION; Schema: public; Owner: neondb_owner
@@ -3552,11 +4650,6 @@ CREATE TABLE public.users (
     telegram_id bigint NOT NULL,
     name character varying(50) NOT NULL,
     phone character varying(20),
-    balance numeric(18,2),
-    total_games integer DEFAULT 0,
-    total_wins integer DEFAULT 0,
-    total_winnings numeric(10,2) DEFAULT 0,
-    is_banned boolean DEFAULT false,
     created_at timestamp with time zone DEFAULT now(),
     last_seen timestamp with time zone DEFAULT now(),
     is_active boolean DEFAULT true,
@@ -3566,6 +4659,7 @@ CREATE TABLE public.users (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     referral_code character varying(50),
     referred_by_user_id bigint,
+    vip_tier_id bigint,
     CONSTRAINT users_admin_role_check CHECK (((admin_role IS NULL) OR ((admin_role)::text = ANY ((ARRAY['main'::character varying, 'statistics'::character varying, 'withdrawal'::character varying, 'broadcast'::character varying])::text[]))))
 );
 
@@ -6842,7 +7936,7 @@ ALTER TABLE public.bingo_commission_rules ALTER COLUMN id ADD GENERATED BY DEFAU
 --
 
 CREATE TABLE public.bingo_games (
-    id integer NOT NULL,
+    id bigint NOT NULL,
     game_code character varying(32) NOT NULL,
     room_id bigint NOT NULL,
     stake_id character varying(10) NOT NULL,
@@ -6903,6 +7997,7 @@ CREATE TABLE public.bingo_participant_cards (
     card_data jsonb NOT NULL,
     transaction_id bigint NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    is_disqualified boolean DEFAULT false NOT NULL,
     CONSTRAINT bingo_participant_cards_card_id_check CHECK ((card_id >= 1))
 );
 
@@ -6936,8 +8031,12 @@ CREATE TABLE public.bingo_participants (
     is_disqualified boolean DEFAULT false NOT NULL,
     amount_won numeric(18,2) DEFAULT 0 NOT NULL,
     joined_at timestamp with time zone DEFAULT now() NOT NULL,
+    bingo_mode_override character varying(20),
+    bingo_mode character varying(10) DEFAULT 'auto'::character varying,
     CONSTRAINT bingo_participants_amount_paid_check CHECK ((amount_paid > (0)::numeric)),
     CONSTRAINT bingo_participants_amount_won_check CHECK ((amount_won >= (0)::numeric)),
+    CONSTRAINT bingo_participants_bingo_mode_check CHECK (((bingo_mode IS NULL) OR ((bingo_mode)::text = ANY ((ARRAY['auto'::character varying, 'manual'::character varying])::text[])))),
+    CONSTRAINT bingo_participants_bingo_mode_override_check CHECK (((bingo_mode_override IS NULL) OR ((bingo_mode_override)::text = ANY ((ARRAY['auto'::character varying, 'manual'::character varying])::text[])))),
     CONSTRAINT bingo_participants_status_check CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'completed'::character varying, 'cancelled'::character varying, 'refunded'::character varying])::text[])))
 );
 
@@ -6990,7 +8089,13 @@ CREATE TABLE public.bingo_rooms (
     selection_seconds integer DEFAULT 50 NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    disqualification_policy character varying(30) DEFAULT 'exclude_card'::character varying NOT NULL,
+    bingo_mode_policy character varying(20) DEFAULT 'choice'::character varying NOT NULL,
+    bingo_button_scope character varying(20) DEFAULT 'all_cards'::character varying NOT NULL,
+    CONSTRAINT bingo_rooms_bingo_button_scope_check CHECK (((bingo_button_scope)::text = ANY ((ARRAY['all_cards'::character varying, 'per_card'::character varying])::text[]))),
+    CONSTRAINT bingo_rooms_bingo_mode_policy_check CHECK (((bingo_mode_policy)::text = ANY ((ARRAY['choice'::character varying, 'auto_only'::character varying, 'manual_only'::character varying])::text[]))),
     CONSTRAINT bingo_rooms_card_count_check CHECK ((card_count >= 1)),
+    CONSTRAINT bingo_rooms_disqualification_policy_check CHECK (((disqualification_policy)::text = ANY ((ARRAY['exclude_card'::character varying, 'exclude_participant'::character varying, 'include'::character varying])::text[]))),
     CONSTRAINT bingo_rooms_max_cards_per_player_check CHECK (((max_cards_per_player >= 1) AND (max_cards_per_player <= card_count))),
     CONSTRAINT bingo_rooms_max_players_check CHECK (((max_players IS NULL) OR (max_players >= min_players))),
     CONSTRAINT bingo_rooms_min_players_check CHECK ((min_players >= 2)),
@@ -7351,6 +8456,7 @@ DO UPDATE SET
     metadata = EXCLUDED.metadata,
     updated_at = NOW();
 
+
 ALTER TABLE public.game_systems OWNER TO neondb_owner;
 
 --
@@ -7373,24 +8479,6 @@ ALTER SEQUENCE public.game_systems_id_seq OWNER TO neondb_owner;
 
 ALTER SEQUENCE public.game_systems_id_seq OWNED BY public.game_systems.id;
 
-
---
--- Name: leaderboard; Type: VIEW; Schema: public; Owner: neondb_owner
---
-
-CREATE VIEW public.leaderboard AS
- SELECT id,
-    name,
-    telegram_id,
-    total_wins,
-    total_games,
-    total_winnings,
-    round((((total_wins)::numeric / (NULLIF(total_games, 0))::numeric) * (100)::numeric), 1) AS win_rate
-   FROM public.users u
-  ORDER BY total_winnings DESC;
-
-
-ALTER VIEW public.leaderboard OWNER TO neondb_owner;
 
 --
 -- Name: ledger_entries; Type: TABLE; Schema: public; Owner: neondb_owner
@@ -7779,69 +8867,6 @@ ALTER SEQUENCE public.user_bonuses_id_seq OWNED BY public.user_bonuses.id;
 
 
 --
--- Name: user_game_statistics; Type: TABLE; Schema: public; Owner: neondb_owner
---
-
-CREATE TABLE public.user_game_statistics (
-    id bigint NOT NULL,
-    user_id bigint NOT NULL,
-    game_system_id bigint NOT NULL,
-    games_played bigint DEFAULT 0 NOT NULL,
-    games_completed bigint DEFAULT 0 NOT NULL,
-    games_cancelled bigint DEFAULT 0 NOT NULL,
-    games_abandoned bigint DEFAULT 0 NOT NULL,
-    bets_count bigint DEFAULT 0 NOT NULL,
-    total_staked numeric(18,2) DEFAULT 0 NOT NULL,
-    total_refunded numeric(18,2) DEFAULT 0 NOT NULL,
-    wins_count bigint DEFAULT 0 NOT NULL,
-    losses_count bigint DEFAULT 0 NOT NULL,
-    draws_count bigint DEFAULT 0 NOT NULL,
-    total_winnings numeric(18,2) DEFAULT 0 NOT NULL,
-    total_losses numeric(18,2) DEFAULT 0 NOT NULL,
-    net_result numeric(18,2) DEFAULT 0 NOT NULL,
-    bonus_count bigint DEFAULT 0 NOT NULL,
-    total_bonus_received numeric(18,2) DEFAULT 0 NOT NULL,
-    total_bonus_wagered numeric(18,2) DEFAULT 0 NOT NULL,
-    jackpot_wins bigint DEFAULT 0 NOT NULL,
-    jackpot_amount_won numeric(18,2) DEFAULT 0 NOT NULL,
-    largest_stake numeric(18,2) DEFAULT 0 NOT NULL,
-    largest_win numeric(18,2) DEFAULT 0 NOT NULL,
-    largest_loss numeric(18,2) DEFAULT 0 NOT NULL,
-    first_played_at timestamp with time zone,
-    last_played_at timestamp with time zone,
-    first_win_at timestamp with time zone,
-    last_win_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT user_game_statistics_amounts_non_negative CHECK (((total_staked >= (0)::numeric) AND (total_refunded >= (0)::numeric) AND (total_winnings >= (0)::numeric) AND (total_losses >= (0)::numeric) AND (total_bonus_received >= (0)::numeric) AND (total_bonus_wagered >= (0)::numeric) AND (jackpot_amount_won >= (0)::numeric) AND (largest_stake >= (0)::numeric) AND (largest_win >= (0)::numeric) AND (largest_loss >= (0)::numeric))),
-    CONSTRAINT user_game_statistics_counts_non_negative CHECK (((games_played >= 0) AND (games_completed >= 0) AND (games_cancelled >= 0) AND (games_abandoned >= 0) AND (bets_count >= 0) AND (wins_count >= 0) AND (losses_count >= 0) AND (draws_count >= 0) AND (bonus_count >= 0) AND (jackpot_wins >= 0)))
-);
-
-
-ALTER TABLE public.user_game_statistics OWNER TO neondb_owner;
-
---
--- Name: user_game_statistics_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
---
-
-CREATE SEQUENCE public.user_game_statistics_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE public.user_game_statistics_id_seq OWNER TO neondb_owner;
-
---
--- Name: user_game_statistics_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
---
-
-ALTER SEQUENCE public.user_game_statistics_id_seq OWNED BY public.user_game_statistics.id;
-
-
---
 -- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
 --
 
@@ -7864,48 +8889,50 @@ ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id;
 
 
 --
--- Name: wallet_migration_check; Type: VIEW; Schema: public; Owner: neondb_owner
+-- Name: vip_tiers; Type: TABLE; Schema: public; Owner: neondb_owner
 --
 
-CREATE VIEW public.wallet_migration_check AS
- SELECT u.id AS user_id,
-    u.telegram_id,
-    COALESCE(max(
-        CASE
-            WHEN ((w.wallet_type)::text = 'main'::text) THEN wb.balance
-            ELSE NULL::numeric
-        END), (0)::numeric) AS main_balance,
-    COALESCE(max(
-        CASE
-            WHEN ((w.wallet_type)::text = 'play'::text) THEN wb.balance
-            ELSE NULL::numeric
-        END), (0)::numeric) AS play_balance,
-    (COALESCE(max(
-        CASE
-            WHEN ((w.wallet_type)::text = 'main'::text) THEN wb.balance
-            ELSE NULL::numeric
-        END), (0)::numeric) + COALESCE(max(
-        CASE
-            WHEN ((w.wallet_type)::text = 'play'::text) THEN wb.balance
-            ELSE NULL::numeric
-        END), (0)::numeric)) AS new_total_balance,
-    u.balance AS legacy_balance,
-    ((COALESCE(max(
-        CASE
-            WHEN ((w.wallet_type)::text = 'main'::text) THEN wb.balance
-            ELSE NULL::numeric
-        END), (0)::numeric) + COALESCE(max(
-        CASE
-            WHEN ((w.wallet_type)::text = 'play'::text) THEN wb.balance
-            ELSE NULL::numeric
-        END), (0)::numeric)) - COALESCE(u.balance, (0)::numeric)) AS difference
-   FROM ((public.users u
-     LEFT JOIN public.wallets w ON ((w.user_id = u.id)))
-     LEFT JOIN public.wallet_balances wb ON ((wb.wallet_id = w.id)))
-  GROUP BY u.id, u.telegram_id, u.balance;
+CREATE TABLE public.vip_tiers (
+    id bigint NOT NULL,
+    code character varying(50) NOT NULL,
+    name character varying(100) NOT NULL,
+    level integer NOT NULL,
+    min_lifetime_deposit numeric(18,2) DEFAULT 0 NOT NULL,
+    min_lifetime_wager numeric(18,2) DEFAULT 0 NOT NULL,
+    deposit_bonus_percentage numeric(8,4) DEFAULT 0,
+    is_active boolean DEFAULT true NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT vip_tiers_bonus_percentage_check CHECK (((deposit_bonus_percentage >= (0)::numeric) AND (deposit_bonus_percentage <= (100)::numeric))),
+    CONSTRAINT vip_tiers_level_check CHECK ((level > 0)),
+    CONSTRAINT vip_tiers_min_deposit_check CHECK ((min_lifetime_deposit >= (0)::numeric)),
+    CONSTRAINT vip_tiers_min_wager_check CHECK ((min_lifetime_wager >= (0)::numeric))
+);
 
 
-ALTER VIEW public.wallet_migration_check OWNER TO neondb_owner;
+ALTER TABLE public.vip_tiers OWNER TO neondb_owner;
+
+--
+-- Name: vip_tiers_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
+--
+
+CREATE SEQUENCE public.vip_tiers_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.vip_tiers_id_seq OWNER TO neondb_owner;
+
+--
+-- Name: vip_tiers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: neondb_owner
+--
+
+ALTER SEQUENCE public.vip_tiers_id_seq OWNED BY public.vip_tiers.id;
+
 
 --
 -- Name: wallets_id_seq; Type: SEQUENCE; Schema: public; Owner: neondb_owner
@@ -8091,17 +9118,17 @@ ALTER TABLE ONLY public.user_bonuses ALTER COLUMN id SET DEFAULT nextval('public
 
 
 --
--- Name: user_game_statistics id; Type: DEFAULT; Schema: public; Owner: neondb_owner
---
-
-ALTER TABLE ONLY public.user_game_statistics ALTER COLUMN id SET DEFAULT nextval('public.user_game_statistics_id_seq'::regclass);
-
-
---
 -- Name: users id; Type: DEFAULT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_id_seq'::regclass);
+
+
+--
+-- Name: vip_tiers id; Type: DEFAULT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.vip_tiers ALTER COLUMN id SET DEFAULT nextval('public.vip_tiers_id_seq'::regclass);
 
 
 --
@@ -8470,22 +9497,6 @@ ALTER TABLE ONLY public.user_bonuses
 
 
 --
--- Name: user_game_statistics user_game_statistics_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
---
-
-ALTER TABLE ONLY public.user_game_statistics
-    ADD CONSTRAINT user_game_statistics_pkey PRIMARY KEY (id);
-
-
---
--- Name: user_game_statistics user_game_statistics_unique_user_game; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
---
-
-ALTER TABLE ONLY public.user_game_statistics
-    ADD CONSTRAINT user_game_statistics_unique_user_game UNIQUE (user_id, game_system_id);
-
-
---
 -- Name: users users_phone_unique; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
@@ -8515,6 +9526,30 @@ ALTER TABLE ONLY public.users
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_telegram_id_key UNIQUE (telegram_id);
+
+
+--
+-- Name: vip_tiers vip_tiers_code_key; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.vip_tiers
+    ADD CONSTRAINT vip_tiers_code_key UNIQUE (code);
+
+
+--
+-- Name: vip_tiers vip_tiers_level_key; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.vip_tiers
+    ADD CONSTRAINT vip_tiers_level_key UNIQUE (level);
+
+
+--
+-- Name: vip_tiers vip_tiers_pkey; Type: CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.vip_tiers
+    ADD CONSTRAINT vip_tiers_pkey PRIMARY KEY (id);
 
 
 --
@@ -8997,41 +10032,6 @@ CREATE INDEX idx_user_bonuses_user ON public.user_bonuses USING btree (user_id);
 --
 
 CREATE INDEX idx_user_bonuses_user_status ON public.user_bonuses USING btree (user_id, status);
-
-
---
--- Name: idx_user_game_statistics_game_system; Type: INDEX; Schema: public; Owner: neondb_owner
---
-
-CREATE INDEX idx_user_game_statistics_game_system ON public.user_game_statistics USING btree (game_system_id);
-
-
---
--- Name: idx_user_game_statistics_last_played; Type: INDEX; Schema: public; Owner: neondb_owner
---
-
-CREATE INDEX idx_user_game_statistics_last_played ON public.user_game_statistics USING btree (last_played_at);
-
-
---
--- Name: idx_user_game_statistics_user; Type: INDEX; Schema: public; Owner: neondb_owner
---
-
-CREATE INDEX idx_user_game_statistics_user ON public.user_game_statistics USING btree (user_id);
-
-
---
--- Name: idx_user_game_statistics_user_last_played; Type: INDEX; Schema: public; Owner: neondb_owner
---
-
-CREATE INDEX idx_user_game_statistics_user_last_played ON public.user_game_statistics USING btree (user_id, last_played_at);
-
-
---
--- Name: idx_users_admin_role_active; Type: INDEX; Schema: public; Owner: neondb_owner
---
-
-CREATE INDEX idx_users_admin_role_active ON public.users USING btree (admin_role, is_active, is_banned, is_blocked) WHERE (is_admin = true);
 
 
 --
@@ -9673,27 +10673,19 @@ ALTER TABLE ONLY public.user_bonuses
 
 
 --
--- Name: user_game_statistics user_game_statistics_game_system_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
---
-
-ALTER TABLE ONLY public.user_game_statistics
-    ADD CONSTRAINT user_game_statistics_game_system_id_fkey FOREIGN KEY (game_system_id) REFERENCES public.game_systems(id) ON DELETE RESTRICT;
-
-
---
--- Name: user_game_statistics user_game_statistics_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
---
-
-ALTER TABLE ONLY public.user_game_statistics
-    ADD CONSTRAINT user_game_statistics_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-
-
---
 -- Name: users users_referred_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
 --
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_referred_by_user_id_fkey FOREIGN KEY (referred_by_user_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: users users_vip_tier_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_vip_tier_id_fkey FOREIGN KEY (vip_tier_id) REFERENCES public.vip_tiers(id);
 
 
 --
@@ -9755,5 +10747,6 @@ ALTER TABLE ONLY public.withdrawals
 --
 -- PostgreSQL database dump complete
 --
+
 
 
