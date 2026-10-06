@@ -784,14 +784,21 @@ DECLARE
     v_idempotency_key VARCHAR(255);
     v_metadata JSONB;
 BEGIN
+
+    ----------------------------------------------------------------
+    -- 1. Validate input
+    ----------------------------------------------------------------
     IF p_user_bonus_id IS NULL THEN
-        RAISE EXCEPTION 'User bonus ID is required';
+        RAISE EXCEPTION
+            'User bonus ID is required';
     END IF;
 
-    /*
-     * Lock the bonus first.
-     * This serializes conversion attempts for the same bonus.
-     */
+
+    ----------------------------------------------------------------
+    -- 2. Lock the bonus
+    --
+    -- This serializes conversion attempts for the same bonus.
+    ----------------------------------------------------------------
     SELECT *
     INTO v_bonus
     FROM public.user_bonuses
@@ -804,16 +811,17 @@ BEGIN
             p_user_bonus_id;
     END IF;
 
-    /*
-     * Conversion operation has a deterministic idempotency key.
-     */
+
+    ----------------------------------------------------------------
+    -- 3. Deterministic idempotency key
+    ----------------------------------------------------------------
     v_idempotency_key :=
         'bonus-conversion:' || p_user_bonus_id::VARCHAR;
 
-    /*
-     * If this conversion was already completed, return its
-     * existing financial transaction.
-     */
+
+    ----------------------------------------------------------------
+    -- 4. Return existing transaction if already converted
+    ----------------------------------------------------------------
     SELECT ft.id
     INTO v_transaction_id
     FROM public.financial_transactions ft
@@ -824,9 +832,10 @@ BEGIN
         RETURN v_transaction_id;
     END IF;
 
-    /*
-     * Wagering must already be complete.
-     */
+
+    ----------------------------------------------------------------
+    -- 5. Bonus must be completed
+    ----------------------------------------------------------------
     IF v_bonus.status <> 'completed' THEN
         RAISE EXCEPTION
             'Bonus % is not ready for conversion. Current status: %',
@@ -834,6 +843,10 @@ BEGIN
             v_bonus.status;
     END IF;
 
+
+    ----------------------------------------------------------------
+    -- 6. Wagering must be complete
+    ----------------------------------------------------------------
     IF v_bonus.wagering_progress < v_bonus.wagering_requirement THEN
         RAISE EXCEPTION
             'Bonus % has incomplete wagering. Progress: %, Required: %',
@@ -842,6 +855,10 @@ BEGIN
             v_bonus.wagering_requirement;
     END IF;
 
+
+    ----------------------------------------------------------------
+    -- 7. Validate conversion state
+    ----------------------------------------------------------------
     IF v_bonus.converted_amount > v_bonus.convertible_amount THEN
         RAISE EXCEPTION
             'Bonus % has invalid conversion state. Converted: %, Convertible: %',
@@ -850,9 +867,10 @@ BEGIN
             v_bonus.convertible_amount;
     END IF;
 
-    /*
-     * Load the campaign that governs this bonus.
-     */
+
+    ----------------------------------------------------------------
+    -- 8. Load campaign
+    ----------------------------------------------------------------
     SELECT *
     INTO v_campaign
     FROM public.bonus_campaigns
@@ -865,78 +883,125 @@ BEGIN
             v_bonus.campaign_id;
     END IF;
 
-    /*
-     * Conversion is based on the amount currently eligible
-     * for conversion.
-     */
+
+    ----------------------------------------------------------------
+    -- 9. Calculate amount currently eligible for conversion
+    ----------------------------------------------------------------
     v_conversion_base := ROUND(
         GREATEST(
-            v_bonus.convertible_amount - v_bonus.converted_amount,
+            COALESCE(v_bonus.convertible_amount, 0)
+            - COALESCE(v_bonus.converted_amount, 0),
             0
         ),
         2
     );
 
-    /*
-     * Apply the campaign conversion rule.
-     */
+
+    ----------------------------------------------------------------
+    -- 10. Apply campaign conversion rule
+    --
+    -- percentage:
+    --     Convert a percentage of the eligible amount.
+    --
+    -- fixed:
+    --     Convert a fixed amount, but never more than
+    --     the eligible amount.
+    --
+    -- none:
+    --     Do not convert anything.
+    ----------------------------------------------------------------
     CASE v_campaign.conversion_type
 
         WHEN 'percentage' THEN
+
             v_conversion_amount := ROUND(
                 v_conversion_base
-                * v_campaign.conversion_percentage
+                * COALESCE(
+                    v_campaign.conversion_percentage,
+                    0
+                )
                 / 100,
                 2
             );
 
+
         WHEN 'fixed' THEN
+
             v_conversion_amount := LEAST(
                 v_conversion_base,
-                ROUND(v_campaign.conversion_percentage, 2)
+                ROUND(
+                    COALESCE(
+                        v_campaign.conversion_amount,
+                        0
+                    ),
+                    2
+                )
             );
 
+
         WHEN 'none' THEN
+
             v_conversion_amount := 0.00;
 
+
         ELSE
+
             RAISE EXCEPTION
                 'Unsupported conversion type "%" for campaign %',
                 v_campaign.conversion_type,
                 v_campaign.id;
+
     END CASE;
 
-    /*
-     * Apply the optional maximum conversion cap.
-     */
+
+    ----------------------------------------------------------------
+    -- 11. Apply optional maximum conversion cap
+    ----------------------------------------------------------------
     IF v_campaign.conversion_max_amount IS NOT NULL THEN
+
         v_conversion_amount := LEAST(
             v_conversion_amount,
             v_campaign.conversion_max_amount
         );
+
     END IF;
 
+
+    ----------------------------------------------------------------
+    -- 12. Normalize amount
+    ----------------------------------------------------------------
     v_conversion_amount := ROUND(
-        GREATEST(v_conversion_amount, 0),
+        GREATEST(
+            COALESCE(v_conversion_amount, 0),
+            0
+        ),
         2
     );
 
+
+    ----------------------------------------------------------------
+    -- 13. Safety check
+    ----------------------------------------------------------------
     IF v_conversion_amount > v_conversion_base THEN
+
         RAISE EXCEPTION
             'Calculated conversion % exceeds eligible amount %',
             v_conversion_amount,
             v_conversion_base;
+
     END IF;
 
-    /*
-     * Find both wallets.
-     */
+
+    ----------------------------------------------------------------
+    -- 14. Find Bonus wallet
+    ----------------------------------------------------------------
     SELECT id
     INTO v_bonus_wallet_id
     FROM public.wallets
     WHERE user_id = v_bonus.user_id
       AND wallet_type = 'bonus'
-      AND is_active = TRUE;
+      AND is_active = TRUE
+    LIMIT 1;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION
@@ -944,12 +1009,17 @@ BEGIN
             v_bonus.user_id;
     END IF;
 
+
+    ----------------------------------------------------------------
+    -- 15. Find Main wallet
+    ----------------------------------------------------------------
     SELECT id
     INTO v_main_wallet_id
     FROM public.wallets
     WHERE user_id = v_bonus.user_id
       AND wallet_type = 'main'
-      AND is_active = TRUE;
+      AND is_active = TRUE
+    LIMIT 1;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION
@@ -957,10 +1027,12 @@ BEGIN
             v_bonus.user_id;
     END IF;
 
-    /*
-     * Lock wallet balances deterministically by wallet ID.
-     * This prevents concurrent wallet mutations from racing.
-     */
+
+    ----------------------------------------------------------------
+    -- 16. Lock both wallet balances deterministically
+    --
+    -- Lock order is based on wallet ID to reduce deadlock risk.
+    ----------------------------------------------------------------
     IF v_bonus_wallet_id < v_main_wallet_id THEN
 
         SELECT balance
@@ -968,6 +1040,7 @@ BEGIN
         FROM public.wallet_balances
         WHERE wallet_id = v_bonus_wallet_id
         FOR UPDATE;
+
 
         SELECT balance
         INTO v_main_balance
@@ -983,6 +1056,7 @@ BEGIN
         WHERE wallet_id = v_main_wallet_id
         FOR UPDATE;
 
+
         SELECT balance
         INTO v_bonus_balance
         FROM public.wallet_balances
@@ -991,11 +1065,16 @@ BEGIN
 
     END IF;
 
+
+    ----------------------------------------------------------------
+    -- 17. Verify wallet balance rows exist
+    ----------------------------------------------------------------
     IF v_bonus_balance IS NULL THEN
         RAISE EXCEPTION
             'Bonus wallet balance row not found for wallet %',
             v_bonus_wallet_id;
     END IF;
+
 
     IF v_main_balance IS NULL THEN
         RAISE EXCEPTION
@@ -1003,38 +1082,77 @@ BEGIN
             v_main_wallet_id;
     END IF;
 
-    /*
-     * The Bonus wallet must contain the actual amount being
-     * converted. Never create Main-wallet money from the
-     * bonus entitlement alone.
-     */
+
+    ----------------------------------------------------------------
+    -- 18. The actual Bonus wallet must contain the money
+    --
+    -- Never create Main wallet money purely from the bonus
+    -- entitlement record.
+    ----------------------------------------------------------------
     IF v_conversion_amount > v_bonus_balance THEN
+
         RAISE EXCEPTION
             'Insufficient Bonus wallet balance for conversion. Required: %, Available: %',
             v_conversion_amount,
             v_bonus_balance;
+
     END IF;
 
-    /*
-     * Create the auditable financial transaction.
-     */
+
+    ----------------------------------------------------------------
+    -- 19. Build transaction metadata
+    ----------------------------------------------------------------
     v_metadata := jsonb_build_object(
-        'operation', 'bonus_conversion',
-        'user_bonus_id', v_bonus.id,
-        'bonus_campaign_id', v_campaign.id,
-        'bonus_campaign_code', v_campaign.code,
-        'bonus_campaign_name', v_campaign.name,
-        'conversion_type', v_campaign.conversion_type,
-        'conversion_percentage', v_campaign.conversion_percentage,
-        'conversion_max_amount', v_campaign.conversion_max_amount,
-        'conversion_base_amount', v_conversion_base,
-        'conversion_amount', v_conversion_amount,
-        'convertible_amount_before', v_bonus.convertible_amount,
-        'converted_amount_before', v_bonus.converted_amount,
-        'bonus_wallet_id', v_bonus_wallet_id,
-        'main_wallet_id', v_main_wallet_id
+        'operation',
+        'bonus_conversion',
+
+        'user_bonus_id',
+        v_bonus.id,
+
+        'bonus_campaign_id',
+        v_campaign.id,
+
+        'bonus_campaign_code',
+        v_campaign.code,
+
+        'bonus_campaign_name',
+        v_campaign.name,
+
+        'conversion_type',
+        v_campaign.conversion_type,
+
+        'conversion_percentage',
+        v_campaign.conversion_percentage,
+
+        'conversion_amount',
+        v_campaign.conversion_amount,
+
+        'conversion_max_amount',
+        v_campaign.conversion_max_amount,
+
+        'conversion_base_amount',
+        v_conversion_base,
+
+        'conversion_amount_calculated',
+        v_conversion_amount,
+
+        'convertible_amount_before',
+        v_bonus.convertible_amount,
+
+        'converted_amount_before',
+        v_bonus.converted_amount,
+
+        'bonus_wallet_id',
+        v_bonus_wallet_id,
+
+        'main_wallet_id',
+        v_main_wallet_id
     );
 
+
+    ----------------------------------------------------------------
+    -- 20. Create financial transaction
+    ----------------------------------------------------------------
     SELECT
         r.transaction_id,
         r.created
@@ -1053,18 +1171,24 @@ BEGIN
         v_metadata
     ) AS r;
 
-    /*
-     * If the financial transaction already existed, return it.
-     * The idempotency key guarantees this operation cannot
-     * create a second financial transaction.
-     */
+
+    ----------------------------------------------------------------
+    -- 21. If transaction already existed, return it
+    ----------------------------------------------------------------
     IF NOT v_transaction_created THEN
         RETURN v_transaction_id;
     END IF;
 
-    /*
-     * Move the actual money.
-     */
+
+    ----------------------------------------------------------------
+    -- 22. Move actual money
+    --
+    -- Bonus wallet:
+    --     - conversion amount
+    --
+    -- Main wallet:
+    --     + conversion amount
+    ----------------------------------------------------------------
     IF v_conversion_amount > 0 THEN
 
         UPDATE public.wallet_balances
@@ -1073,15 +1197,17 @@ BEGIN
             updated_at = NOW()
         WHERE wallet_id = v_bonus_wallet_id;
 
+
         UPDATE public.wallet_balances
         SET
             balance = balance + v_conversion_amount,
             updated_at = NOW()
         WHERE wallet_id = v_main_wallet_id;
 
-        /*
-         * Bonus wallet debit.
-         */
+
+        ----------------------------------------------------------------
+        -- 23. Bonus wallet debit ledger entry
+        ----------------------------------------------------------------
         INSERT INTO public.ledger_entries (
             transaction_id,
             wallet_id,
@@ -1095,9 +1221,10 @@ BEGIN
             NOW()
         );
 
-        /*
-         * Main wallet credit.
-         */
+
+        ----------------------------------------------------------------
+        -- 24. Main wallet credit ledger entry
+        ----------------------------------------------------------------
         INSERT INTO public.ledger_entries (
             transaction_id,
             wallet_id,
@@ -1113,20 +1240,26 @@ BEGIN
 
     END IF;
 
-    /*
-     * Record exactly how much of this bonus was converted.
-     */
+
+    ----------------------------------------------------------------
+    -- 25. Record converted amount
+    ----------------------------------------------------------------
     UPDATE public.user_bonuses
     SET
-        converted_amount =
-            ROUND(
-                converted_amount + v_conversion_amount,
-                2
-            ),
+        converted_amount = ROUND(
+            COALESCE(converted_amount, 0)
+            + v_conversion_amount,
+            2
+        ),
         updated_at = NOW()
     WHERE id = v_bonus.id;
 
+
+    ----------------------------------------------------------------
+    -- 26. Return financial transaction ID
+    ----------------------------------------------------------------
     RETURN v_transaction_id;
+
 END;
 $$;
 
@@ -2188,12 +2321,15 @@ CREATE FUNCTION public.create_user_wallets() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 DECLARE
-    main_wallet_id BIGINT;
-    play_wallet_id BIGINT;
+    main_wallet_id  BIGINT;
+    play_wallet_id  BIGINT;
+    bonus_wallet_id BIGINT;
 BEGIN
 
+    ----------------------------------------------------------------
     -- MAIN WALLET
-    INSERT INTO wallets (
+    ----------------------------------------------------------------
+    INSERT INTO public.wallets (
         user_id,
         wallet_type,
         currency,
@@ -2207,12 +2343,17 @@ BEGIN
     )
     ON CONFLICT (user_id, wallet_type)
     DO UPDATE
-        SET is_active = TRUE
-    RETURNING id INTO main_wallet_id;
+        SET
+            is_active = TRUE,
+            updated_at = NOW()
+    RETURNING id
+    INTO main_wallet_id;
 
 
+    ----------------------------------------------------------------
     -- PLAY WALLET
-    INSERT INTO wallets (
+    ----------------------------------------------------------------
+    INSERT INTO public.wallets (
         user_id,
         wallet_type,
         currency,
@@ -2226,12 +2367,43 @@ BEGIN
     )
     ON CONFLICT (user_id, wallet_type)
     DO UPDATE
-        SET is_active = TRUE
-    RETURNING id INTO play_wallet_id;
+        SET
+            is_active = TRUE,
+            updated_at = NOW()
+    RETURNING id
+    INTO play_wallet_id;
 
 
+    ----------------------------------------------------------------
+    -- BONUS WALLET
+    --
+    -- Used exclusively for promotional bonus funds.
+    ----------------------------------------------------------------
+    INSERT INTO public.wallets (
+        user_id,
+        wallet_type,
+        currency,
+        is_active
+    )
+    VALUES (
+        NEW.id,
+        'bonus',
+        'ETB',
+        TRUE
+    )
+    ON CONFLICT (user_id, wallet_type)
+    DO UPDATE
+        SET
+            is_active = TRUE,
+            updated_at = NOW()
+    RETURNING id
+    INTO bonus_wallet_id;
+
+
+    ----------------------------------------------------------------
     -- MAIN BALANCE
-    INSERT INTO wallet_balances (
+    ----------------------------------------------------------------
+    INSERT INTO public.wallet_balances (
         wallet_id,
         balance
     )
@@ -2243,13 +2415,30 @@ BEGIN
     DO NOTHING;
 
 
+    ----------------------------------------------------------------
     -- PLAY BALANCE
-    INSERT INTO wallet_balances (
+    ----------------------------------------------------------------
+    INSERT INTO public.wallet_balances (
         wallet_id,
         balance
     )
     VALUES (
         play_wallet_id,
+        0
+    )
+    ON CONFLICT (wallet_id)
+    DO NOTHING;
+
+
+    ----------------------------------------------------------------
+    -- BONUS BALANCE
+    ----------------------------------------------------------------
+    INSERT INTO public.wallet_balances (
+        wallet_id,
+        balance
+    )
+    VALUES (
+        bonus_wallet_id,
         0
     )
     ON CONFLICT (wallet_id)
@@ -4342,6 +4531,572 @@ $$;
 ALTER FUNCTION public.get_active_withdrawal_rule(p_payment_method_id integer, p_payment_account_id integer, p_amount numeric) OWNER TO neondb_owner;
 
 --
+-- Name: get_eligible_deposit_bonus_campaigns(integer, integer, numeric); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.get_eligible_deposit_bonus_campaigns(p_user_id integer, p_deposit_id integer, p_deposit_amount numeric) RETURNS TABLE(campaign_id bigint, campaign_code character varying, campaign_name character varying, bonus_type character varying, game_system_id bigint, amount numeric, percentage numeric, multiplier numeric, wagering_multiplier numeric, min_deposit_amount numeric, max_bonus_amount numeric, validity_hours integer, stackable boolean, stack_group character varying, priority integer)
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+    v_is_first_deposit BOOLEAN;
+BEGIN
+
+    ----------------------------------------------------------------
+    -- 1. Validate input
+    ----------------------------------------------------------------
+
+    IF p_user_id IS NULL OR p_user_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid user ID';
+    END IF;
+
+    IF p_deposit_id IS NULL OR p_deposit_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid deposit ID';
+    END IF;
+
+    IF p_deposit_amount IS NULL OR p_deposit_amount <= 0 THEN
+        RETURN;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 2. Verify the deposit belongs to the user
+    ----------------------------------------------------------------
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.deposits d
+        WHERE d.id = p_deposit_id
+          AND d.user_id = p_user_id
+    ) THEN
+
+        RAISE EXCEPTION
+            'Deposit % does not belong to user %',
+            p_deposit_id,
+            p_user_id;
+
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 3. Determine whether this is the user's first completed
+    --    deposit.
+    --
+    -- The current deposit may still be pending while this function
+    -- is called, so we count completed deposits EXCLUDING this one.
+    ----------------------------------------------------------------
+
+    SELECT NOT EXISTS (
+        SELECT 1
+        FROM public.deposits d
+        WHERE d.user_id = p_user_id
+          AND d.status = 'completed'
+          AND d.id <> p_deposit_id
+    )
+    INTO v_is_first_deposit;
+
+
+    ----------------------------------------------------------------
+    -- 4. Find eligible campaigns
+    --
+    -- We first build the complete eligible set.
+    -- Stacking is resolved afterwards.
+    ----------------------------------------------------------------
+
+    RETURN QUERY
+
+    WITH eligible AS (
+
+        SELECT
+            bc.id,
+            bc.code,
+            bc.name,
+            bc.bonus_type,
+            bc.game_system_id,
+            bc.amount,
+            bc.percentage,
+            bc.multiplier,
+            bc.wagering_multiplier,
+            bc.min_deposit_amount,
+            bc.max_bonus_amount,
+            bc.validity_hours,
+            bc.stackable,
+            bc.stack_group,
+            bc.priority,
+
+            /*
+             * A NULL stack_group means this campaign gets its
+             * own isolated stack group.
+             */
+            COALESCE(
+                NULLIF(BTRIM(bc.stack_group), ''),
+                '__campaign_' || bc.id::TEXT
+            ) AS effective_stack_group
+
+        FROM public.bonus_campaigns bc
+
+        WHERE bc.is_active = TRUE
+
+
+        ----------------------------------------------------------------
+        -- Campaign must currently be inside its active date window.
+        ----------------------------------------------------------------
+
+        AND (
+            bc.starts_at IS NULL
+            OR bc.starts_at <= NOW()
+        )
+
+        AND (
+            bc.ends_at IS NULL
+            OR bc.ends_at >= NOW()
+        )
+
+
+        ----------------------------------------------------------------
+        -- Deposit-triggered campaigns.
+        --
+        -- welcome:
+        --   only first successful deposit
+        --
+        -- deposit:
+        --   normal deposit bonus
+        --
+        -- reload:
+        --   deposits after the first deposit
+        ----------------------------------------------------------------
+
+        AND (
+            (
+                bc.bonus_type = 'welcome'
+                AND v_is_first_deposit = TRUE
+            )
+
+            OR
+
+            bc.bonus_type = 'deposit'
+
+            OR
+
+            (
+                bc.bonus_type = 'reload'
+                AND v_is_first_deposit = FALSE
+            )
+        )
+
+
+        ----------------------------------------------------------------
+        -- Minimum deposit requirement.
+        --
+        -- Only deposit/reload campaigns use min_deposit_amount.
+        ----------------------------------------------------------------
+
+        AND (
+            bc.bonus_type = 'welcome'
+
+            OR
+
+            bc.min_deposit_amount IS NULL
+
+            OR
+
+            p_deposit_amount >= bc.min_deposit_amount
+        )
+
+
+        ----------------------------------------------------------------
+        -- Do not select a campaign that has already been awarded
+        -- for this exact deposit.
+        ----------------------------------------------------------------
+
+        AND NOT EXISTS (
+            SELECT 1
+            FROM public.user_bonuses ub
+            WHERE ub.user_id = p_user_id
+              AND ub.campaign_id = bc.id
+              AND ub.source_type = 'deposit'
+              AND ub.source_id = p_deposit_id::VARCHAR
+        )
+
+    ),
+
+    ----------------------------------------------------------------
+    -- 5. Resolve stacking.
+    --
+    -- If a stack group contains a non-stackable campaign,
+    -- only the highest-priority non-stackable campaign wins.
+    --
+    -- Otherwise all eligible stackable campaigns survive.
+    ----------------------------------------------------------------
+
+    resolved AS (
+
+        SELECT e.*
+
+        FROM eligible e
+
+        WHERE
+
+            ----------------------------------------------------------------
+            -- Case A:
+            -- This group has no non-stackable campaign.
+            --
+            -- Therefore all stackable campaigns can coexist.
+            ----------------------------------------------------------------
+
+            (
+                NOT EXISTS (
+                    SELECT 1
+                    FROM eligible conflict
+                    WHERE conflict.effective_stack_group =
+                          e.effective_stack_group
+
+                      AND conflict.stackable = FALSE
+                )
+
+                AND e.stackable = TRUE
+            )
+
+            OR
+
+            ----------------------------------------------------------------
+            -- Case B:
+            -- This group contains a non-stackable campaign.
+            --
+            -- Select only the highest-priority non-stackable campaign.
+            ----------------------------------------------------------------
+
+            (
+                e.stackable = FALSE
+
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM eligible higher
+                    WHERE higher.effective_stack_group =
+                          e.effective_stack_group
+
+                      AND higher.stackable = FALSE
+
+                      AND (
+                          higher.priority > e.priority
+
+                          OR (
+                              higher.priority = e.priority
+                              AND higher.id > e.id
+                          )
+                      )
+                )
+            )
+    )
+
+    SELECT
+        r.id,
+        r.code,
+        r.name,
+        r.bonus_type,
+        r.game_system_id,
+        r.amount,
+        r.percentage,
+        r.multiplier,
+        r.wagering_multiplier,
+        r.min_deposit_amount,
+        r.max_bonus_amount,
+        r.validity_hours,
+        r.stackable,
+        r.stack_group,
+        r.priority
+
+    FROM resolved r
+
+    ORDER BY
+        r.priority DESC,
+        r.id ASC;
+
+END;
+$$;
+
+
+ALTER FUNCTION public.get_eligible_deposit_bonus_campaigns(p_user_id integer, p_deposit_id integer, p_deposit_amount numeric) OWNER TO neondb_owner;
+
+--
+-- Name: get_eligible_deposit_bonus_campaigns(integer, bigint, numeric); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.get_eligible_deposit_bonus_campaigns(p_user_id integer, p_deposit_id bigint, p_deposit_amount numeric) RETURNS TABLE(campaign_id bigint, campaign_code character varying, campaign_name character varying, bonus_type character varying, game_system_id bigint, amount numeric, percentage numeric, multiplier numeric, wagering_multiplier numeric, min_deposit_amount numeric, max_bonus_amount numeric, validity_hours integer, stackable boolean, stack_group character varying, priority integer)
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+    v_is_first_deposit BOOLEAN;
+BEGIN
+
+    ----------------------------------------------------------------
+    -- 1. Validate input
+    ----------------------------------------------------------------
+
+    IF p_user_id IS NULL OR p_user_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid user ID';
+    END IF;
+
+    IF p_deposit_id IS NULL OR p_deposit_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid deposit ID';
+    END IF;
+
+    IF p_deposit_amount IS NULL OR p_deposit_amount <= 0 THEN
+        RETURN;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 2. Make sure the deposit belongs to this user
+    ----------------------------------------------------------------
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.deposits d
+        WHERE d.id = p_deposit_id
+          AND d.user_id = p_user_id
+    ) THEN
+        RAISE EXCEPTION
+            'Deposit % does not belong to user %',
+            p_deposit_id,
+            p_user_id;
+    END IF;
+
+
+    ----------------------------------------------------------------
+    -- 3. Determine whether this is the user's first completed
+    --    deposit.
+    --
+    -- The current deposit is excluded because this function can
+    -- be called before the deposit status is changed to completed.
+    ----------------------------------------------------------------
+
+    SELECT NOT EXISTS (
+        SELECT 1
+        FROM public.deposits d
+        WHERE d.user_id = p_user_id
+          AND d.status = 'completed'
+          AND d.id <> p_deposit_id
+    )
+    INTO v_is_first_deposit;
+
+
+    ----------------------------------------------------------------
+    -- 4. Build eligible campaign set
+    ----------------------------------------------------------------
+
+    RETURN QUERY
+
+    WITH eligible AS (
+
+        SELECT
+            bc.id,
+            bc.code,
+            bc.name,
+            bc.bonus_type,
+            bc.game_system_id,
+            bc.amount,
+            bc.percentage,
+            bc.multiplier,
+            bc.wagering_multiplier,
+            bc.min_deposit_amount,
+            bc.max_bonus_amount,
+            bc.validity_hours,
+            bc.stackable,
+            bc.stack_group,
+            bc.priority,
+
+            /*
+             * Campaigns without a stack group are isolated.
+             *
+             * Example:
+             *
+             * campaign 100 -> NULL
+             * campaign 101 -> NULL
+             *
+             * These do NOT conflict with each other.
+             */
+            COALESCE(
+                NULLIF(BTRIM(bc.stack_group), ''),
+                '__campaign_' || bc.id::TEXT
+            ) AS effective_stack_group
+
+        FROM public.bonus_campaigns bc
+
+        WHERE bc.is_active = TRUE
+
+
+        ----------------------------------------------------------------
+        -- Campaign date window
+        ----------------------------------------------------------------
+
+        AND (
+            bc.starts_at IS NULL
+            OR bc.starts_at <= NOW()
+        )
+
+        AND (
+            bc.ends_at IS NULL
+            OR bc.ends_at >= NOW()
+        )
+
+
+        ----------------------------------------------------------------
+        -- Deposit campaign types
+        ----------------------------------------------------------------
+
+        AND (
+            /*
+             * Welcome bonus:
+             * only the first successful deposit.
+             */
+            (
+                bc.bonus_type = 'welcome'
+                AND v_is_first_deposit = TRUE
+            )
+
+            OR
+
+            /*
+             * Normal deposit bonus.
+             */
+            bc.bonus_type = 'deposit'
+
+            OR
+
+            /*
+             * Reload:
+             * only after the user already has a completed deposit.
+             */
+            (
+                bc.bonus_type = 'reload'
+                AND v_is_first_deposit = FALSE
+            )
+        )
+
+
+        ----------------------------------------------------------------
+        -- Minimum deposit
+        ----------------------------------------------------------------
+
+        AND (
+            bc.min_deposit_amount IS NULL
+            OR p_deposit_amount >= bc.min_deposit_amount
+        )
+
+
+        ----------------------------------------------------------------
+        -- Do not return the same campaign twice for this deposit.
+        --
+        -- This is an additional protection on top of the
+        -- financial idempotency key used by award_bonus().
+        ----------------------------------------------------------------
+
+        AND NOT EXISTS (
+            SELECT 1
+            FROM public.user_bonuses ub
+            WHERE ub.user_id = p_user_id
+              AND ub.campaign_id = bc.id
+              AND ub.source_type = 'deposit'
+              AND ub.source_id = p_deposit_id::VARCHAR
+        )
+    ),
+
+    ----------------------------------------------------------------
+    -- 5. Resolve stacking
+    ----------------------------------------------------------------
+
+    resolved AS (
+
+        SELECT e.*
+
+        FROM eligible e
+
+        WHERE
+
+            ----------------------------------------------------------------
+            -- CASE A
+            --
+            -- No non-stackable campaign exists in this group.
+            --
+            -- Therefore every stackable campaign can coexist.
+            ----------------------------------------------------------------
+
+            (
+                e.stackable = TRUE
+
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM eligible conflict
+                    WHERE conflict.effective_stack_group =
+                          e.effective_stack_group
+                      AND conflict.stackable = FALSE
+                )
+            )
+
+            OR
+
+            ----------------------------------------------------------------
+            -- CASE B
+            --
+            -- This is a non-stackable campaign.
+            --
+            -- It wins if there is no higher-priority non-stackable
+            -- campaign in the same group.
+            ----------------------------------------------------------------
+
+            (
+                e.stackable = FALSE
+
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM eligible higher
+                    WHERE higher.effective_stack_group =
+                          e.effective_stack_group
+
+                      AND higher.stackable = FALSE
+
+                      AND (
+                          higher.priority > e.priority
+
+                          OR (
+                              higher.priority = e.priority
+                              AND higher.id > e.id
+                          )
+                      )
+                )
+            )
+    )
+
+    SELECT
+        r.id,
+        r.code,
+        r.name,
+        r.bonus_type,
+        r.game_system_id,
+        r.amount,
+        r.percentage,
+        r.multiplier,
+        r.wagering_multiplier,
+        r.min_deposit_amount,
+        r.max_bonus_amount,
+        r.validity_hours,
+        r.stackable,
+        r.stack_group,
+        r.priority
+
+    FROM resolved r
+
+    ORDER BY
+        r.priority DESC,
+        r.id ASC;
+
+END;
+$$;
+
+
+ALTER FUNCTION public.get_eligible_deposit_bonus_campaigns(p_user_id integer, p_deposit_id bigint, p_deposit_amount numeric) OWNER TO neondb_owner;
+
+--
 -- Name: stake_funding_policies; Type: TABLE; Schema: public; Owner: neondb_owner
 --
 
@@ -4707,24 +5462,20 @@ CREATE VIEW public.user_wallet_balances AS
     u.telegram_id,
     u.name,
     u.phone,
-    main.wallet_id AS main_wallet_id,
-    main.balance AS main_balance,
-    play.wallet_id AS play_wallet_id,
-    play.balance AS play_balance,
-    (COALESCE(main.balance, (0)::numeric) + COALESCE(play.balance, (0)::numeric)) AS total_balance
-   FROM ((public.users u
-     LEFT JOIN ( SELECT w.user_id,
-            w.id AS wallet_id,
-            wb.balance
-           FROM (public.wallets w
-             JOIN public.wallet_balances wb ON ((wb.wallet_id = w.id)))
-          WHERE ((w.wallet_type)::text = 'main'::text)) main ON ((main.user_id = u.id)))
-     LEFT JOIN ( SELECT w.user_id,
-            w.id AS wallet_id,
-            wb.balance
-           FROM (public.wallets w
-             JOIN public.wallet_balances wb ON ((wb.wallet_id = w.id)))
-          WHERE ((w.wallet_type)::text = 'play'::text)) play ON ((play.user_id = u.id)));
+    main_wallet.id AS main_wallet_id,
+    (COALESCE(main_balance.balance, (0)::numeric))::numeric(18,2) AS main_balance,
+    play_wallet.id AS play_wallet_id,
+    (COALESCE(play_balance.balance, (0)::numeric))::numeric(18,2) AS play_balance,
+    ((COALESCE(main_balance.balance, (0)::numeric) + COALESCE(play_balance.balance, (0)::numeric)) + COALESCE(bonus_balance.balance, (0)::numeric)) AS total_balance,
+    bonus_wallet.id AS bonus_wallet_id,
+    (COALESCE(bonus_balance.balance, (0)::numeric))::numeric(18,2) AS bonus_balance
+   FROM ((((((public.users u
+     LEFT JOIN public.wallets main_wallet ON (((main_wallet.user_id = u.id) AND ((main_wallet.wallet_type)::text = 'main'::text))))
+     LEFT JOIN public.wallet_balances main_balance ON ((main_balance.wallet_id = main_wallet.id)))
+     LEFT JOIN public.wallets play_wallet ON (((play_wallet.user_id = u.id) AND ((play_wallet.wallet_type)::text = 'play'::text))))
+     LEFT JOIN public.wallet_balances play_balance ON ((play_balance.wallet_id = play_wallet.id)))
+     LEFT JOIN public.wallets bonus_wallet ON (((bonus_wallet.user_id = u.id) AND ((bonus_wallet.wallet_type)::text = 'bonus'::text))))
+     LEFT JOIN public.wallet_balances bonus_balance ON ((bonus_balance.wallet_id = bonus_wallet.id)));
 
 
 ALTER VIEW public.user_wallet_balances OWNER TO neondb_owner;
@@ -8196,16 +8947,18 @@ CREATE TABLE public.bonus_campaigns (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    conversion_type character varying(30) DEFAULT 'percentage'::character varying NOT NULL,
+    conversion_type character varying(30) DEFAULT 'none'::character varying NOT NULL,
     conversion_percentage numeric(8,4) DEFAULT 100 NOT NULL,
     conversion_max_amount numeric(18,2),
     multiplier numeric(18,4),
     stackable boolean DEFAULT false NOT NULL,
     stack_group character varying(50),
     priority integer DEFAULT 0 NOT NULL,
+    conversion_amount numeric(18,2),
     CONSTRAINT bonus_campaigns_amount_check CHECK (((amount IS NULL) OR (amount >= (0)::numeric))),
     CONSTRAINT bonus_campaigns_bonus_type_check CHECK (((bonus_type)::text = ANY ((ARRAY['welcome'::character varying, 'deposit'::character varying, 'free_bet'::character varying, 'no_deposit'::character varying, 'reload'::character varying, 'cashback'::character varying, 'free_spins'::character varying, 'wagering'::character varying, 'odds_boost'::character varying, 'accumulator'::character varying, 'loyalty'::character varying, 'vip_tier'::character varying, 'referral'::character varying, 'promo_code'::character varying, 'tournament'::character varying, 'mission'::character varying, 'birthday'::character varying, 'free_entry'::character varying, 'insurance'::character varying, 'jackpot'::character varying])::text[]))),
     CONSTRAINT bonus_campaigns_calculation_rule_check CHECK ((((multiplier IS NOT NULL) AND (amount IS NULL) AND (percentage IS NULL)) OR ((multiplier IS NULL) AND (amount IS NOT NULL) AND (percentage IS NULL)) OR ((multiplier IS NULL) AND (amount IS NULL) AND (percentage IS NOT NULL)))),
+    CONSTRAINT bonus_campaigns_conversion_amount_check CHECK (((conversion_amount IS NULL) OR (conversion_amount >= (0)::numeric))),
     CONSTRAINT bonus_campaigns_conversion_max_amount_check CHECK (((conversion_max_amount IS NULL) OR (conversion_max_amount >= (0)::numeric))),
     CONSTRAINT bonus_campaigns_conversion_percentage_check CHECK (((conversion_percentage >= (0)::numeric) AND (conversion_percentage <= (100)::numeric))),
     CONSTRAINT bonus_campaigns_conversion_type_check CHECK (((conversion_type)::text = ANY ((ARRAY['percentage'::character varying, 'fixed'::character varying, 'none'::character varying])::text[]))),
