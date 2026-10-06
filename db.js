@@ -790,7 +790,7 @@ async registerUser(telegramId, name, phone) {
   } finally {
     client.release();
   }
-}
+},
 
 
   async reconnectUserByPhone(
