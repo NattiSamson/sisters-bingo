@@ -111,6 +111,32 @@ async function safeRollback(client) {
 
 module.exports = {
 
+async getBingoUserDashboard(userId) {
+  const id = toPositiveInteger(
+    userId,
+    "userId"
+  );
+
+  const { rows } = await pool.query(
+    `
+      SELECT public.get_bingo_user_dashboard(
+        $1::integer
+      ) AS result
+    `,
+    [id]
+  );
+
+  const result = rows[0]?.result;
+
+  if (!result) {
+    throw new Error(
+      "Failed to retrieve Bingo user dashboard."
+    );
+  }
+
+  return result;
+},
+
 	/**
  * Get transfer limits and current usage for a user's wallet.
  *
