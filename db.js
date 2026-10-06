@@ -4392,6 +4392,7 @@ async getAllPaymentAccountsForAdmin() {
 
 async approveDeposit(receipt, telegramId) {
     const client = await pool.connect();
+	let awardedBonuses = [];
 
     try {
         // ------------------------------------------------------------
@@ -4399,6 +4400,7 @@ async approveDeposit(receipt, telegramId) {
         // ------------------------------------------------------------
 
         const parsedTelegramId = Number(telegramId);
+		
 
         if (
             !Number.isSafeInteger(parsedTelegramId) ||
@@ -4931,12 +4933,114 @@ async approveDeposit(receipt, telegramId) {
             );
         }
 
+		// ------------------------------------------------------------
+		// 14. Evaluate and award eligible deposit bonuses
+		//
+		// IMPORTANT:
+		// This happens inside the SAME database transaction as the
+		// deposit. If any bonus award fails, the entire deposit is
+		// rolled back.
+		// ------------------------------------------------------------
+		
+		const eligibleBonusesResult = await client.query(
+		    `
+		    SELECT
+		        campaign_id,
+		        campaign_code,
+		        campaign_name,
+		        bonus_type,
+		        game_system_id,
+		        amount,
+		        percentage,
+		        multiplier,
+		        wagering_multiplier,
+		        min_deposit_amount,
+		        max_bonus_amount,
+		        validity_hours,
+		        stackable,
+		        stack_group,
+		        priority
+		    FROM public.get_eligible_deposit_bonus_campaigns(
+		        $1,
+		        $2,
+		        $3
+		    )
+		    ORDER BY
+		        priority DESC,
+		        campaign_id ASC
+		    `,
+		    [
+		        user.id,
+		        deposit.id,
+		        amount
+		    ]
+		);
+		
+		for (const campaign of eligibleBonusesResult.rows) {
+		
+		    const idempotencyKey =
+		        `deposit-bonus:${deposit.id}:${campaign.campaign_id}`;
+		
+		    const bonusResult = await client.query(
+		        `
+		        SELECT
+		            bonus_id,
+		            transaction_id
+		        FROM public.award_bonus(
+		            $1,
+		            $2,
+		            $3,
+		            $4,
+		            $5,
+		            $6,
+		            $7,
+		            $8::jsonb
+		        )
+		        `,
+		        [
+		            user.id,
+		            campaign.campaign_id,
+		            amount,
+		            "deposit",
+		            String(deposit.id),
+		            idempotencyKey,
+		            `Deposit bonus: ${campaign.campaign_name}`,
+		            JSON.stringify({
+		                deposit_id: deposit.id,
+		                deposit_reference: deposit.reference,
+		                deposit_amount: amount,
+		                campaign_id: campaign.campaign_id,
+		                campaign_code: campaign.campaign_code,
+		                campaign_name: campaign.campaign_name,
+		                bonus_type: campaign.bonus_type,
+		                stackable: campaign.stackable,
+		                stack_group: campaign.stack_group,
+		                priority: campaign.priority
+		            })
+		        ]
+		    );
+		
+		    if (bonusResult.rowCount !== 1) {
+		        throw new Error(
+		            `Failed to award bonus campaign ${campaign.campaign_id}.`
+		        );
+		    }
+		
+		    const awardedBonus = bonusResult.rows[0];
+		
+		    awardedBonuses.push({
+		        campaignId: Number(campaign.campaign_id),
+		        campaignCode: campaign.campaign_code,
+		        campaignName: campaign.campaign_name,
+		        bonusType: campaign.bonus_type,
+		        bonusId: Number(awardedBonus.bonus_id),
+		        transactionId: Number(awardedBonus.transaction_id)
+		    });
+		}
+
         // ------------------------------------------------------------
-        // 14. Read final wallet balances
-        //
-        // The wallet view is now the source of truth.
-        // users.balance is NOT read or modified.
-        // ------------------------------------------------------------
+		// 15. Read final wallet balances
+		// ------------------------------------------------------------
 
         const balancesResult = await client.query(
             `
@@ -4963,9 +5067,9 @@ async approveDeposit(receipt, telegramId) {
 
         const balances = balancesResult.rows[0];
 
-        // ------------------------------------------------------------
-        // 15. Commit everything atomically
-        // ------------------------------------------------------------
+		// ------------------------------------------------------------
+		// 16. Commit everything atomically
+		// ------------------------------------------------------------
 
         await client.query("COMMIT");
 
@@ -5020,7 +5124,11 @@ async approveDeposit(receipt, telegramId) {
                     Number(balances.play_balance),
                 totalBalance:
                     Number(balances.total_balance)
-            }
+            },
+			bonuses: {
+					    count: awardedBonuses.length,
+					    awarded: awardedBonuses
+					}
         };
     } catch (error) {
         await safeRollback(client);
@@ -5628,103 +5736,50 @@ async removeBingoParticipant(
   return rows[0] || null;
 },
 
- async endBingoGame(gameId, winnerCardIds) {
-  // ------------------------------------------------------------
-  // 1. Validate game ID
-  // ------------------------------------------------------------
-  const game = toPositiveInteger(
+   async endBingoGame(
     gameId,
-    "gameId"
-  );
-
-  // ------------------------------------------------------------
-  // 2. Validate winnerCardIds
-  // ------------------------------------------------------------
-  if (!Array.isArray(winnerCardIds)) {
-    throw new Error(
-      "winnerCardIds must be an array."
-    );
-  }
-
-  if (winnerCardIds.length === 0) {
-    throw new Error(
-      "At least one winning card is required."
-    );
-  }
-
-  // ------------------------------------------------------------
-  // 3. Validate every card ID
-  //
-  // Do NOT silently accept invalid values.
-  // Do NOT allow duplicate winning cards.
-  // ------------------------------------------------------------
-  const normalizedCardIds =
-    winnerCardIds.map((cardId) =>
-      toPositiveInteger(
-        cardId,
-        "winnerCardId"
-      )
+    winnerParticipantCardIds
+  ) {
+    const game = toPositiveInteger(
+      gameId,
+      "gameId"
     );
 
-  const cardIds = [
-    ...new Set(normalizedCardIds)
-  ];
+    if (!Array.isArray(winnerParticipantCardIds)) {
+      throw new Error(
+        "winnerParticipantCardIds must be an array."
+      );
+    }
 
-  if (cardIds.length === 0) {
-    throw new Error(
-      "At least one valid winning card is required."
-    );
-  }
+    if (winnerParticipantCardIds.length === 0) {
+      throw new Error(
+        "At least one winning card is required."
+      );
+    }
 
-  // ------------------------------------------------------------
-  // 4. Call the PostgreSQL settlement function
-  //
-  // IMPORTANT:
-  // PostgreSQL is responsible for:
-  //
-  // - locking the Bingo game
-  // - validating the winning cards
-  // - validating the pot
-  // - calculating the payout
-  // - splitting the payout between winning CARDS
-  // - crediting winner wallets
-  // - marking participants as winners
-  // - updating user statistics
-  // - setting is_split
-  // - completing the game
-  //
-  // Therefore we do NOT calculate money here.
-  // ------------------------------------------------------------
-  const { rows } = await pool.query(
-    `
-      SELECT end_bingo_game(
+    const winnerIds =
+      winnerParticipantCardIds.map((id) =>
+        toPositiveInteger(
+          id,
+          "winnerParticipantCardId"
+        )
+      );
+
+    const { rows } = await pool.query(
+      `
+      SELECT public.end_bingo_game(
         $1::integer,
-        $2::integer[]
+        $2::bigint[]
       ) AS result
-    `,
-    [
-      game,
-      cardIds
-    ]
-  );
-
-  // ------------------------------------------------------------
-  // 5. Make sure PostgreSQL returned a settlement result
-  // ------------------------------------------------------------
-  const result =
-    rows[0]?.result;
-
-  if (!result) {
-    throw new Error(
-      `Failed to settle Bingo game ${game}.`
+      `,
+      [
+        game,
+        winnerIds
+      ]
     );
-  }
 
-  // ------------------------------------------------------------
-  // 6. Return the database settlement result
-  // ------------------------------------------------------------
-  return result;
-},
+    return rows[0]?.result || null;
+  },
 
   async getActiveBingoGame(
   roomId
