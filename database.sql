@@ -5859,11 +5859,6 @@ BEGIN
 
         ----------------------------------------------------------------
         -- All account balances
-        --
-        -- Current wallet types are:
-        --   main
-        --   play
-        --   bonus
         ----------------------------------------------------------------
 
         'balances',
@@ -5969,9 +5964,6 @@ BEGIN
 
         ----------------------------------------------------------------
         -- Active stakes
-        --
-        -- Every active stake is returned, even if the user has
-        -- never played that stake.
         ----------------------------------------------------------------
 
         'stakes',
@@ -6109,6 +6101,9 @@ BEGIN
 
                                         'selection_seconds',
                                         r.selection_seconds,
+
+                                        'next_round_seconds',
+                                        r.next_round_seconds,
 
                                         'disqualification_policy',
                                         r.disqualification_policy,
@@ -10612,6 +10607,7 @@ CREATE TABLE public.bingo_rooms (
     bingo_mode_policy character varying(20) DEFAULT 'choice'::character varying NOT NULL,
     bingo_button_scope character varying(20) DEFAULT 'all_cards'::character varying NOT NULL,
     commission_rule_id bigint NOT NULL,
+    next_round_seconds integer DEFAULT 7 NOT NULL,
     CONSTRAINT bingo_rooms_bingo_button_scope_check CHECK (((bingo_button_scope)::text = ANY ((ARRAY['all_cards'::character varying, 'per_card'::character varying])::text[]))),
     CONSTRAINT bingo_rooms_bingo_mode_policy_check CHECK (((bingo_mode_policy)::text = ANY ((ARRAY['choice'::character varying, 'auto_only'::character varying, 'manual_only'::character varying])::text[]))),
     CONSTRAINT bingo_rooms_card_count_check CHECK ((card_count >= 1)),
@@ -13292,6 +13288,5 @@ ALTER TABLE ONLY public.withdrawals
 --
 -- PostgreSQL database dump complete
 --
-
 
 
