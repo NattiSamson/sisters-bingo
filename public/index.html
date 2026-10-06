@@ -3488,38 +3488,29 @@ body.game-screen-active > .bottom-nav{
 
 
 <div id="screenProfile" class="screen">
-  <div class="profile-page">
-    <div class="profile-hero">
-      <div class="profile-hero-row">
-        <div class="profile-avatar" id="profileAvatar">M</div>
-        <div class="profile-hero-copy">
-          <div class="profile-name" id="profileName">Player</div>
-          <div class="profile-sub">Mela Bingo Player</div>
-          <div class="profile-member">♛ Mela Bingo Member</div>
-        </div>
-      </div>
-      <div class="profile-wallet">
-        <div class="profile-wallet-copy">
-          <div class="profile-wallet-label">Wallet Balance</div>
-          <div class="profile-wallet-value" id="profileBalance">ETB 0.00</div>
-        </div>
-        <div class="profile-wallet-icon" aria-hidden="true">💳</div>
-      </div>
+  <div class="profile-page pf">
+    <div class="pf-head">
+      <div class="pf-av" id="profileAvatar">M</div>
+      <div class="pf-name" id="profileName">Player</div>
     </div>
 
-    <div class="profile-stats">
-    
-      <div class="profile-stat winnings">
-        <div class="profile-stat-icon">🏆</div>
-        <div class="profile-stat-value" id="profileWinnings">ETB 0.00</div>
-        <div class="profile-stat-label">TOTAL WINNINGS</div>
-      </div>
-     
-      <div class="profile-stat gameswon">
-        <div class="profile-stat-icon">🏅</div>
-        <div class="profile-stat-value" id="profileWins">0</div>
-        <div class="profile-stat-label">TOTAL GAMES WON</div>
-      </div>
+    <div class="pf-balls">
+      <div class="pf-wb p"><div class="pf-ball"><b id="pfPlay">0.00</b><i>ETB</i></div><small>PLAY WALLET</small></div>
+      <div class="pf-wb m"><div class="pf-ball"><b id="profileBalance">0.00</b><i>ETB</i></div><small>MAIN WALLET</small></div>
+      <div class="pf-wb b"><div class="pf-ball"><b id="pfBonus">0.00</b><i>ETB</i></div><small>BONUS</small></div>
+    </div>
+
+    <div class="pf-sec"><span>Your stats</span></div>
+    <div class="pf-tiles">
+      <div class="pf-t a"><div class="pf-hd">GAMES PLAYED</div><b id="profileGames">0</b><span>Total</span></div>
+      <div class="pf-t b"><div class="pf-hd">EARNING</div><b id="profileWinnings">0</b><span>Total ETB</span></div>
+      <div class="pf-t c"><div class="pf-hd">GAMES WON</div><b id="profileWins">0</b><span>Total</span></div>
+    </div>
+
+    <div class="pf-sec"><span>Wins by stake</span></div>
+    <div class="pf-tbl">
+      <div class="pf-heads"><div>STAKE</div><div>WINS</div><div>WIN AMOUNT</div></div>
+      <div id="pfRows"></div>
     </div>
     <div id="profileStatus" class="profile-status" style="display:none"></div>
   </div>
@@ -3655,6 +3646,25 @@ function numConfig(n){
   return{letter:'O',cls:'co',color:'var(--o)'};
 }
 function colClass(n){if(n<=15)return 'cb';if(n<=30)return 'ci';if(n<=45)return 'cn';if(n<=60)return 'cg';return 'co';}
+// Real wallets from the database: {main, play, bonus}. The header shows main + play.
+let currentWallets=null;
+function setWallets(w){
+  if(!w||typeof w!=='object') return;
+  const n=v=>{const x=Number(v);return Number.isFinite(x)&&x>=0?x:0;};
+  currentWallets={main:n(w.main),play:n(w.play),bonus:n(w.bonus)};
+  try{localStorage.setItem('melaBingoWallets',JSON.stringify(currentWallets));}catch(e){}
+  paintWallets();
+}
+function paintWallets(){
+  if(!currentWallets) return;
+  const sm=document.getElementById('selectionMainWallet'), sp=document.getElementById('selectionPlayWallet');
+  if(sm) sm.innerText=`ETB ${Math.floor(currentWallets.main)}`;
+  if(sp) sp.innerText=`${Math.floor(currentWallets.play)}`;
+  const pm=document.getElementById('profileBalance'), pp=document.getElementById('pfPlay'), pb=document.getElementById('pfBonus');
+  if(pm) pm.innerText=currentWallets.main.toFixed(2);
+  if(pp) pp.innerText=currentWallets.play.toFixed(2);
+  if(pb) pb.innerText=currentWallets.bonus.toFixed(2);
+}
 function setBalance(amt){
   const parsed=parseFloat(amt);
   if(!Number.isFinite(parsed) || parsed<0) return;
@@ -3670,11 +3680,16 @@ function setBalance(amt){
   if(walletEl) walletEl.innerText=f;
   const selWallet=document.getElementById('selectionMainWallet');
   const selMini=document.getElementById('selectionBalanceMini');
-  if(selWallet) selWallet.innerText=`ETB ${currentBalance.toFixed(0)}`;
+  if(selWallet&&!currentWallets) selWallet.innerText=`ETB ${currentBalance.toFixed(0)}`;
   if(selMini) selMini.innerText=f;
+  paintWallets();
 }
 
 function restoreCachedBalance(){
+  try{
+    const w=JSON.parse(localStorage.getItem('melaBingoWallets')||'null');
+    if(w) setWallets(w);
+  }catch(e){}
   try{
     const cached=parseFloat(localStorage.getItem('melaBingoBalance'));
     if(Number.isFinite(cached) && cached>=0) setBalance(cached);
@@ -4006,9 +4021,38 @@ function renderUserProfile(u, history=[]){
   if(avatarEl) avatarEl.innerText=name.charAt(0).toUpperCase();
   if(gamesEl) gamesEl.innerText=Number.isFinite(games)?Math.max(0,Math.trunc(games)).toLocaleString():'0';
   if(winsEl) winsEl.innerText=Number.isFinite(wins)?Math.max(0,Math.trunc(wins)).toLocaleString():'0';
-  if(winningsEl) winningsEl.innerText=`ETB ${Math.max(0,winnings).toFixed(2)}`;
+  if(winningsEl) winningsEl.innerText=formatCompactMoney(winnings);
   if(latestEl) latestEl.innerText=`ETB ${Math.max(0,latestEarnings).toFixed(2)}`;
-  if(profileBalEl) profileBalEl.innerText=Number.isFinite(balance)&&balance>=0?`ETB ${balance.toFixed(2)}`:'ETB 0.00';
+  // Wallets from the database (getBingoUserDashboard): main, play and bonus
+  const W=u?.wallets||{main:u?.main_wallet??balance,play:u?.play_wallet,bonus:u?.bonus};
+  setWallets(W);
+  if(profileBalEl&&!currentWallets) profileBalEl.innerText=Number.isFinite(balance)&&balance>=0?balance.toFixed(2):'0.00';
+  renderStakeTable(u?.stake_stats);
+}
+// One row per active stake (5 / 10 / 20 or whatever the database offers); zeros when there is no data yet
+function renderStakeTable(rows){
+  const box=document.getElementById('pfRows');
+  if(!box) return;
+  const list=(Array.isArray(rows)&&rows.length?rows:[{stake:5},{stake:10},{stake:20}])
+    .map(r=>({stake:Math.round(Number(r.stake)||0),wins:Math.max(0,Math.trunc(Number(r.wins)||0)),amount:Math.max(0,Math.floor(Number(r.win_amount)||0))}))
+    .filter(r=>r.stake>0).sort((a,b)=>a.stake-b.stake);
+  const frag=document.createDocumentFragment();
+  list.forEach(r=>{
+    const d=document.createElement('div');
+    d.className='pf-tr';
+    d.innerHTML=`<div class="pf-st"><div class="pf-coin ${[5,10,20].includes(r.stake)?'pf-c'+r.stake:'pf-cx'}">${r.stake}</div><span>ETB ${r.stake}</span></div>`+
+                `<div class="pf-wc">${r.wins.toLocaleString('en-US')}</div><div class="pf-amt">${r.amount.toLocaleString('en-US')}</div>`;
+    frag.appendChild(d);
+  });
+  box.replaceChildren(frag);
+}
+// 59100000 -> "59.1M", 12500 -> "12.5K": keeps big totals inside the small tile
+function formatCompactMoney(v){
+  const x=Math.max(0,Number(v)||0);
+  if(x>=1e9) return (x/1e9).toFixed(x>=1e11?0:1).replace(/\.0$/,'')+'B';
+  if(x>=1e6) return (x/1e6).toFixed(x>=1e8?0:1).replace(/\.0$/,'')+'M';
+  if(x>=1e5) return (x/1e3).toFixed(0)+'K';
+  return x.toLocaleString('en-US',{minimumFractionDigits:x%1?2:0,maximumFractionDigits:2});
 }
 
 async function loadUserProfile(force=false){
@@ -4342,6 +4386,7 @@ function handle(msg){
     case 'authSuccess':
   // Accept a WebSocket balance only for a confirmed registered account.
   myName=msg.playerName||myName||'Player';
+  if(msg.wallets) setWallets(msg.wallets);
   if(msg.isRegistered===true && msg.balance!==undefined && msg.balance!==null && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0){
     setBalance(msg.balance);
   }
@@ -4606,6 +4651,7 @@ function handle(msg){
         setBalance(msg.balance);
         accountLoaded=true;
       }
+      if(msg.wallets) setWallets(msg.wallets);
       break;
 
     case 'leftRoom': if(msg.roomId && myRoomId && String(msg.roomId)!==String(myRoomId)) break;
@@ -5282,7 +5328,8 @@ function setBingoBtn(state='idle'){
   const stakeEl=document.getElementById('selectionStakeValue');
   if(stakeEl) stakeEl.innerText=stake>0?String(stake):String((String(myStakeId||'').match(/(?:st|stake)[^0-9]*([0-9]+)/i)||[])[1]||10);
   const walletEl=document.getElementById('selectionMainWallet');
-  if(walletEl) walletEl.innerText=`ETB ${Number(currentBalance||0).toFixed(0)}`;
+  if(walletEl&&!currentWallets) walletEl.innerText=`ETB ${Number(currentBalance||0).toFixed(0)}`;
+  paintWallets();
   const miniEl=document.getElementById('selectionBalanceMini');
   if(miniEl) miniEl.innerText=`ETB ${Number(currentBalance||0).toFixed(2)}`;
   // The text beside the active-player count is reserved for the server countdown.
@@ -5666,6 +5713,7 @@ buildSpectatorTracker();
   },2600);
 })();
 restoreCachedBalance();
+renderStakeTable(null);        // profile table shows 5 / 10 / 20 with zeros until the real numbers arrive
 applyLobbyText();
 renderCachedStakes();
 connect();
@@ -7009,4 +7057,58 @@ html body #screenLobby:not(#q1):not(#q2) .lb-art{width:clamp(176px,56vw,236px);a
   html body #screenLobby:not(#q1):not(#q2) .lb-art{width:clamp(112px,34vw,136px)}
 }
 @media(prefers-reduced-motion:reduce){html body #screenLobby .lb-hero,html body #screenLobby .lb-hero:before{animation:none}}
+</style>
+
+<style id="mela-profile-design3-final">
+/* ===== PROFILE - Design 3 (bingo balls + tickets) ===== */
+html body #screenProfile:not(#q1):not(#q2){background:transparent!important;max-width:500px!important;padding:6px clamp(10px,3.4vw,14px) 24px!important;min-height:0!important;overflow:visible!important}
+html body #screenProfile:not(#q1):not(#q2) .pf{padding:0!important}
+html body #screenProfile:not(#q1):not(#q2) .pf-head{text-align:center;margin:20px 0 4px}
+html body #screenProfile:not(#q1):not(#q2) .pf-av{position:relative;margin:0 auto;width:clamp(54px,16vw,62px);height:clamp(54px,16vw,62px);border-radius:50%;display:grid;place-items:center;
+  background:linear-gradient(145deg,#8a5cff,#5b2fd0);border:2px solid rgba(255,255,255,.55);font-weight:900;font-size:clamp(22px,6.4vw,26px);box-shadow:0 4px 12px rgba(0,0,0,.35)}
+html body #screenProfile:not(#q1):not(#q2) .pf-av:after{content:"\265B";position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:18px;color:#ffd21a;text-shadow:0 2px 4px rgba(0,0,0,.4)}
+html body #screenProfile:not(#q1):not(#q2) .pf-name{margin-top:9px;font-size:clamp(18px,5.2vw,21px);font-weight:800;line-height:1.2;word-break:break-word}
+
+html body #screenProfile:not(#q1):not(#q2) .pf-balls{display:flex;align-items:flex-end;justify-content:center;gap:clamp(6px,2.4vw,12px);margin:16px 0 0}
+html body #screenProfile:not(#q1):not(#q2) .pf-wb{text-align:center;min-width:0}
+html body #screenProfile:not(#q1):not(#q2) .pf-ball{border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;border:3px solid rgba(255,255,255,.55);
+  box-shadow:inset 0 4px 8px rgba(255,255,255,.35),0 8px 16px rgba(0,0,0,.4);overflow:hidden}
+html body #screenProfile:not(#q1):not(#q2) .pf-ball b{font-weight:900;line-height:1.05;max-width:90%;white-space:nowrap}
+html body #screenProfile:not(#q1):not(#q2) .pf-ball i{font-style:normal;font-size:9px;font-weight:800;letter-spacing:.8px;margin-top:2px;opacity:.95}
+html body #screenProfile:not(#q1):not(#q2) .pf-wb small{display:block;margin-top:7px;font-size:clamp(9.5px,2.8vw,11px);font-weight:800;letter-spacing:.6px;color:#d8d4f4;white-space:nowrap}
+html body #screenProfile:not(#q1):not(#q2) .pf-wb.m .pf-ball{width:clamp(104px,31vw,124px);height:clamp(104px,31vw,124px);background:radial-gradient(circle at 35% 28%,#c98aff,#7c3aed 72%);
+  box-shadow:inset 0 4px 8px rgba(255,255,255,.35),0 8px 16px rgba(0,0,0,.4),0 0 24px rgba(168,85,247,.5)}
+html body #screenProfile:not(#q1):not(#q2) .pf-wb.m .pf-ball b{font-size:clamp(21px,6vw,27px)}
+html body #screenProfile:not(#q1):not(#q2) .pf-wb.p .pf-ball{width:clamp(80px,23.5vw,94px);height:clamp(80px,23.5vw,94px);background:radial-gradient(circle at 35% 28%,#5cea8e,#0c8534 75%)}
+html body #screenProfile:not(#q1):not(#q2) .pf-wb.b .pf-ball{width:clamp(80px,23.5vw,94px);height:clamp(80px,23.5vw,94px);background:radial-gradient(circle at 35% 28%,#ffd36b,#e8730a 75%)}
+html body #screenProfile:not(#q1):not(#q2) .pf-wb.p .pf-ball b,html body #screenProfile:not(#q1):not(#q2) .pf-wb.b .pf-ball b{font-size:clamp(16px,4.8vw,20px)}
+
+html body #screenProfile:not(#q1):not(#q2) .pf-sec{display:flex;align-items:center;gap:10px;margin:18px 2px 9px;font-size:15px;font-weight:800}
+html body #screenProfile:not(#q1):not(#q2) .pf-sec:after{content:"";flex:1;height:1px;background:linear-gradient(90deg,rgba(255,255,255,.35),transparent)}
+
+html body #screenProfile:not(#q1):not(#q2) .pf-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(6px,2.4vw,9px)}
+html body #screenProfile:not(#q1):not(#q2) .pf-t{border-radius:14px;overflow:hidden;text-align:center;color:#2b1a5a;background:linear-gradient(180deg,#f4f2ff,#dcd6fa);box-shadow:0 6px 14px rgba(0,0,0,.3);min-width:0}
+html body #screenProfile:not(#q1):not(#q2) .pf-hd{height:22px;display:grid;place-items:center;font-size:clamp(8.5px,2.5vw,9.5px);font-weight:900;letter-spacing:.6px;color:#fff;white-space:nowrap}
+html body #screenProfile:not(#q1):not(#q2) .pf-t.a .pf-hd{background:#2f7cff}html body #screenProfile:not(#q1):not(#q2) .pf-t.b .pf-hd{background:#ff7410}html body #screenProfile:not(#q1):not(#q2) .pf-t.c .pf-hd{background:#16b84a}
+html body #screenProfile:not(#q1):not(#q2) .pf-t b{display:block;font-size:clamp(20px,6vw,24px);font-weight:900;margin:10px 4px 2px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html body #screenProfile:not(#q1):not(#q2) .pf-t span{display:block;font-size:10.5px;font-weight:800;color:#6a5a9a;padding-bottom:10px}
+
+html body #screenProfile:not(#q1):not(#q2) .pf-tbl{border-radius:16px;overflow:hidden;color:#2b1a5a;background:linear-gradient(180deg,#f4f2ff,#dcd6fa);box-shadow:0 6px 14px rgba(0,0,0,.3)}
+html body #screenProfile:not(#q1):not(#q2) .pf-heads{display:grid;grid-template-columns:1fr .8fr 1.7fr;gap:5px;padding:9px 10px 6px}
+html body #screenProfile:not(#q1):not(#q2) .pf-heads div{height:22px;border-radius:6px;display:grid;place-items:center;color:#fff;font-size:clamp(9.5px,2.8vw,10.5px);font-weight:900;letter-spacing:.5px;white-space:nowrap}
+html body #screenProfile:not(#q1):not(#q2) .pf-heads div:nth-child(1){background:#2f7cff}html body #screenProfile:not(#q1):not(#q2) .pf-heads div:nth-child(2){background:#a24bf0}html body #screenProfile:not(#q1):not(#q2) .pf-heads div:nth-child(3){background:#16b84a}
+html body #screenProfile:not(#q1):not(#q2) .pf-tr{display:grid;grid-template-columns:1fr .8fr 1.7fr;align-items:center;gap:5px;padding:7px 10px;border-top:1px dashed rgba(91,63,168,.3)}
+html body #screenProfile:not(#q1):not(#q2) .pf-st{display:flex;align-items:center;gap:8px;font-weight:900;font-size:clamp(12px,3.6vw,14px);min-width:0;white-space:nowrap}
+html body #screenProfile:not(#q1):not(#q2) .pf-coin{flex:0 0 auto;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:900;font-size:13px;border:2px solid rgba(255,255,255,.55);
+  box-shadow:inset 0 2px 4px rgba(255,255,255,.35),0 3px 7px rgba(0,0,0,.3)}
+html body #screenProfile:not(#q1):not(#q2) .pf-c5{background:radial-gradient(circle at 35% 28%,#6aa5ff,#2563eb 70%)}
+html body #screenProfile:not(#q1):not(#q2) .pf-c10{background:radial-gradient(circle at 35% 28%,#5fe3f5,#4f46e5 75%)}
+html body #screenProfile:not(#q1):not(#q2) .pf-c20{background:radial-gradient(circle at 35% 28%,#d28bff,#7c3aed 72%)}
+html body #screenProfile:not(#q1):not(#q2) .pf-wc{text-align:center;font-weight:900;font-size:clamp(14px,4.2vw,16px)}
+html body #screenProfile:not(#q1):not(#q2) .pf-amt{text-align:right;font-weight:900;font-size:clamp(13px,3.9vw,15px);color:#0e8a3a;min-width:0;overflow-wrap:anywhere}
+@media(max-width:340px){ html body #screenProfile:not(#q1):not(#q2) .pf-st span{display:none} }
+</style>
+<style id="mela-profile-rows-final">
+html body #screenProfile:not(#q1):not(#q2) .pf-cx{background:radial-gradient(circle at 35% 28%,#ffd36b,#e8730a 75%)}
+html body #screenProfile:not(#q1):not(#q2) #pfRows{display:block}
 </style>

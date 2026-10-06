@@ -5590,5 +5590,162 @@ async approveDeposit(receipt, telegramId) {
     );
 
       return rows[0] || null;
-}
+},
+
+  // ============================================================
+  // GAME-SERVER HELPERS (read-only) - added for the Node game server
+  // ============================================================
+
+  /**
+   * Account flags the game server needs (admin / blocked / inactive).
+   * Reads only columns that exist in users, so it works with the current schema
+   * (getAdminByTelegramId / getUserByTelegramId also read is_banned and total_* columns).
+   *
+   * @param {number|string} telegramId
+   * @returns {Promise<{id:number,is_admin:boolean,admin_role:string|null,is_active:boolean,is_blocked:boolean}|null>}
+   */
+  async getBingoUserFlags(telegramId) {
+    const { rows } = await pool.query(
+      `
+      SELECT
+        id,
+        is_admin,
+        admin_role,
+        is_active,
+        is_blocked
+      FROM users
+      WHERE telegram_id = $1::bigint
+      LIMIT 1
+      `,
+      [telegramId]
+    );
+
+    return rows[0] || null;
+  },
+
+  /**
+   * Database ids of the cartelas of a game.
+   * end_bingo_game() expects THESE ids (bingo_participant_cards.id), not the
+   * cartela numbers (1-400), so the game server loads them once after the game
+   * is created.
+   *
+   * @param {number} gameId
+   * @returns {Promise<Array<{participant_card_id:number,user_id:number,card_id:number}>>}
+   */
+  async getBingoGameCardIds(gameId) {
+    const game = toPositiveInteger(gameId, "gameId");
+
+    const mapRows = (rows) =>
+      rows.map((r) => ({
+        participant_card_id: Number(r.participant_card_id),
+        user_id: Number(r.user_id),
+        card_id: Number(r.card_id),
+      }));
+
+    try {
+      const { rows } = await pool.query(
+        `
+        SELECT
+          pc.id::bigint        AS participant_card_id,
+          bp.user_id::integer  AS user_id,
+          pc.card_id::integer  AS card_id
+        FROM bingo_participant_cards pc
+        JOIN bingo_participants bp
+          ON bp.id = pc.participant_id
+        WHERE pc.game_id = $1
+        ORDER BY pc.id
+        `,
+        [game]
+      );
+
+      return mapRows(rows);
+    } catch (err) {
+      // 42P01 = table missing, 42703 = column missing.
+      // Older layout: one bingo_participants row per cartela.
+      if (err && (err.code === "42P01" || err.code === "42703")) {
+        const { rows } = await pool.query(
+          `
+          SELECT
+            id::bigint       AS participant_card_id,
+            user_id::integer AS user_id,
+            card_id::integer AS card_id
+          FROM bingo_participants
+          WHERE game_id = $1
+          ORDER BY id
+          `,
+          [game]
+        );
+
+        return mapRows(rows);
+      }
+
+      throw err;
+    }
+  },
+
+  /**
+   * Profile counters, read straight from the game tables. The profile page uses
+   * getBingoUserDashboard() first and falls back to these numbers for anything
+   * the dashboard does not return.
+   *
+   * @param {number} userId
+   * @returns {Promise<{games:number,wins:number,earning:number,
+   *   by_stake:Array<{stake:number,wins:number,win_amount:number}>}>}
+   */
+  async getBingoProfileStats(userId) {
+    const id = toPositiveInteger(userId, "userId");
+
+    const [played, won, byStake] = await Promise.all([
+      pool.query(
+        `
+        SELECT COUNT(DISTINCT bp.game_id)::int AS games
+        FROM bingo_participants bp
+        JOIN bingo_games g
+          ON g.id = bp.game_id
+        WHERE bp.user_id = $1
+          AND g.status = 'completed'
+        `,
+        [id]
+      ),
+
+      pool.query(
+        `
+        SELECT
+          COUNT(DISTINCT game_id)::int          AS wins,
+          COALESCE(SUM(payout), 0)::numeric     AS earning
+        FROM bingo_winners
+        WHERE user_id = $1
+        `,
+        [id]
+      ),
+
+      pool.query(
+        `
+        SELECT
+          g.stake_amount::numeric                AS stake,
+          COUNT(DISTINCT w.game_id)::int         AS wins,
+          COALESCE(SUM(w.payout), 0)::numeric    AS win_amount
+        FROM bingo_winners w
+        JOIN bingo_games g
+          ON g.id = w.game_id
+        WHERE w.user_id = $1
+        GROUP BY g.stake_amount
+        ORDER BY g.stake_amount
+        `,
+        [id]
+      ),
+    ]);
+
+    return {
+      games: Number(played.rows[0]?.games) || 0,
+      wins: Number(won.rows[0]?.wins) || 0,
+      earning: Number(won.rows[0]?.earning) || 0,
+      by_stake: byStake.rows.map((r) => ({
+        stake: Number(r.stake) || 0,
+        wins: Number(r.wins) || 0,
+        win_amount: Number(r.win_amount) || 0,
+      })),
+    };
+  },
+
 };

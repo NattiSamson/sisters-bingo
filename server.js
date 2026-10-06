@@ -35,7 +35,7 @@ app.use((req, res, next) => {
   next();
 });
 
-const ADMIN_PHONE = '251934255415';
+const ADMIN_PHONE = '251965666656';
 function isAdminPhone(phone) {
   if (!phone) return false;
   const normalized = String(phone).replace(/^\+/, '');
@@ -355,8 +355,8 @@ if (process.env.DATABASE_URL) {
         if (name) PAYMENT_INFO.telebirrName   = name;
       } catch (e) { console.error('⚠️ Settings load:', e.message); }
 
-      // Clean up any games left in 'playing' state from a previous crashed session
-      try {
+      // Clean up any games left in 'playing' state from a previous crashed session (legacy schema only)
+      if(!USE_BINGO_DB) try {
         const stale = await db.q(
           `UPDATE games SET status='finished', ended_at=NOW(), win_amount=0
            WHERE status='playing' AND started_at < NOW() - INTERVAL '2 hours'
@@ -370,6 +370,21 @@ if (process.env.DATABASE_URL) {
   console.log('ℹ️ No DATABASE_URL — memory mode');
 }
 
+// ─── BINGO DATABASE (db.js) ──────────────────────────────────
+// db.js talks to the real wallet / room / stake / game tables:
+//   getUserWalletBalances -> main + play + bonus wallets
+//   getActiveStakes       -> rooms and stakes (loaded ONCE, refreshed every 10 min)
+//   createBingoGame       -> charges every cartela and creates the game (called when a round starts)
+//   endBingoGame          -> pays the winners (called when a round ends)
+//   getBingoUserDashboard -> profile page data
+// If db.js cannot be loaded the server falls back to the old in-file database code.
+let bingoDb=null;
+if(process.env.DATABASE_URL){
+  try{ bingoDb=require('./db'); console.log('✅ db.js loaded (wallets, stakes, bingo games)'); }
+  catch(e){ console.error('⚠️ db.js could not be loaded, legacy balance code stays active:',e.message); }
+}
+const USE_BINGO_DB=!!bingoDb;
+
 // ─── CONFIG ──────────────────────────────────────────────────
 const LOBBY_WAIT_MS    = 30000;
 const CALL_INTERVAL_MS = 5000;
@@ -382,6 +397,36 @@ const STAKES = [
   { id:'st10', amount:10, maxPlayers:400, cardLimit:400 },
   { id:'st20', amount:20, maxPlayers:400, cardLimit:400 },
 ];
+
+// Stakes / rooms come from the database (bingo_stakes + bingo_rooms). They are loaded ONCE at
+// start-up and refreshed every 10 minutes; the constants above are only the fallback.
+async function loadStakesFromDb(){
+  if(!bingoDb) return false;
+  try{
+    const list=await bingoDb.getActiveStakes();
+    const seen=new Set(), next=[];
+    for(const s of list){
+      if(seen.has(s.id)) continue;               // one room per stake
+      seen.add(s.id);
+      next.push({
+        id:s.id, dbStakeId:s.dbId, dbRoomId:s.roomId, name:s.displayName||s.name,
+        amount:s.amount,
+        maxPlayers:s.maxPlayers||400,
+        cardLimit:Math.max(1,Math.min(TOTAL_CARDS,s.cardCount||TOTAL_CARDS)),
+        minPlayers:Math.max(2,s.minPlayers||2),
+        maxCards:Math.max(1,Math.min(4,s.maxCardsPerPlayer||4)),
+        selectionSeconds:s.selectionSeconds||Math.ceil(LOBBY_WAIT_MS/1000)
+      });
+    }
+    if(!next.length){ console.warn('⚠️ getActiveStakes returned no stakes - keeping current stakes'); return false; }
+    STAKES.splice(0,STAKES.length,...next);
+    console.log('✅ Stakes loaded from database:',next.map(x=>`${x.id}=${x.amount} (room ${x.dbRoomId}, ${x.minPlayers}-${x.maxPlayers} players, ${x.maxCards} cards)`).join(' | '));
+    broadcastLobby();
+    return true;
+  }catch(e){ console.error('loadStakesFromDb:',e.message); return false; }
+}
+
+if(bingoDb){ loadStakesFromDb(); setInterval(loadStakesFromDb,10*60*1000); }
 
 // ─── FIXED CARDS ─────────────────────────────────────────────
 function seededRandom(seed) {
@@ -416,9 +461,60 @@ function checkWin(nums, called, marked) {
 const clients={}, rooms={}, userCache={};
 
 // ─── USER HELPERS ────────────────────────────────────────────
+const round2=v=>Math.round((Number(v)||0)*100)/100;
+function walletsFromRow(r){
+  const n=v=>{const x=Number.parseFloat(v);return Number.isFinite(x)&&x>0?x:0;};
+  return {main:n(r.main_balance),play:n(r.play_balance),bonus:n(r.bonus_balance)};
+}
+// balance   = main + play   (the amount shown in the header)
+// spendable = main+play+bonus (fast local check before picking cartelas; the database makes the final call)
+function applyWallets(target,w){
+  target.wallets={main:round2(w.main),play:round2(w.play),bonus:round2(w.bonus)};
+  target.balance=round2(w.main+w.play);
+  target.spendable=round2(w.main+w.play+w.bonus);
+}
+// Cached per-user profile answers (a game start/end clears the entry)
+const profileCache=new Map();
+const PROFILE_TTL_MS=10000;
+
 async function loadUser(tid,retries=6,delayMs=500) {
   const id=String(tid||'').trim();
   if(!/^\d+$/.test(id) || Number(id)<=0) return null;
+
+  // ── Real wallets (db.js) ──
+  if(USE_BINGO_DB){
+    for(let attempt=1;attempt<=retries;attempt++){
+      try{
+        const r=await bingoDb.getUserWalletBalances(id);
+        if(!r) return null;                      // genuinely not registered
+        const prev=userCache[id]||{};
+        const phone=r.phone||'';
+        const u={
+          userId:Number(r.user_id), name:r.name||'', phone,
+          isAdmin:isAdminPhone(phone)||prev.isAdmin===true
+        };
+        applyWallets(u,walletsFromRow(r));
+        // admin / blocked flags are looked up once per user, not on every refresh
+        if(prev.flagsChecked){
+          u.flagsChecked=true; u.isAdmin=u.isAdmin||prev.isAdmin===true; u.blocked=prev.blocked===true; u.inactive=prev.inactive===true;
+        }else{
+          try{
+            const f=await bingoDb.getBingoUserFlags(id);
+            if(f){ u.isAdmin=u.isAdmin||f.is_admin===true; u.blocked=f.is_blocked===true; u.inactive=f.is_active===false; }
+          }catch(e){ console.error('getBingoUserFlags:',e.message); }
+          u.flagsChecked=true;
+        }
+        userCache[id]=u;
+        return u;
+      }catch(e){
+        console.error(`loadUser attempt ${attempt}/${retries}:`,e.message);
+        if(attempt<retries) await new Promise(r=>setTimeout(r,delayMs*Math.min(attempt,3)));
+      }
+    }
+    return userCache[id]||null;
+  }
+
+  // ── Legacy single-balance schema ──
   if(!db) return null;
   for(let attempt=1;attempt<=retries;attempt++){
     try{
@@ -433,20 +529,35 @@ async function loadUser(tid,retries=6,delayMs=500) {
         };
         return userCache[id];
       }
-      // Query succeeded and there is genuinely no matching account.
       return null;
     }catch(e){
       console.error(`loadUser attempt ${attempt}/${retries}:`,e.message);
       if(attempt<retries) await new Promise(r=>setTimeout(r,delayMs*Math.min(attempt,3)));
     }
   }
-  // Never manufacture a zero-balance account after a transient DB failure.
   return userCache[id]||null;
 }
 
+// copy a loaded user onto a live connection
+function applyUserToClient(client,u){
+  if(!client||!u) return;
+  if(u.wallets){ client.wallets=u.wallets; client.spendable=u.spendable; }
+  client.balance=Number.isFinite(Number(u.balance))?Number(u.balance):0;
+  if(u.userId) client.userId=u.userId;
+  client.playerName=u.name||client.playerName;
+  client.isAdmin=u.isAdmin===true || isAdminPhone(u.phone);
+}
+
 async function refreshClientBalance(client){
-  if(!client?.telegramId || !db) return Number.isFinite(Number(client?.balance));
+  if(!client?.telegramId) return Number.isFinite(Number(client?.balance));
   try{
+    if(USE_BINGO_DB){
+      const u=await loadUser(String(client.telegramId),1,0);
+      if(!u) return false;
+      applyUserToClient(client,u);
+      return true;
+    }
+    if(!db) return Number.isFinite(Number(client?.balance));
     const u=await db.getUser(String(client.telegramId));
     if(!u) return false;
     client.balance=parseFloat(u.balance)||0;
@@ -460,11 +571,38 @@ async function refreshClientBalance(client){
   }
 }
 
-// Change money atomically in Neon and mirror the resulting balance in memory.
+// Reload a player's wallets once and push them to the app (after a round starts / ends).
+async function pushWallets(p){
+  const tid=String(p?.telegramId||'');
+  if(!tid) return;
+  profileCache.delete(tid);
+  const u=await loadUser(tid,1,0);
+  if(!u) return;
+  const cl=clients[p.playerId];
+  if(cl) applyUserToClient(cl,u);
+  send(p.ws||cl?.ws,{type:'balanceUpdate',balance:u.balance,wallets:u.wallets});
+}
+// run an async function over a list with a small concurrency limit (protects the DB pool)
+async function forEachLimit(items,limit,fn){
+  let i=0;
+  const workers=Array.from({length:Math.min(limit,items.length)},async()=>{
+    while(i<items.length){ const item=items[i++]; try{ await fn(item); }catch(e){ console.error('forEachLimit:',e.message); } }
+  });
+  await Promise.all(workers);
+}
+
+// Change money atomically and mirror the resulting balance in memory.
 // Positive delta = credit/refund; negative delta = charge.
+// With db.js ALL game money moves through createBingoGame / endBingoGame, so direct changes are refused.
 async function changeClientBalance(client, delta, txType, ref){
   const amount=Number(delta);
   if(!client || !Number.isFinite(amount)) throw new Error('Invalid balance change');
+
+  if(USE_BINGO_DB){
+    const e=new Error('Direct balance changes are disabled: wallets are handled by the database functions');
+    e.code='DIRECT_BALANCE_DISABLED';
+    throw e;
+  }
 
   if(!client.telegramId){
     const e=new Error('Missing Telegram ID');
@@ -474,25 +612,13 @@ async function changeClientBalance(client, delta, txType, ref){
 
   if(db){
     const newBal=await db.adjustBalance(String(client.telegramId),amount);
-
-    // Neon is authoritative. Never use client.balance to decide whether the
-    // charge succeeded.
     client.balance=newBal;
     if(userCache[client.telegramId])
       userCache[client.telegramId].balance=newBal;
-
     if(txType){
       try{
-        await db.logTx(
-          String(client.telegramId),
-          txType,
-          amount,
-          newBal,
-          ref||''
-        );
+        await db.logTx(String(client.telegramId),txType,amount,newBal,ref||'');
       }catch(e){
-        // The balance transaction has already committed. Logging failure must
-        // not undo or misreport the successful balance change.
         console.error('logTx:',e.message);
       }
     }
@@ -513,9 +639,9 @@ async function changeClientBalance(client, delta, txType, ref){
 }
 
 async function saveBalance(tid, bal) {
-  // Kept for non-game compatibility. Game money paths use changeClientBalance().
+  // Kept for non-game compatibility. Game money paths use createBingoGame / endBingoGame.
   if(userCache[tid]) userCache[tid].balance=bal;
-  if(db&&tid){try{await db.setBalance(tid,bal);}catch(e){console.error('saveBalance:',e.message);}}
+  if(!USE_BINGO_DB && db&&tid){try{await db.setBalance(tid,bal);}catch(e){console.error('saveBalance:',e.message);}}
 }
 
 // ─── ROOM HELPERS ────────────────────────────────────────────
@@ -523,10 +649,12 @@ function getOrCreateRoom(sid){
   let r=Object.values(rooms).find(r=>r.stakeId===sid&&(r.status==='waiting'||r.status==='countdown'));
   if(r) return r;
   const s=STAKES.find(s=>s.id===sid), roomId=uuidv4();
-  r={roomId,stakeId:sid,stake:s.amount,maxPlayers:s.maxPlayers,cardLimit:s.cardLimit,status:'waiting',players:[],calledNumbers:[],
+  r={roomId,stakeId:sid,stake:s.amount,maxPlayers:s.maxPlayers,cardLimit:s.cardLimit,
+     dbStakeId:s.dbStakeId||null,dbRoomId:s.dbRoomId||null,minPlayers:s.minPlayers||2,maxCards:s.maxCards||4,selectionSeconds:s.selectionSeconds||0,
+     status:'waiting',players:[],calledNumbers:[],
      availableNumbers:Array.from({length:75},(_,i)=>i+1),callTimer:null,countdownTimer:null,claimEvalTimer:null,
-     countdownLeft:Math.ceil(LOBBY_WAIT_MS/1000),claimWindowOpen:false,claimedThisRound:[],resetCountdownTimer:null,resetTimer:null,
-     takenCardIds:new Set(),pot:0,dbGameId:null};
+     countdownLeft:Math.ceil((s.selectionSeconds?s.selectionSeconds*1000:LOBBY_WAIT_MS)/1000),claimWindowOpen:false,claimedThisRound:[],resetCountdownTimer:null,resetTimer:null,
+     takenCardIds:new Set(),pot:0,grossPot:0,dbGameId:null,dbGameCode:null,participantCards:null,startFailures:0};
   rooms[roomId]=r; return r;
 }
 const send=(ws,msg)=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(msg));};
@@ -616,14 +744,131 @@ function broadcastCardDiff(room, changedCardIds){
 
 // ─── GAME LIFECYCLE ──────────────────────────────────────────
 function startCountdown(room){
-  room.status='countdown'; room.countdownLeft=Math.ceil(LOBBY_WAIT_MS/1000);
+  room.status='countdown'; room.countdownLeft=Math.ceil((room.selectionSeconds?room.selectionSeconds*1000:LOBBY_WAIT_MS)/1000);
   room.countdownTimer=setInterval(()=>{
     room.countdownLeft--;
     const ready=room.players.filter(p=>p.cardId).length;
-    if(ready<2){clearInterval(room.countdownTimer);room.status='waiting';broadcast(room,{type:'waitingForPlayers'});broadcastLobby();return;}
+    if(ready<(room.minPlayers||2)){clearInterval(room.countdownTimer);room.status='waiting';broadcast(room,{type:'waitingForPlayers'});broadcastLobby();return;}
     broadcast(room,{type:'countdown',seconds:room.countdownLeft});
     if(room.countdownLeft<=0){clearInterval(room.countdownTimer);startGame(room);}
   },1000);
+}
+
+// ── Round start with db.js ──────────────────────────────────────
+// createBingoGame() validates the room + stake, charges EVERY cartela from the player's wallets
+// (play / main / bonus, in the order the funding policy says), creates the game and returns the
+// prize pool. It is one database transaction: either the whole game is created or nothing is charged.
+function releasePlayerCards(room,p){
+  getPlayerCardIds(p).forEach(id=>room.takenCardIds.delete(id));
+  p.cardId=null; p.cardId2=null; p.cardId3=null; p.cardId4=null; p.hasPaid=false;
+}
+async function collectDbEntries(room){
+  const entries=[];
+  for(const p of room.players){
+    if(getPlayerCardCount(p)===0) continue;
+    if(!p.userId){
+      const u=await loadUser(p.telegramId,2,200);
+      p.userId=u?.userId||null;
+    }
+    if(!p.userId){                                  // not registered: cannot play
+      sendRoom(room,p.ws,{type:'error',message:'መለያዎ አልተገኘም። እባክዎ በቦቱ ይመዝገቡ።'});
+      releasePlayerCards(room,p);
+      continue;
+    }
+    [1,2,3,4].forEach(slot=>{
+      const id=p[getCardField(slot)];
+      if(id) entries.push({p,slot,cardId:id,userId:p.userId});
+    });
+  }
+  return entries;
+}
+// After a failed attempt: find players who cannot afford their cartelas, release their cards.
+async function dropUnaffordablePlayers(room){
+  let dropped=false;
+  await forEachLimit(room.players.filter(p=>getPlayerCardCount(p)>0),10,async p=>{
+    const u=await loadUser(p.telegramId,1,0);
+    if(!u) return;
+    const need=room.stake*getPlayerCardCount(p);
+    if(Number(u.spendable)<need){
+      releasePlayerCards(room,p);
+      sendRoom(room,p.ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። ${need} ብር ያስፈልጋል።`});
+      dropped=true;
+    }
+  });
+  if(dropped) broadcastCardPool(room);
+  return dropped;
+}
+function failStart(room,reason){
+  console.error(`⚠️ Round could not start (${room.stakeId}): ${reason}`);
+  room.status='waiting';
+  room.startFailures=(room.startFailures||0)+1;
+  broadcast(room,{type:'error',message:'ጨዋታው መጀመር አልተቻለም። እባክዎ ካርቴላዎን ይመልከቱ።'});
+  broadcast(room,{type:'waitingForPlayers'});
+  broadcastCardPool(room);
+  broadcastLobby();
+  // Try again if enough players still hold cards (at most 3 automatic retries)
+  const ready=room.players.filter(p=>p.cardId).length;
+  if(ready>=(room.minPlayers||2)&&room.startFailures<3){
+    setTimeout(()=>{ if(rooms[room.roomId]&&room.status==='waiting') startCountdown(room); },3000);
+  }
+  return false;
+}
+async function startDbGame(room){
+  for(let attempt=1;attempt<=2;attempt++){
+    const entries=await collectDbEntries(room);
+    if(!entries.length) return failStart(room,'no cartelas selected');
+    if(!room.dbRoomId||!room.dbStakeId) return failStart(room,'room/stake ids are missing (stakes not loaded from the database)');
+
+    let result;
+    try{
+      result=await bingoDb.createBingoGame(
+        room.dbRoomId,
+        room.dbStakeId,
+        entries.map(e=>({user_id:e.userId,card_id:e.cardId,card_data:{numbers:(getCard(e.cardId)||{}).numbers||[],slot:e.slot}}))
+      );
+    }catch(e){
+      console.error(`createBingoGame failed (attempt ${attempt}):`,e.message);
+      if(/is_banned/.test(e.message)) console.error('DATABASE FIX NEEDED: create_bingo_game_from_selections reads users.is_banned but the column does not exist. Run: ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_banned boolean NOT NULL DEFAULT false;');
+      if(attempt<2 && await dropUnaffordablePlayers(room)) continue;   // retry once without the players who cannot pay
+      return failStart(room,e.message);
+    }
+
+    // Keep exactly the cartelas the database accepted (and charged).
+    const accepted=new Set((result.accepted||[]).map(a=>`${a.user_id}:${a.card_id}`));
+    for(const e of entries){
+      if(accepted.has(`${e.userId}:${e.cardId}`)) continue;
+      room.takenCardIds.delete(e.cardId);
+      e.p[getCardField(e.slot)]=null;
+      const rej=(result.rejected||[]).find(r=>Number(r.user_id)===e.userId&&Number(r.card_id)===e.cardId);
+      const why=rej&&rej.reason;
+      const text=why==='insufficient_balance'?`ካርቴላ ${e.cardId} አልተቀበለም — በቂ ቀሪ ሂሳብ የለም።`
+        :(why==='user_blocked'||why==='user_banned'||why==='user_inactive')?'መለያዎ ለጊዜው ተዘግቷል። እባክዎ ድጋፍን ያነጋግሩ።'
+        :why==='max_cards_per_player_reached'?`በዚህ ክፍል የሚፈቀደው የካርቴላ ብዛት አልፏል።`
+        :`ካርቴላ ${e.cardId} አልተቀበለም።`;
+      console.warn(`cartela ${e.cardId} of user ${e.userId} refused by the database: ${why||'not accepted'}`);
+      sendRoom(room,e.p.ws,{type:'error',message:text});
+    }
+    room.players.forEach(p=>{ p.hasPaid=getPlayerCardCount(p)>0; });
+
+    room.pot=Number(result.prize_pool)||0;          // the prize pool the DATABASE calculated (after commission)
+    room.grossPot=Number(result.gross_pot)||0;
+    room.dbGameId=Number(result.game_id)||null;
+    room.dbGameCode=result.game_code||null;
+    room.startFailures=0;
+    console.log(`🎮 Game ${room.dbGameCode||room.dbGameId} created (${room.stakeId}): ${result.total_participants} players, ${result.total_cards} cartelas, gross ${result.gross_pot}, prize ${result.prize_pool}`);
+
+    // end_bingo_game() needs the database ids of the cartelas: load them once.
+    room.participantCards=new Map();
+    try{
+      const rows=await bingoDb.getBingoGameCardIds(room.dbGameId);
+      rows.forEach(r=>room.participantCards.set(`${r.user_id}:${r.card_id}`,r.participant_card_id));
+    }catch(e){ console.error('getBingoGameCardIds:',e.message); }
+
+    // Everyone's wallets changed: reload them once and push them to the apps.
+    forEachLimit(room.players.filter(p=>p.hasPaid),10,pushWallets).catch(()=>{});
+    return true;
+  }
+  return false;
 }
 
 async function startGame(room){
@@ -631,6 +876,10 @@ async function startGame(room){
   // with the final financial commit. Card selection itself is always memory-only.
   room.status='starting';
 
+  if(USE_BINGO_DB){
+    const ok=await startDbGame(room);
+    if(!ok) return;
+  }else{
   for(const p of room.players){
     if(getPlayerCardCount(p)===0) continue; // spectator
 
@@ -660,13 +909,17 @@ async function startGame(room){
     }
   }
 
+  }
+
   room.status='playing';
-  const paidCards=room.players.reduce((s,p)=>s+(p.hasPaid?(getPlayerCardCount(p)):0),0);
-  const grossPot=paidCards*room.stake;
-  room.pot=Math.floor(grossPot*(1-HOUSE_CUT));
+  if(!USE_BINGO_DB){
+    const paidCards=room.players.reduce((s,p)=>s+(p.hasPaid?(getPlayerCardCount(p)):0),0);
+    const grossPot=paidCards*room.stake;
+    room.pot=Math.floor(grossPot*(1-HOUSE_CUT));
+  }
   room.calledNumbers=[]; room.availableNumbers=Array.from({length:75},(_,i)=>i+1);
   room.claimedThisRound=[]; room.claimWindowOpen=false;
-  if(db){try{room.dbGameId=await db.saveGame(room.roomId,room.stakeId,room.stake,grossPot);}catch(e){console.error('saveGame:',e.message);}}
+  if(!USE_BINGO_DB&&db){try{room.dbGameId=await db.saveGame(room.roomId,room.stakeId,room.stake,room.players.reduce((s,p)=>s+(p.hasPaid?(getPlayerCardCount(p)):0),0)*room.stake);}catch(e){console.error('saveGame:',e.message);}}
 
   room.players.forEach(p=>{
     if(getPlayerCardCount(p)>0){
@@ -764,6 +1017,45 @@ function evaluateClaims(room){
   else scheduleNextCall(room);
 }
 
+// Pay the winners with db.js. Returns {winAmount, names, tids} or null if the database call failed.
+async function settleDbGame(room,winners){
+  if(!room.dbGameId){ console.error('settleDbGame: this round has no database game id'); return null; }
+  // make sure we know the database ids of the winning cartelas
+  if(!room.participantCards||room.participantCards.size===0){
+    try{
+      room.participantCards=new Map();
+      (await bingoDb.getBingoGameCardIds(room.dbGameId)).forEach(r=>room.participantCards.set(`${r.user_id}:${r.card_id}`,r.participant_card_id));
+    }catch(e){ console.error('getBingoGameCardIds (settle):',e.message); }
+  }
+  const ids=[...new Set(winners.map(w=>room.participantCards.get(`${w.userId}:${w._winningCardId||w.cardId}`)).filter(Boolean))];
+  if(!ids.length){
+    console.error(`CRITICAL: no database card ids for the winners of game ${room.dbGameCode||room.dbGameId}`,winners.map(w=>({tid:w.telegramId,card:w._winningCardId})));
+    return null;
+  }
+  let result=null;
+  for(let attempt=1;attempt<=3&&!result;attempt++){
+    try{ result=await bingoDb.endBingoGame(room.dbGameId,ids); }
+    catch(e){
+      console.error(`endBingoGame failed (attempt ${attempt}/3) game ${room.dbGameCode||room.dbGameId}:`,e.message);
+      if(/already completed/i.test(e.message)){ result={winners:[],already:true}; break; }
+      if(attempt<3) await new Promise(r=>setTimeout(r,attempt*1500));
+    }
+  }
+  if(!result){
+    console.error(`CRITICAL: winners of game ${room.dbGameCode||room.dbGameId} were NOT paid. Run: SELECT public.end_bingo_game(${room.dbGameId}, ARRAY[${ids.join(',')}]::bigint[]);`);
+    return null;
+  }
+  const rows=Array.isArray(result.winners)?result.winners:[];
+  const payoutOf=uid=>rows.filter(r=>Number(r.user_id)===Number(uid)).reduce((t,r)=>t+(Number(r.payout)||0),0);
+  const names=winners.map(w=>w.playerName);
+  const tids=winners.map(w=>String(w.telegramId||'')).filter(Boolean);
+  const first=rows.length?Number(rows[0].payout):Math.floor((room.pot||0)/winners.length);
+  console.log(`🏆 Game ${room.dbGameCode||room.dbGameId} settled: paid ${result.total_paid??'?'} to ${rows.length||winners.length} winning cartela(s)`);
+  // the winners' wallets changed: reload once and push
+  forEachLimit(winners,10,async w=>{ await pushWallets(w); }).catch(()=>{});
+  return {winAmount:first,names,tids,payoutOf};
+}
+
 async function endGame(room, winners, customMsg, noWinner){
   if(room.callTimer) clearTimeout(room.callTimer);
   if(room.countdownTimer) clearInterval(room.countdownTimer);
@@ -772,6 +1064,17 @@ async function endGame(room, winners, customMsg, noWinner){
 
   let winAmount=0, winnerNames=[], winnerTids=[];
 
+  if(USE_BINGO_DB){
+    // ── db.js: endBingoGame() pays every winner from the prize pool in ONE transaction ──
+    if(winners&&winners.length>0){
+      const paid=await settleDbGame(room,winners);
+      if(paid){ winAmount=paid.winAmount; winnerNames=paid.names; winnerTids=paid.tids; }
+      else{ winnerNames=winners.map(w=>w.playerName); winnerTids=winners.map(w=>String(w.telegramId||'')).filter(Boolean); winAmount=Math.floor((room.pot||0)/winners.length); }
+    }else if(room.dbGameId){
+      console.warn(`⚠️ Game ${room.dbGameCode||room.dbGameId} ended with NO winner - the stakes stay in the game and need manual handling.`);
+    }
+    if(room.dbGameId){ room.players.forEach(p=>{ if(p.telegramId) profileCache.delete(String(p.telegramId)); }); }
+  }else{
   if(winners&&winners.length>0){
     const prizePool=room.pot;
     winAmount=Math.floor(prizePool/winners.length);
@@ -810,6 +1113,7 @@ async function endGame(room, winners, customMsg, noWinner){
       await db.endGame(gid,winnerTids,winAmount,winners.length>1,room.calledNumbers);
     }catch(e){console.error('endGame fallback DB error:',e.message);}
   }
+  } // end legacy balance code
 
   const isSplit=winners&&winners.length>1;
   const msg=customMsg||(noWinner?'በዚህ ዙር አሸናፊ የለም':
@@ -872,6 +1176,10 @@ async function endGame(room, winners, customMsg, noWinner){
     room.claimedThisRound=[];
     room.claimWindowOpen=false;
     room.dbGameId=null;
+    room.dbGameCode=null;
+    room.participantCards=null;
+    room.grossPot=0;
+    room.startFailures=0;
     room.callTimer=null;
     room.claimEvalTimer=null;
 
@@ -905,6 +1213,7 @@ async function endGame(room, winners, customMsg, noWinner){
         roomId:room.roomId,
         stakeId:room.stakeId,
         balance:cl?cl.balance:0,
+        wallets:cl?cl.wallets:undefined,
         playerCount:0,
         stakeAmount:room.stake,
         status:'waiting',
@@ -932,7 +1241,7 @@ async function leaveRoom(client,roomId){
     getPlayerCardIds(p).forEach(id=>room.takenCardIds.delete(id));
 
     // Refund every paid card when leaving before the game starts.
-    if(p.hasPaid&&(room.status==='waiting'||room.status==='countdown')){
+    if(!USE_BINGO_DB&&p.hasPaid&&(room.status==='waiting'||room.status==='countdown')){
       const cardCount=getPlayerCardCount(p);
       const refund=room.stake*cardCount;
       if(refund>0){
@@ -1016,11 +1325,10 @@ wss.on('connection',(ws)=>{
               const user=await loadUser(tid,6,500);
               if(user){
                 client.telegramId=tid;
+                applyUserToClient(client,user);
                 client.playerName=user.name||client.playerName||'Player';
-                client.balance=Number.isFinite(Number(user.balance))?Number(user.balance):0;
-                client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
                 relinkAllRooms(client,ws,tid);   // keep receiving every game this account is playing
-                send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
+                send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,wallets:client.wallets,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
               } else {
                 // Never convert a failed/late database lookup into a fake zero wallet.
                 send(ws,{type:'authRetry',retryAfter:1000});
@@ -1150,11 +1458,7 @@ wss.on('connection',(ws)=>{
 
                        if(u){
 
-                         client.playerName=u.name||client.playerName;
-
-                         client.balance=parseFloat(u.balance)||0;
-
-                         client.isAdmin=u.isAdmin||isAdminPhone(u.phone);
+                         applyUserToClient(client,u);
 
                        }
 
@@ -1229,7 +1533,7 @@ wss.on('connection',(ws)=>{
 
               if(liveRoom){
                 if(liveRoom.players.length>=liveRoom.maxPlayers) return send(ws,{type:'error',message:`ይህ ክፍል ሙሉ ነው። ከፍተኛው ተጫዋቾች: ${liveRoom.maxPlayers}`});
-                liveRoom.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,ws,cardId:null,cardId2:null,cardId3:null,cardId4:null,hasPaid:false,disqualified:false});
+                liveRoom.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,userId:client.userId||userCache[String(client.telegramId)]?.userId||null,ws,cardId:null,cardId2:null,cardId3:null,cardId4:null,hasPaid:false,disqualified:false});
 
                 client.roomId=liveRoom.roomId; client.rooms.add(liveRoom.roomId);
 
@@ -1249,7 +1553,7 @@ wss.on('connection',(ws)=>{
 
               if(room.status!=='waiting'&&room.status!=='countdown') return send(ws,{type:'error',message:'ጨዋታው ቀድሞውኑ ተጀምሯል።'});
 
-              room.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,ws,cardId:null,cardId2:null,cardId3:null,cardId4:null,hasPaid:false,disqualified:false});
+              room.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,userId:client.userId||userCache[String(client.telegramId)]?.userId||null,ws,cardId:null,cardId2:null,cardId3:null,cardId4:null,hasPaid:false,disqualified:false});
 
               client.roomId=room.roomId; client.rooms.add(room.roomId);
 
@@ -1259,7 +1563,7 @@ wss.on('connection',(ws)=>{
 
                  const readyPlayers=room.players.filter(p=>p.cardId).length;
 
-              if(readyPlayers>=2&&room.status==='waiting') startCountdown(room);
+              if(readyPlayers>=(room.minPlayers||2)&&room.status==='waiting') startCountdown(room);
 
               break;
 
@@ -1273,6 +1577,7 @@ wss.on('connection',(ws)=>{
               const cardId=parseInt(msg.cardId);
               const slot=Math.max(1,Math.min(4,parseInt(msg.slot)||1));
               if(cardId<1||cardId>room.cardLimit) break;
+              if(slot>(room.maxCards||4)) return send(ws,{type:'error',message:`በዚህ ክፍል እስከ ${room.maxCards||4} ካርቴላ ብቻ መምረጥ ይቻላል።`});
               const p=room.players.find(p=>p.playerId===client.playerId);
               if(!p) break;
               if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'ይህ ካርቴላ ቀድሞውኑ ተመርጧል!'});
@@ -1292,7 +1597,16 @@ wss.on('connection',(ws)=>{
                 const required=Number(room.stake)*reservedAfter+reservedElsewhere(client,room);
                 // Fast local guard only. The authoritative DB balance is checked again
                 // once, when the game actually starts.
-                if(Number(client.balance)<required){
+                let have=Number(client.spendable??client.balance);
+                if(have<required){
+                  // The wallet may have been topped up since sign-in: reload it once before refusing.
+                  await refreshClientBalance(client);
+                  have=Number(client.spendable??client.balance);
+                  // the room may have changed while we waited
+                  if(room.status!=='waiting'&&room.status!=='countdown') break;
+                  if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'ይህ ካርቴላ ቀድሞውኑ ተመርጧል!'});
+                }
+                if(have<required){
                   if(previous) room.takenCardIds.add(previous);
                   return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። ለ${reservedAfter} ካርድ(ዎች) ${required} ብር ያስፈልጋል።`});
                 }
@@ -1304,7 +1618,7 @@ wss.on('connection',(ws)=>{
               sendRoom(room,ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot});
               broadcastCardDiff(room,Array.from(changedIds));
               const readyCount=room.players.filter(p=>p.cardId).length;
-              if(readyCount>=2&&room.status==='waiting') startCountdown(room);
+              if(readyCount>=(room.minPlayers||2)&&room.status==='waiting') startCountdown(room);
               break;
             }
             case 'deselectCard':{
@@ -1697,9 +2011,96 @@ app.get('/api/leaderboard', async(req,res)=>{
   res.json(await db.getLeaderboard());
 });
 
+// ─── PROFILE (db.js: getBingoUserDashboard) ───────────────────
+// get_bingo_user_dashboard(user_id) returns (see database.sql):
+//   { status:'active'|'blocked'|'inactive', user:{...},
+//     balances:[{wallet_type:'main'|'play'|'bonus', balance, ...}],
+//     summary:{games_played, games_won, total_earned},
+//     stakes:[{stake_id, amount, games_played, games_won, total_earned, rooms:[...]}] }
+// Everything the profile needs is fetched ONCE per request, in parallel, and cached for 10 seconds
+// (a round start / end clears the cache for the players involved).
+let dashboardShapeLogged=false;
+async function getBingoProfile(tid){
+  const hit=profileCache.get(tid);
+  if(hit&&Date.now()-hit.t<PROFILE_TTL_MS) return hit.data;
+
+  const u=await loadUser(tid,3,300);
+  if(!u||!u.userId) return null;
+
+  const [dash,stats]=await Promise.all([
+    bingoDb.getBingoUserDashboard(u.userId).catch(e=>{ console.error('getBingoUserDashboard:',e.message); return null; }),
+    // counters straight from the game tables: only used for anything the dashboard could not give
+    bingoDb.getBingoProfileStats(u.userId).catch(e=>{ console.error('getBingoProfileStats:',e.message); return null; })
+  ]);
+  const d=(dash&&typeof dash==='object')?dash:null;
+  if(d&&!dashboardShapeLogged){ dashboardShapeLogged=true; console.log('ℹ️ getBingoUserDashboard keys:',Object.keys(d).join(', ')); }
+  if(d&&d.status&&d.status!=='active') return {blocked:true,status:d.status};
+
+  const num=v=>{const x=Number(v);return Number.isFinite(x)?x:undefined;};
+  const walletOf=type=>{
+    const row=(d&&Array.isArray(d.balances))?d.balances.find(b=>b&&b.wallet_type===type):null;
+    return row?num(row.balance):undefined;
+  };
+  const wallets={
+    main:round2(walletOf('main')??u.wallets.main),
+    play:round2(walletOf('play')??u.wallets.play),
+    bonus:round2(walletOf('bonus')??u.wallets.bonus)
+  };
+  if(Math.abs(wallets.main-u.wallets.main)>0.009||Math.abs(wallets.play-u.wallets.play)>0.009){
+    console.warn(`⚠️ dashboard wallets differ from the wallet view for user ${u.userId}:`,wallets,u.wallets);
+  }
+
+  const sum=(d&&d.summary)||{};
+  const games=num(sum.games_played)??stats?.games??0;
+  const wins=num(sum.games_won)??stats?.wins??0;
+  const earning=num(sum.total_earned)??stats?.earning??0;
+
+  // one row per ACTIVE stake (even with 0 wins), straight from the dashboard
+  let stakeRows=[];
+  if(d&&Array.isArray(d.stakes)){
+    stakeRows=d.stakes.map(st=>({
+      stake:num(st.amount)||0,
+      wins:Math.trunc(num(st.games_won)||0),
+      win_amount:num(st.total_earned)||0
+    })).filter(r=>r.stake>0).sort((a,b)=>a.stake-b.stake);
+  }
+  if(!stakeRows.length&&stats?.by_stake) stakeRows=stats.by_stake;
+
+  const out={
+    telegramId:String(tid),
+    name:u.name||'',
+    phone:u.phone||'',
+    balance:round2(wallets.main+wallets.play),          // header amount (main + play)
+    main_wallet:wallets.main,
+    play_wallet:wallets.play,
+    bonus:wallets.bonus,
+    wallets,
+    total_games:Math.max(0,Math.trunc(games)),
+    total_wins:Math.max(0,Math.trunc(wins)),
+    total_winnings:Math.max(0,earning),
+    stake_stats:stakeRows,
+    latest_earnings:0,
+    isAdmin:u.isAdmin===true,
+    source:{dashboard:!!d,stats:!!stats}
+  };
+  profileCache.set(tid,{t:Date.now(),data:out});
+  return out;
+}
+
 app.get('/api/user/:tid', async(req,res)=>{
   const tid=String(req.params.tid||'').trim();
   if(!tid) return res.status(400).json({error:'Missing Telegram ID'});
+  if(USE_BINGO_DB){
+    try{
+      const out=await getBingoProfile(tid);
+      if(!out) return res.status(404).json({error:'Not found'});
+      if(out.blocked) return res.status(403).json({error:`Account is ${out.status}`,status:out.status});
+      return res.json(out);
+    }catch(e){
+      console.error('GET /api/user (db.js):',e.stack||e.message);
+      return res.status(500).json({error:'Database query failed'});
+    }
+  }
   if(!db) return res.status(503).json({error:'Database unavailable'});
 
   try{
@@ -1781,6 +2182,25 @@ app.get('/api/user/:tid', async(req,res)=>{
       }
     }
 
+    // Wins by stake for the profile table (5 / 10 / 20): number of games won and total won.
+    // Kept in its own try/catch so a statistics problem can never break login or the profile.
+    let stakeStats=[];
+    try{
+      const r=await db.q(`
+        SELECT g.stake_amount::numeric AS stake,
+               COUNT(*)::int AS wins,
+               COALESCE(SUM(g.win_amount),0)::numeric AS win_amount
+        FROM games g
+        WHERE g.status='finished'
+          AND $1 = ANY(COALESCE(g.winner_ids, ARRAY[]::text[]))
+        GROUP BY g.stake_amount
+        ORDER BY g.stake_amount
+      `,[tid]);
+      stakeStats=r.map(x=>({stake:Number(x.stake)||0,wins:Number(x.wins)||0,win_amount:Number(x.win_amount)||0}));
+    }catch(e){
+      console.error('Profile stake stats query:',e.message);
+    }
+
     const user={
       telegramId:String(u.telegram_id),
       name:u.name||'',
@@ -1789,6 +2209,10 @@ app.get('/api/user/:tid', async(req,res)=>{
       total_games:totalGames,
       total_wins:totalWins,
       total_winnings:Math.max(0,Number(u.total_winnings)||0),
+      // Optional wallets: shown on the profile if the users table has these columns, else 0.
+      play_wallet:Math.max(0,Number.parseFloat(u.play_wallet ?? u.play_balance)||0),
+      bonus:Math.max(0,Number.parseFloat(u.bonus ?? u.bonus_balance)||0),
+      stake_stats:stakeStats,
       latest_earnings:latestEarnings,
       isAdmin:u.is_admin===true || isAdminPhone(u.phone)
     };
@@ -1970,6 +2394,7 @@ bot.onText(/\/play/,  msg => showMainMenu(msg.chat.id, msg.from.id, msg.from.fir
 bot.on('contact', async msg => {
     const tid = msg.from.id, p = pending[tid];
     if(!p) return;
+    if(USE_BINGO_DB){ bot.sendMessage(msg.chat.id,'Please register with the main Mela Bingo bot first, then open the game again.'); delete pending[tid]; return; }
     const phone = (msg.contact.phone_number||'').replace(/^\+/,'');
     const name  = msg.contact.first_name || msg.from.first_name || 'Player';
     delete pending[tid];
