@@ -3365,7 +3365,7 @@ Name:          ${userwallets.name}
 Phone:         ${userwallets.phone}
 Main wallet:   ${userwallets.main_balance}
 Play wallet:   ${userwallets.play_balance}
-Bonus wallet:   ${userwallets.bonus_balance}
+Bonus wallet:  ${userwallets.bonus_balance}
 Total Balance: ${userwallets.total_balance}</pre>`;
 
   await ctx.reply(text, {
