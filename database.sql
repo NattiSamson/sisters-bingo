@@ -8200,6 +8200,9 @@ CREATE TABLE public.bonus_campaigns (
     conversion_percentage numeric(8,4) DEFAULT 100 NOT NULL,
     conversion_max_amount numeric(18,2),
     multiplier numeric(18,4),
+    stackable boolean DEFAULT false NOT NULL,
+    stack_group character varying(50),
+    priority integer DEFAULT 0 NOT NULL,
     CONSTRAINT bonus_campaigns_amount_check CHECK (((amount IS NULL) OR (amount >= (0)::numeric))),
     CONSTRAINT bonus_campaigns_bonus_type_check CHECK (((bonus_type)::text = ANY ((ARRAY['welcome'::character varying, 'deposit'::character varying, 'free_bet'::character varying, 'no_deposit'::character varying, 'reload'::character varying, 'cashback'::character varying, 'free_spins'::character varying, 'wagering'::character varying, 'odds_boost'::character varying, 'accumulator'::character varying, 'loyalty'::character varying, 'vip_tier'::character varying, 'referral'::character varying, 'promo_code'::character varying, 'tournament'::character varying, 'mission'::character varying, 'birthday'::character varying, 'free_entry'::character varying, 'insurance'::character varying, 'jackpot'::character varying])::text[]))),
     CONSTRAINT bonus_campaigns_calculation_rule_check CHECK ((((multiplier IS NOT NULL) AND (amount IS NULL) AND (percentage IS NULL)) OR ((multiplier IS NULL) AND (amount IS NOT NULL) AND (percentage IS NULL)) OR ((multiplier IS NULL) AND (amount IS NULL) AND (percentage IS NOT NULL)))),
@@ -8212,6 +8215,8 @@ CREATE TABLE public.bonus_campaigns (
     CONSTRAINT bonus_campaigns_min_deposit_amount_check CHECK (((min_deposit_amount IS NULL) OR (min_deposit_amount >= (0)::numeric))),
     CONSTRAINT bonus_campaigns_multiplier_check CHECK (((multiplier IS NULL) OR (multiplier >= (0)::numeric))),
     CONSTRAINT bonus_campaigns_percentage_check CHECK (((percentage IS NULL) OR ((percentage >= (0)::numeric) AND (percentage <= (100)::numeric)))),
+    CONSTRAINT bonus_campaigns_priority_check CHECK ((priority >= 0)),
+    CONSTRAINT bonus_campaigns_stack_group_check CHECK (((stack_group IS NULL) OR (length(btrim((stack_group)::text)) > 0))),
     CONSTRAINT bonus_campaigns_validity_hours_check CHECK (((validity_hours IS NULL) OR (validity_hours > 0))),
     CONSTRAINT bonus_campaigns_wagering_multiplier_check CHECK ((wagering_multiplier >= (0)::numeric))
 );
