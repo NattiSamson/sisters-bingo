@@ -5337,49 +5337,72 @@ async approveDeposit(receipt, telegramId) {
  
 
    async endBingoGame(
+  gameId,
+  winnerParticipantCardIds,
+  calledNumbers
+) {
+  const game = toPositiveInteger(
     gameId,
-    winnerParticipantCardIds
-  ) {
-    const game = toPositiveInteger(
-      gameId,
-      "gameId"
+    "gameId"
+  );
+
+  if (!Array.isArray(winnerParticipantCardIds)) {
+    throw new Error(
+      "winnerParticipantCardIds must be an array."
+    );
+  }
+
+  if (winnerParticipantCardIds.length === 0) {
+    throw new Error(
+      "At least one winning card is required."
+    );
+  }
+
+  const winnerIds =
+    winnerParticipantCardIds.map((id) =>
+      toPositiveInteger(
+        id,
+        "winnerParticipantCardId"
+      )
     );
 
-    if (!Array.isArray(winnerParticipantCardIds)) {
-      throw new Error(
-        "winnerParticipantCardIds must be an array."
-      );
-    }
+  if (!Array.isArray(calledNumbers)) {
+    throw new Error(
+      "calledNumbers must be an array."
+    );
+  }
 
-    if (winnerParticipantCardIds.length === 0) {
-      throw new Error(
-        "At least one winning card is required."
-      );
-    }
+  if (calledNumbers.length === 0) {
+    throw new Error(
+      "At least one called number is required."
+    );
+  }
 
-    const winnerIds =
-      winnerParticipantCardIds.map((id) =>
-        toPositiveInteger(
-          id,
-          "winnerParticipantCardId"
-        )
-      );
-
-    const { rows } = await pool.query(
-      `
-      SELECT public.end_bingo_game(
-        $1::integer,
-        $2::bigint[]
-      ) AS result
-      `,
-      [
-        game,
-        winnerIds
-      ]
+  const numbersCalled =
+    calledNumbers.map((number) =>
+      toPositiveInteger(
+        number,
+        "calledNumber"
+      )
     );
 
-    return rows[0]?.result || null;
-  },
+  const { rows } = await pool.query(
+    `
+    SELECT public.end_bingo_game(
+      $1::integer,
+      $2::integer[],
+      $3::integer[]
+    ) AS result
+    `,
+    [
+      game,
+      winnerIds,
+      numbersCalled
+    ]
+  );
+
+  return rows[0]?.result || null;
+},
 
   async getActiveBingoGame(
   roomId
