@@ -8843,6 +8843,7 @@ CREATE TABLE public.bingo_rooms (
     disqualification_policy character varying(30) DEFAULT 'exclude_card'::character varying NOT NULL,
     bingo_mode_policy character varying(20) DEFAULT 'choice'::character varying NOT NULL,
     bingo_button_scope character varying(20) DEFAULT 'all_cards'::character varying NOT NULL,
+    commission_rule_id bigint NOT NULL,
     CONSTRAINT bingo_rooms_bingo_button_scope_check CHECK (((bingo_button_scope)::text = ANY ((ARRAY['all_cards'::character varying, 'per_card'::character varying])::text[]))),
     CONSTRAINT bingo_rooms_bingo_mode_policy_check CHECK (((bingo_mode_policy)::text = ANY ((ARRAY['choice'::character varying, 'auto_only'::character varying, 'manual_only'::character varying])::text[]))),
     CONSTRAINT bingo_rooms_card_count_check CHECK ((card_count >= 1)),
@@ -9188,6 +9189,13 @@ CREATE TABLE public.game_systems (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    game_code_prefix character varying(20),
+    game_code_suffix character varying(20),
+    game_code_type character varying(30),
+    game_code_length integer,
+    game_code_sequence bigint DEFAULT 0 NOT NULL,
+    CONSTRAINT game_systems_game_code_length_check CHECK (((game_code_length IS NULL) OR (game_code_length > 0))),
+    CONSTRAINT game_systems_game_code_type_check CHECK (((game_code_type IS NULL) OR ((game_code_type)::text = ANY ((ARRAY['sequential_numbers'::character varying, 'random_numbers'::character varying, 'random_alphabets'::character varying, 'sequential_alphabets'::character varying, 'alphanumeric'::character varying, 'random_alphanumeric'::character varying])::text[])))),
     CONSTRAINT game_systems_status_check CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'inactive'::character varying, 'maintenance'::character varying, 'disabled'::character varying])::text[])))
 );
 
@@ -9199,13 +9207,23 @@ INSERT INTO public.game_systems (
     code,
     name,
     status,
-    metadata
+    metadata,
+	game_code_prefix,
+	game_code_suffix,
+	game_code_type,
+	game_code_length,
+	game_code_sequence
 )
 VALUES (
     'bingo',
     'Bingo',
     'active',
-    '{"source_type":"bingo_game"}'::jsonb
+    '{"source_type":"bingo_game"}'::jsonb,
+	'BG-',
+	'',
+	'random_alphanumeric',
+	8,
+	0
 )
 ON CONFLICT (code)
 DO UPDATE SET
@@ -11276,6 +11294,14 @@ ALTER TABLE ONLY public.financial_transactions
 
 ALTER TABLE ONLY public.financial_transactions
     ADD CONSTRAINT financial_transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: bingo_rooms fk_bingo_rooms_commission_rule; Type: FK CONSTRAINT; Schema: public; Owner: neondb_owner
+--
+
+ALTER TABLE ONLY public.bingo_rooms
+    ADD CONSTRAINT fk_bingo_rooms_commission_rule FOREIGN KEY (commission_rule_id) REFERENCES public.bingo_commission_rules(id);
 
 
 --
