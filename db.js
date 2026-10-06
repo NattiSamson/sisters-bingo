@@ -582,8 +582,7 @@ async clearBotUserState(telegramId) {
           id,
           telegram_id,
           name,
-          phone,
-          is_banned,
+          phone,          
           is_active,
           is_admin,
           is_blocked,
@@ -628,8 +627,7 @@ async clearBotUserState(telegramId) {
           is_active,
           is_blocked,
           is_admin,
-          admin_role,
-          is_banned
+          admin_role          
         FROM users
         WHERE RIGHT(
           REGEXP_REPLACE(
@@ -726,14 +724,6 @@ async clearBotUserState(telegramId) {
         const existingUser =
           phoneResult.rows[0];
 
-        if (
-          existingUser.is_banned
-        ) {
-
-          await client.query(
-            "ROLLBACK"
-          );
-
           return {
             status: "banned",
             user: existingUser
@@ -777,10 +767,8 @@ async clearBotUserState(telegramId) {
           INSERT INTO users (
             telegram_id,
             name,
-            phone,
-            balance,
-            is_active,
-            is_banned,
+            phone,            
+            is_active,            
             is_admin,
             is_blocked,
             last_seen
@@ -789,9 +777,7 @@ async clearBotUserState(telegramId) {
             $1,
             $2,
             $3,
-            0,
             TRUE,
-            FALSE,
             FALSE,
             FALSE,
             NOW()
@@ -896,18 +882,6 @@ async clearBotUserState(telegramId) {
 
       const user =
         rows[0];
-
-      if (user.is_banned) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        return {
-          status: "banned",
-          user
-        };
-      }
 
       if (
         String(user.telegram_id) ===
@@ -1020,8 +994,7 @@ async clearBotUserState(telegramId) {
         SET
           is_active = TRUE,
           last_seen = NOW()
-        WHERE telegram_id = $1
-          AND is_banned = FALSE
+        WHERE telegram_id = $1          
         RETURNING *
         `,
         [telegramId]
@@ -1068,13 +1041,11 @@ async clearBotUserState(telegramId) {
           is_admin,
           admin_role,
           is_active,
-          is_banned,
           is_blocked
         FROM users
         WHERE telegram_id = $1
           AND is_admin = TRUE
           AND is_active = TRUE
-          AND is_banned = FALSE
           AND is_blocked = FALSE
         LIMIT 1
         `,
@@ -1109,12 +1080,10 @@ async clearBotUserState(telegramId) {
           is_admin,
           admin_role,
           is_active,
-          is_banned,
           is_blocked
         FROM users
         WHERE is_admin = TRUE
-          AND is_active = TRUE
-          AND is_banned = FALSE
+          AND is_active = TRUE          
           AND is_blocked = FALSE
         ORDER BY id
         `
@@ -1152,7 +1121,6 @@ async clearBotUserState(telegramId) {
           admin_role = $1
         WHERE id = $2
           AND is_active = TRUE
-          AND is_banned = FALSE
           AND is_blocked = FALSE
         RETURNING
           id,
@@ -1162,7 +1130,6 @@ async clearBotUserState(telegramId) {
           is_admin,
           admin_role,
           is_active,
-          is_banned,
           is_blocked
         `,
         [
@@ -1194,7 +1161,6 @@ async clearBotUserState(telegramId) {
           is_admin,
           admin_role,
           is_active,
-          is_banned,
           is_blocked
         `,
         [userId]
@@ -1220,11 +1186,9 @@ async clearBotUserState(telegramId) {
           telegram_id,
           name,
           phone,
-          balance,
           is_blocked,
           is_active,
-          is_admin,
-          is_banned
+          is_admin
         `,
         [
           Boolean(isBlocked),
@@ -2001,7 +1965,6 @@ async createWithdrawal(
       WHERE telegram_id = $1
         AND is_admin = TRUE
         AND is_active = TRUE
-        AND is_banned = FALSE
         AND is_blocked = FALSE
       LIMIT 1
       `,
@@ -2360,7 +2323,6 @@ async getWithdrawalHistory(
       ON requesting_admin.telegram_id = $1
       AND requesting_admin.is_admin = TRUE
       AND requesting_admin.is_active = TRUE
-      AND requesting_admin.is_banned = FALSE
       AND requesting_admin.is_blocked = FALSE
 
     WHERE
@@ -2964,7 +2926,6 @@ async rejectWithdrawal(
       WHERE telegram_id = $1
         AND is_admin = TRUE
         AND is_active = TRUE
-        AND is_banned = FALSE
         AND is_blocked = FALSE
       LIMIT 1
       `,
@@ -3558,7 +3519,6 @@ async getAllActiveUsers() {
     FROM users
     WHERE is_active = TRUE
       AND is_blocked = FALSE
-      AND is_banned = FALSE
     `
   );
 
@@ -4497,7 +4457,6 @@ async approveDeposit(receipt, telegramId) {
                 telegram_id,
                 name,
                 is_active,
-                is_banned,
                 is_blocked
             FROM users
             WHERE telegram_id = $1
@@ -4514,10 +4473,6 @@ async approveDeposit(receipt, telegramId) {
 
         if (!user.is_active) {
             throw new Error("User account is inactive.");
-        }
-
-        if (user.is_banned) {
-            throw new Error("User is banned.");
         }
 
         if (user.is_blocked) {
@@ -5588,7 +5543,7 @@ async approveDeposit(receipt, telegramId) {
   /**
    * Account flags the game server needs (admin / blocked / inactive).
    * Reads only columns that exist in users, so it works with the current schema
-   * (getAdminByTelegramId / getUserByTelegramId also read is_banned and total_* columns).
+   * (getAdminByTelegramId / getUserByTelegramId also read * columns).
    *
    * @param {number|string} telegramId
    * @returns {Promise<{id:number,is_admin:boolean,admin_role:string|null,is_active:boolean,is_blocked:boolean}|null>}
