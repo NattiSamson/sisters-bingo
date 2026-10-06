@@ -3169,7 +3169,7 @@ body.game-screen-active > .bottom-nav{
   </div>
   <div class="header-actions">
     <button class="sound-btn" id="soundBtn" onclick="toggleSound()" title="Toggle sound">🔇</button>
-    <div class="balance-pill" id="balanceEl" onclick="goToWallet()">ETB 0.00</div>
+    <div class="balance-pill nav-wallets" id="balanceEl" onclick="goToWallet()" role="button" aria-label="Wallets"></div>
   </div>
 </div>
 
@@ -3282,18 +3282,18 @@ body.game-screen-active > .bottom-nav{
   <div class="lb-sec"><span data-lt="choose">የውርርድ መጠን ይምረጡ</span></div>
   <div id="lobbyConn" class="lobby-conn" hidden></div>
   <div id="stakesGrid" class="stakes-grid">
-    <div class="lb-card lb-c5 lb-skel" aria-hidden="true">
-      <div class="lb-coin"><b>5</b><i>ETB</i></div>
+    <div class="lb-card lb-skel" aria-hidden="true">
+      <div class="lb-coin lb-coin-skel"></div>
       <div class="lb-mid"><div class="lb-line w60"></div><div class="lb-line w80"></div><div class="lb-bar"><u style="width:0"></u></div></div>
       <div class="lb-go lb-go-skel"></div>
     </div>
-    <div class="lb-card lb-c10 lb-skel" aria-hidden="true">
-      <div class="lb-coin"><b>10</b><i>ETB</i></div>
+    <div class="lb-card lb-skel" aria-hidden="true">
+      <div class="lb-coin lb-coin-skel"></div>
       <div class="lb-mid"><div class="lb-line w60"></div><div class="lb-line w80"></div><div class="lb-bar"><u style="width:0"></u></div></div>
       <div class="lb-go lb-go-skel"></div>
     </div>
-    <div class="lb-card lb-c20 lb-skel" aria-hidden="true">
-      <div class="lb-coin"><b>20</b><i>ETB</i></div>
+    <div class="lb-card lb-skel" aria-hidden="true">
+      <div class="lb-coin lb-coin-skel"></div>
       <div class="lb-mid"><div class="lb-line w60"></div><div class="lb-line w80"></div><div class="lb-bar"><u style="width:0"></u></div></div>
       <div class="lb-go lb-go-skel"></div>
     </div>
@@ -3318,7 +3318,7 @@ body.game-screen-active > .bottom-nav{
     <div class="selection-balance-mini" id="selectionBalanceMini">ETB 0.00</div>
   </div>
   <div class="selection-stats-row">
-    <div class="selection-stat"><span>Main Wallet</span><strong id="selectionMainWallet">ETB 0</strong></div>
+    <div class="selection-stat"><span>Main Wallet</span><strong id="selectionMainWallet">0</strong></div>
     <div class="selection-stat"><span>Play Wallet</span><strong id="selectionPlayWallet">0</strong></div>
     <div class="selection-stat"><span>Stake</span><strong id="selectionStakeValue">10</strong></div>
     <div class="selection-stat selection-countdown-stat"><strong id="cardSelectionCountdown">0</strong><span>s</span></div>
@@ -3655,10 +3655,33 @@ function setWallets(w){
   try{localStorage.setItem('melaBingoWallets',JSON.stringify(currentWallets));}catch(e){}
   paintWallets();
 }
+// Header: the three wallets as small chips  [main] [play] [bonus]
+const NW_ICONS={
+  m:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H18a1 1 0 0 1 1 1v2"/><path d="M3 7.5V17a2 2 0 0 0 2 2h13a1 1 0 0 0 1-1v-2"/><path d="M21 9H6.5A1.5 1.5 0 0 0 5 10.5v0A1.5 1.5 0 0 0 6.5 12H21z"/></svg>',
+  p:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8h10c2.2 0 3.7 1.2 4.4 3.2l1 3.2c.5 1.7-.4 3.4-2.1 3.9-1.2.4-2.5 0-3.3-.9L15.5 16h-7l-2.5 2.4c-.8.9-2.1 1.3-3.3.9-1.7-.5-2.6-2.200-2.1-3.9l1-3.2C3.3 9.2 4.8 8 7 8z"/><path d="M8 10.5v3M6.5 12h3"/></svg>',
+  b:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13M5 12v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8"/><path d="M7.5 8a2.5 2.5 0 1 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 1 1 0 5"/></svg>'
+};
+// 175 -> "175", 129.95 -> "129.95", 2800 -> "2,800", 120000 -> "120K", 2500000 -> "2.5M"
+function fmtMini(v){
+  const x=Math.max(0,Number(v)||0);
+  if(x>=1e6) return (x/1e6).toFixed(x>=1e7?0:1).replace(/\.0$/,'')+'M';
+  if(x>=1e5) return Math.round(x/1e3)+'K';
+  if(Number.isInteger(x)||x>=1000) return Math.floor(x).toLocaleString('en-US');
+  return x.toFixed(2);
+}
+function paintNavWallets(){
+  const el=document.getElementById('balanceEl');
+  if(!el) return;
+  const w=currentWallets||{main:Number.isFinite(currentBalance)?currentBalance:0,play:0,bonus:0};
+  const seg=(k,title,val)=>`<span class="nw ${k}" title="${title}"><i class="nw-ic">${NW_ICONS[k]}</i><b>${fmtMini(val)}</b></span>`;
+  el.innerHTML=seg('m','Main wallet',w.main)+seg('p','Play wallet',w.play)+seg('b','Bonus',w.bonus);
+  el.setAttribute('aria-label',`Main wallet ${w.main} ETB, play wallet ${w.play} ETB, bonus ${w.bonus} ETB`);
+}
 function paintWallets(){
+  paintNavWallets();
   if(!currentWallets) return;
   const sm=document.getElementById('selectionMainWallet'), sp=document.getElementById('selectionPlayWallet');
-  if(sm) sm.innerText=`ETB ${Math.floor(currentWallets.main)}`;
+  if(sm) sm.innerText=`${Math.floor(currentWallets.main)}`;
   if(sp) sp.innerText=`${Math.floor(currentWallets.play)}`;
   const pm=document.getElementById('profileBalance'), pp=document.getElementById('pfPlay'), pb=document.getElementById('pfBonus');
   if(pm) pm.innerText=currentWallets.main.toFixed(2);
@@ -3676,11 +3699,10 @@ function setBalance(amt){
   const f=`ETB ${currentBalance.toFixed(2)}`;
   const balanceEl=document.getElementById('balanceEl');
   const walletEl=document.getElementById('walletBalAmt');
-  if(balanceEl) balanceEl.innerText=f;
   if(walletEl) walletEl.innerText=f;
   const selWallet=document.getElementById('selectionMainWallet');
   const selMini=document.getElementById('selectionBalanceMini');
-  if(selWallet&&!currentWallets) selWallet.innerText=`ETB ${currentBalance.toFixed(0)}`;
+  if(selWallet&&!currentWallets) selWallet.innerText=`${currentBalance.toFixed(0)}`;
   if(selMini) selMini.innerText=f;
   paintWallets();
 }
@@ -4030,17 +4052,22 @@ function renderUserProfile(u, history=[]){
   renderStakeTable(u?.stake_stats);
 }
 // One row per active stake (5 / 10 / 20 or whatever the database offers); zeros when there is no data yet
+let lastStakeStatsRows=null;
 function renderStakeTable(rows){
   const box=document.getElementById('pfRows');
   if(!box) return;
-  const list=(Array.isArray(rows)&&rows.length?rows:[{stake:5},{stake:10},{stake:20}])
-    .map(r=>({stake:Math.round(Number(r.stake)||0),wins:Math.max(0,Math.trunc(Number(r.wins)||0)),amount:Math.max(0,Math.floor(Number(r.win_amount)||0))}))
+  if(Array.isArray(rows)&&rows.length) lastStakeStatsRows=rows;
+  // before real numbers arrive: one zero row per stake the database offers
+  const base=(Array.isArray(rows)&&rows.length)?rows:knownStakes.map(a=>({stake:a}));
+  const list=base
+    .map(r=>({stake:Number(r.stake)||0,wins:Math.max(0,Math.trunc(Number(r.wins)||0)),amount:Math.max(0,Math.floor(Number(r.win_amount)||0))}))
     .filter(r=>r.stake>0).sort((a,b)=>a.stake-b.stake);
   const frag=document.createDocumentFragment();
   list.forEach(r=>{
     const d=document.createElement('div');
     d.className='pf-tr';
-    d.innerHTML=`<div class="pf-st"><div class="pf-coin ${[5,10,20].includes(r.stake)?'pf-c'+r.stake:'pf-cx'}">${r.stake}</div><span>ETB ${r.stake}</span></div>`+
+    const t=stakeAmountText(r.stake);
+    d.innerHTML=`<div class="pf-st"><div class="pf-coin pf-cx${t.length>2?' pf-long':''}">${t}</div><span>ETB ${t}</span></div>`+
                 `<div class="pf-wc">${r.wins.toLocaleString('en-US')}</div><div class="pf-amt">${r.amount.toLocaleString('en-US')}</div>`;
     frag.appendChild(d);
   });
@@ -4102,14 +4129,14 @@ const LOBBY_I18N={
       tip:'በተመሳሳይ ሰዓት በአንድ ጊዜ ውስጥ <b>እስከ 3 ጨዋታዎችን</b> መጫወት ይቻላል።',navGame:'ጨዋታ',navProfile:'መገለጫ',
       game:n=>`የ${n} ብር ጨዋታ`,startsIn:n=>`በ${n} ሰከንድ ይጀምራል`,starting:'በመጀመር ላይ…',inProgress:'በመካሄድ ላይ',
       waiting:'ተጫዋቾችን በመጠበቅ ላይ',finished:'ጨዋታው አብቅቷል',players:n=>`${n} ተጫዋቾች`,
-      play:'ተጫወት',open:'ክፈት',watch:'ተመልከት',yours:'የእርስዎ ጨዋታ',unavailable:'አሁን አይገኝም',
+      play:'ተጫወት',open:'ክፈት',watch:'ተመልከት',yours:'የእርስዎ ጨዋታ',unavailable:'አሁን አይገኝም',noStakes:'አሁን የሚገኝ የውርርድ መጠን የለም። እባክዎ ትንሽ ቆይተው ይሞክሩ።',
       connecting:'ከጨዋታ አገልጋዩ ጋር በመገናኘት ላይ…',noconn:h=>`ከጨዋታ አገልጋዩ (${h}) ጋር መገናኘት አልተቻለም። እንደገና በመሞከር ላይ…`},
   en:{hello:'Welcome back',player:'Player',online:'Online now',active:'active players',
       heroTitle:'Pick a room, win big',heroSub:'Marking is automatic',choose:'Choose your stake',
       tip:'You can play <b>up to 3 games at once</b> \u2014 one in each stake.',navGame:'Game',navProfile:'Profile',
       game:n=>`Play ${n}`,startsIn:n=>`Starts in ${n}s`,starting:'Starting\u2026',inProgress:'In progress',
       waiting:'Waiting for players',finished:'Game finished',players:n=>`${n} players`,
-      play:'Play',open:'Open',watch:'Watch',yours:'YOUR GAME',unavailable:'Not available',
+      play:'Play',open:'Open',watch:'Watch',yours:'YOUR GAME',unavailable:'Not available',noStakes:'No stakes are available right now. Please try again shortly.',
       connecting:'Connecting to the game server\u2026',noconn:h=>`Cannot reach the game server (${h}). Retrying\u2026`}
 }[LOBBY_LANG];
 function applyLobbyText(){
@@ -5395,7 +5422,7 @@ function setBingoBtn(state='idle'){
   const stakeEl=document.getElementById('selectionStakeValue');
   if(stakeEl) stakeEl.innerText=stake>0?String(stake):String((String(myStakeId||'').match(/(?:st|stake)[^0-9]*([0-9]+)/i)||[])[1]||10);
   const walletEl=document.getElementById('selectionMainWallet');
-  if(walletEl&&!currentWallets) walletEl.innerText=`ETB ${Number(currentBalance||0).toFixed(0)}`;
+  if(walletEl&&!currentWallets) walletEl.innerText=`${Number(currentBalance||0).toFixed(0)}`;
   paintWallets();
   const miniEl=document.getElementById('selectionBalanceMini');
   if(miniEl) miniEl.innerText=`ETB ${Number(currentBalance||0).toFixed(2)}`;
@@ -5539,14 +5566,19 @@ function deselectCard(slot){
 
 
 // ─── STAKES ───────────────────────────────────────────────────
+let knownStakes=[];               // stake amounts the database offers (from the server), lowest first
+// 5 -> "5", 2.5 -> "2.5", 100 -> "100"
+function stakeAmountText(a){ const x=Number(a); if(!Number.isFinite(x)) return '0'; return Number.isInteger(x)?String(x):String(Number(x.toFixed(2))); }
 function renderStakes(arr,fromCache){
   const grid=document.getElementById('stakesGrid');
   if(!grid) return;
-  const stakes=Array.isArray(arr)?arr:[];
+  // the stakes are exactly what the server (database) sent, lowest amount first
+  const stakes=(Array.isArray(arr)?arr:[]).filter(s=>Number(s.amount)>0).slice().sort((a,b)=>Number(a.amount)-Number(b.amount));
   lobbyHasStakes=true; lobbyFromCache=!!fromCache;
+  knownStakes=stakes.map(s=>Number(s.amount));
   if(!fromCache){
     showLobbyStatus('',false);
-    try{ localStorage.setItem('melaLobbyStakes',JSON.stringify({t:Date.now(),stakes})); }catch(e){}
+    try{ if(stakes.length) localStorage.setItem('melaLobbyStakes',JSON.stringify({t:Date.now(),stakes})); else localStorage.removeItem('melaLobbyStakes'); }catch(e){}
   }
   const activeEl=document.getElementById('lobbyActivePlayers');
   if(activeEl){
@@ -5555,12 +5587,16 @@ function renderStakes(arr,fromCache){
   }
   const L=LOBBY_I18N;
   const frag=document.createDocumentFragment();
-  [5,10,20].forEach((amount)=>{
-    const s=stakes.find(x=>Number(x.amount)===amount);
+  if(!stakes.length){
+    const e=document.createElement('div'); e.className='lb-empty'; e.textContent=L.noStakes;
+    grid.replaceChildren(e); renderStakeTable(lastStakeStatsRows); return;
+  }
+  stakes.forEach((s,idx)=>{
+    const amount=Number(s.amount), amountText=stakeAmountText(amount);
     const d=document.createElement('div');
-    d.className='lb-card lb-c'+amount;
+    d.className='lb-card lb-k'+(idx%4);
     let chipCls='wait', chipTxt=L.waiting, cd=0, pct=0, players=0, mine=false, btnTxt=L.play, btnCls='lb-go';
-    if(s){
+    {
       const st=String(s.status||'waiting');
       players=Number(s.playerCount)||0;
       const max=Number(s.maxPlayers)||0;
@@ -5570,18 +5606,16 @@ function renderStakes(arr,fromCache){
       else if(st==='playing'||st==='starting'){ chipCls='play'; chipTxt=L.inProgress; btnTxt=L.watch; btnCls='lb-go watch'; }
       else if(st==='finished'){ chipTxt=L.finished; }
       if(mine){ btnTxt=L.open; btnCls='lb-go open'; d.classList.add('mine'); }
-    }else{
-      d.classList.add('lb-off'); chipTxt=L.unavailable; btnTxt='\u2014'; btnCls='lb-go off';
     }
     d.innerHTML=
       (mine?`<div class="lb-tag">${L.yours}</div>`:'')+
-      `<div class="lb-coin"><b>${amount}</b><i>ETB</i></div>`+
-      `<div class="lb-mid"><div class="lb-title">${L.game(amount)}</div>`+
+      `<div class="lb-coin lb-d${Math.min(5,amountText.replace('.','').length)}"><b>${amountText}</b><i>ETB</i></div>`+
+      `<div class="lb-mid"><div class="lb-title">${L.game(amountText)}</div>`+
       `<div class="lb-row"><span class="lb-chip ${chipCls}"${cd?` data-cd="${cd}"`:''}>${chipTxt}</span>`+
-      (s?`<span class="lb-pl">${L.players(players)}</span>`:'')+`</div>`+
+      `<span class="lb-pl">${L.players(players)}</span></div>`+
       `<div class="lb-bar"><u style="width:${pct}%"></u></div></div>`+
       `<div class="${btnCls}">${btnTxt}</div>`;
-    if(s){
+    {
       d.onclick=()=>{
         const tid=telegramId||getTelegramId();
         let saved=null;
@@ -5603,6 +5637,7 @@ function renderStakes(arr,fromCache){
     frag.appendChild(d);
   });
   grid.replaceChildren(frag);
+  renderStakeTable(lastStakeStatsRows);      // profile table rows follow the database stakes
 }
 // countdown chips tick every second between server updates
 setInterval(()=>{
@@ -5792,6 +5827,7 @@ buildSpectatorTracker();
   },2600);
 })();
 restoreCachedBalance();
+paintNavWallets();
 renderStakeTable(null);        // profile table shows 5 / 10 / 20 with zeros until the real numbers arrive
 applyLobbyText();
 renderCachedStakes();
@@ -7190,4 +7226,57 @@ html body #screenProfile:not(#q1):not(#q2) .pf-amt{text-align:right;font-weight:
 <style id="mela-profile-rows-final">
 html body #screenProfile:not(#q1):not(#q2) .pf-cx{background:radial-gradient(circle at 35% 28%,#ffd36b,#e8730a 75%)}
 html body #screenProfile:not(#q1):not(#q2) #pfRows{display:block}
+</style>
+
+<style id="mela-game-id-space-final">
+/* Game ID (e.g. BG-7K2QX9AB) needs more room than the number boxes next to it */
+html body #screenGame:not(#q1):not(#q2) .player-game-topbar{grid-template-columns:minmax(0,2fr) minmax(0,.95fr) minmax(0,.75fr) minmax(0,1.05fr) minmax(0,.9fr)!important}
+html body #screenGame:not(#q1):not(#q2) .player-stat.game-id-stat strong{
+  font-size:clamp(10px,3vw,12.5px)!important;letter-spacing:-.15px;overflow:visible!important;text-overflow:clip!important;
+}
+</style>
+
+<style id="mela-nav-wallets-final">
+/* sound icon is not shown in the top bar (the play screen keeps its own sound button) */
+html body > .navbar .sound-btn{display:none!important}
+html body > .navbar .header-actions{gap:0!important}
+/* the three wallets: main / play / bonus, small and tidy */
+html body > .navbar .balance-pill.nav-wallets{
+  display:flex!important;align-items:center!important;gap:2px!important;min-width:0!important;width:auto!important;
+  padding:3px!important;border-radius:999px!important;background:rgba(255,255,255,.08)!important;color:#fff!important;
+  border:1px solid rgba(255,255,255,.22)!important;box-shadow:none!important;font-size:12px!important;font-weight:800!important;
+  cursor:pointer;-webkit-tap-highlight-color:transparent;white-space:nowrap;
+}
+html body > .navbar .nw{display:inline-flex;align-items:center;gap:4px;padding:3px 8px 3px 3px;border-radius:999px;line-height:1}
+html body > .navbar .nw + .nw{border-left:1px solid rgba(255,255,255,.14);border-radius:0 999px 999px 0;margin-left:1px}
+html body > .navbar .nw-ic{width:16px;height:16px;flex:0 0 16px;border-radius:50%;display:grid;place-items:center;font-style:normal;box-shadow:inset 0 1px 2px rgba(255,255,255,.35)}
+html body > .navbar .nw-ic svg{width:9px;height:9px;display:block}
+html body > .navbar .nw.m .nw-ic{background:linear-gradient(145deg,#8a5cff,#5b2fd0)}
+html body > .navbar .nw.p .nw-ic{background:linear-gradient(145deg,#2fdc6e,#14a843)}
+html body > .navbar .nw.b .nw-ic{background:linear-gradient(145deg,#ffb36b,#ff7410)}
+html body > .navbar .nw b{font-size:clamp(10.5px,3.1vw,12.5px);font-weight:800;letter-spacing:-.1px}
+html body > .navbar .nw.m b{color:#fff}
+html body > .navbar .nw.p b{color:#7dffb0}
+html body > .navbar .nw.b b{color:#ffd54a}
+@media(max-width:350px){
+  html body > .navbar .nw{padding:2px 5px 2px 2px;gap:3px}
+  html body > .navbar .nw-ic{width:14px;height:14px;flex-basis:14px}
+  html body > .navbar .nw-ic svg{width:8px;height:8px}
+  html body > .navbar .brand{font-size:15px!important}
+}
+</style>
+
+<style id="mela-lobby-db-stakes-final">
+html body #screenLobby:not(#q1):not(#q2) .lb-k0 .lb-coin{background:radial-gradient(circle at 35% 28%,#6aa5ff,#2563eb 70%)}
+html body #screenLobby:not(#q1):not(#q2) .lb-k1 .lb-coin{background:radial-gradient(circle at 35% 28%,#5fe3f5,#4f46e5 75%)}
+html body #screenLobby:not(#q1):not(#q2) .lb-k2 .lb-coin{background:radial-gradient(circle at 35% 28%,#d28bff,#7c3aed 72%)}
+html body #screenLobby:not(#q1):not(#q2) .lb-k3 .lb-coin{background:radial-gradient(circle at 35% 28%,#ffc47a,#e8730a 72%)}
+html body #screenLobby:not(#q1):not(#q2) .lb-coin.lb-d3 b{font-size:clamp(17px,5vw,21px)}
+html body #screenLobby:not(#q1):not(#q2) .lb-coin.lb-d4 b{font-size:clamp(14px,4.2vw,18px)}
+html body #screenLobby:not(#q1):not(#q2) .lb-coin.lb-d5 b{font-size:clamp(12px,3.6vw,15px)}
+html body #screenLobby:not(#q1):not(#q2) .lb-coin-skel{background:linear-gradient(90deg,rgba(255,255,255,.08),rgba(255,255,255,.2),rgba(255,255,255,.08))!important;background-size:200% 100%;
+  animation:lbShimmer 1.2s linear infinite;border-color:rgba(255,255,255,.18)!important;box-shadow:none!important}
+html body #screenLobby:not(#q1):not(#q2) .lb-empty{padding:18px 14px;text-align:center;font-size:13px;font-weight:600;line-height:1.5;color:#d8d4f4;
+  border-radius:14px;background:rgba(255,255,255,.07);border:1px dashed rgba(255,255,255,.25)}
+html body #screenProfile:not(#q1):not(#q2) .pf-coin.pf-long{font-size:10px;letter-spacing:-.3px}
 </style>

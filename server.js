@@ -408,6 +408,11 @@ const STAKES = [
   { id:'st10', amount:10, maxPlayers:400, cardLimit:400 },
   { id:'st20', amount:20, maxPlayers:400, cardLimit:400 },
 ];
+// With db.js the stakes come ONLY from the database (bingo_stakes / bingo_rooms); the list above is used only without a database.
+if(USE_BINGO_DB) STAKES.length=0;
+const STAKES_RETRY_MS = 10000;
+let stakesRetryTimer=null;
+function retryStakesSoon(){ if(stakesRetryTimer||STAKES.length) return; stakesRetryTimer=setTimeout(()=>{ stakesRetryTimer=null; loadStakesFromDb(); },STAKES_RETRY_MS); }
 
 // Stakes / rooms come from the database (bingo_stakes + bingo_rooms). They are loaded ONCE at
 // start-up and refreshed every 10 minutes; the constants above are only the fallback.
@@ -431,12 +436,12 @@ async function loadStakesFromDb(){
         selectionSeconds:s.selectionSeconds||Math.ceil(LOBBY_WAIT_MS/1000)
       });
     }
-    if(!next.length){ console.warn('⚠️ getActiveStakes returned no stakes - keeping current stakes'); return false; }
+    if(!next.length){ console.warn('⚠️ getActiveStakes returned no active stakes (bingo_stakes + bingo_room_stakes + bingo_rooms must be active)'); retryStakesSoon(); return false; }
     STAKES.splice(0,STAKES.length,...next);
     console.log('✅ Stakes loaded from database:',next.map(x=>`${x.id}=${x.amount} (room ${x.dbRoomId}, ${x.minPlayers}-${x.maxPlayers} players, ${x.maxCards} cards)`).join(' | '));
     broadcastLobby();
     return true;
-  }catch(e){ console.error('loadStakesFromDb:',e.message); return false; }
+  }catch(e){ console.error('loadStakesFromDb:',e.message); retryStakesSoon(); return false; }
 }
 
 if(bingoDb){
