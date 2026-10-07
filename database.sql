@@ -1,9 +1,6 @@
 --
 -- PostgreSQL database dump
 --
-
-
-
 -- Dumped from database version 18.6 (4e955f5)
 -- Dumped by pg_dump version 18.4
 
@@ -3227,7 +3224,6 @@ CREATE FUNCTION public.end_bingo_game(p_game_id integer, p_winner_card_ids integ
     AS $$
 DECLARE
     v_game public.bingo_games%ROWTYPE;
-
     v_game_system_id bigint;
 
     v_winner_count integer := 0;
@@ -3246,14 +3242,12 @@ DECLARE
     v_transaction_id bigint;
     v_refund_transaction_id bigint;
 
+    v_refund_amount numeric(18,2);
+
     v_winner_details jsonb := '[]'::jsonb;
     v_refund_details jsonb := '[]'::jsonb;
 
     v_card_ids integer[] := ARRAY[]::integer[];
-
-    v_bonus_consumption record;
-    v_bonus_restore numeric(18,2);
-    v_bonus_wagering_restore numeric(18,2);
 
 BEGIN
 
@@ -3269,11 +3263,14 @@ BEGIN
 
 
     ----------------------------------------------------------------
-    -- 2. Normalize winner cards
+    -- 2. Normalize winner card IDs
     --
-    -- NULL means no winners.
+    -- NULL or empty array means:
     --
-    -- Empty array also means no winners.
+    --   NO WINNER
+    --
+    -- This is the condition used when all 75 numbers were called
+    -- and nobody completed Bingo.
     ----------------------------------------------------------------
 
     IF p_winner_card_ids IS NULL THEN
@@ -3298,9 +3295,9 @@ BEGIN
 
 
     ----------------------------------------------------------------
-    -- 3. Lock the game
+    -- 3. Lock the Bingo game
     --
-    -- Prevent two settlement requests from processing the same game.
+    -- Prevents two settlement calls from processing the same game.
     ----------------------------------------------------------------
 
     SELECT *
@@ -3318,7 +3315,7 @@ BEGIN
 
 
     ----------------------------------------------------------------
-    -- 4. Make sure the game has not already been settled
+    -- 4. Game must not already be settled
     ----------------------------------------------------------------
 
     IF v_game.status = 'completed' THEN
@@ -3336,7 +3333,7 @@ BEGIN
 
 
     ----------------------------------------------------------------
-    -- 5. Get Bingo game system
+    -- 5. Get active Bingo game system
     ----------------------------------------------------------------
 
     SELECT gs.id
@@ -3357,28 +3354,24 @@ BEGIN
     -- 6. Count winners
     ----------------------------------------------------------------
 
-    v_winner_count := COALESCE(
-        cardinality(v_card_ids),
-        0
-    );
+    v_winner_count :=
+        COALESCE(
+            cardinality(v_card_ids),
+            0
+        );
 
 
     ----------------------------------------------------------------
-    -- 7. WINNER GAME
-    --
-    -- Normal settlement.
-    --
-    -- If at least one winning card exists:
-    --
-    --   prize_pool is distributed among winning cards.
-    --
-    -- The existing financial win mechanism is used.
+    -- ============================================================
+    -- 7. NORMAL WINNER SETTLEMENT
+    -- ============================================================
     ----------------------------------------------------------------
 
     IF v_winner_count > 0 THEN
 
+
         ----------------------------------------------------------------
-        -- 7a. Make sure every winning card belongs to this game
+        -- 7a. Every winning card must belong to this game
         ----------------------------------------------------------------
 
         IF EXISTS (
@@ -3400,8 +3393,7 @@ BEGIN
 
 
         ----------------------------------------------------------------
-        -- 7b. Make sure every winning card belongs to a valid
-        -- participant.
+        -- 7b. Winning cards must belong to valid participants
         ----------------------------------------------------------------
 
         IF EXISTS (
@@ -3429,8 +3421,7 @@ BEGIN
 
 
         ----------------------------------------------------------------
-        -- 7c. Make sure none of the winning cards has already been
-        -- settled.
+        -- 7c. Winning cards cannot already be settled
         ----------------------------------------------------------------
 
         IF EXISTS (
@@ -3459,7 +3450,7 @@ BEGIN
 
 
         ----------------------------------------------------------------
-        -- 7e. Lock their participants
+        -- 7e. Lock winning participants
         ----------------------------------------------------------------
 
         PERFORM 1
@@ -3493,7 +3484,7 @@ BEGIN
 
 
         ----------------------------------------------------------------
-        -- 7g. Calculate equal payout per winning card
+        -- 7g. Calculate equal payout
         ----------------------------------------------------------------
 
         v_base_payout :=
@@ -3555,21 +3546,29 @@ BEGIN
 
         LOOP
 
+
             ----------------------------------------------------------------
-            -- Credit winning amount to Main wallet
+            -- Winners are credited through record_game_win().
+            --
+            -- record_game_win() credits the Main wallet.
             ----------------------------------------------------------------
 
             v_transaction_id :=
                 public.record_game_win(
-                    p_user_id        => v_winner.user_id,
+                    p_user_id =>
+                        v_winner.user_id,
 
-                    p_amount         => v_winner.payout,
+                    p_amount =>
+                        v_winner.payout,
 
-                    p_game_system_id => v_game_system_id,
+                    p_game_system_id =>
+                        v_game_system_id,
 
-                    p_source_type    => 'bingo_game',
+                    p_source_type =>
+                        'bingo_game',
 
-                    p_source_id      => p_game_id::text,
+                    p_source_id =>
+                        p_game_id::text,
 
                     p_idempotency_key =>
                         'bingo:game:'
@@ -3658,13 +3657,14 @@ BEGIN
 
             v_total_payout :=
                 ROUND(
-                    v_total_payout + v_winner.payout,
+                    v_total_payout
+                    + v_winner.payout,
                     2
                 );
 
 
             ----------------------------------------------------------------
-            -- Winner response
+            -- Winner details
             ----------------------------------------------------------------
 
             v_winner_details :=
@@ -3697,7 +3697,9 @@ BEGIN
         ----------------------------------------------------------------
 
         IF ROUND(v_total_payout, 2)
-           <> ROUND(v_prize_pool, 2) THEN
+           <>
+           ROUND(v_prize_pool, 2)
+        THEN
 
             RAISE EXCEPTION
                 'Payout mismatch for game %. Prize pool: %, total payout: %',
@@ -3713,44 +3715,45 @@ BEGIN
         ----------------------------------------------------------------
 
         UPDATE public.bingo_participants
-        SET status = 'completed'
+        SET
+            status = 'completed'
         WHERE game_id = p_game_id;
 
 
+    ----------------------------------------------------------------
+    -- ============================================================
+    -- 8. NO-WINNER SETTLEMENT
+    -- ============================================================
+    --
+    -- When all 75 numbers have been called and there is no winner:
+    --
+    --   * No prize is paid.
+    --   * Every original stake transaction is refunded.
+    --   * refund_stake() is the ONLY wallet refund mechanism.
+    --
+    -- refund_stake() must reverse every negative ledger entry:
+    --
+    --   Play  -X  -> Play  +X
+    --   Main  -Y  -> Main  +Y
+    --   Bonus -Z  -> Bonus +Z
+    --
+    -- It also handles Bonus entitlement restoration.
+    --
+    -- end_bingo_game() intentionally does NOT directly update:
+    --
+    --   user_bonuses
+    --   user_bonus_consumptions
+    --   wallet_balances
+    --
+    -- All refund accounting belongs to refund_stake().
+    -- ============================================================
+    ----------------------------------------------------------------
+
     ELSE
 
-        ----------------------------------------------------------------
-        -- 8. NO WINNER GAME
-        --
-        -- This is the important new behavior.
-        --
-        -- When all 75 numbers have been called and nobody has Bingo:
-        --
-        --   * No winner is created.
-        --   * Prize pool is NOT paid.
-        --   * Every player's original stake is refunded.
-        --   * Each wallet is restored exactly as it was charged.
-        --
-        -- Example:
-        --
-        -- Original stake:
-        --
-        --   Bonus = 4
-        --   Play  = 5
-        --   Main  = 1
-        --
-        -- Refund:
-        --
-        --   Bonus +4
-        --   Play  +5
-        --   Main  +1
-        --
-        -- We do NOT send everything to Main.
-        ----------------------------------------------------------------
-
 
         ----------------------------------------------------------------
-        -- 8a. Lock every participant card.
+        -- 8a. Lock every participant card
         ----------------------------------------------------------------
 
         PERFORM 1
@@ -3761,7 +3764,7 @@ BEGIN
 
 
         ----------------------------------------------------------------
-        -- 8b. Lock every participant.
+        -- 8b. Lock every participant
         ----------------------------------------------------------------
 
         PERFORM 1
@@ -3772,13 +3775,13 @@ BEGIN
 
 
         ----------------------------------------------------------------
-        -- 8c. Refund every original card stake.
+        -- 8c. Refund every original stake
         --
-        -- Each card stores the exact financial transaction used to
-        -- pay for that card.
+        -- bpc.transaction_id points to the original financial
+        -- transaction that paid for this card.
         --
-        -- refund_stake() reverses every negative ledger entry from
-        -- that transaction.
+        -- refund_stake() reverses ALL negative ledger entries
+        -- belonging to that transaction.
         ----------------------------------------------------------------
 
         FOR v_participant IN
@@ -3792,9 +3795,7 @@ BEGIN
 
                 bp.user_id,
 
-                bpc.transaction_id,
-
-                bp.amount_paid
+                bpc.transaction_id
 
             FROM public.bingo_participant_cards bpc
 
@@ -3810,11 +3811,12 @@ BEGIN
 
 
             ----------------------------------------------------------------
-            -- Validate original stake transaction.
+            -- Validate original stake transaction
             ----------------------------------------------------------------
 
             IF v_participant.transaction_id IS NULL
-               OR v_participant.transaction_id <= 0 THEN
+               OR v_participant.transaction_id <= 0
+            THEN
 
                 RAISE EXCEPTION
                     'Participant card % has no valid stake transaction',
@@ -3824,48 +3826,23 @@ BEGIN
 
 
             ----------------------------------------------------------------
-            -- Before refunding Bonus money, make sure that Bonus
-            -- consumption has not already been converted.
+            -- IMPORTANT:
             --
-            -- A Bonus amount that has already been converted to Main
-            -- cannot safely be recreated as Bonus.
-            ----------------------------------------------------------------
-
-            IF EXISTS (
-                SELECT 1
-
-                FROM public.user_bonus_consumptions ubc
-
-                INNER JOIN public.user_bonuses ub
-                    ON ub.id = ubc.user_bonus_id
-
-                WHERE ubc.stake_transaction_id =
-                      v_participant.transaction_id
-
-                  AND (
-                      COALESCE(ub.converted_amount, 0) > 0
-                      OR COALESCE(ub.convertible_amount, 0) > 0
-                  )
-            ) THEN
-
-                RAISE EXCEPTION
-                    'Cannot refund Bingo game % card % because part of its Bonus stake has already been converted',
-                    p_game_id,
-                    v_participant.card_id;
-
-            END IF;
-
-
-            ----------------------------------------------------------------
-            -- Restore the exact financial stake.
+            -- refund_stake() owns ALL refund accounting.
             --
-            -- refund_stake() does:
+            -- It restores:
             --
-            --   Play  -10  -> Play  +10
-            --   Main   -5  -> Main  +5
-            --   Bonus  -3  -> Bonus +3
+            --   Main wallet
+            --   Play wallet
+            --   Bonus wallet
             --
-            -- It therefore preserves the original wallet source.
+            -- and, after the refund_stake() update:
+            --
+            --   Bonus remaining_amount
+            --   Bonus wagering_progress
+            --   Bonus status where appropriate
+            --
+            -- Nothing is restored directly here.
             ----------------------------------------------------------------
 
             v_refund_transaction_id :=
@@ -3909,156 +3886,62 @@ BEGIN
 
 
             ----------------------------------------------------------------
-            -- Restore Bonus entitlement accounting.
+            -- Calculate exact amount refunded by refund_stake().
             --
-            -- refund_stake() restores the Bonus wallet balance.
-            --
-            -- This additional step restores:
-            --
-            --   remaining_amount
-            --   wagering_progress
-            --
-            -- so the Bonus account itself also returns to its
-            -- pre-stake state.
+            -- refund_stake() creates positive ledger entries for each
+            -- wallet that was originally charged.
             ----------------------------------------------------------------
 
-            FOR v_bonus_consumption IN
-
-                SELECT
-                    ubc.user_bonus_id,
-
-                    ubc.amount,
-
-                    ubc.wagering_amount
-
-                FROM public.user_bonus_consumptions ubc
-
-                WHERE ubc.stake_transaction_id =
-                      v_participant.transaction_id
-
-                ORDER BY ubc.user_bonus_id
-
-            LOOP
-
-                v_bonus_restore :=
-                    ROUND(
-                        COALESCE(
-                            v_bonus_consumption.amount,
-                            0
-                        ),
-                        2
-                    );
+            SELECT
+                COALESCE(
+                    SUM(le.amount),
+                    0
+                )
+            INTO v_refund_amount
+            FROM public.ledger_entries le
+            WHERE le.transaction_id =
+                  v_refund_transaction_id;
 
 
-                v_bonus_wagering_restore :=
-                    ROUND(
-                        COALESCE(
-                            v_bonus_consumption.wagering_amount,
-                            0
-                        ),
-                        2
-                    );
-
-
-                IF v_bonus_restore > 0
-                   OR v_bonus_wagering_restore > 0 THEN
-
-                    UPDATE public.user_bonuses
-                    SET
-                        remaining_amount =
-                            ROUND(
-                                remaining_amount
-                                + v_bonus_restore,
-                                2
-                            ),
-
-                        wagering_progress =
-                            GREATEST(
-                                ROUND(
-                                    wagering_progress
-                                    - v_bonus_wagering_restore,
-                                    2
-                                ),
-                                0
-                            ),
-
-                        updated_at = NOW()
-
-                    WHERE id =
-                          v_bonus_consumption.user_bonus_id;
-
-
-                    IF NOT FOUND THEN
-
-                        RAISE EXCEPTION
-                            'Bonus % was not found while refunding stake transaction %',
-                            v_bonus_consumption.user_bonus_id,
-                            v_participant.transaction_id;
-
-                    END IF;
-
-
-                    ----------------------------------------------------------------
-                    -- If this refund makes the Bonus no longer fully
-                    -- wagered, restore it to active state.
-                    ----------------------------------------------------------------
-
-                    UPDATE public.user_bonuses
-                    SET
-                        status = 'active',
-
-                        completed_at = NULL,
-
-                        convertible_amount = 0,
-
-                        updated_at = NOW()
-
-                    WHERE id =
-                          v_bonus_consumption.user_bonus_id
-
-                      AND status = 'completed'
-
-                      AND wagering_progress
-                          < wagering_requirement;
-
-
-                END IF;
-
-            END LOOP;
+            v_refund_amount :=
+                ROUND(
+                    COALESCE(v_refund_amount, 0),
+                    2
+                );
 
 
             ----------------------------------------------------------------
-            -- Count refund.
+            -- Safety check
             ----------------------------------------------------------------
+
+            IF v_refund_amount <= 0 THEN
+
+                RAISE EXCEPTION
+                    'Refund transaction % for game % has no positive refund amount',
+                    v_refund_transaction_id,
+                    p_game_id;
+
+            END IF;
+
+
+            ----------------------------------------------------------------
+            -- Accumulate total refund
+            ----------------------------------------------------------------
+
+            v_total_refund :=
+                ROUND(
+                    v_total_refund
+                    + v_refund_amount,
+                    2
+                );
+
 
             v_refund_count :=
                 v_refund_count + 1;
 
 
             ----------------------------------------------------------------
-            -- Determine exact refund amount from the refund transaction.
-            ----------------------------------------------------------------
-
-            SELECT COALESCE(
-                SUM(le.amount),
-                0
-            )
-            INTO v_bonus_restore
-            FROM public.ledger_entries le
-            WHERE le.transaction_id =
-                  v_refund_transaction_id;
-
-
-            v_total_refund :=
-                ROUND(
-                    v_total_refund
-                    + COALESCE(v_bonus_restore, 0),
-                    2
-                );
-
-
-            ----------------------------------------------------------------
-            -- Refund details.
+            -- Refund details
             ----------------------------------------------------------------
 
             v_refund_details :=
@@ -4082,7 +3965,7 @@ BEGIN
                         v_refund_transaction_id,
 
                         'refund_amount',
-                        COALESCE(v_bonus_restore, 0)
+                        v_refund_amount
                     )
                 );
 
@@ -4090,7 +3973,7 @@ BEGIN
 
 
         ----------------------------------------------------------------
-        -- 8d. Every participant is now refunded.
+        -- 8d. Mark every participant as refunded
         ----------------------------------------------------------------
 
         UPDATE public.bingo_participants
@@ -4101,24 +3984,11 @@ BEGIN
 
         WHERE game_id = p_game_id;
 
-
     END IF;
 
 
     ----------------------------------------------------------------
     -- 9. Complete Bingo game
-    --
-    -- A no-winner game has:
-    --
-    --   winning_card_count = 0
-    --   total_payout       = 0
-    --   total_refund       = total original stakes
-    --
-    -- A normal winner game has:
-    --
-    --   winning_card_count > 0
-    --   total_payout       = prize_pool
-    --   total_refund       = 0
     ----------------------------------------------------------------
 
     UPDATE public.bingo_games
@@ -8418,24 +8288,29 @@ CREATE FUNCTION public.refund_stake(p_user_id integer, p_original_transaction_id
     LANGUAGE plpgsql
     AS $$
 DECLARE
-    v_original financial_transactions%ROWTYPE;
+    v_original public.financial_transactions%ROWTYPE;
 
     v_refund_transaction_id bigint;
     v_transaction_created boolean;
 
     v_wallet_id bigint;
-    v_wallet_balance numeric(18,2);
 
     v_original_ledger RECORD;
+    v_bonus_consumption RECORD;
 
     v_total_refund numeric(18,2) := 0;
     v_ledger_count integer := 0;
 
+    v_bonus_restore numeric(18,2);
+    v_bonus_wagering_restore numeric(18,2);
+
     v_refund_metadata jsonb;
 BEGIN
+
     ----------------------------------------------------------------
     -- 1. Validate input
     ----------------------------------------------------------------
+
     IF p_user_id IS NULL OR p_user_id <= 0 THEN
         RAISE EXCEPTION 'Invalid user ID';
     END IF;
@@ -8452,11 +8327,9 @@ BEGIN
 
 
     ----------------------------------------------------------------
-    -- 2. Lock and validate the original stake transaction
-    --
-    -- This serializes multiple refund attempts for the same
-    -- financial transaction.
+    -- 2. Lock and validate original stake transaction
     ----------------------------------------------------------------
+
     SELECT *
     INTO v_original
     FROM public.financial_transactions
@@ -8475,15 +8348,17 @@ BEGIN
 
 
     ----------------------------------------------------------------
-    -- 3. Find every wallet movement created by the original stake
+    -- 3. Lock every wallet originally charged
     --
-    -- place_stake() can debit:
+    -- place_stake() can charge:
     --
-    --   Play wallet
-    --   Main wallet
+    --   Play
+    --   Main
+    --   Bonus
     --
-    -- Therefore we must reverse every negative ledger entry.
+    -- We reverse every negative ledger entry.
     ----------------------------------------------------------------
+
     FOR v_wallet_id IN
         SELECT DISTINCT le.wallet_id
         FROM public.ledger_entries le
@@ -8492,26 +8367,68 @@ BEGIN
         ORDER BY le.wallet_id
     LOOP
 
-        ----------------------------------------------------------------
-        -- Lock the wallet balance row.
-        --
-        -- IMPORTANT:
-        -- The balance is stored in wallet_balances, not wallets.
-        ----------------------------------------------------------------
         PERFORM public.lock_wallet(v_wallet_id);
 
     END LOOP;
 
 
     ----------------------------------------------------------------
-    -- 4. Create/retrieve refund financial transaction
+    -- 4. Lock Bonus consumption records
     --
-    -- Description and metadata belong to financial_transactions.
-    -- They do NOT belong to ledger_entries.
+    -- This is important because Bonus conversion can happen
+    -- independently of the stake transaction.
+    --
+    -- We must inspect the Bonus state before restoring it.
     ----------------------------------------------------------------
+
+    FOR v_bonus_consumption IN
+        SELECT
+            ubc.user_bonus_id,
+            ubc.amount,
+            ubc.wagering_amount,
+            ub.status,
+            ub.remaining_amount,
+            ub.wagering_progress,
+            ub.wagering_requirement,
+            ub.convertible_amount,
+            ub.converted_amount,
+            ub.expires_at
+        FROM public.user_bonus_consumptions ubc
+        INNER JOIN public.user_bonuses ub
+            ON ub.id = ubc.user_bonus_id
+        WHERE ubc.stake_transaction_id =
+              p_original_transaction_id
+        ORDER BY ubc.user_bonus_id
+        FOR UPDATE OF ubc, ub
+    LOOP
+
+        ----------------------------------------------------------------
+        -- A Bonus that has already been converted to Main cannot
+        -- safely be recreated as Bonus.
+        ----------------------------------------------------------------
+
+        IF COALESCE(v_bonus_consumption.converted_amount, 0) > 0
+           OR COALESCE(v_bonus_consumption.convertible_amount, 0) > 0
+        THEN
+
+            RAISE EXCEPTION
+                'Cannot refund stake transaction % because Bonus % has already been converted',
+                p_original_transaction_id,
+                v_bonus_consumption.user_bonus_id;
+
+        END IF;
+
+    END LOOP;
+
+
+    ----------------------------------------------------------------
+    -- 5. Create / retrieve refund transaction
+    ----------------------------------------------------------------
+
     v_refund_metadata :=
         COALESCE(p_metadata, '{}'::jsonb)
-        || jsonb_build_object(
+        ||
+        jsonb_build_object(
             'original_transaction_id',
             p_original_transaction_id
         );
@@ -8533,28 +8450,18 @@ BEGIN
         COALESCE(
             NULLIF(BTRIM(p_description), ''),
             'Refund of stake transaction '
-                || p_original_transaction_id::text
+            || p_original_transaction_id::text
         ),
         v_refund_metadata
     ) AS t;
 
 
     ----------------------------------------------------------------
-    -- 5. Idempotent retry
-    --
-    -- If the refund transaction already exists, DO NOT:
-    --
-    --   - create another ledger entry
-    --   - credit the wallet again
-    --
-    -- Just return the existing refund transaction.
+    -- 6. Idempotent retry
     ----------------------------------------------------------------
+
     IF NOT v_transaction_created THEN
 
-        ----------------------------------------------------------------
-        -- Verify that the existing transaction really represents
-        -- this refund operation.
-        ----------------------------------------------------------------
         IF NOT EXISTS (
             SELECT 1
             FROM public.financial_transactions ft
@@ -8563,74 +8470,92 @@ BEGIN
               AND ft.type = 'refund'
               AND ft.status = 'completed'
               AND ft.source_type = 'stake_refund'
-              AND ft.source_id = p_original_transaction_id::text
+              AND ft.source_id =
+                  p_original_transaction_id::text
         ) THEN
+
             RAISE EXCEPTION
                 'Existing transaction % does not match stake refund %',
                 v_refund_transaction_id,
                 p_original_transaction_id;
+
         END IF;
 
+        ----------------------------------------------------------------
+        -- IMPORTANT:
+        --
+        -- Do NOT restore wallets or Bonus again on an idempotent retry.
+        ----------------------------------------------------------------
+
         RETURN v_refund_transaction_id;
+
     END IF;
 
 
     ----------------------------------------------------------------
-    -- 6. Prevent double refund
-    --
-    -- The original transaction is locked above, so concurrent
-    -- refund attempts for this same transaction are serialized.
+    -- 7. Prevent double refund
     ----------------------------------------------------------------
+
     IF EXISTS (
         SELECT 1
         FROM public.financial_transactions ft
         WHERE ft.reversed_transaction_id =
               p_original_transaction_id
     ) THEN
+
         RAISE EXCEPTION
             'Stake transaction % has already been refunded',
             p_original_transaction_id;
+
     END IF;
 
 
     ----------------------------------------------------------------
-    -- 7. Link refund transaction to original stake transaction
+    -- 8. Link refund to original stake
     ----------------------------------------------------------------
+
     UPDATE public.financial_transactions
     SET
-        reversed_transaction_id = p_original_transaction_id
+        reversed_transaction_id =
+            p_original_transaction_id
     WHERE id = v_refund_transaction_id
       AND reversed_transaction_id IS NULL;
 
     IF NOT FOUND THEN
+
         RAISE EXCEPTION
             'Failed to link refund transaction % to original stake transaction %',
             v_refund_transaction_id,
             p_original_transaction_id;
+
     END IF;
 
 
     ----------------------------------------------------------------
-    -- 8. Reverse every negative ledger entry
+    -- 9. Reverse every negative ledger entry
+    --
+    -- Example:
     --
     -- Original:
-    --
     --   Play  -70
-    --   Main  -30
+    --   Main  -20
+    --   Bonus -10
     --
     -- Refund:
-    --
     --   Play  +70
-    --   Main  +30
+    --   Main  +20
+    --   Bonus +10
     --
     -- Total refund = 100
     ----------------------------------------------------------------
+
     FOR v_original_ledger IN
         SELECT
             le.wallet_id,
             le.amount
         FROM public.ledger_entries le
-        WHERE le.transaction_id = p_original_transaction_id
+        WHERE le.transaction_id =
+              p_original_transaction_id
           AND le.amount < 0
         ORDER BY le.wallet_id
     LOOP
@@ -8638,16 +8563,11 @@ BEGIN
         v_ledger_count :=
             v_ledger_count + 1;
 
+
         ----------------------------------------------------------------
-        -- Insert the reversal ledger entry.
-        --
-        -- ledger_entries only contains:
-        --
-        --   transaction_id
-        --   wallet_id
-        --   amount
-        --   created_at
+        -- Create reversal ledger entry
         ----------------------------------------------------------------
+
         INSERT INTO public.ledger_entries (
             transaction_id,
             wallet_id,
@@ -8656,44 +8576,62 @@ BEGIN
         VALUES (
             v_refund_transaction_id,
             v_original_ledger.wallet_id,
-            ROUND(-v_original_ledger.amount, 2)
+            ROUND(
+                -v_original_ledger.amount,
+                2
+            )
         );
 
 
         ----------------------------------------------------------------
-        -- Restore the exact wallet that was originally charged.
+        -- Restore exact original wallet
         ----------------------------------------------------------------
+
         UPDATE public.wallet_balances
         SET
-            balance = balance + ROUND(
-                -v_original_ledger.amount,
-                2
-            ),
+            balance =
+                balance
+                +
+                ROUND(
+                    -v_original_ledger.amount,
+                    2
+                ),
             updated_at = NOW()
-        WHERE wallet_id = v_original_ledger.wallet_id;
+        WHERE wallet_id =
+              v_original_ledger.wallet_id;
 
         IF NOT FOUND THEN
+
             RAISE EXCEPTION
                 'Wallet balance % not found while refunding stake transaction %',
                 v_original_ledger.wallet_id,
                 p_original_transaction_id;
+
         END IF;
 
 
         ----------------------------------------------------------------
-        -- Calculate total refund.
+        -- Accumulate refund
         ----------------------------------------------------------------
+
         v_total_refund :=
-            v_total_refund
-            + ROUND(-v_original_ledger.amount, 2);
+            ROUND(
+                v_total_refund
+                +
+                ROUND(
+                    -v_original_ledger.amount,
+                    2
+                ),
+                2
+            );
 
     END LOOP;
 
 
     ----------------------------------------------------------------
-    -- 9. A completed stake must have at least one negative ledger
-    --    entry.
+    -- 10. Validate that the original stake had refundable entries
     ----------------------------------------------------------------
+
     IF v_ledger_count = 0
        OR v_total_refund <= 0 THEN
 
@@ -8705,22 +8643,146 @@ BEGIN
 
 
     ----------------------------------------------------------------
-    -- 10. Final consistency check
+    -- 11. RESTORE BONUS ENTITLEMENT
+    --
+    -- This is now part of refund_stake().
+    --
+    -- It restores the Bonus state associated with the original
+    -- stake transaction.
     ----------------------------------------------------------------
+
+    FOR v_bonus_consumption IN
+        SELECT
+            ubc.user_bonus_id,
+            ubc.amount,
+            ubc.wagering_amount
+        FROM public.user_bonus_consumptions ubc
+        WHERE ubc.stake_transaction_id =
+              p_original_transaction_id
+        ORDER BY ubc.user_bonus_id
+        FOR UPDATE
+    LOOP
+
+        v_bonus_restore :=
+            ROUND(
+                COALESCE(
+                    v_bonus_consumption.amount,
+                    0
+                ),
+                2
+            );
+
+        v_bonus_wagering_restore :=
+            ROUND(
+                COALESCE(
+                    v_bonus_consumption.wagering_amount,
+                    0
+                ),
+                2
+            );
+
+
+        IF v_bonus_restore > 0
+           OR v_bonus_wagering_restore > 0
+        THEN
+
+            ----------------------------------------------------------------
+            -- Restore remaining Bonus amount and wagering progress.
+            ----------------------------------------------------------------
+
+            UPDATE public.user_bonuses
+            SET
+                remaining_amount =
+                    ROUND(
+                        remaining_amount
+                        + v_bonus_restore,
+                        2
+                    ),
+
+                wagering_progress =
+                    GREATEST(
+                        ROUND(
+                            wagering_progress
+                            - v_bonus_wagering_restore,
+                            2
+                        ),
+                        0
+                    ),
+
+                updated_at = NOW()
+
+            WHERE id =
+                  v_bonus_consumption.user_bonus_id;
+
+
+            IF NOT FOUND THEN
+
+                RAISE EXCEPTION
+                    'Bonus % was not found while refunding stake transaction %',
+                    v_bonus_consumption.user_bonus_id,
+                    p_original_transaction_id;
+
+            END IF;
+
+
+            ----------------------------------------------------------------
+            -- If the Bonus had become completed because of this stake,
+            -- undo that completion.
+            --
+            -- Do NOT revive an already-expired Bonus.
+            ----------------------------------------------------------------
+
+            UPDATE public.user_bonuses
+            SET
+                status =
+                    CASE
+                        WHEN expires_at IS NULL
+                             OR expires_at >= NOW()
+                        THEN 'active'
+                        ELSE 'expired'
+                    END,
+
+                completed_at = NULL,
+
+                convertible_amount = 0,
+
+                updated_at = NOW()
+
+            WHERE id =
+                  v_bonus_consumption.user_bonus_id
+
+              AND status = 'completed'
+
+              AND wagering_progress
+                  < wagering_requirement;
+
+        END IF;
+
+    END LOOP;
+
+
+    ----------------------------------------------------------------
+    -- 12. Final consistency check
+    ----------------------------------------------------------------
+
     IF NOT EXISTS (
         SELECT 1
         FROM public.ledger_entries le
-        WHERE le.transaction_id = v_refund_transaction_id
+        WHERE le.transaction_id =
+              v_refund_transaction_id
     ) THEN
+
         RAISE EXCEPTION
             'Refund transaction % has no ledger entries',
             v_refund_transaction_id;
+
     END IF;
 
 
     ----------------------------------------------------------------
-    -- 11. Return refund transaction ID
+    -- 13. Return refund transaction
     ----------------------------------------------------------------
+
     RETURN v_refund_transaction_id;
 
 END;
