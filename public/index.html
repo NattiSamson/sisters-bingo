@@ -4406,8 +4406,6 @@ function handle(msg){
       if(msg.stakes) renderStakes(msg.stakes);
       
       const pageParam = new URLSearchParams(location.search).get('page');
-      if(pageParam === 'deposit') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('deposit'); }, 1500);
-      if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('withdraw'); }, 1500);
       waitForTelegramId(40,250).then(async tid=>{
         if(!tid){
           
@@ -4760,27 +4758,6 @@ function handle(msg){
   }
 }
 
-// ─── WALLET ───────────────────────────────────────────────────
-function switchWalletTab(tab){
-  document.querySelectorAll('.wallet-tab').forEach((t,i)=>{
-    t.classList.toggle('active',['deposit','withdraw'][i]===tab);
-  });
-  document.getElementById('walletDeposit').classList.toggle('active',tab==='deposit');
-  document.getElementById('walletWithdraw').classList.toggle('active',tab==='withdraw');
-  document.getElementById('depositMsg').style.display='none';
-  document.getElementById('withdrawMsg').style.display='none';
-}
-function showWalletMsg(id, text, type){
-  const el=document.getElementById(id);
-  el.innerText=text; el.className='status-msg '+type; el.style.display='block';
-  setTimeout(()=>el.style.display='none', 5000);
-}
-
-function esc(str){
-  if(!str) return '';
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
   // ─── PLAYER AREA REFERENCE UI ───────────────────────────────
 function getGameBetAmount(msg={}){
   const raw=msg.stakeAmount ?? msg.stake ?? msg.bet ?? msg.amount;
@@ -4812,7 +4789,7 @@ function renderCalledChips(){
   });
 }
 
-  // ─── GAME: NUMBER CALLED ──────────────────────────────────────
+// ─── GAME: NUMBER CALLED ──────────────────────────────────────
 // ─── ROCKET / FIREWORK EFFECT ON THE CALLED NUMBER ──────────────
 // A small golden rocket shoots up behind the ball, then bursts into radiating
 // sparks, glowing embers and falling dust around the number being called.
