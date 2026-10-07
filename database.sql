@@ -3230,24 +3230,35 @@ DECLARE
 
     v_game_system_id bigint;
 
-    v_winner_count integer;
+    v_winner_count integer := 0;
+    v_refund_count integer := 0;
 
     v_prize_pool numeric(18,2);
     v_base_payout numeric(18,2);
     v_remainder_cents integer;
 
     v_total_payout numeric(18,2) := 0;
+    v_total_refund numeric(18,2) := 0;
 
     v_winner record;
+    v_participant record;
 
     v_transaction_id bigint;
+    v_refund_transaction_id bigint;
 
     v_winner_details jsonb := '[]'::jsonb;
+    v_refund_details jsonb := '[]'::jsonb;
+
+    v_card_ids integer[] := ARRAY[]::integer[];
+
+    v_bonus_consumption record;
+    v_bonus_restore numeric(18,2);
+    v_bonus_wagering_restore numeric(18,2);
 
 BEGIN
 
     ----------------------------------------------------------------
-    -- 1. Validate arguments
+    -- 1. Validate game ID
     ----------------------------------------------------------------
 
     IF p_game_id IS NULL OR p_game_id <= 0 THEN
@@ -3257,48 +3268,39 @@ BEGIN
     END IF;
 
 
-    IF p_winner_card_ids IS NULL
-       OR cardinality(p_winner_card_ids) = 0 THEN
-
-        RAISE EXCEPTION
-            'At least one winning card is required';
-
-    END IF;
-
-
     ----------------------------------------------------------------
-    -- 2. Remove duplicate card IDs
+    -- 2. Normalize winner cards
     --
-    -- If the caller accidentally sends:
+    -- NULL means no winners.
     --
-    -- [101, 102, 102, 103]
-    --
-    -- it becomes:
-    --
-    -- [101, 102, 103]
+    -- Empty array also means no winners.
     ----------------------------------------------------------------
 
-    p_winner_card_ids := ARRAY(
-        SELECT DISTINCT card_id
-        FROM unnest(p_winner_card_ids) AS card_id
-        WHERE card_id IS NOT NULL
-          AND card_id > 0
-        ORDER BY card_id
-    );
+    IF p_winner_card_ids IS NULL THEN
 
+        v_card_ids := ARRAY[]::integer[];
 
-    IF cardinality(p_winner_card_ids) = 0 THEN
-        RAISE EXCEPTION
-            'No valid winning card IDs supplied';
+    ELSE
+
+        SELECT COALESCE(
+            ARRAY_AGG(card_id ORDER BY card_id),
+            ARRAY[]::integer[]
+        )
+        INTO v_card_ids
+        FROM (
+            SELECT DISTINCT card_id
+            FROM unnest(p_winner_card_ids) AS x(card_id)
+            WHERE card_id IS NOT NULL
+              AND card_id > 0
+        ) AS valid_cards;
+
     END IF;
 
 
     ----------------------------------------------------------------
     -- 3. Lock the game
     --
-    -- This is extremely important.
-    --
-    -- Two requests cannot settle the same game simultaneously.
+    -- Prevent two settlement requests from processing the same game.
     ----------------------------------------------------------------
 
     SELECT *
@@ -3334,7 +3336,7 @@ BEGIN
 
 
     ----------------------------------------------------------------
-    -- 5. Get the Bingo game system
+    -- 5. Get Bingo game system
     ----------------------------------------------------------------
 
     SELECT gs.id
@@ -3352,376 +3354,771 @@ BEGIN
 
 
     ----------------------------------------------------------------
-    -- 6. Make sure every winning card belongs to this game
+    -- 6. Count winners
     ----------------------------------------------------------------
 
-    IF EXISTS (
-        SELECT 1
-        FROM unnest(p_winner_card_ids) AS x(card_id)
-
-        LEFT JOIN public.bingo_participant_cards bpc
-            ON bpc.card_id = x.card_id
-           AND bpc.game_id = p_game_id
-
-        WHERE bpc.card_id IS NULL
-    ) THEN
-
-        RAISE EXCEPTION
-            'One or more winning cards do not belong to game %',
-            p_game_id;
-
-    END IF;
+    v_winner_count := COALESCE(
+        cardinality(v_card_ids),
+        0
+    );
 
 
     ----------------------------------------------------------------
-    -- 7. Make sure every winning card belongs to a valid participant
+    -- 7. WINNER GAME
+    --
+    -- Normal settlement.
+    --
+    -- If at least one winning card exists:
+    --
+    --   prize_pool is distributed among winning cards.
+    --
+    -- The existing financial win mechanism is used.
     ----------------------------------------------------------------
 
-    IF EXISTS (
-        SELECT 1
+    IF v_winner_count > 0 THEN
 
+        ----------------------------------------------------------------
+        -- 7a. Make sure every winning card belongs to this game
+        ----------------------------------------------------------------
+
+        IF EXISTS (
+            SELECT 1
+            FROM unnest(v_card_ids) AS x(card_id)
+
+            LEFT JOIN public.bingo_participant_cards bpc
+                ON bpc.card_id = x.card_id
+               AND bpc.game_id = p_game_id
+
+            WHERE bpc.card_id IS NULL
+        ) THEN
+
+            RAISE EXCEPTION
+                'One or more winning cards do not belong to game %',
+                p_game_id;
+
+        END IF;
+
+
+        ----------------------------------------------------------------
+        -- 7b. Make sure every winning card belongs to a valid
+        -- participant.
+        ----------------------------------------------------------------
+
+        IF EXISTS (
+            SELECT 1
+            FROM public.bingo_participant_cards bpc
+
+            INNER JOIN public.bingo_participants bp
+                ON bp.id = bpc.participant_id
+               AND bp.game_id = p_game_id
+
+            WHERE bpc.game_id = p_game_id
+              AND bpc.card_id = ANY(v_card_ids)
+
+              AND (
+                  bp.status <> 'active'
+                  OR bp.is_disqualified = TRUE
+                  OR bpc.is_disqualified = TRUE
+              )
+        ) THEN
+
+            RAISE EXCEPTION
+                'One or more winning cards belong to an invalid or disqualified participant';
+
+        END IF;
+
+
+        ----------------------------------------------------------------
+        -- 7c. Make sure none of the winning cards has already been
+        -- settled.
+        ----------------------------------------------------------------
+
+        IF EXISTS (
+            SELECT 1
+            FROM public.bingo_winners bw
+            WHERE bw.game_id = p_game_id
+              AND bw.card_id = ANY(v_card_ids)
+        ) THEN
+
+            RAISE EXCEPTION
+                'One or more winning cards have already been settled for game %',
+                p_game_id;
+
+        END IF;
+
+
+        ----------------------------------------------------------------
+        -- 7d. Lock winning cards
+        ----------------------------------------------------------------
+
+        PERFORM 1
         FROM public.bingo_participant_cards bpc
-
-        INNER JOIN public.bingo_participants bp
-            ON bp.id = bpc.participant_id
-           AND bp.game_id = p_game_id
-
         WHERE bpc.game_id = p_game_id
-          AND bpc.card_id = ANY(p_winner_card_ids)
+          AND bpc.card_id = ANY(v_card_ids)
+        FOR UPDATE;
 
-          AND (
-              bp.status <> 'active'
-              OR bp.is_disqualified = TRUE
+
+        ----------------------------------------------------------------
+        -- 7e. Lock their participants
+        ----------------------------------------------------------------
+
+        PERFORM 1
+        FROM public.bingo_participants bp
+        WHERE bp.game_id = p_game_id
+          AND bp.id IN (
+              SELECT bpc.participant_id
+              FROM public.bingo_participant_cards bpc
+              WHERE bpc.game_id = p_game_id
+                AND bpc.card_id = ANY(v_card_ids)
           )
-    ) THEN
-
-        RAISE EXCEPTION
-            'One or more winning cards belong to an invalid/disqualified participant';
-
-    END IF;
+        FOR UPDATE;
 
 
-    ----------------------------------------------------------------
-    -- 8. Make sure none of the cards has already been paid
-    ----------------------------------------------------------------
+        ----------------------------------------------------------------
+        -- 7f. Get prize pool
+        ----------------------------------------------------------------
 
-    IF EXISTS (
-        SELECT 1
-        FROM public.bingo_winners bw
-        WHERE bw.game_id = p_game_id
-          AND bw.card_id = ANY(p_winner_card_ids)
-    ) THEN
-
-        RAISE EXCEPTION
-            'One or more winning cards have already been settled for game %',
-            p_game_id;
-
-    END IF;
+        v_prize_pool :=
+            ROUND(
+                COALESCE(v_game.prize_pool, 0),
+                2
+            );
 
 
-    ----------------------------------------------------------------
-    -- 9. Lock all winning cards
-    ----------------------------------------------------------------
-
-    PERFORM 1
-    FROM public.bingo_participant_cards bpc
-    WHERE bpc.game_id = p_game_id
-      AND bpc.card_id = ANY(p_winner_card_ids)
-    FOR UPDATE;
+        IF v_prize_pool <= 0 THEN
+            RAISE EXCEPTION
+                'Game % has no prize pool',
+                p_game_id;
+        END IF;
 
 
-    ----------------------------------------------------------------
-    -- 10. Lock their participants
-    ----------------------------------------------------------------
+        ----------------------------------------------------------------
+        -- 7g. Calculate equal payout per winning card
+        ----------------------------------------------------------------
 
-    PERFORM 1
-    FROM public.bingo_participants bp
-    WHERE bp.game_id = p_game_id
-      AND bp.id IN (
-          SELECT bpc.participant_id
-          FROM public.bingo_participant_cards bpc
-          WHERE bpc.game_id = p_game_id
-            AND bpc.card_id = ANY(p_winner_card_ids)
-      )
-    FOR UPDATE;
+        v_base_payout :=
+            FLOOR(
+                (v_prize_pool * 100)
+                / v_winner_count
+            ) / 100;
 
 
-    ----------------------------------------------------------------
-    -- 11. Use the prize pool calculated when the game was created
-    --
-    -- DO NOT use gross_pot here.
-    --
-    -- create_bingo_game_from_selections() already calculated:
-    --
-    -- gross_pot
-    -- commission_amount
-    -- prize_pool
-    --
-    -- Winners receive prize_pool.
-    ----------------------------------------------------------------
-
-    v_prize_pool :=
-        ROUND(
-            COALESCE(v_game.prize_pool, 0),
-            2
-        );
-
-
-    IF v_prize_pool <= 0 THEN
-        RAISE EXCEPTION
-            'Game % has no prize pool',
-            p_game_id;
-    END IF;
-
-
-    ----------------------------------------------------------------
-    -- 12. Count winning cards
-    --
-    -- IMPORTANT:
-    --
-    -- This is the number of WINNING CARDS,
-    -- not the number of winning USERS.
-    --
-    -- One user may therefore appear multiple times.
-    ----------------------------------------------------------------
-
-    v_winner_count :=
-        cardinality(p_winner_card_ids);
-
-
-    ----------------------------------------------------------------
-    -- 13. Calculate payout per card
-    --
-    -- We work in cents to guarantee:
-    --
-    -- SUM(all payouts) = prize_pool
-    --
-    -- Example:
-    --
-    -- prize_pool = 100
-    -- winners    = 3
-    --
-    -- payouts:
-    -- 33.34
-    -- 33.33
-    -- 33.33
-    ----------------------------------------------------------------
-
-    v_base_payout :=
-        FLOOR(
-            (v_prize_pool * 100)
-            / v_winner_count
-        ) / 100;
-
-
-    v_remainder_cents :=
-        ROUND(v_prize_pool * 100)
-        -
-        (
-            ROUND(v_base_payout * 100)
-            * v_winner_count
-        );
-
-
-    ----------------------------------------------------------------
-    -- 14. Settle every winning card
-    ----------------------------------------------------------------
-
-    FOR v_winner IN
-
-        SELECT
-            bpc.id AS participant_card_id,
-
-            bpc.card_id,
-
-            bpc.participant_id,
-
-            bp.user_id,
-
+        v_remainder_cents :=
+            ROUND(v_prize_pool * 100)
+            -
             (
-                v_base_payout
-
-                +
-
-                CASE
-                    WHEN ROW_NUMBER() OVER (
-                        ORDER BY bpc.card_id
-                    ) <= v_remainder_cents
-                    THEN 0.01
-                    ELSE 0
-                END
-
-            )::numeric(18,2) AS payout
-
-        FROM public.bingo_participant_cards bpc
-
-        INNER JOIN public.bingo_participants bp
-            ON bp.id = bpc.participant_id
-           AND bp.game_id = p_game_id
-
-        WHERE bpc.game_id = p_game_id
-          AND bpc.card_id = ANY(p_winner_card_ids)
-
-        ORDER BY bpc.card_id
-
-    LOOP
+                ROUND(v_base_payout * 100)
+                * v_winner_count
+            );
 
 
         ----------------------------------------------------------------
-        -- 14a. Credit the winner
-        --
-        -- This should be the existing financial function responsible
-        -- for creating the winning transaction and crediting the
-        -- user's main wallet.
+        -- 7h. Pay every winning card
         ----------------------------------------------------------------
 
-        v_transaction_id :=
-            public.record_game_win(
-                p_user_id        => v_winner.user_id,
+        FOR v_winner IN
 
-                p_amount         => v_winner.payout,
+            SELECT
+                bpc.id AS participant_card_id,
 
-                p_game_system_id => v_game_system_id,
+                bpc.card_id,
 
-                p_source_type    => 'bingo_game',
+                bpc.participant_id,
 
-                p_source_id      => p_game_id::text,
+                bp.user_id,
 
-                p_idempotency_key =>
-                    'bingo:game:'
-                    || p_game_id
-                    || ':card:'
-                    || v_winner.card_id,
+                (
+                    v_base_payout
 
-                p_description =>
-                    'Bingo winning payout - game #'
-                    || p_game_id
-                    || ', card #'
-                    || v_winner.card_id,
+                    +
 
-                p_metadata =>
+                    CASE
+                        WHEN ROW_NUMBER() OVER (
+                            ORDER BY bpc.card_id
+                        ) <= v_remainder_cents
+                        THEN 0.01
+                        ELSE 0
+                    END
+
+                )::numeric(18,2) AS payout
+
+            FROM public.bingo_participant_cards bpc
+
+            INNER JOIN public.bingo_participants bp
+                ON bp.id = bpc.participant_id
+               AND bp.game_id = p_game_id
+
+            WHERE bpc.game_id = p_game_id
+              AND bpc.card_id = ANY(v_card_ids)
+
+            ORDER BY bpc.card_id
+
+        LOOP
+
+            ----------------------------------------------------------------
+            -- Credit winning amount to Main wallet
+            ----------------------------------------------------------------
+
+            v_transaction_id :=
+                public.record_game_win(
+                    p_user_id        => v_winner.user_id,
+
+                    p_amount         => v_winner.payout,
+
+                    p_game_system_id => v_game_system_id,
+
+                    p_source_type    => 'bingo_game',
+
+                    p_source_id      => p_game_id::text,
+
+                    p_idempotency_key =>
+                        'bingo:game:'
+                        || p_game_id
+                        || ':card:'
+                        || v_winner.card_id,
+
+                    p_description =>
+                        'Bingo winning payout - game #'
+                        || p_game_id
+                        || ', card #'
+                        || v_winner.card_id,
+
+                    p_metadata =>
+                        jsonb_build_object(
+                            'game_id',
+                            p_game_id,
+
+                            'card_id',
+                            v_winner.card_id,
+
+                            'participant_id',
+                            v_winner.participant_id,
+
+                            'participant_card_id',
+                            v_winner.participant_card_id,
+
+                            'stake_id',
+                            v_game.stake_id,
+
+                            'stake_amount',
+                            v_game.stake_amount,
+
+                            'gross_pot',
+                            v_game.gross_pot,
+
+                            'commission_amount',
+                            v_game.commission_amount,
+
+                            'prize_pool',
+                            v_game.prize_pool
+                        )
+                );
+
+
+            ----------------------------------------------------------------
+            -- Record winner
+            ----------------------------------------------------------------
+
+            INSERT INTO public.bingo_winners (
+                game_id,
+                participant_id,
+                user_id,
+                card_id,
+                payout,
+                transaction_id
+            )
+            VALUES (
+                p_game_id,
+                v_winner.participant_id,
+                v_winner.user_id,
+                v_winner.card_id,
+                v_winner.payout,
+                v_transaction_id
+            );
+
+
+            ----------------------------------------------------------------
+            -- Update participant winnings
+            ----------------------------------------------------------------
+
+            UPDATE public.bingo_participants
+            SET
+                amount_won =
+                    ROUND(
+                        COALESCE(amount_won, 0)
+                        + v_winner.payout,
+                        2
+                    )
+            WHERE id = v_winner.participant_id;
+
+
+            ----------------------------------------------------------------
+            -- Accumulate total payout
+            ----------------------------------------------------------------
+
+            v_total_payout :=
+                ROUND(
+                    v_total_payout + v_winner.payout,
+                    2
+                );
+
+
+            ----------------------------------------------------------------
+            -- Winner response
+            ----------------------------------------------------------------
+
+            v_winner_details :=
+                v_winner_details
+                ||
+                jsonb_build_array(
                     jsonb_build_object(
-                        'game_id',
-                        p_game_id,
-
                         'card_id',
                         v_winner.card_id,
 
                         'participant_id',
                         v_winner.participant_id,
 
-                        'participant_card_id',
-                        v_winner.participant_card_id,
+                        'user_id',
+                        v_winner.user_id,
 
-                        'stake_id',
-                        v_game.stake_id,
+                        'payout',
+                        v_winner.payout,
 
-                        'stake_amount',
-                        v_game.stake_amount,
-
-                        'gross_pot',
-                        v_game.gross_pot,
-
-                        'commission_amount',
-                        v_game.commission_amount,
-
-                        'prize_pool',
-                        v_game.prize_pool
+                        'transaction_id',
+                        v_transaction_id
                     )
-            );
+                );
+
+        END LOOP;
 
 
         ----------------------------------------------------------------
-        -- 14b. Record the winning card
+        -- 7i. Accounting safety check
         ----------------------------------------------------------------
 
-        INSERT INTO public.bingo_winners (
-            game_id,
-            participant_id,
-            user_id,
-            card_id,
-            payout,
-            transaction_id
-        )
-        VALUES (
-            p_game_id,
-            v_winner.participant_id,
-            v_winner.user_id,
-            v_winner.card_id,
-            v_winner.payout,
-            v_transaction_id
-        );
+        IF ROUND(v_total_payout, 2)
+           <> ROUND(v_prize_pool, 2) THEN
+
+            RAISE EXCEPTION
+                'Payout mismatch for game %. Prize pool: %, total payout: %',
+                p_game_id,
+                v_prize_pool,
+                v_total_payout;
+
+        END IF;
 
 
         ----------------------------------------------------------------
-        -- 14c. Accumulate total payout
+        -- 7j. Complete participants
         ----------------------------------------------------------------
 
-        v_total_payout :=
-            ROUND(
-                v_total_payout + v_winner.payout,
-                2
-            );
+        UPDATE public.bingo_participants
+        SET status = 'completed'
+        WHERE game_id = p_game_id;
+
+
+    ELSE
+
+        ----------------------------------------------------------------
+        -- 8. NO WINNER GAME
+        --
+        -- This is the important new behavior.
+        --
+        -- When all 75 numbers have been called and nobody has Bingo:
+        --
+        --   * No winner is created.
+        --   * Prize pool is NOT paid.
+        --   * Every player's original stake is refunded.
+        --   * Each wallet is restored exactly as it was charged.
+        --
+        -- Example:
+        --
+        -- Original stake:
+        --
+        --   Bonus = 4
+        --   Play  = 5
+        --   Main  = 1
+        --
+        -- Refund:
+        --
+        --   Bonus +4
+        --   Play  +5
+        --   Main  +1
+        --
+        -- We do NOT send everything to Main.
+        ----------------------------------------------------------------
 
 
         ----------------------------------------------------------------
-        -- 14d. Add result to returned JSON
+        -- 8a. Lock every participant card.
         ----------------------------------------------------------------
 
-        v_winner_details :=
-            v_winner_details
-            ||
-            jsonb_build_array(
-                jsonb_build_object(
-                    'card_id',
-                    v_winner.card_id,
-
-                    'participant_id',
-                    v_winner.participant_id,
-
-                    'user_id',
-                    v_winner.user_id,
-
-                    'payout',
-                    v_winner.payout,
-
-                    'transaction_id',
-                    v_transaction_id
-                )
-            );
-
-    END LOOP;
+        PERFORM 1
+        FROM public.bingo_participant_cards bpc
+        WHERE bpc.game_id = p_game_id
+        ORDER BY bpc.id
+        FOR UPDATE;
 
 
-    ----------------------------------------------------------------
-    -- 15. Final accounting safety check
-    ----------------------------------------------------------------
+        ----------------------------------------------------------------
+        -- 8b. Lock every participant.
+        ----------------------------------------------------------------
 
-    IF ROUND(v_total_payout, 2)
-       <> ROUND(v_prize_pool, 2) THEN
+        PERFORM 1
+        FROM public.bingo_participants bp
+        WHERE bp.game_id = p_game_id
+        ORDER BY bp.id
+        FOR UPDATE;
 
-        RAISE EXCEPTION
-            'Payout mismatch for game %. Prize pool: %, total payout: %',
-            p_game_id,
-            v_prize_pool,
-            v_total_payout;
+
+        ----------------------------------------------------------------
+        -- 8c. Refund every original card stake.
+        --
+        -- Each card stores the exact financial transaction used to
+        -- pay for that card.
+        --
+        -- refund_stake() reverses every negative ledger entry from
+        -- that transaction.
+        ----------------------------------------------------------------
+
+        FOR v_participant IN
+
+            SELECT
+                bpc.id AS participant_card_id,
+
+                bpc.card_id,
+
+                bpc.participant_id,
+
+                bp.user_id,
+
+                bpc.transaction_id,
+
+                bp.amount_paid
+
+            FROM public.bingo_participant_cards bpc
+
+            INNER JOIN public.bingo_participants bp
+                ON bp.id = bpc.participant_id
+               AND bp.game_id = p_game_id
+
+            WHERE bpc.game_id = p_game_id
+
+            ORDER BY bpc.id
+
+        LOOP
+
+
+            ----------------------------------------------------------------
+            -- Validate original stake transaction.
+            ----------------------------------------------------------------
+
+            IF v_participant.transaction_id IS NULL
+               OR v_participant.transaction_id <= 0 THEN
+
+                RAISE EXCEPTION
+                    'Participant card % has no valid stake transaction',
+                    v_participant.participant_card_id;
+
+            END IF;
+
+
+            ----------------------------------------------------------------
+            -- Before refunding Bonus money, make sure that Bonus
+            -- consumption has not already been converted.
+            --
+            -- A Bonus amount that has already been converted to Main
+            -- cannot safely be recreated as Bonus.
+            ----------------------------------------------------------------
+
+            IF EXISTS (
+                SELECT 1
+
+                FROM public.user_bonus_consumptions ubc
+
+                INNER JOIN public.user_bonuses ub
+                    ON ub.id = ubc.user_bonus_id
+
+                WHERE ubc.stake_transaction_id =
+                      v_participant.transaction_id
+
+                  AND (
+                      COALESCE(ub.converted_amount, 0) > 0
+                      OR COALESCE(ub.convertible_amount, 0) > 0
+                  )
+            ) THEN
+
+                RAISE EXCEPTION
+                    'Cannot refund Bingo game % card % because part of its Bonus stake has already been converted',
+                    p_game_id,
+                    v_participant.card_id;
+
+            END IF;
+
+
+            ----------------------------------------------------------------
+            -- Restore the exact financial stake.
+            --
+            -- refund_stake() does:
+            --
+            --   Play  -10  -> Play  +10
+            --   Main   -5  -> Main  +5
+            --   Bonus  -3  -> Bonus +3
+            --
+            -- It therefore preserves the original wallet source.
+            ----------------------------------------------------------------
+
+            v_refund_transaction_id :=
+                public.refund_stake(
+                    p_user_id =>
+                        v_participant.user_id,
+
+                    p_original_transaction_id =>
+                        v_participant.transaction_id,
+
+                    p_idempotency_key =>
+                        'bingo:no-winner:refund:'
+                        || p_game_id
+                        || ':card:'
+                        || v_participant.card_id,
+
+                    p_description =>
+                        'Bingo no-winner stake refund - game #'
+                        || p_game_id
+                        || ', card #'
+                        || v_participant.card_id,
+
+                    p_metadata =>
+                        jsonb_build_object(
+                            'game_id',
+                            p_game_id,
+
+                            'card_id',
+                            v_participant.card_id,
+
+                            'participant_id',
+                            v_participant.participant_id,
+
+                            'participant_card_id',
+                            v_participant.participant_card_id,
+
+                            'reason',
+                            'no_winner_all_numbers_called'
+                        )
+                );
+
+
+            ----------------------------------------------------------------
+            -- Restore Bonus entitlement accounting.
+            --
+            -- refund_stake() restores the Bonus wallet balance.
+            --
+            -- This additional step restores:
+            --
+            --   remaining_amount
+            --   wagering_progress
+            --
+            -- so the Bonus account itself also returns to its
+            -- pre-stake state.
+            ----------------------------------------------------------------
+
+            FOR v_bonus_consumption IN
+
+                SELECT
+                    ubc.user_bonus_id,
+
+                    ubc.amount,
+
+                    ubc.wagering_amount
+
+                FROM public.user_bonus_consumptions ubc
+
+                WHERE ubc.stake_transaction_id =
+                      v_participant.transaction_id
+
+                ORDER BY ubc.user_bonus_id
+
+            LOOP
+
+                v_bonus_restore :=
+                    ROUND(
+                        COALESCE(
+                            v_bonus_consumption.amount,
+                            0
+                        ),
+                        2
+                    );
+
+
+                v_bonus_wagering_restore :=
+                    ROUND(
+                        COALESCE(
+                            v_bonus_consumption.wagering_amount,
+                            0
+                        ),
+                        2
+                    );
+
+
+                IF v_bonus_restore > 0
+                   OR v_bonus_wagering_restore > 0 THEN
+
+                    UPDATE public.user_bonuses
+                    SET
+                        remaining_amount =
+                            ROUND(
+                                remaining_amount
+                                + v_bonus_restore,
+                                2
+                            ),
+
+                        wagering_progress =
+                            GREATEST(
+                                ROUND(
+                                    wagering_progress
+                                    - v_bonus_wagering_restore,
+                                    2
+                                ),
+                                0
+                            ),
+
+                        updated_at = NOW()
+
+                    WHERE id =
+                          v_bonus_consumption.user_bonus_id;
+
+
+                    IF NOT FOUND THEN
+
+                        RAISE EXCEPTION
+                            'Bonus % was not found while refunding stake transaction %',
+                            v_bonus_consumption.user_bonus_id,
+                            v_participant.transaction_id;
+
+                    END IF;
+
+
+                    ----------------------------------------------------------------
+                    -- If this refund makes the Bonus no longer fully
+                    -- wagered, restore it to active state.
+                    ----------------------------------------------------------------
+
+                    UPDATE public.user_bonuses
+                    SET
+                        status = 'active',
+
+                        completed_at = NULL,
+
+                        convertible_amount = 0,
+
+                        updated_at = NOW()
+
+                    WHERE id =
+                          v_bonus_consumption.user_bonus_id
+
+                      AND status = 'completed'
+
+                      AND wagering_progress
+                          < wagering_requirement;
+
+
+                END IF;
+
+            END LOOP;
+
+
+            ----------------------------------------------------------------
+            -- Count refund.
+            ----------------------------------------------------------------
+
+            v_refund_count :=
+                v_refund_count + 1;
+
+
+            ----------------------------------------------------------------
+            -- Determine exact refund amount from the refund transaction.
+            ----------------------------------------------------------------
+
+            SELECT COALESCE(
+                SUM(le.amount),
+                0
+            )
+            INTO v_bonus_restore
+            FROM public.ledger_entries le
+            WHERE le.transaction_id =
+                  v_refund_transaction_id;
+
+
+            v_total_refund :=
+                ROUND(
+                    v_total_refund
+                    + COALESCE(v_bonus_restore, 0),
+                    2
+                );
+
+
+            ----------------------------------------------------------------
+            -- Refund details.
+            ----------------------------------------------------------------
+
+            v_refund_details :=
+                v_refund_details
+                ||
+                jsonb_build_array(
+                    jsonb_build_object(
+                        'card_id',
+                        v_participant.card_id,
+
+                        'participant_id',
+                        v_participant.participant_id,
+
+                        'user_id',
+                        v_participant.user_id,
+
+                        'original_transaction_id',
+                        v_participant.transaction_id,
+
+                        'refund_transaction_id',
+                        v_refund_transaction_id,
+
+                        'refund_amount',
+                        COALESCE(v_bonus_restore, 0)
+                    )
+                );
+
+        END LOOP;
+
+
+        ----------------------------------------------------------------
+        -- 8d. Every participant is now refunded.
+        ----------------------------------------------------------------
+
+        UPDATE public.bingo_participants
+        SET
+            status = 'refunded',
+
+            amount_won = 0
+
+        WHERE game_id = p_game_id;
+
 
     END IF;
 
 
     ----------------------------------------------------------------
-    -- 16. Mark participants as completed
+    -- 9. Complete Bingo game
     --
-    -- This does NOT modify users.
-    ----------------------------------------------------------------
-
-    UPDATE public.bingo_participants
-    SET status = 'completed'
-    WHERE game_id = p_game_id;
-
-
-    ----------------------------------------------------------------
-    -- 17. Complete the Bingo game
+    -- A no-winner game has:
+    --
+    --   winning_card_count = 0
+    --   total_payout       = 0
+    --   total_refund       = total original stakes
+    --
+    -- A normal winner game has:
+    --
+    --   winning_card_count > 0
+    --   total_payout       = prize_pool
+    --   total_refund       = 0
     ----------------------------------------------------------------
 
     UPDATE public.bingo_games
@@ -3737,7 +4134,7 @@ BEGIN
 
 
     ----------------------------------------------------------------
-    -- 18. Return settlement information
+    -- 10. Return settlement information
     ----------------------------------------------------------------
 
     RETURN jsonb_build_object(
@@ -3751,6 +4148,13 @@ BEGIN
         'status',
         'completed',
 
+        'settlement_type',
+        CASE
+            WHEN v_winner_count > 0
+            THEN 'winner'
+            ELSE 'no_winner_refund'
+        END,
+
         'stake_id',
         v_game.stake_id,
 
@@ -3761,10 +4165,18 @@ BEGIN
         v_game.gross_pot,
 
         'commission_amount',
-        v_game.commission_amount,
+        CASE
+            WHEN v_winner_count > 0
+            THEN v_game.commission_amount
+            ELSE 0.00
+        END,
 
         'prize_pool',
-        v_prize_pool,
+        CASE
+            WHEN v_winner_count > 0
+            THEN v_prize_pool
+            ELSE 0.00
+        END,
 
         'winning_card_count',
         v_winner_count,
@@ -3772,8 +4184,17 @@ BEGIN
         'total_payout',
         v_total_payout,
 
+        'refund_count',
+        v_refund_count,
+
+        'total_refund',
+        v_total_refund,
+
         'winner_details',
-        v_winner_details
+        v_winner_details,
+
+        'refund_details',
+        v_refund_details
 
     );
 
@@ -10963,10 +11384,6 @@ CREATE TABLE public.game_systems (
     CONSTRAINT game_systems_status_check CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'inactive'::character varying, 'maintenance'::character varying, 'disabled'::character varying])::text[])))
 );
 
--- ============================================================
--- SEED: Bingo game system
--- ============================================================
-
 INSERT INTO public.game_systems (
     code,
     name,
@@ -10983,7 +11400,7 @@ VALUES (
     'Bingo',
     'active',
     '{"source_type":"bingo_game"}'::jsonb,
-	'BG-',
+	'BB',
 	'',
 	'random_alphanumeric',
 	8,
@@ -13288,5 +13705,4 @@ ALTER TABLE ONLY public.withdrawals
 --
 -- PostgreSQL database dump complete
 --
-
 
