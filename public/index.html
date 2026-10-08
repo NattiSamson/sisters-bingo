@@ -4747,6 +4747,7 @@ function handle(msg){
       // refresh button is clicked automatically when this same countdown ends,
       // which forces the card-selection screen to request the fresh card pool.
       schedulePostGameAutoRefresh(Number(msg.resetCountdown)||20);
+      updatePostGameCountdown(Number(msg.resetCountdown)||20);   // show the database value at once, not a fixed 20
       break;
 
     case 'resetCountdown':
