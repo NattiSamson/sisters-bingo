@@ -8,6 +8,29 @@
 require('dotenv').config();
 const crypto=require('crypto');
 
+// ─── LOG FILE ────────────────────────────────────────────────
+// Hosting panels (cPanel / Passenger) often do not keep the console output. Everything the server prints, and every
+// crash, is also appended to server.log next to this file (kept below ~2 MB: it starts again when it gets bigger).
+(function setupFileLog(){
+  try{
+    const fs=require('fs'), p=require('path').join(__dirname,'server.log');
+    try{ if(fs.statSync(p).size>2*1024*1024) fs.renameSync(p,p+'.old'); }catch(e){}
+    const write=(lvl,args)=>{
+      try{
+        const text=args.map(a=>a instanceof Error?(a.stack||a.message):(typeof a==='string'?a:JSON.stringify(a))).join(' ');
+        fs.appendFileSync(p,new Date().toISOString()+' '+lvl+' '+text+'\n');
+      }catch(e){}
+    };
+    ['log','warn','error'].forEach(k=>{
+      const orig=console[k].bind(console);
+      console[k]=(...args)=>{ orig(...args); write(k.toUpperCase(),args); };
+    });
+    process.on('uncaughtException',e=>{ write('CRASH',[e]); try{ console.error('uncaughtException:',e); }catch(_){} process.exit(1); });
+    process.on('unhandledRejection',e=>{ write('UNHANDLED',[e]); });
+    write('START',['server process starting, node '+process.version+', pid '+process.pid+', PORT='+(process.env.PORT||'(not set)')]);
+  }catch(e){}
+})();
+
 // Fair random pick for the number draw: an unbiased integer in [0, n) from the operating system's
 // cryptographic random generator (not Math.random, whose internal state can be reconstructed from its output).
 function randomIndex(n){
@@ -33,7 +56,7 @@ console.log('✅ db.js loaded (wallets, stakes, bingo games)');
 //   BOT_TOKEN                 token of the bot that opens the web app (required)
 //   INITDATA_MAX_AGE_SEC      how old initData may be (default 86400 = 24 h)
 //   ALLOW_UNVERIFIED_AUTH=1   old behaviour (trust the ID the page sends). For local development only.
-const BOT_TOKEN=process.env.BOT_TOKEN||'';
+const BOT_TOKEN=String(process.env.BOT_TOKEN||'').trim().replace(/^["']|["']$/g,'');
 const ALLOW_UNVERIFIED_AUTH=process.env.ALLOW_UNVERIFIED_AUTH==='1';
 const INITDATA_MAX_AGE_SEC=Number(process.env.INITDATA_MAX_AGE_SEC)||86400;
 const INITDATA_SECRET=BOT_TOKEN?crypto.createHmac('sha256','WebAppData').update(BOT_TOKEN).digest():null;
@@ -42,21 +65,24 @@ else if(!BOT_TOKEN) console.error('❌ BOT_TOKEN is not set: every sign-in will 
 // returns the verified Telegram ID (string) or null
 function verifyInitData(initData){
   try{
-    if(!INITDATA_SECRET||typeof initData!=='string'||initData.length<10||initData.length>4096) return null;
+    if(!INITDATA_SECRET) return fail('BOT_TOKEN not set');
+    if(typeof initData!=='string'||initData.length<10) return fail('initData empty - page was not opened as a Telegram Web App (length '+(initData&&initData.length||0)+')');
+    if(initData.length>4096) return fail('initData too long');
     const params=new URLSearchParams(initData);
-    const hash=params.get('hash'); if(!hash||!/^[0-9a-f]{64}$/i.test(hash)) return null;
+    const hash=params.get('hash'); if(!hash||!/^[0-9a-f]{64}$/i.test(hash)) return fail('no valid hash in initData');
     params.delete('hash');
     const check=[...params.entries()].map(([k,v])=>k+'='+v).sort().join('\n');
     const calc=crypto.createHmac('sha256',INITDATA_SECRET).update(check).digest();
     const given=Buffer.from(hash,'hex');
-    if(given.length!==calc.length||!crypto.timingSafeEqual(calc,given)) return null;
+    if(given.length!==calc.length||!crypto.timingSafeEqual(calc,given)) return fail('signature mismatch - BOT_TOKEN on the server is not the token of the bot that opened this app');
     const age=Math.floor(Date.now()/1000)-Number(params.get('auth_date')||0);
-    if(!(age>=-60&&age<=INITDATA_MAX_AGE_SEC)) return null;          // missing, future or too old
+    if(!(age>=-60&&age<=INITDATA_MAX_AGE_SEC)) return fail('initData too old/future: age '+age+'s (server clock '+new Date().toISOString()+')');
     const user=JSON.parse(params.get('user')||'null');
     const id=String(user&&user.id||'');
-    return /^\d+$/.test(id)&&Number(id)>0?id:null;
-  }catch(e){ return null; }
+    return /^\d+$/.test(id)&&Number(id)>0?id:fail('no user id in initData');
+  }catch(e){ return fail('exception '+e.message); }
 }
+function fail(why){ console.warn('[auth] sign-in refused: '+why); return null; }
 // the Telegram ID for a request: verified from initData, or (development only) the one the page claims
 function resolveTelegramId(initData,claimedId){
   if(INITDATA_SECRET){
@@ -74,6 +100,12 @@ const server = http.createServer(app);
 const wss    = new WebSocket.Server({ server });
 const PORT   = process.env.PORT || 3000;
 
+// Open https://your-server/health in a browser to see that the server is up (no secrets are shown).
+app.get('/health',(req,res)=>{
+  res.json({ok:true,time:new Date().toISOString(),uptimeSeconds:Math.round(process.uptime()),node:process.version,
+    stakesLoaded:STAKES.length,rooms:Object.keys(rooms).length,players:Object.keys(clients).length,
+    botTokenSet:!!BOT_TOKEN,unverifiedAuth:ALLOW_UNVERIFIED_AUTH});
+});
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/audio', express.static(path.join(__dirname, 'audio')));
 app.use(express.json());
@@ -111,6 +143,8 @@ const TOTAL_CARDS      = 600;   // largest card_count a room may use (your rooms
 
 // Stakes come ONLY from the database (bingo_stakes / bingo_rooms), see loadStakesFromDb().
 const STAKES = [];
+// used only when the database gives no valid next_round_seconds
+const DEFAULT_NEXT_ROUND_SECONDS = 20;
 const STAKES_RETRY_MS = 10000;
 let stakesRetryTimer=null;
 function retryStakesSoon(){ if(stakesRetryTimer||STAKES.length) return; stakesRetryTimer=setTimeout(()=>{ stakesRetryTimer=null; loadStakesFromDb(); },STAKES_RETRY_MS); }
@@ -133,7 +167,8 @@ async function loadStakesFromDb(){
         cardLimit:Math.max(1,Math.min(TOTAL_CARDS,s.cardCount||TOTAL_CARDS)),
         minPlayers:Math.max(2,s.minPlayers||2),
         maxCards:Math.max(1,Math.min(4,s.maxCardsPerPlayer||4)),
-        selectionSeconds:s.selectionSeconds||Math.ceil(LOBBY_WAIT_MS/1000)
+        selectionSeconds:s.selectionSeconds||Math.ceil(LOBBY_WAIT_MS/1000),
+        nextRoundSeconds:s.nextRoundSeconds     // bingo_rooms.next_round_seconds: pause between the end of a game and the next round
       });
     }
     if(!next.length){ console.warn('⚠️ getActiveStakes returned no active stakes (bingo_stakes + bingo_room_stakes + bingo_rooms must be active)'); retryStakesSoon(); return false; }
@@ -149,6 +184,18 @@ setInterval(()=>{ loadStakesFromDb(); loadFundingWallets(); },10*60*1000);
 // clean up games left open by an earlier run (restart / crash); young ones are left alone
 setTimeout(()=>recoverOrphanedGames({minAgeSec:600,reason:'startup_cleanup'}),20*1000);
 setInterval(()=>recoverOrphanedGames({minAgeSec:900,reason:'stale_game'}),10*60*1000);
+// unusable bonus money (completed / expired awards) is removed from the Bonus wallet (forfeit_bonus.sql)
+let bonusExpiryWarned=false;
+async function runBonusExpiry(){
+  try{
+    const r=await bingoDb.expireBonuses(200);
+    if(r&&(r.forfeited_awards>0||r.errors>0)) console.log('Bonus expiry: forfeited',r.forfeited_awards,'award(s),',r.forfeited_total,'total, errors',r.errors);
+  }catch(e){
+    if(!bonusExpiryWarned){ bonusExpiryWarned=true; console.warn('Bonus expiry skipped:',e.message,'- install forfeit_bonus.sql'); }
+  }
+}
+setTimeout(runBonusExpiry,30*1000);
+setInterval(runBonusExpiry,5*60*1000);
 
 // release the seat of players who hold cartelas in a still-waiting room but have been gone for a very long time
 setInterval(()=>{
@@ -840,7 +887,10 @@ async function endGame(room, winners, customMsg, noWinner){
 
   // Broadcast the result to EVERY connected player in the room. Keep the room/stake
   // identifiers in this message so clients can return to the same stake.
-  const RESET_SECONDS=20;
+  // The pause before the next round comes from the database (bingo_rooms.next_round_seconds), read with the stakes.
+  const stakeCfg=STAKES.find(x=>x.id===room.stakeId);
+  const nrs=Number(stakeCfg&&stakeCfg.nextRoundSeconds);
+  const RESET_SECONDS=Number.isFinite(nrs)&&nrs>=1?Math.min(300,Math.floor(nrs)):DEFAULT_NEXT_ROUND_SECONDS;
   broadcast(room,{
     type:'gameOver',
     roomId:room.roomId,
