@@ -1,12 +1,8 @@
 /**
- * Beteseb Bingo — Server v5
+ * Mela Bingo — Server v1
  * Changes:
- *  - 80% winner / 20% house cut
  *  - Disqualification only notifies the cheater (silent to others)
- *  - Admin page (phone 251934255415 → admin)
- *  - Deposit/withdrawal requests with approve/reject
  *  - Full DB integration
- this is zola
  */
 
 require('dotenv').config();
@@ -27,6 +23,51 @@ const http      = require('http');
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
 const path      = require('path');
+const bingoDb=require('./db');
+console.log('✅ db.js loaded (wallets, stakes, bingo games)');
+
+// ─── TELEGRAM SIGN-IN VERIFICATION ───────────────────────────
+// The Telegram ID a player sends is NOT trusted. The page sends Telegram's signed `initData`; it is checked here
+// with the bot token (HMAC-SHA256, https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app)
+// and the player's ID is taken from the verified data only.
+//   BOT_TOKEN                 token of the bot that opens the web app (required)
+//   INITDATA_MAX_AGE_SEC      how old initData may be (default 86400 = 24 h)
+//   ALLOW_UNVERIFIED_AUTH=1   old behaviour (trust the ID the page sends). For local development only.
+const BOT_TOKEN=process.env.BOT_TOKEN||'';
+const ALLOW_UNVERIFIED_AUTH=process.env.ALLOW_UNVERIFIED_AUTH==='1';
+const INITDATA_MAX_AGE_SEC=Number(process.env.INITDATA_MAX_AGE_SEC)||86400;
+const INITDATA_SECRET=BOT_TOKEN?crypto.createHmac('sha256','WebAppData').update(BOT_TOKEN).digest():null;
+if(ALLOW_UNVERIFIED_AUTH) console.warn('⚠️ ALLOW_UNVERIFIED_AUTH=1: Telegram IDs are NOT verified. Never use this in production.');
+else if(!BOT_TOKEN) console.error('❌ BOT_TOKEN is not set: every sign-in will be refused. Set BOT_TOKEN (or ALLOW_UNVERIFIED_AUTH=1 for local tests).');
+// returns the verified Telegram ID (string) or null
+function verifyInitData(initData){
+  try{
+    if(!INITDATA_SECRET||typeof initData!=='string'||initData.length<10||initData.length>4096) return null;
+    const params=new URLSearchParams(initData);
+    const hash=params.get('hash'); if(!hash||!/^[0-9a-f]{64}$/i.test(hash)) return null;
+    params.delete('hash');
+    const check=[...params.entries()].map(([k,v])=>k+'='+v).sort().join('\n');
+    const calc=crypto.createHmac('sha256',INITDATA_SECRET).update(check).digest();
+    const given=Buffer.from(hash,'hex');
+    if(given.length!==calc.length||!crypto.timingSafeEqual(calc,given)) return null;
+    const age=Math.floor(Date.now()/1000)-Number(params.get('auth_date')||0);
+    if(!(age>=-60&&age<=INITDATA_MAX_AGE_SEC)) return null;          // missing, future or too old
+    const user=JSON.parse(params.get('user')||'null');
+    const id=String(user&&user.id||'');
+    return /^\d+$/.test(id)&&Number(id)>0?id:null;
+  }catch(e){ return null; }
+}
+// the Telegram ID for a request: verified from initData, or (development only) the one the page claims
+function resolveTelegramId(initData,claimedId){
+  if(INITDATA_SECRET){
+    const id=verifyInitData(initData);
+    if(id) return id;
+    if(!ALLOW_UNVERIFIED_AUTH) return null;
+  }
+  if(!ALLOW_UNVERIFIED_AUTH) return null;
+  const id=String(claimedId||'').trim();
+  return /^\d+$/.test(id)&&Number(id)>0?id:null;
+}
 
 const app    = express();
 const server = http.createServer(app);
@@ -41,360 +82,25 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', origin || '*');
   res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Telegram-Init-Data');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
 
-const ADMIN_PHONE = '251965666656';
-function isAdminPhone(phone) {
-  if (!phone) return false;
-  const normalized = String(phone).replace(/^\+/, '');
-  return normalized === ADMIN_PHONE;
-}
-const HOUSE_CUT   = 0.20; // 20% house, 80% winner
-// Prize pool that players actually see/win — total pot minus house cut
-function prizePoolOf(room){ return Math.floor(room.pot*(1-HOUSE_CUT)); }
-// NOTE: room.pot is ALREADY the prize pool (gross pot minus the 20% house cut, see startGame).
-// Never pass it through prizePoolOf() again, or the cut is applied twice.
-// "Players" shown in the game = players who paid and are in this round (spectators excluded),
-// so players and spectators always see the same number.
 function paidPlayersOf(room){ return room.players.filter(p=>p.hasPaid); }
 function livePlayerCount(room){ return paidPlayersOf(room).length; }
 function paidPlayerList(room){ return paidPlayersOf(room).map(p=>({playerId:p.playerId,playerName:p.playerName})); }
 
-// ─── PAYMENT INFO (admin-editable) ─────────────────────────────
-let PAYMENT_INFO = { telebirrNumber: '0967423275', telebirrName: 'Lidetua' };
-
 // ─── DATABASE ─────────────────────────────────────────────────
-let db = null;
-if (process.env.DATABASE_URL) {
-  try {
-    const { Pool } = require('pg');
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
-      max: 20,                      // cap concurrent DB connections
-      idleTimeoutMillis: 30000,     // close idle connections after 30s
-      connectionTimeoutMillis: 5000 // fail fast instead of hanging under load
-    });
-    // Optional migration route. The game server does not depend on this file.
-    // If migrate-route.js is not present on shared hosting, keep the DB/game
-    // server running normally instead of making db initialization fail.
-    try {
-      const { registerMigrateRoute } = require('./migrate-route');
-      registerMigrateRoute(app, pool);
-    } catch (e) {
-      console.warn('migrate-route.js not loaded (optional):', e.message);
-    }
-
-    db = {
-      q: (sql, p) => pool.query(sql, p).then(r => r.rows),
-
-      async getUser(tid) {
-        const r = await this.q('SELECT * FROM users WHERE telegram_id=$1', [String(tid)]);
-        return r[0] || null;
-      },
-      async getUserByPhone(phone) {
-        const r = await this.q('SELECT * FROM users WHERE phone=$1', [phone]);
-        return r[0] || null;
-      },
-      async createUser(tid, name, phone) {
-        const r = await this.q(
-          `INSERT INTO users(telegram_id,name,phone,balance) VALUES($1,$2,$3,0)
-           ON CONFLICT(telegram_id) DO UPDATE SET last_seen=NOW() RETURNING *`,
-          [String(tid), name, phone]
-        );
-        return r[0];
-      },
-      async setBalance(tid, bal) {
-        await this.q('UPDATE users SET balance=$1 WHERE telegram_id=$2', [bal, String(tid)]);
-      },
-      // Atomic balance change. This is the only method used by game money
-      // operations, so two simultaneous requests cannot overwrite each other.
-      async adjustBalance(tid, delta) {
-        const amount = Number(delta);
-        if(!Number.isFinite(amount)) throw new Error('Invalid balance adjustment');
-
-        const id = String(tid).trim();
-        if(!id) {
-          const e = new Error('Missing Telegram ID');
-          e.code = 'NO_TELEGRAM_ID';
-          throw e;
-        }
-
-        // IMPORTANT: use the exact Telegram ID stored in Neon and perform the
-        // debit atomically.  We return the real current balance on an
-        // insufficient-funds failure instead of treating every failed UPDATE
-        // as "Need 10 ETB".
-        const client = await pool.connect();
-        try {
-          await client.query('BEGIN');
-
-          const r = await client.query(
-            `SELECT balance
-               FROM users
-              WHERE telegram_id = $1
-              FOR UPDATE`,
-            [id]
-          );
-
-          if(!r.rows[0]){
-            await client.query('ROLLBACK');
-            const e = new Error('Account not found');
-            e.code = 'ACCOUNT_NOT_FOUND';
-            throw e;
-          }
-
-          const current = Number.parseFloat(r.rows[0].balance) || 0;
-
-          if(current + amount < 0){
-            await client.query('ROLLBACK');
-            const e = new Error('Insufficient balance');
-            e.code = 'INSUFFICIENT_BALANCE';
-            e.balance = current;
-            throw e;
-          }
-
-          const updated = await client.query(
-            `UPDATE users
-                SET balance = balance + $2
-              WHERE telegram_id = $1
-              RETURNING balance`,
-            [id, amount]
-          );
-
-          if(!updated.rows[0]){
-            await client.query('ROLLBACK');
-            const e = new Error('Balance update failed');
-            e.code = 'BALANCE_UPDATE_FAILED';
-            throw e;
-          }
-
-          const newBalance = Number.parseFloat(updated.rows[0].balance) || 0;
-
-          await client.query('COMMIT');
-          return newBalance;
-        }catch(e){
-          try { await client.query('ROLLBACK'); } catch(_){}
-          throw e;
-        }finally{
-          client.release();
-        }
-      },
-      async logTx(tid, type, amount, balAfter, ref) {
-        await this.q(
-          `INSERT INTO transactions(user_id,type,amount,balance_after,reference)
-           SELECT id,$2,$3,$4,$5 FROM users WHERE telegram_id=$1`,
-          [String(tid), type, amount, balAfter, ref || '']
-        );
-      },
-      async saveGame(roomId, stakeId, amount, pot) {
-        const r = await this.q(
-          `INSERT INTO games(room_id,stake_id,stake_amount,pot,status,started_at)
-           VALUES($1,$2,$3,$4,'playing',NOW()) RETURNING id`,
-          [roomId, stakeId, amount, pot]
-        );
-        return r[0].id;
-      },
-      async endGame(gameId, tids, winAmount, isSplit, called) {
-        await this.q(
-          `UPDATE games SET status='finished',winner_ids=$1,win_amount=$2,is_split=$3,called_numbers=$4,ended_at=NOW() WHERE id=$5`,
-          [tids, winAmount, isSplit, called, gameId]
-        );
-        if (tids.length) {
-          await this.q('UPDATE users SET total_wins=total_wins+1,total_winnings=total_winnings+$1 WHERE telegram_id=ANY($2)', [winAmount, tids]);
-        }
-        await this.q(`UPDATE users SET total_games=total_games+1 WHERE telegram_id=ANY(
-          SELECT DISTINCT u.telegram_id FROM game_participants gp JOIN users u ON u.id=gp.user_id WHERE gp.game_id=$1)`, [gameId]);
-      },
-      async getGameHistory(tid, limit=50) {
-        // The existing stake transactions use the game room_id as their reference.
-        // Use those transactions to link this Telegram user to finished games, so
-        // history works with the current database without changing the schema.
-        return this.q(
-          `SELECT
-             g.id, g.stake_id, g.stake_amount, g.pot, g.win_amount,
-             g.status, g.started_at, g.ended_at,
-             COALESCE(SUM(ABS(t.amount)) FILTER (WHERE t.type='stake'),0)::numeric AS amount_played,
-             COALESCE(SUM(t.amount) FILTER (WHERE t.type='win'),0)::numeric AS amount_won,
-             CASE WHEN $1 = ANY(COALESCE(g.winner_ids, ARRAY[]::text[])) THEN true ELSE false END AS won
-           FROM games g
-           JOIN transactions t ON t.reference=g.room_id
-           JOIN users u ON u.id=t.user_id
-           WHERE u.telegram_id=$1
-             AND g.status='finished'
-             AND t.type IN ('stake','win')
-           GROUP BY g.id, g.stake_id, g.stake_amount, g.pot, g.win_amount,
-                    g.status, g.started_at, g.ended_at, g.winner_ids
-           ORDER BY g.started_at DESC
-           LIMIT $2`,
-          [String(tid), Math.min(Math.max(Number(limit)||50,1),100)]
-        );
-      },
-
-      // ── Deposits ──
-      async createDeposit(tid, amount, txRef) {
-        const r = await this.q(
-          `INSERT INTO deposit_requests(user_id,amount,tx_ref,status)
-           SELECT id,$2,$3,'pending' FROM users WHERE telegram_id=$1 RETURNING id`,
-          [String(tid), amount, txRef]
-        );
-        return r[0]?.id;
-      },
-      async getDeposits(status) {
-        const where = status ? 'WHERE dr.status=$1' : '';
-        const params = status ? [status] : [];
-        return this.q(
-          `SELECT dr.*,u.name,u.phone,u.telegram_id FROM deposit_requests dr
-           JOIN users u ON u.id=dr.user_id ${where} ORDER BY dr.created_at DESC LIMIT 50`, params
-        );
-      },
-      async approveDeposit(id) {
-        const r = await this.q(
-          `UPDATE deposit_requests SET status='approved',handled_at=NOW() WHERE id=$1 AND status='pending' RETURNING *`, [id]
-        );
-        if (!r[0]) return null;
-        const dep = r[0];
-        // Credit atomically so a simultaneous game charge cannot overwrite it.
-        const u = await this.q('SELECT telegram_id FROM users WHERE id=$1', [dep.user_id]);
-        if (u[0]) {
-          const newBal = await this.adjustBalance(u[0].telegram_id, parseFloat(dep.amount));
-          if(newBal===null) return null;
-          await this.logTx(u[0].telegram_id, 'deposit', dep.amount, newBal, dep.tx_ref);
-          return { telegramId: u[0].telegram_id, newBalance: newBal, amount: dep.amount };
-        }
-        return null;
-      },
-      async rejectDeposit(id) {
-        await this.q(`UPDATE deposit_requests SET status='rejected',handled_at=NOW() WHERE id=$1`, [id]);
-      },
-
-      // ── Withdrawals ──
-      async createWithdrawal(tid, amount) {
-        const r = await this.q(
-          `WITH debited AS (
-             UPDATE users
-             SET balance=balance-$2
-             WHERE telegram_id=$1 AND balance >= $2
-             RETURNING id,telegram_id,balance
-           )
-           INSERT INTO withdrawal_requests(user_id,amount,status)
-           SELECT id,$2,'pending' FROM debited
-           RETURNING id, (SELECT balance FROM debited) AS new_balance`,
-          [String(tid), amount]
-        );
-        if(!r[0]) return { error:'Insufficient balance' };
-        const newBal=parseFloat(r[0].new_balance);
-        await this.logTx(tid,'withdrawal_pending',-amount,newBal,'pending');
-        return { id:r[0].id, newBalance:newBal };
-      },
-      async getWithdrawals(status) {
-        const where = status ? 'WHERE wr.status=$1' : '';
-        const params = status ? [status] : [];
-        return this.q(
-          `SELECT wr.*,u.name,u.phone,u.telegram_id FROM withdrawal_requests wr
-           JOIN users u ON u.id=wr.user_id ${where} ORDER BY wr.created_at DESC LIMIT 50`, params
-        );
-      },
-      async approveWithdrawal(id) {
-        const r = await this.q(
-          `UPDATE withdrawal_requests SET status='approved',handled_at=NOW() WHERE id=$1 AND status='pending' RETURNING *`, [id]
-        );
-        if (!r[0]) return null;
-        const wr = r[0];
-        const u = await this.q('SELECT telegram_id FROM users WHERE id=$1', [wr.user_id]);
-        if (u[0]) await this.logTx(u[0].telegram_id, 'withdrawal', -wr.amount, 0, 'approved');
-        return { telegramId: u[0]?.telegram_id, amount: wr.amount };
-      },
-      async rejectWithdrawal(id) {
-        // Refund the balance
-        const r = await this.q(
-          `UPDATE withdrawal_requests SET status='rejected',handled_at=NOW() WHERE id=$1 AND status='pending' RETURNING *`, [id]
-        );
-        if (!r[0]) return null;
-        const wr = r[0];
-        const u = await this.q('SELECT telegram_id FROM users WHERE id=$1', [wr.user_id]);
-        if (u[0]) {
-          const newBal = await this.adjustBalance(u[0].telegram_id, parseFloat(wr.amount));
-          if(newBal===null) return null;
-          await this.logTx(u[0].telegram_id, 'withdrawal_refund', wr.amount, newBal, 'rejected');
-          return { telegramId: u[0].telegram_id, newBalance: newBal };
-        }
-        return null;
-      },
-
-      // ── Admin user search ──
-      async searchByPhone(phone) {
-        return this.q(
-          `SELECT u.*,
-            (SELECT json_agg(t ORDER BY t.created_at DESC) FROM transactions t WHERE t.user_id=u.id) as transactions,
-            (SELECT COUNT(*) FROM game_participants gp WHERE gp.user_id=u.id) as games_played
-           FROM users u WHERE u.phone LIKE $1 LIMIT 10`,
-          ['%' + phone + '%']
-        );
-      },
-
-      async getLeaderboard() {
-        return this.q('SELECT name,total_wins,total_games,total_winnings FROM users ORDER BY total_winnings DESC LIMIT 10');
-      },
-
-      // ── Settings (key/value store) ──
-      async ensureSettingsTable() {
-        await this.q(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`);
-      },
-      async getSetting(key) {
-        const r = await this.q('SELECT value FROM settings WHERE key=$1', [key]);
-        return r[0]?.value;
-      },
-      async setSetting(key, value) {
-        await this.q(
-          `INSERT INTO settings(key,value) VALUES($1,$2)
-           ON CONFLICT(key) DO UPDATE SET value=$2`,
-          [key, value]
-        );
-      }
-    };
-
-    pool.query('SELECT 1').then(async () => {
-      console.log('✅ PostgreSQL connected');
-      try {
-        await db.ensureSettingsTable();
-        const num  = await db.getSetting('telebirr_number');
-        const name = await db.getSetting('telebirr_name');
-        if (num)  PAYMENT_INFO.telebirrNumber = num;
-        if (name) PAYMENT_INFO.telebirrName   = name;
-      } catch (e) { console.error('⚠️ Settings load:', e.message); }
-
-      // Clean up any games left in 'playing' state from a previous crashed session (legacy schema only)
-      if(!USE_BINGO_DB) try {
-        const stale = await db.q(
-          `UPDATE games SET status='finished', ended_at=NOW(), win_amount=0
-           WHERE status='playing' AND started_at < NOW() - INTERVAL '2 hours'
-           RETURNING id`
-        );
-        if(stale.length) console.log(`🧹 Cleaned up ${stale.length} stale playing game(s):`, stale.map(r=>r.id));
-      } catch(e) { console.error('⚠️ Stale game cleanup:', e.message); }
-    }).catch(e => { console.error('❌ DB:', e.message); db = null; });
-  } catch(e) { console.log('⚠️ pg error:', e.message); }
-} else {
-  console.log('ℹ️ No DATABASE_URL — memory mode');
-}
-
-// ─── BINGO DATABASE (db.js) ──────────────────────────────────
-// db.js talks to the real wallet / room / stake / game tables:
+// db.js is the ONLY way this server reaches the database (it owns the connection and every query):
 //   getUserWalletBalances -> main + play + bonus wallets
-//   getActiveStakes       -> rooms and stakes (loaded ONCE, refreshed every 10 min)
+//   getBingoUserFlags     -> blocked / inactive flags
+//   getActiveStakes       -> rooms and stakes (loaded at start, refreshed every 10 min)
 //   createBingoGame       -> charges every cartela and creates the game (called when a round starts)
 //   endBingoGame          -> pays the winners (called when a round ends)
-//   getBingoUserDashboard -> profile page data
-// If db.js cannot be loaded the server falls back to the old in-file database code.
-let bingoDb=null;
-if(process.env.DATABASE_URL){
-  try{ bingoDb=require('./db'); console.log('✅ db.js loaded (wallets, stakes, bingo games)'); }
-  catch(e){ console.error('⚠️ db.js could not be loaded, legacy balance code stays active:',e.message); }
-}
-const USE_BINGO_DB=!!bingoDb;
+//   cancelBingoGame       -> closes a game without a winner and refunds it
+//   getBingoUserDashboard / getBingoProfileStats -> profile page data
+
 
 // ─── CONFIG ──────────────────────────────────────────────────
 const LOBBY_WAIT_MS    = 30000;
@@ -403,13 +109,8 @@ const CLAIM_WINDOW_MS  = 4800;
 const CLAIM_COLLECT_MS = 700; // grace period to gather simultaneous BINGO claims
 const TOTAL_CARDS      = 600;   // largest card_count a room may use (your rooms use 600)
 
-const STAKES = [
-  { id:'st5',  amount:5,  maxPlayers:400, cardLimit:400 },
-  { id:'st10', amount:10, maxPlayers:400, cardLimit:400 },
-  { id:'st20', amount:20, maxPlayers:400, cardLimit:400 },
-];
-// With db.js the stakes come ONLY from the database (bingo_stakes / bingo_rooms); the list above is used only without a database.
-if(USE_BINGO_DB) STAKES.length=0;
+// Stakes come ONLY from the database (bingo_stakes / bingo_rooms), see loadStakesFromDb().
+const STAKES = [];
 const STAKES_RETRY_MS = 10000;
 let stakesRetryTimer=null;
 function retryStakesSoon(){ if(stakesRetryTimer||STAKES.length) return; stakesRetryTimer=setTimeout(()=>{ stakesRetryTimer=null; loadStakesFromDb(); },STAKES_RETRY_MS); }
@@ -419,7 +120,6 @@ function retryStakesSoon(){ if(stakesRetryTimer||STAKES.length) return; stakesRe
 // The app names a stake by its amount (st5, st10, st20); the database's own id (S5, S10, ...) is kept in dbStakeId.
 const stakeKey=a=>'st'+(Number.isInteger(Number(a))?Number(a):String(a).replace('.','p'));
 async function loadStakesFromDb(){
-  if(!bingoDb) return false;
   try{
     const list=await bingoDb.getActiveStakes();
     const seen=new Set(), next=[];
@@ -444,13 +144,11 @@ async function loadStakesFromDb(){
   }catch(e){ console.error('loadStakesFromDb:',e.message); retryStakesSoon(); return false; }
 }
 
-if(bingoDb){
-  loadStakesFromDb(); loadFundingWallets();
-  setInterval(()=>{ loadStakesFromDb(); loadFundingWallets(); },10*60*1000);
-  // clean up games left open by an earlier run (restart / crash); young ones are left alone
-  setTimeout(()=>recoverOrphanedGames({minAgeSec:600,reason:'startup_cleanup'}),20*1000);
-  setInterval(()=>recoverOrphanedGames({minAgeSec:900,reason:'stale_game'}),10*60*1000);
-}
+loadStakesFromDb(); loadFundingWallets();
+setInterval(()=>{ loadStakesFromDb(); loadFundingWallets(); },10*60*1000);
+// clean up games left open by an earlier run (restart / crash); young ones are left alone
+setTimeout(()=>recoverOrphanedGames({minAgeSec:600,reason:'startup_cleanup'}),20*1000);
+setInterval(()=>recoverOrphanedGames({minAgeSec:900,reason:'stale_game'}),10*60*1000);
 
 // release the seat of players who hold cartelas in a still-waiting room but have been gone for a very long time
 setInterval(()=>{
@@ -535,7 +233,7 @@ async function loadUser(tid,retries=6,delayMs=500) {
   if(!/^\d+$/.test(id) || Number(id)<=0) return null;
 
   // ── Real wallets (db.js) ──
-  if(USE_BINGO_DB){
+  {
     for(let attempt=1;attempt<=retries;attempt++){
       try{
         const r=await bingoDb.getUserWalletBalances(id);
@@ -543,17 +241,16 @@ async function loadUser(tid,retries=6,delayMs=500) {
         const prev=userCache[id]||{};
         const phone=r.phone||'';
         const u={
-          userId:Number(r.user_id), name:r.name||'', phone,
-          isAdmin:isAdminPhone(phone)||prev.isAdmin===true
+          userId:Number(r.user_id), name:r.name||'', phone
         };
         applyWallets(u,walletsFromRow(r));
-        // admin / blocked flags are looked up once per user, not on every refresh
+        // blocked / inactive flags are looked up once per user, not on every refresh
         if(prev.flagsChecked){
-          u.flagsChecked=true; u.isAdmin=u.isAdmin||prev.isAdmin===true; u.blocked=prev.blocked===true; u.inactive=prev.inactive===true;
+          u.flagsChecked=true; u.blocked=prev.blocked===true; u.inactive=prev.inactive===true;
         }else{
           try{
             const f=await bingoDb.getBingoUserFlags(id);
-            if(f){ u.isAdmin=u.isAdmin||f.is_admin===true; u.blocked=f.is_blocked===true; u.inactive=f.is_active===false; }
+            if(f){ u.blocked=f.is_blocked===true; u.inactive=f.is_active===false; }
           }catch(e){ console.error('getBingoUserFlags:',e.message); }
           u.flagsChecked=true;
         }
@@ -567,27 +264,6 @@ async function loadUser(tid,retries=6,delayMs=500) {
     return userCache[id]||null;
   }
 
-  // ── Legacy single-balance schema ──
-  if(!db) return null;
-  for(let attempt=1;attempt<=retries;attempt++){
-    try{
-      const u=await db.getUser(id);
-      if(u){
-        const balance=Number.parseFloat(u.balance);
-        userCache[id] = {
-          name:u.name||'',
-          phone:u.phone||'',
-          balance:Number.isFinite(balance)?balance:0,
-          isAdmin:u.is_admin===true
-        };
-        return userCache[id];
-      }
-      return null;
-    }catch(e){
-      console.error(`loadUser attempt ${attempt}/${retries}:`,e.message);
-      if(attempt<retries) await new Promise(r=>setTimeout(r,delayMs*Math.min(attempt,3)));
-    }
-  }
   return userCache[id]||null;
 }
 
@@ -597,26 +273,15 @@ function applyUserToClient(client,u){
   if(u.wallets){ client.wallets=u.wallets; client.spendable=u.spendable; }
   client.balance=Number.isFinite(Number(u.balance))?Number(u.balance):0;
   if(u.userId) client.userId=u.userId;
-  client.playerName=u.name||client.playerName;
-  client.isAdmin=u.isAdmin===true || isAdminPhone(u.phone);
+  client.playerName=u.name||client.playerName;  
 }
 
 async function refreshClientBalance(client){
   if(!client?.telegramId) return Number.isFinite(Number(client?.balance));
   try{
-    if(USE_BINGO_DB){
-      const u=await loadUser(String(client.telegramId),1,0);
-      if(!u) return false;
-      applyUserToClient(client,u);
-      return true;
-    }
-    if(!db) return Number.isFinite(Number(client?.balance));
-    const u=await db.getUser(String(client.telegramId));
+    const u=await loadUser(String(client.telegramId),1,0);
     if(!u) return false;
-    client.balance=parseFloat(u.balance)||0;
-    client.playerName=u.name||client.playerName;
-    client.isAdmin=u.is_admin===true || isAdminPhone(u.phone);
-    if(userCache[client.telegramId]) userCache[client.telegramId].balance=client.balance;
+    applyUserToClient(client,u);
     return true;
   }catch(e){
     console.error('refreshClientBalance:',e.message);
@@ -642,59 +307,6 @@ async function forEachLimit(items,limit,fn){
     while(i<items.length){ const item=items[i++]; try{ await fn(item); }catch(e){ console.error('forEachLimit:',e.message); } }
   });
   await Promise.all(workers);
-}
-
-// Change money atomically and mirror the resulting balance in memory.
-// Positive delta = credit/refund; negative delta = charge.
-// With db.js ALL game money moves through createBingoGame / endBingoGame, so direct changes are refused.
-async function changeClientBalance(client, delta, txType, ref){
-  const amount=Number(delta);
-  if(!client || !Number.isFinite(amount)) throw new Error('Invalid balance change');
-
-  if(USE_BINGO_DB){
-    const e=new Error('Direct balance changes are disabled: wallets are handled by the database functions');
-    e.code='DIRECT_BALANCE_DISABLED';
-    throw e;
-  }
-
-  if(!client.telegramId){
-    const e=new Error('Missing Telegram ID');
-    e.code='NO_TELEGRAM_ID';
-    throw e;
-  }
-
-  if(db){
-    const newBal=await db.adjustBalance(String(client.telegramId),amount);
-    client.balance=newBal;
-    if(userCache[client.telegramId])
-      userCache[client.telegramId].balance=newBal;
-    if(txType){
-      try{
-        await db.logTx(String(client.telegramId),txType,amount,newBal,ref||'');
-      }catch(e){
-        console.error('logTx:',e.message);
-      }
-    }
-    return newBal;
-  }
-
-  // Only used when DB is genuinely unavailable.
-  const current=Number(client.balance)||0;
-  const next=current+amount;
-  if(next<0){
-    const e=new Error('Insufficient balance');
-    e.code='INSUFFICIENT_BALANCE';
-    e.balance=current;
-    throw e;
-  }
-  client.balance=next;
-  return next;
-}
-
-async function saveBalance(tid, bal) {
-  // Kept for non-game compatibility. Game money paths use createBingoGame / endBingoGame.
-  if(userCache[tid]) userCache[tid].balance=bal;
-  if(!USE_BINGO_DB && db&&tid){try{await db.setBalance(tid,bal);}catch(e){console.error('saveBalance:',e.message);}}
 }
 
 // ─── ROOM HELPERS ────────────────────────────────────────────
@@ -794,7 +406,7 @@ function broadcastLobby(){
   setTimeout(()=>{
     broadcastLobby._pending=false;
     const payload=STAKES.map(s=>{const r=Object.values(rooms).find(r=>r.stakeId===s.id);
-      return{stakeId:s.id,amount:s.amount,maxPlayers:s.maxPlayers,playerCount:r?r.players.length:0,status:r?r.status:'waiting',countdown:r&&r.status==='countdown'?r.countdownLeft:0};});
+      return{stakeId:s.id,amount:s.amount,maxPlayers:s.maxPlayers,maxCards:s.maxCards||4,playerCount:r?r.players.length:0,status:r?r.status:'waiting',countdown:r&&r.status==='countdown'?r.countdownLeft:0};});
     Object.values(clients).forEach(c=>{
       if(!c.ws||c.ws.readyState!==WebSocket.OPEN) return;
       // stakes where this player has a game running (shown as "In game" in the lobby)
@@ -887,7 +499,7 @@ async function dropUnaffordablePlayers(room){
   if(dropped) broadcastCardPool(room);
   return dropped;
 }
-// Short, friendly reason + code for players. Admins also get the database's own message.
+// Short, friendly reason + code for players.
 function startFailureInfo(reason){
   const r=String(reason||'');
   if(/at least \d+ players|players are required|minimum.*players|min.*players/i.test(r))
@@ -932,8 +544,7 @@ function failStart(room,reason){
   room.lastStartError=String(reason||'');
   const info=startFailureInfo(reason);
   room.players.forEach(p=>{
-    const admin=Object.values(clients).some(c=>c.isAdmin&&String(c.telegramId)===String(p.telegramId));
-    sendRoom(room,p.ws,{type:'error',message:`${info.text} (${info.code})`+(admin?`\n${String(reason).slice(0,160)}`:'')});
+    sendRoom(room,p.ws,{type:'error',message:`${info.text} (${info.code})`});
   });
   broadcast(room,{type:'waitingForPlayers'});
   broadcastCardPool(room);
@@ -1039,50 +650,14 @@ async function startGame(room){
   // with the final financial commit. Card selection itself is always memory-only.
   room.status='starting';
 
-  if(USE_BINGO_DB){
+  {
     const ok=await startDbGame(room);
     if(!ok) return;
-  }else{
-  for(const p of room.players){
-    if(getPlayerCardCount(p)===0) continue; // spectator
-
-    if(!p.hasPaid){
-      const cl=clients[p.playerId];
-      const numCards=getPlayerCardCount(p);
-      const totalCost=room.stake*numCards;
-
-      // This is normally already paid during card selection. This fallback
-      // protects the game if an older client reached startGame unpaid.
-      if(cl){
-        await refreshClientBalance(cl);
-        const newBal=await changeClientBalance(cl,-totalCost,'stake',room.roomId);
-        if(newBal!==null){
-          p.hasPaid=true;
-          send(p.ws,{type:'balanceUpdate',balance:newBal});
-        }else{
-          getPlayerCardIds(p).forEach(id=>room.takenCardIds.delete(id));
-          p.cardId=null; p.cardId2=null; p.cardId3=null; p.cardId4=null;
-          continue;
-        }
-      }else{
-        getPlayerCardIds(p).forEach(id=>room.takenCardIds.delete(id));
-        p.cardId=null; p.cardId2=null; p.cardId3=null; p.cardId4=null;
-        continue;
-      }
-    }
-  }
-
   }
 
   room.status='playing';
-  if(!USE_BINGO_DB){
-    const paidCards=room.players.reduce((s,p)=>s+(p.hasPaid?(getPlayerCardCount(p)):0),0);
-    const grossPot=paidCards*room.stake;
-    room.pot=Math.floor(grossPot*(1-HOUSE_CUT));
-  }
   room.calledNumbers=[]; room.availableNumbers=Array.from({length:75},(_,i)=>i+1);
   room.claimedThisRound=[]; room.claimWindowOpen=false;
-  if(!USE_BINGO_DB&&db){try{room.dbGameId=await db.saveGame(room.roomId,room.stakeId,room.stake,room.players.reduce((s,p)=>s+(p.hasPaid?(getPlayerCardCount(p)):0),0)*room.stake);}catch(e){console.error('saveGame:',e.message);}}
 
   room.players.forEach(p=>{
     if(getPlayerCardCount(p)>0){
@@ -1222,7 +797,7 @@ async function endGame(room, winners, customMsg, noWinner){
 
   let winAmount=0, winnerNames=[], winnerTids=[];
 
-  if(USE_BINGO_DB){
+  {
     // ── db.js: endBingoGame() pays every winner from the prize pool in ONE transaction ──
     if(winners&&winners.length>0){
       const paid=await settleDbGame(room,winners);
@@ -1242,46 +817,7 @@ async function endGame(room, winners, customMsg, noWinner){
     if(room.dbGameId){
       room.players.forEach(p=>{ if(p.telegramId) profileCache.delete(String(p.telegramId)); });
     }
-  }else{
-  if(winners&&winners.length>0){
-    const prizePool=room.pot;
-    winAmount=Math.floor(prizePool/winners.length);
-    winnerNames=winners.map(w=>w.playerName);
-
-    for(const w of winners){
-      const cl=clients[w.playerId];
-      const tid=String(w.telegramId||cl?.telegramId||'');
-      if(tid) winnerTids.push(tid);
-
-      // Pay from the authoritative Neon balance even if the winner refreshed,
-      // reconnected, or temporarily disconnected during the game.
-      if(tid && db){
-        const target=cl||{telegramId:tid,balance:0,ws:w.ws,playerId:w.playerId};
-        const newBal=await changeClientBalance(target,winAmount,'win',room.roomId);
-        if(newBal!==null){
-          if(cl) cl.balance=newBal;
-          send(w.ws,{type:'balanceUpdate',balance:newBal});
-        }else{
-          console.error('Failed to credit winner',tid,room.roomId);
-        }
-      }else if(cl){
-        const newBal=await changeClientBalance(cl,winAmount,'win',room.roomId);
-        send(w.ws,{type:'balanceUpdate',balance:newBal===null?cl.balance:newBal});
-      }
-    }
   }
-
-  if(db&&room.dbGameId){
-    try{await db.endGame(room.dbGameId,winnerTids,winAmount,winners.length>1,room.calledNumbers);}
-    catch(e){console.error('endGame DB error:',e.message);}
-  }else if(db&&!room.dbGameId){
-    try{
-      const grossPot=room.players.reduce((s,p)=>s+(p.hasPaid?(getPlayerCardCount(p)):0),0)*room.stake;
-      const gid=await db.saveGame(room.roomId,room.stakeId,room.stake,grossPot);
-      await db.endGame(gid,winnerTids,winAmount,winners.length>1,room.calledNumbers);
-    }catch(e){console.error('endGame fallback DB error:',e.message);}
-  }
-  } // end legacy balance code
 
   const isSplit=winners&&winners.length>1;
   const msg=customMsg||(noWinner?'በዚህ ዙር አሸናፊ የለም':
@@ -1412,17 +948,6 @@ async function leaveRoom(client,roomId){
     if(p.cardId) room.takenCardIds.delete(p.cardId);
     getPlayerCardIds(p).forEach(id=>room.takenCardIds.delete(id));
 
-    // Refund every paid card when leaving before the game starts.
-    if(!USE_BINGO_DB&&p.hasPaid&&(room.status==='waiting'||room.status==='countdown')){
-      const cardCount=getPlayerCardCount(p);
-      const refund=room.stake*cardCount;
-      if(refund>0){
-        const newBal=await changeClientBalance(client,refund,'stake_refund',room.roomId);
-        if(newBal!==null) send(client.ws,{type:'balanceUpdate',balance:newBal});
-        else console.error('Failed to refund player',client.telegramId,room.roomId);
-      }
-      p.hasPaid=false;
-    }
   }
   room.players=room.players.filter(x=>x!==p);
   if(client.roomId===rid) client.roomId=null;
@@ -1439,11 +964,11 @@ async function leaveRoom(client,roomId){
 // ─── WEBSOCKET ────────────────────────────────────────────────
 wss.on('connection',(ws)=>{
   const playerId=uuidv4();
-  const client={playerId,playerName:'',telegramId:null,balance:0,roomId:null,rooms:new Set(),isAdmin:false,ws};
+  const client={playerId,playerName:'',telegramId:null,balance:0,roomId:null,rooms:new Set(),ws};
   clients[playerId]=client; ws._pid=playerId;
 
   const lobbyStakes=STAKES.map(s=>{const r=Object.values(rooms).find(r=>r.stakeId===s.id);
-    return{stakeId:s.id,amount:s.amount,maxPlayers:s.maxPlayers,playerCount:r?r.players.length:0,status:r?r.status:'waiting',countdown:r&&r.status==='countdown'?r.countdownLeft:0};});
+    return{stakeId:s.id,amount:s.amount,maxPlayers:s.maxPlayers,maxCards:s.maxCards||4,playerCount:r?r.players.length:0,status:r?r.status:'waiting',countdown:r&&r.status==='countdown'?r.countdownLeft:0};});
   send(ws,{type:'connected',playerId,balance:0,stakes:lobbyStakes});
 
   ws.on('message',async raw=>{
@@ -1489,9 +1014,10 @@ wss.on('connection',(ws)=>{
           switch(msg.type){
 
             case 'telegramAuth':{
-              const tid=String(msg.telegramId||'').trim();
-              if(!/^\d+$/.test(tid) || Number(tid)<=0){
-                send(ws,{type:'authRetry',retryAfter:1000});
+              const tid=resolveTelegramId(msg.initData,msg.telegramId);
+              if(!tid){
+                // not signed by Telegram: refuse (no retry loop); the page tells the player to open the game from Telegram
+                send(ws,{type:'authFailed',reason:'invalid_init_data'});
                 break;
               }
               const user=await loadUser(tid,6,500);
@@ -1501,7 +1027,7 @@ wss.on('connection',(ws)=>{
                 client.playerName=user.name||client.playerName||'Player';
                 relinkAllRooms(client,ws,tid);
                 broadcastLobby();            // tell the lobby which stakes this player is already in   // keep receiving every game this account is playing
-                send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,wallets:client.wallets,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
+                send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,wallets:client.wallets,isRegistered:true});
               } else {
                 // Never convert a failed/late database lookup into a fake zero wallet.
                 send(ws,{type:'authRetry',retryAfter:1000});
@@ -1534,9 +1060,11 @@ wss.on('connection',(ws)=>{
 
       // Try by playerId first, fall back to telegramId for page-reload reconnects
 
+      // only the signed-in identity counts; a Telegram ID sent in this message is ignored
+      if(!client.telegramId){ send(ws,{type:'authRetry',retryAfter:500}); break; }
       let ep=playerOf(room,client);
-      if(!ep&&msg.telegramId){
-        const tid=String(msg.telegramId);
+      if(!ep){
+        const tid=String(client.telegramId);
         ep=room.players.find(p=>String(p.telegramId)===tid);
         if(ep) client.telegramId=tid;       // another device (or a reload) of the same account SHARES this player
       }
@@ -1545,7 +1073,7 @@ wss.on('connection',(ws)=>{
         attachSocket(ep,ws); ep.playerId=client.playerId; client.roomId=msg.roomId; ep.detached=false;
         if(ep.detachedSockets) ep.detachedSockets.delete(ws);
         if(!client.rooms) client.rooms=new Set(); client.rooms.add(msg.roomId);
-        relinkAllRooms(client,ws,String(msg.telegramId||client.telegramId||''));
+        relinkAllRooms(client,ws,String(client.telegramId||''));
 
         const card=ep.cardId?getCard(ep.cardId):null;
 
@@ -1604,31 +1132,6 @@ wss.on('connection',(ws)=>{
 
                  // for that later validation even if telegramAuth arrived slightly late.
 
-                 if(!client.telegramId && msg.telegramId){
-
-                   const tid=String(msg.telegramId).trim();
-
-                   if(tid){
-
-                     client.telegramId=tid;
-
-                     try{
-
-                       const u=await loadUser(tid);
-
-                       if(u){
-
-                         applyUserToClient(client,u);
-
-                       }
-
-                     }catch(e){ console.error('joinRoom account lookup:',e.message); }
-
-                   }
-
-                 }
-
-
                  // A player may play several games at once (one room per stake). Rooms where he
                  // has a RUNNING game stay open. Any other room (card selection not started yet,
                  // or just watching) is left, which releases the picked cards as before.
@@ -1645,7 +1148,7 @@ wss.on('connection',(ws)=>{
               // A page/app reload creates a new WebSocket/playerId. If this Telegram
               // account already owns cards in the same stake room, it is the SAME
               // player and must never be added as a spectator/new player.
-              const reconnectTid=String(client.telegramId||msg.telegramId||'').trim();
+              const reconnectTid=String(client.telegramId||'').trim();
               if(reconnectTid){
                 const existingRoom=Object.values(rooms).find(r=>
                   r.stakeId===msg.stakeId &&
@@ -1872,89 +1375,6 @@ wss.on('connection',(ws)=>{
             }
 
 
-            // ── Deposit request ──
-
-            case 'depositRequest':{
-
-              const{amount,txRef}=msg;
-
-              if(!amount||amount<10) return send(ws,{type:'error',message:'Minimum deposit is 10 ETB.'});
-
-              if(!txRef||!txRef.trim()) return send(ws,{type:'error',message:'Transaction reference required.'});
-
-              if(!client.telegramId) return send(ws,{type:'error',message:'Please register first via the Telegram bot (/start).'});
-
-              if(db){
-
-                try{
-
-                  const id=await db.createDeposit(client.telegramId,amount,txRef.trim());
-
-                  if(!id) return send(ws,{type:'error',message:'Account not found in database. Please send /start to the bot again.'});
-
-                  send(ws,{type:'depositSubmitted',message:'Deposit request submitted! Waiting for admin approval.'});
-
-                }catch(e){console.error('Deposit error:',e.message); send(ws,{type:'error',message:'Deposit failed: '+e.message});}
-
-              } else {
-
-                // Memory mode: auto-approve
-
-                client.balance+=amount;
-
-                send(ws,{type:'balanceUpdate',balance:client.balance});
-
-                send(ws,{type:'depositSubmitted',message:'Deposit approved (demo mode).'});
-
-              }
-
-              break;
-
-            }
-
-
-            // ── Withdrawal request ──
-
-            case 'withdrawalRequest':{
-
-              const{amount}=msg;
-
-              if(!amount||amount<50) return send(ws,{type:'error',message:'Minimum withdrawal is 50 ETB.'});
-
-              if(!client.telegramId) return send(ws,{type:'error',message:'Please register first.'});
-
-              await refreshClientBalance(client);
-
-              if(db){
-
-                try{
-
-                  const result=await db.createWithdrawal(client.telegramId,amount);
-
-                  if(result.error) return send(ws,{type:'error',message:result.error});
-
-                  client.balance=result.newBalance;
-
-                  send(ws,{type:'balanceUpdate',balance:client.balance});
-
-                  send(ws,{type:'withdrawalSubmitted',message:'Withdrawal request submitted! Admin will process it soon.'});
-
-                }catch(e){send(ws,{type:'error',message:'Failed to submit withdrawal.'});}
-
-              } else {
-
-                client.balance-=amount;
-
-                send(ws,{type:'balanceUpdate',balance:client.balance});
-
-                send(ws,{type:'withdrawalSubmitted',message:'Withdrawal submitted (demo mode).'});
-
-              }
-
-              break;
-
-            }
-
           }
 
         }catch(err){console.error('WS:',err);}
@@ -2002,205 +1422,6 @@ wss.on('connection',(ws)=>{
     delete clients[ws._pid]; broadcastLobby();
   });
   ws.on('error',()=>{});
-});
-
-// ─── ADMIN REST API ───────────────────────────────────────────
-// Admin auth — accepts phone number OR telegram ID of the admin
-function adminAuth(req,res,next){
-  const tok=String(req.headers['x-admin-token']||req.query.token||'');
-  if(isAdminPhone(tok)) return next();
-  // Frontend sends telegramId as token — check if that user isAdmin
-  const cl=Object.values(clients).find(c=>c.telegramId===tok);
-  if(cl&&cl.isAdmin) return next();
-  res.status(403).json({error:'Forbidden'});
-}
-app.get('/api/admin/admins',adminAuth,async(req,res)=>{
-  if(!db)return res.json([]);
-  res.json(await db.q('SELECT telegram_id,name,phone FROM users WHERE is_admin=true ORDER BY name'));
-});
-app.post('/api/admin/admins',adminAuth,async(req,res)=>{
-  if(!db)return res.json({ok:true});
-  const phone=String(req.body.phone||'').trim().replace(/^\+/,'');
-  if(!phone)return res.status(400).json({error:'phone required'});
-  const r=await db.q('UPDATE users SET is_admin=true WHERE phone=$1 RETURNING telegram_id,name,phone',[phone]);
-  if(!r.length)return res.status(404).json({error:'User not found'});
-  const cl=Object.values(clients).find(c=>c.telegramId===String(r[0].telegram_id));
-  if(cl)cl.isAdmin=true;
-  res.json({ok:true,user:r[0]});
-});
-app.delete('/api/admin/admins/:phone',adminAuth,async(req,res)=>{
-  if(!db)return res.json({ok:true});
-  const phone=decodeURIComponent(req.params.phone).replace(/^\+/,'');
-  if(phone===ADMIN_PHONE)return res.status(403).json({error:'Cannot remove root admin'});
-  await db.q('UPDATE users SET is_admin=false WHERE phone=$1',[phone]);
-  const cl=Object.values(clients).find(c=>{const u=userCache[c.telegramId];return u&&u.phone===phone;});
-  if(cl)cl.isAdmin=false;
-  res.json({ok:true});
-});
-
-app.get('/api/admin/deposits', adminAuth, async(req,res)=>{
-  if(!db) return res.json([]);
-  res.json(await db.getDeposits(req.query.status||'pending'));
-});
-app.post('/api/admin/deposits/:id/approve', adminAuth, async(req,res)=>{
-  if(!db) return res.json({ok:true});
-  const result=await db.approveDeposit(parseInt(req.params.id));
-  if(result){
-    // Push balance update to connected user
-    const cl=Object.values(clients).find(c=>c.telegramId===String(result.telegramId));
-    if(cl){cl.balance=result.newBalance;send(cl.ws,{type:'balanceUpdate',balance:result.newBalance});send(cl.ws,{type:'notification',message:`✅ Deposit of ${result.amount} ETB approved!`});}
-  }
-  res.json({ok:true,result});
-});
-app.post('/api/admin/deposits/:id/reject', adminAuth, async(req,res)=>{
-  if(!db) return res.json({ok:true});
-  await db.rejectDeposit(parseInt(req.params.id));
-  res.json({ok:true});
-});
-
-app.get('/api/admin/withdrawals', adminAuth, async(req,res)=>{
-  if(!db) return res.json([]);
-  res.json(await db.getWithdrawals(req.query.status||'pending'));
-});
-app.post('/api/admin/withdrawals/:id/approve', adminAuth, async(req,res)=>{
-  if(!db) return res.json({ok:true});
-  const result=await db.approveWithdrawal(parseInt(req.params.id));
-  if(result){
-    const cl=Object.values(clients).find(c=>c.telegramId===String(result.telegramId));
-    if(cl) send(cl.ws,{type:'notification',message:`✅ Withdrawal of ${result.amount} ETB approved!`});
-  }
-  res.json({ok:true,result});
-});
-app.post('/api/admin/withdrawals/:id/reject', adminAuth, async(req,res)=>{
-  if(!db) return res.json({ok:true});
-  const result=await db.rejectWithdrawal(parseInt(req.params.id));
-  if(result){
-    const cl=Object.values(clients).find(c=>c.telegramId===String(result.telegramId));
-    if(cl){cl.balance=result.newBalance;send(cl.ws,{type:'balanceUpdate',balance:result.newBalance});send(cl.ws,{type:'notification',message:`❌ Withdrawal rejected. ${result.newBalance} ETB refunded.`});}
-  }
-  res.json({ok:true,result});
-});
-
-app.get('/api/admin/search', adminAuth, async(req,res)=>{
-  if(!db) return res.json([]);
-  res.json(await db.searchByPhone(req.query.phone||''));
-});
-
-app.get('/api/admin/analytics', adminAuth, async(req,res)=>{
-  if(!db) return res.json({error:'No database'});
-  const { from, to } = req.query;
-  const dateFrom = from ? new Date(from).toISOString() : new Date(Date.now()-30*86400000).toISOString();
-  const dateTo   = to   ? new Date(new Date(to).setHours(23,59,59,999)).toISOString() : new Date().toISOString();
-  try {
-    const games = await db.q(
-      `SELECT COUNT(*)::int as total_games,
-              COALESCE(SUM(pot),0)::numeric as total_pot,
-              COALESCE(SUM(win_amount),0)::numeric as total_paid_out,
-              COUNT(CASE WHEN status='finished' THEN 1 END)::int as finished_games
-       FROM games WHERE started_at BETWEEN $1 AND $2`, [dateFrom, dateTo]);
-
-    const profit = await db.q(
-      `SELECT COALESCE(SUM(pot - COALESCE(win_amount,0)),0)::numeric as house_profit
-       FROM games WHERE status='finished' AND started_at BETWEEN $1 AND $2`, [dateFrom, dateTo]);
-
-    const deposits = await db.q(
-      `SELECT COUNT(*)::int as total,
-              COUNT(CASE WHEN status='pending' THEN 1 END)::int as pending,
-              COUNT(CASE WHEN status='approved' THEN 1 END)::int as approved,
-              COUNT(CASE WHEN status='rejected' THEN 1 END)::int as rejected,
-              COALESCE(SUM(CASE WHEN status='approved' THEN amount ELSE 0 END),0)::numeric as approved_amount,
-              COALESCE(SUM(CASE WHEN status='pending' THEN amount ELSE 0 END),0)::numeric as pending_amount
-       FROM deposit_requests WHERE created_at BETWEEN $1 AND $2`, [dateFrom, dateTo]);
-
-    const withdrawals = await db.q(
-      `SELECT COUNT(*)::int as total,
-              COUNT(CASE WHEN status='pending' THEN 1 END)::int as pending,
-              COUNT(CASE WHEN status='approved' THEN 1 END)::int as approved,
-              COUNT(CASE WHEN status='rejected' THEN 1 END)::int as rejected,
-              COALESCE(SUM(CASE WHEN status='approved' THEN amount ELSE 0 END),0)::numeric as approved_amount,
-              COALESCE(SUM(CASE WHEN status='pending' THEN amount ELSE 0 END),0)::numeric as pending_amount
-       FROM withdrawal_requests WHERE created_at BETWEEN $1 AND $2`, [dateFrom, dateTo]);
-
-    const users = await db.q(
-      `SELECT COUNT(*)::int as new_users FROM users WHERE created_at BETWEEN $1 AND $2`, [dateFrom, dateTo]);
-
-    const totalUsers = await db.q(`SELECT COUNT(*)::int as count FROM users`);
-
-    const dailyRevenue = await db.q(
-      `SELECT DATE(started_at) as day,
-              COUNT(*)::int as games,
-              COALESCE(SUM(pot - COALESCE(win_amount,0)),0)::numeric as profit,
-              COALESCE(SUM(pot),0)::numeric as pot
-       FROM games WHERE status='finished' AND started_at BETWEEN $1 AND $2
-       GROUP BY DATE(started_at) ORDER BY day ASC`, [dateFrom, dateTo]);
-
-    const topWinners = await db.q(
-      `SELECT u.name, u.phone,
-              COUNT(CASE WHEN t.type='win' THEN 1 END)::int as wins,
-              COALESCE(SUM(CASE WHEN t.type='win' THEN t.amount ELSE 0 END),0)::numeric as total_won
-       FROM users u JOIN transactions t ON t.user_id=u.id
-       WHERE t.created_at BETWEEN $1 AND $2 AND t.type='win'
-       GROUP BY u.id, u.name, u.phone
-       ORDER BY total_won DESC LIMIT 10`, [dateFrom, dateTo]);
-
-    const recentTx = await db.q(
-      `SELECT u.name, u.phone, t.type, t.amount, t.created_at
-       FROM transactions t JOIN users u ON u.id=t.user_id
-       WHERE t.created_at BETWEEN $1 AND $2
-       ORDER BY t.created_at DESC LIMIT 20`, [dateFrom, dateTo]);
-
-    const pendingDeposits = await db.q(
-      `SELECT dr.id, dr.amount, dr.tx_ref, dr.created_at, u.name, u.phone
-       FROM deposit_requests dr JOIN users u ON u.id=dr.user_id
-       WHERE dr.status='pending' ORDER BY dr.created_at ASC LIMIT 20`);
-
-    const pendingWithdrawals = await db.q(
-      `SELECT wr.id, wr.amount, wr.created_at, u.name, u.phone
-       FROM withdrawal_requests wr JOIN users u ON u.id=wr.user_id
-       WHERE wr.status='pending' ORDER BY wr.created_at ASC LIMIT 20`);
-
-    res.json({
-      range: { from: dateFrom, to: dateTo },
-      games: games[0],
-      profit: profit[0],
-      deposits: deposits[0],
-      withdrawals: withdrawals[0],
-      users: { ...users[0], total: totalUsers[0].count },
-      dailyRevenue,
-      topWinners,
-      recentTx,
-      pendingDeposits,
-      pendingWithdrawals
-    });
-  } catch(e) {
-    console.error('Analytics error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── Payment info (Telebirr account shown on deposit page) ──
-app.get('/api/payment-info', (req,res)=>{
-  res.json(PAYMENT_INFO);
-});
-app.get('/api/admin/payment-settings', adminAuth, (req,res)=>{
-  res.json(PAYMENT_INFO);
-});
-app.post('/api/admin/payment-settings', adminAuth, async(req,res)=>{
-  const { telebirrNumber, telebirrName } = req.body || {};
-  if(telebirrNumber && String(telebirrNumber).trim()) PAYMENT_INFO.telebirrNumber = String(telebirrNumber).trim();
-  if(telebirrName && String(telebirrName).trim())     PAYMENT_INFO.telebirrName   = String(telebirrName).trim();
-  if(db){
-    try{
-      await db.setSetting('telebirr_number', PAYMENT_INFO.telebirrNumber);
-      await db.setSetting('telebirr_name',   PAYMENT_INFO.telebirrName);
-    }catch(e){ console.error('⚠️ Settings save:', e.message); }
-  }
-  res.json({ ok:true, ...PAYMENT_INFO });
-});
-
-app.get('/api/leaderboard', async(req,res)=>{
-  if(!db) return res.json([]);
-  res.json(await db.getLeaderboard());
 });
 
 // ─── PROFILE (db.js: getBingoUserDashboard) ───────────────────
@@ -2272,7 +1493,6 @@ async function getBingoProfile(tid){
     total_winnings:Math.max(0,earning),
     stake_stats:stakeRows,
     latest_earnings:0,
-    isAdmin:u.isAdmin===true,
     source:{dashboard:!!d,stats:!!stats}
   };
   profileCache.set(tid,{t:Date.now(),data:out});
@@ -2282,329 +1502,21 @@ async function getBingoProfile(tid){
 app.get('/api/user/:tid', async(req,res)=>{
   const tid=String(req.params.tid||'').trim();
   if(!tid) return res.status(400).json({error:'Missing Telegram ID'});
-  if(USE_BINGO_DB){
-    try{
-      const out=await getBingoProfile(tid);
-      if(!out) return res.status(404).json({error:'Not found'});
-      if(out.blocked) return res.status(403).json({error:`Account is ${out.status}`,status:out.status});
-      return res.json(out);
-    }catch(e){
-      console.error('GET /api/user (db.js):',e.stack||e.message);
-      return res.status(500).json({error:'Database query failed'});
-    }
-  }
-  if(!db) return res.status(503).json({error:'Database unavailable'});
-
+  // a profile is only served to the player it belongs to (signed initData in the X-Telegram-Init-Data header)
+  const who=resolveTelegramId(req.headers['x-telegram-init-data'],tid);
+  if(!who||who!==tid) return res.status(401).json({error:'Open the game from Telegram'});
   try{
-    // Keep the basic account query completely independent from game/statistics
-    // queries. A statistics query must never prevent login/profile from loading.
-    const rows=await db.q(
-      `SELECT * FROM users WHERE telegram_id=$1 LIMIT 1`,
-      [tid]
-    );
-    const u=rows[0]||null;
-    if(!u) return res.status(404).json({error:'Not found'});
-
-    // Always keep the database user's stored counters as the safe fallback.
-    let totalGames=Math.max(0,Number(u.total_games)||0);
-    let totalWins=Math.max(0,Number(u.total_wins)||0);
-    let latestEarnings=0;
-
-    // Calculate games played independently through stake transactions. This is
-    // the same relationship used by the existing game-history endpoint and does
-    // not depend on game_participants being present/correct.
-    try{
-      const r=await db.q(`
-        SELECT COUNT(DISTINCT g.id)::int AS total_games
-        FROM games g
-        JOIN transactions t ON t.reference=g.room_id
-        JOIN users tu ON tu.id=t.user_id
-        WHERE tu.telegram_id=$1
-          AND g.status='finished'
-          AND t.type='stake'
-      `,[tid]);
-      const computed=Math.max(0,Number(r[0]?.total_games)||0);
-      totalGames=Math.max(totalGames,computed);
-    }catch(e){
-      console.error('Profile games query:',e.message);
-    }
-
-    // Calculate wins directly from finished games. If the winner column cannot
-    // be queried for any reason, retain the authoritative users.total_wins value.
-    try{
-      const r=await db.q(`
-        SELECT COUNT(*)::int AS total_wins
-        FROM games
-        WHERE status='finished'
-          AND $1 = ANY(winner_ids)
-      `,[tid]);
-      const computed=Math.max(0,Number(r[0]?.total_wins)||0);
-      totalWins=Math.max(totalWins,computed);
-    }catch(e){
-      console.error('Profile wins query:',e.message);
-    }
-
-    try{
-      const r=await db.q(`
-        SELECT win_amount
-        FROM games
-        WHERE status='finished'
-          AND $1 = ANY(winner_ids)
-        ORDER BY ended_at DESC NULLS LAST, id DESC
-        LIMIT 1
-      `,[tid]);
-      latestEarnings=Math.max(0,Number(r[0]?.win_amount)||0);
-    }catch(e){
-      console.error('Profile latest earnings query:',e.message);
-    }
-
-    // Keep stored totals synchronized when our safe calculations find more data.
-    if(totalGames !== Math.max(0,Number(u.total_games)||0)){
-      try{
-        await db.q('UPDATE users SET total_games=$1 WHERE id=$2',[totalGames,u.id]);
-      }catch(e){
-        console.error('Profile total_games sync:',e.message);
-      }
-    }
-    if(totalWins !== Math.max(0,Number(u.total_wins)||0)){
-      try{
-        await db.q('UPDATE users SET total_wins=$1 WHERE id=$2',[totalWins,u.id]);
-      }catch(e){
-        console.error('Profile total_wins sync:',e.message);
-      }
-    }
-
-    // Wins by stake for the profile table (5 / 10 / 20): number of games won and total won.
-    // Kept in its own try/catch so a statistics problem can never break login or the profile.
-    let stakeStats=[];
-    try{
-      const r=await db.q(`
-        SELECT g.stake_amount::numeric AS stake,
-               COUNT(*)::int AS wins,
-               COALESCE(SUM(g.win_amount),0)::numeric AS win_amount
-        FROM games g
-        WHERE g.status='finished'
-          AND $1 = ANY(COALESCE(g.winner_ids, ARRAY[]::text[]))
-        GROUP BY g.stake_amount
-        ORDER BY g.stake_amount
-      `,[tid]);
-      stakeStats=r.map(x=>({stake:Number(x.stake)||0,wins:Number(x.wins)||0,win_amount:Number(x.win_amount)||0}));
-    }catch(e){
-      console.error('Profile stake stats query:',e.message);
-    }
-
-    const user={
-      telegramId:String(u.telegram_id),
-      name:u.name||'',
-      phone:u.phone||'',
-      balance:Number.parseFloat(u.balance)||0,
-      total_games:totalGames,
-      total_wins:totalWins,
-      total_winnings:Math.max(0,Number(u.total_winnings)||0),
-      // Optional wallets: shown on the profile if the users table has these columns, else 0.
-      play_wallet:Math.max(0,Number.parseFloat(u.play_wallet ?? u.play_balance)||0),
-      bonus:Math.max(0,Number.parseFloat(u.bonus ?? u.bonus_balance)||0),
-      stake_stats:stakeStats,
-      latest_earnings:latestEarnings,
-      isAdmin:u.is_admin===true || isAdminPhone(u.phone)
-    };
-
-    userCache[tid]={...(userCache[tid]||{}),...user};
-    res.json(user);
+    const out=await getBingoProfile(tid);
+    if(!out) return res.status(404).json({error:'Not found'});
+    if(out.blocked) return res.status(403).json({error:`Account is ${out.status}`,status:out.status});
+    return res.json(out);
   }catch(e){
-    console.error('GET /api/user error:',e.stack||e.message);
-    res.status(500).json({error:'Database query failed'});
-  }
-});
-
-
-app.get('/api/history/:tid', async(req,res)=>{
-  const tid=String(req.params.tid||'').trim();
-  if(!tid) return res.status(400).json({error:'Missing Telegram ID'});
-  if(!db) return res.status(503).json({error:'Database unavailable'});
-  try{
-    const rows=await db.getGameHistory(tid, req.query.limit);
-    res.json(rows);
-  }catch(e){
-    console.error('GET /api/history error:',e.message);
-    res.status(500).json({error:'Could not load game history'});
+    console.error('GET /api/user (db.js):',e.stack||e.message);
+    return res.status(500).json({error:'Database query failed'});
   }
 });
 
 // ─── START ────────────────────────────────────────────────────
 server.listen(PORT,()=>{
-  console.log(`\n🎱 Beteseb Bingo v5 on port ${PORT}\n`);
-  startTelegramBot();
+  console.log(`\n🎱 Mela Bingo v1 on port ${PORT}\n`);
 });
-
-// ─── BOT ─────────────────────────────────────────────────────
-// ─── BOT ─────────────────────────────────────────────────────
-function startTelegramBot(){
-  const TOKEN=process.env.BOT_TOKEN, GAME_URL=process.env.GAME_URL||'https://beteseb-bingo.onrender.com';
-  if(!TOKEN){console.log('ℹ️ No BOT_TOKEN');return;}
-  let Bot; try{Bot=require('node-telegram-bot-api');}catch(e){console.log('ℹ️ Bot lib missing');return;}
-  const bot=new Bot(TOKEN,{polling:true}), pending={};
-
-  const MAIN_MENU = {
-    keyboard: [
-      [{ text: '🎮 Play Now' }, { text: '📝 Register' }],
-      [{ text: '💰 Deposit' }, { text: '💸 Withdraw' }],
-      [{ text: '🔀 Transfer' }, { text: '🎁 Invite Friends' }],
-      [{ text: '🎯 Game Patterns' }, { text: '📖 Instructions' }],
-      [{ text: '🆘 24H Support 1' }, { text: '🆘 Support 2' }]
-    ],
-    resize_keyboard: true,
-    persistent: true
-  };
-
- async function showMainMenu(chatId, tid, firstName){
-  const user = await loadUser(String(tid));
-  if(user){
-    bot.sendMessage(chatId,
-      `👋 Hi *${user.name}!*\nWelcome to *Beteseb Bingo*, the ultimate bingo gaming experience! 🎉\n\n💰 Balance: *${parseFloat(user.balance).toFixed(2)} ETB*`,
-      { parse_mode:'Markdown', reply_markup: MAIN_MENU }
-    );
-  } else {
-    pending[tid] = { step:'ask_phone', name: firstName || 'Player' };
-    bot.sendMessage(chatId,
-      `👋 Hi *${firstName || 'Player'}!*\nWelcome to *Beteseb Bingo!* 🎱\n\nPlease share your phone number to register:`,
-      { parse_mode:'Markdown', reply_markup:{ keyboard:[[{ text:'📱 Share Phone Number', request_contact:true }]], resize_keyboard:true, one_time_keyboard:true }}
-    );
-  }
-}
-
-  bot.onText(/\/start/, msg => showMainMenu(msg.chat.id, msg.from.id, msg.from.first_name));
-bot.onText(/\/play/,  msg => showMainMenu(msg.chat.id, msg.from.id, msg.from.first_name));
-
-  bot.onText(/\/balance/, async msg => {
-    const u = await loadUser(String(msg.from.id));
-    bot.sendMessage(msg.chat.id,
-      u ? `💰 Balance: *${parseFloat(u.balance).toFixed(2)} ETB*` : 'Use /start to register.',
-      { parse_mode:'Markdown', reply_markup: MAIN_MENU }
-    );
-  });
-
-  bot.on('message', async msg => {
-    const tid = msg.from.id;
-    const text = msg.text || '';
-
-    // ── Handle registration flow ──
-    const p = pending[tid];
-    if(p && !text.startsWith('/')){
-      if(p.step === 'ask_name'){
-        p.name = text.trim().substring(0,30);
-        p.step = 'ask_phone';
-        bot.sendMessage(msg.chat.id,
-          `Nice to meet you *${p.name}!* 👋\n\nPlease Share Your Phone Number:`,
-          { parse_mode:'Markdown', reply_markup:{ keyboard:[[{ text:'📱 Share Phone Number', request_contact:true }]], resize_keyboard:true, one_time_keyboard:true }}
-        );
-      }
-      return;
-    }
-
-    // ── Handle menu button presses ──
-    const user = await loadUser(String(tid));
-
-    if(text === '🎮 Play Now'){
-      if(!user) return bot.sendMessage(msg.chat.id, '⚠️ Please register first by pressing 📝 Register.', { reply_markup: MAIN_MENU });
-      bot.sendMessage(msg.chat.id, `🎮 Tap below to open the game:`, {
-        reply_markup:{
-          inline_keyboard:[[{ text:'🎮 Play Beteseb Bingo', web_app:{ url:`${GAME_URL}?tid=${tid}` }}]]
-        }
-      });
-    }
-
-    else if(text === '📝 Register'){
-      if(user) return bot.sendMessage(msg.chat.id, `✅ You are already registered as *${user.name}!*\n💰 Balance: *${parseFloat(user.balance).toFixed(2)} ETB*`, { parse_mode:'Markdown', reply_markup: MAIN_MENU });
-      pending[tid] = { step:'ask_name' };
-      bot.sendMessage(msg.chat.id, '📝 Let\'s get you registered!\n\nWhat should we call you?', { reply_markup: MAIN_MENU });
-    }
-
-    else if(text === '💰 Deposit'){
-      if(!user) return bot.sendMessage(msg.chat.id, '⚠️ Please register first.', { reply_markup: MAIN_MENU });
-      bot.sendMessage(msg.chat.id, `💰 Tap below to deposit:`, {
-        reply_markup:{
-          inline_keyboard:[[{ text:'💰 Deposit Now', web_app:{ url:`${GAME_URL}?tid=${tid}&page=deposit` }}]]
-        }
-      });
-    }
-
-    else if(text === '💸 Withdraw'){
-      if(!user) return bot.sendMessage(msg.chat.id, '⚠️ Please register first.', { reply_markup: MAIN_MENU });
-      bot.sendMessage(msg.chat.id, `💸 Tap below to withdraw:`, {
-        reply_markup:{
-          inline_keyboard:[[{ text:'💸 Withdraw Now', web_app:{ url:`${GAME_URL}?tid=${tid}&page=withdraw` }}]]
-        }
-      });
-    }
-
-    else if(text === '🔀 Transfer'){
-      bot.sendMessage(msg.chat.id,
-        `🔀 *Transfer*\n\nPlayer-to-player transfer is coming soon! Stay tuned 🚀`,
-        { parse_mode:'Markdown', reply_markup: MAIN_MENU }
-      );
-    }
-
-    else if(text === '🎁 Invite Friends'){
-      const me = await bot.getMe();
-      const link = `https://t.me/${me.username}?start=ref_${tid}`;
-      bot.sendMessage(msg.chat.id,
-        `🎁 *Invite Friends & Earn!*\n\nShare your link:\n${link}\n\n_Coming soon: earn bonus ETB for every friend who joins!_`,
-        { parse_mode:'Markdown', reply_markup: MAIN_MENU }
-      );
-    }
-
-    else if(text === '🎯 Game Patterns'){
-      bot.sendMessage(msg.chat.id,
-        `🎯 *Winning Patterns*\n\n✅ Any complete *row* (horizontal)\n✅ Any complete *column* (vertical)\n✅ Either *diagonal*\n✅ *4 corners*\n\nThe FREE space in the center counts automatically!\n\nPress BINGO as soon as you complete a pattern! 🎉`,
-        { parse_mode:'Markdown', reply_markup: MAIN_MENU }
-      );
-    }
-
-    else if(text === '📖 Instructions'){
-      bot.sendMessage(msg.chat.id,
-        `📖 *How to Play Beteseb Bingo*\n\n1️⃣ Deposit ETB into your wallet\n2️⃣ Choose a stake tier (10–100 ETB)\n3️⃣ Pick your lucky card (1–400)\n4️⃣ Numbers are called every 5 seconds\n5️⃣ Mark numbers on your card\n6️⃣ Complete a pattern and press *BINGO!* 🎉\n\n🏆 Winner gets *80%* of the total pot\n🏠 House takes *20%*\n⚠️ False BINGO = disqualification!`,
-        { parse_mode:'Markdown', reply_markup: MAIN_MENU }
-      );
-    }
-
-    else if(text === '🆘 24H Support 1'){
-      bot.sendMessage(msg.chat.id,
-        `🆘 *24H Support*\n\nContact us anytime:\n👤 @YourSupportUsername1\n\nWe typically respond within a few minutes.`,
-        { parse_mode:'Markdown', reply_markup: MAIN_MENU }
-      );
-    }
-
-    else if(text === '🆘 Support 2'){
-      bot.sendMessage(msg.chat.id,
-        `🆘 *Support 2*\n\nAlternate support contact:\n👤 @YourSupportUsername2`,
-        { parse_mode:'Markdown', reply_markup: MAIN_MENU }
-      );
-    }
-  });
-
-bot.on('contact', async msg => {
-    const tid = msg.from.id, p = pending[tid];
-    if(!p) return;
-    if(USE_BINGO_DB){ bot.sendMessage(msg.chat.id,'Please register with the main Mela Bingo bot first, then open the game again.'); delete pending[tid]; return; }
-    const phone = (msg.contact.phone_number||'').replace(/^\+/,'');
-    const name  = msg.contact.first_name || msg.from.first_name || 'Player';
-    delete pending[tid];
-    let balance = 0;
-    if(db){
-      try{
-        const u = await db.createUser(String(tid), name, phone);
-        balance = parseFloat(u.balance);
-        userCache[String(tid)] = { name, phone, balance, isAdmin: isAdminPhone(phone) };
-      } catch(e){ console.error('createUser error:', e.message); }
-    } else {
-      userCache[String(tid)] = { name, phone, balance:0, isAdmin: isAdminPhone(phone) };
-    }
-    bot.sendMessage(msg.chat.id,
-      `✅ *Registered Successfully!*\n\n👤 Name: *${name}*\n📱 Phone: ${phone}\n💰 Balance: *${balance} ETB*\n\nDeposit ETB to start playing! 🎱`,
-      { parse_mode:'Markdown', reply_markup: MAIN_MENU }
-    );
-  });
-
-  console.log('🤖 Telegram bot started!!');
-}
