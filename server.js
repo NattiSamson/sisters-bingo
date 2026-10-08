@@ -1487,14 +1487,20 @@ async function getBingoProfile(tid){
   const hit=profileCache.get(tid);
   if(hit&&Date.now()-hit.t<PROFILE_TTL_MS) return hit.data;
 
-  const u=await loadUser(tid,3,300);
+  // A signed-in player is already in userCache (userId, name, phone): start the dashboard at once,
+  // no extra wallet query first. Only an unknown user is loaded from the database.
+  let u=userCache[tid];
+  if(!u||!u.userId) u=await loadUser(tid,3,300);
   if(!u||!u.userId) return null;
 
-  const [dash,stats]=await Promise.all([
-    bingoDb.getBingoUserDashboard(u.userId).catch(e=>{ console.error('getBingoUserDashboard:',e.message); return null; }),
-    // counters straight from the game tables: only used for anything the dashboard could not give
-    bingoDb.getBingoProfileStats(u.userId).catch(e=>{ console.error('getBingoProfileStats:',e.message); return null; })
-  ]);
+  // ONE database call: get_bingo_user_dashboard has balances, totals and per-stake totals.
+  // The three extra stats queries only run if the dashboard failed.
+  let dash=null, stats=null;
+  try{ dash=await bingoDb.getBingoUserDashboard(u.userId); }
+  catch(e){
+    console.error('getBingoUserDashboard:',e.message);
+    stats=await bingoDb.getBingoProfileStats(u.userId).catch(e2=>{ console.error('getBingoProfileStats:',e2.message); return null; });
+  }
   const d=(dash&&typeof dash==='object')?dash:null;
   if(d&&!dashboardShapeLogged){ dashboardShapeLogged=true; console.log('ℹ️ getBingoUserDashboard keys:',Object.keys(d).join(', ')); }
   if(d&&d.status&&d.status!=='active') return {blocked:true,status:d.status};
