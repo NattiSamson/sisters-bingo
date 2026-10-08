@@ -3175,7 +3175,7 @@ body.game-screen-active > .bottom-nav{
 
 <div id="screenLoading" class="screen">
   <div class="loading-spinner"></div>
-  <div class="loading-text" id="loadingText">Connecting...</div>
+  <div class="loading-text" id="loadingText">Connecting<u class="lc-dots"><s></s><s></s><s></s></u></div>
 </div>
 
 <div id="screenLobby" class="screen active">
@@ -3932,6 +3932,7 @@ function fillPlayLayoutForSpectator(msg,nums){
 }
 
 function goToGame(){
+  if(localStorage.getItem('gameViewDetached')==='1'){ navGo('screenLobby','navHome'); return; }   // he went back to the lobby on purpose
   localStorage.removeItem('gameViewDetached');
   // GAME is a navigation entry point, not an error state. If the player has
   // not selected/joined an active game, always return to the normal lobby.
@@ -4130,14 +4131,14 @@ const LOBBY_I18N={
       game:n=>`የ${n} ብር ጨዋታ`,startsIn:n=>`በ${n} ሰከንድ ይጀምራል`,starting:'በመጀመር ላይ…',inProgress:'በመካሄድ ላይ',
       waiting:'ተጫዋቾችን በመጠበቅ ላይ',finished:'ጨዋታው አብቅቷል',players:n=>`${n} ተጫዋቾች`,
       play:'ተጫወት',open:'ክፈት',watch:'ተመልከት',yours:'የእርስዎ ጨዋታ',unavailable:'አሁን አይገኝም',noStakes:'አሁን የሚገኝ የውርርድ መጠን የለም። እባክዎ ትንሽ ቆይተው ይሞክሩ።',
-      connecting:'ከጨዋታ አገልጋዩ ጋር በመገናኘት ላይ…',noconn:h=>`ከጨዋታ አገልጋዩ (${h}) ጋር መገናኘት አልተቻለም። እንደገና በመሞከር ላይ…`},
+      connecting:'Connecting',noconn:()=>'Reconnecting'},
   en:{hello:'Welcome back',player:'Player',online:'Online now',active:'active players',
       heroTitle:'Pick a room, win big',heroSub:'Marking is automatic',choose:'Choose your stake',
       tip:'You can play <b>up to 3 games at once</b> \u2014 one in each stake.',navGame:'Game',navProfile:'Profile',
       game:n=>`Play ${n}`,startsIn:n=>`Starts in ${n}s`,starting:'Starting\u2026',inProgress:'In progress',
       waiting:'Waiting for players',finished:'Game finished',players:n=>`${n} players`,
       play:'Play',open:'Open',watch:'Watch',yours:'YOUR GAME',unavailable:'Not available',noStakes:'No stakes are available right now. Please try again shortly.',
-      connecting:'Connecting to the game server\u2026',noconn:h=>`Cannot reach the game server (${h}). Retrying\u2026`}
+      connecting:'Connecting',noconn:()=>'Reconnecting'}
 }[LOBBY_LANG];
 function applyLobbyText(){
   document.querySelectorAll('[data-lt]').forEach(el=>{ const v=LOBBY_I18N[el.dataset.lt]; if(typeof v==='string') el.innerHTML=v; });
@@ -4151,10 +4152,18 @@ function setLobbyName(name){
 
 let lobbyHasStakes=false, lobbyFromCache=false;
 // One slim line above the stake cards says what the connection is doing (never hides the cards).
+// "Connecting" / "Reconnecting": a small animated pill (spinner + moving dots). No server name, no address.
 function showLobbyStatus(text,isError){
   const el=document.getElementById('lobbyConn'); if(!el) return;
   if(!text||(lobbyHasStakes&&!lobbyFromCache&&!isError)){ el.hidden=true; return; }
-  el.textContent=text; el.className='lobby-conn'+(isError?' error':''); el.hidden=false;
+  const label=String(text).replace(/[.\u2026\s]+$/,'').trim()||'Connecting';
+  const key=label+'|'+(isError?1:0);
+  if(el.dataset.k!==key){
+    el.innerHTML='<i class="lc-ring"></i><span class="lc-txt"></span><u class="lc-dots"><s></s><s></s><s></s></u>';
+    el.querySelector('.lc-txt').textContent=label;
+    el.dataset.k=key;
+  }
+  el.className='lobby-conn'+(isError?' error':''); el.hidden=false;
 }
 function connect(){
   const proto=API_BASE.startsWith('https:')?'wss://':'ws://';
@@ -4406,6 +4415,8 @@ function handle(msg){
       if(msg.stakes) renderStakes(msg.stakes);
       
       const pageParam = new URLSearchParams(location.search).get('page');
+      if(pageParam === 'deposit') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('deposit'); }, 1500);
+      if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('withdraw'); }, 1500);
       waitForTelegramId(40,250).then(async tid=>{
         if(!tid){
           
@@ -4613,6 +4624,7 @@ function handle(msg){
 
     case 'yourCard':
       restoreSelection=null;
+      try{ localStorage.removeItem('gameViewDetached'); }catch(e){}
       myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
       myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
       myCardId3=msg.cardId3||null; myCardNumbers3=msg.cardNumbers3||[];
@@ -4758,6 +4770,27 @@ function handle(msg){
   }
 }
 
+// ─── WALLET ───────────────────────────────────────────────────
+function switchWalletTab(tab){
+  document.querySelectorAll('.wallet-tab').forEach((t,i)=>{
+    t.classList.toggle('active',['deposit','withdraw'][i]===tab);
+  });
+  document.getElementById('walletDeposit').classList.toggle('active',tab==='deposit');
+  document.getElementById('walletWithdraw').classList.toggle('active',tab==='withdraw');
+  document.getElementById('depositMsg').style.display='none';
+  document.getElementById('withdrawMsg').style.display='none';
+}
+function showWalletMsg(id, text, type){
+  const el=document.getElementById(id);
+  el.innerText=text; el.className='status-msg '+type; el.style.display='block';
+  setTimeout(()=>el.style.display='none', 5000);
+}
+
+function esc(str){
+  if(!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
   // ─── PLAYER AREA REFERENCE UI ───────────────────────────────
 function getGameBetAmount(msg={}){
   const raw=msg.stakeAmount ?? msg.stake ?? msg.bet ?? msg.amount;
@@ -4789,7 +4822,7 @@ function renderCalledChips(){
   });
 }
 
-// ─── GAME: NUMBER CALLED ──────────────────────────────────────
+  // ─── GAME: NUMBER CALLED ──────────────────────────────────────
 // ─── ROCKET / FIREWORK EFFECT ON THE CALLED NUMBER ──────────────
 // A small golden rocket shoots up behind the ball, then bursts into radiating
 // sparks, glowing embers and falling dust around the number being called.
@@ -5686,6 +5719,13 @@ function leaveGameView(){
 }
 
 function leaveRoom(){
+  // BACK with cartelas picked: he stays in the game (seat and picks are kept on the server) and only returns to the
+  // lobby; he can open the game again from there. Cartelas are released only when he deselects them himself.
+  if(myRoomId && (myCardId||myCardId2||myCardId3||myCardId4)){
+    try{ localStorage.setItem('gameViewDetached','1'); }catch(e){}     // after a refresh the app opens on the lobby
+    navGo('screenLobby','navHome');
+    return;
+  }
   localStorage.removeItem('gameViewDetached');
   Object.keys(pendingCardSelections).forEach(k=>delete pendingCardSelections[k]);
   wsSend({type:'leaveRoom'});
@@ -7256,4 +7296,24 @@ html body #screenLobby:not(#q1):not(#q2) .lb-coin-skel{background:linear-gradien
 html body #screenLobby:not(#q1):not(#q2) .lb-empty{padding:18px 14px;text-align:center;font-size:13px;font-weight:600;line-height:1.5;color:#d8d4f4;
   border-radius:14px;background:rgba(255,255,255,.07);border:1px dashed rgba(255,255,255,.25)}
 html body #screenProfile:not(#q1):not(#q2) .pf-coin.pf-long{font-size:10px;letter-spacing:-.3px}
+</style>
+
+<style id="mela-connecting-final">
+/* "Connecting" pill in the lobby and on the loading screen */
+html body #screenLobby:not(#q1):not(#q2) .lobby-conn{
+  display:flex;align-items:center;justify-content:center;gap:9px;width:max-content;max-width:100%;margin:2px auto 10px;padding:8px 16px 8px 12px;
+  border-radius:999px;font-size:13px;font-weight:700;letter-spacing:.3px;color:#e9e6ff;
+  background:linear-gradient(135deg,rgba(124,58,237,.38),rgba(37,99,235,.28));border:1px solid rgba(160,140,255,.45);
+  box-shadow:0 4px 14px rgba(80,60,200,.28),inset 0 1px 0 rgba(255,255,255,.12);
+}
+html body #screenLobby:not(#q1):not(#q2) .lobby-conn.error{color:#ffe7b8;border-color:rgba(255,190,80,.55);background:linear-gradient(135deg,rgba(255,150,40,.22),rgba(255,90,60,.16));box-shadow:0 4px 14px rgba(255,140,40,.2)}
+.lobby-conn .lc-ring{width:15px;height:15px;border-radius:50%;border:2.5px solid rgba(255,255,255,.22);border-top-color:#c9b8ff;animation:lcSpin .8s linear infinite;flex:0 0 auto}
+.lobby-conn.error .lc-ring{border-top-color:#ffc463}
+.lc-dots{display:inline-flex;gap:3px;margin-left:2px;vertical-align:middle;text-decoration:none}
+.lc-dots s{width:4px;height:4px;border-radius:50%;background:currentColor;opacity:.25;text-decoration:none;animation:lcDot 1.2s ease-in-out infinite}
+.lc-dots s:nth-child(2){animation-delay:.18s}.lc-dots s:nth-child(3){animation-delay:.36s}
+.loading-text{font-size:15px;font-weight:700;letter-spacing:.3px}
+@keyframes lcSpin{to{transform:rotate(360deg)}}
+@keyframes lcDot{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+@media(prefers-reduced-motion:reduce){.lobby-conn .lc-ring,.lc-dots s{animation:none}.lc-dots s{opacity:.7}}
 </style>
