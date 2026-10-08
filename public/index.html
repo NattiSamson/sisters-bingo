@@ -4013,7 +4013,12 @@ function clearCardSelectionsBeforeGame(){
 function goToWallet(){gotoProfile();}
 function gotoProfile(){
   navGo('screenProfile','navProfile');   // the cartelas picked so far stay selected while the player is away
-  // Show the profile immediately. The server refresh runs silently in the background.
+  // Show the last known profile at once (saved on this phone), then refresh it from the server.
+  try{
+    const saved=JSON.parse(localStorage.getItem('melaBingoProfile')||'null');
+    const id=normalizeTelegramId(telegramId||getTelegramId());
+    if(saved&&saved.user&&String(saved.telegramId)===String(id)) renderUserProfile(saved.user,[]);
+  }catch(e){}
   loadUserProfile(false).catch(()=>{});
 }
 
