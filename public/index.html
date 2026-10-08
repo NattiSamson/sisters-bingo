@@ -3597,14 +3597,7 @@ function normalizeTelegramId(value){
   return /^\d+$/.test(id) && Number(id)>0 ? id : null;
 }
 function getTelegramId(){
-  // The bot-provided ?tid is the preferred identity for this app.
-  const p=new URLSearchParams(location.search);
-  const urlId=normalizeTelegramId(p.get('tid'));
-  if(urlId){
-    try{localStorage.setItem('melaBingoTelegramId',urlId);}catch(e){}
-    return urlId;
-  }
-  // Telegram WebApp data can become available a little after the WebSocket connects.
+  // Telegram's own (signed) user id comes first; the bot-provided ?tid is only a fallback outside Telegram.
   try{
     if(window.Telegram&&Telegram.WebApp){
       try{Telegram.WebApp.ready();}catch(e){}
@@ -3615,7 +3608,13 @@ function getTelegramId(){
       }
     }
   }catch(e){}
-  // Last verified ID survives a page reload while Telegram initializes.
+  const p=new URLSearchParams(location.search);
+  const urlId=normalizeTelegramId(p.get('tid'));
+  if(urlId){
+    try{localStorage.setItem('melaBingoTelegramId',urlId);}catch(e){}
+    return urlId;
+  }
+  // Last known ID survives a page reload while Telegram initializes.
   try{
     const cached=normalizeTelegramId(localStorage.getItem('melaBingoTelegramId'));
     if(cached) return cached;
@@ -3630,12 +3629,15 @@ async function waitForTelegramId(retries=40,delayMs=250){
   }
   return getTelegramId();
 }
+// Telegram's signed login data. The server verifies it; the Telegram ID alone is never trusted.
+function tgInitData(){ try{ return (window.Telegram&&Telegram.WebApp&&Telegram.WebApp.initData)||''; }catch(e){ return ''; } }
+function authHeaders(){ const d=tgInitData(); return d?{'X-Telegram-Init-Data':d}:{}; }
 function sendTelegramAuth(tid){
   const id=normalizeTelegramId(tid);
   if(!id) return false;
   telegramId=id;
   try{localStorage.setItem('melaBingoTelegramId',id);}catch(e){}
-  wsSend({type:'telegramAuth',telegramId:id});
+  wsSend({type:'telegramAuth',telegramId:id,initData:tgInitData()});
   return true;
 }
 function numConfig(n){
@@ -3729,7 +3731,7 @@ async function refreshAccountProfile(retries=10, delayMs=600){
   telegramId=id;
   for(let i=0;i<retries;i++){
     try{
-      const res=await fetch(`${API_BASE}/api/user/${encodeURIComponent(id)}?_=${Date.now()}`,{cache:'no-store'});
+      const res=await fetch(`${API_BASE}/api/user/${encodeURIComponent(id)}?_=${Date.now()}`,{cache:'no-store',headers:authHeaders()});
       if(res.ok){
         const u=await res.json();
         const balance=Number(u?.balance);
@@ -4099,7 +4101,7 @@ async function loadUserProfile(force=false){
     // IMPORTANT: Profile must NOT call /api/history/:telegramId.
     // The history endpoint caused repeated 403/request errors. Profile uses only
     // the authoritative user endpoint; database totals are already returned there.
-    const userRes=await fetch(`${API_BASE}/api/user/${encodeURIComponent(id)}?_=${Date.now()}`,{cache:'no-store'});
+    const userRes=await fetch(`${API_BASE}/api/user/${encodeURIComponent(id)}?_=${Date.now()}`,{cache:'no-store',headers:authHeaders()});
     const userData=await userRes.json().catch(()=>({}));
     if(!userRes.ok) throw new Error(userData.error||'Profile request failed');
     renderUserProfile(userData,[]);
@@ -4178,15 +4180,26 @@ function connect(){
     try{ ws=new WebSocket(wsUrl); }
     catch(e){ console.error('[ws] cannot open',wsUrl,e); showLobbyStatus(LOBBY_I18N.noconn(wsHost),true); setTimeout(connect,3000); return; }
   }
-  ws.onopen=()=>{ document.getElementById('connDot').classList.add('on'); };
-  ws.onclose=()=>{
+  const mine=ws; let gotData=false, retried=false;
+  // Watchdog: a socket that never opens (or opens but stays silent) would leave the page on
+  // "Connecting" forever. After 8 s close it so the normal retry runs.
+  const watchdog=setTimeout(()=>{
+    if(gotData||ws!==mine) return;
+    console.warn('[ws] no response from',wsUrl,'after 8s (readyState '+mine.readyState+'): server down, wrong address, or WebSockets blocked');
+    try{ mine.close(); }catch(e){}
+    if(mine.onclose) mine.onclose();   // a stalled handshake can be slow to fire close
+  },8000);
+  mine.onopen=()=>{ document.getElementById('connDot').classList.add('on'); };
+  mine.onclose=()=>{
+    clearTimeout(watchdog);
+    if(retried||ws!==mine) return; retried=true;
     document.getElementById('connDot').classList.remove('on');
     console.warn('[ws] closed / cannot connect to',wsUrl);
     showLobbyStatus(LOBBY_I18N.noconn(wsHost),true);
     setTimeout(connect,3000);
   };
-  ws.onerror=()=>{ console.warn('[ws] error talking to',wsUrl); };
-  ws.onmessage=e=>{try{handle(JSON.parse(e.data));}catch(err){console.error(err);}};
+  mine.onerror=()=>{ console.warn('[ws] error talking to',wsUrl); };
+  mine.onmessage=e=>{ gotData=true; clearTimeout(watchdog); try{handle(JSON.parse(e.data));}catch(err){console.error(err);} };
   if(adopted){
     const buffered=(window.__earlyWSBuf||[]).splice(0);
     window.__earlyWS=null;                              // stop buffering
@@ -4428,6 +4441,11 @@ function handle(msg){
         // database balance and returns it in authSuccess; no extra /api/user call is needed.
         sendTelegramAuth(tid);
       });
+      break;
+
+    case 'authFailed':
+      // the server could not verify the Telegram login: the game must be opened from Telegram
+      showLobbyStatus('Open the game from Telegram',true);
       break;
 
     case 'authRetry':
