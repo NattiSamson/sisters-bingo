@@ -253,6 +253,18 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .result-card-cell.called{background:#f59e0b;color:#fff}
 .result-card-cell.winning{background:#16a34a;color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
 .result-card-cell.free{font-size:16px}
+/* several winners: chips + swipeable winning cards */
+.winners-list{display:none;flex-wrap:wrap;justify-content:center;gap:6px;max-width:340px;max-height:74px;overflow-y:auto;margin:2px 0 8px;padding:0 4px}
+.winner-chip{border:1px solid rgba(245,197,24,.45);background:rgba(245,197,24,.10);color:var(--gold);border-radius:16px;padding:4px 10px;font-size:12px;font-weight:800;cursor:pointer;line-height:1.2;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.winner-chip.active{background:var(--gold);color:#1a1a2e;border-color:var(--gold)}
+.winner-chip.me{box-shadow:0 0 0 2px rgba(34,197,94,.7)}
+.result-card-nav{display:none;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px}
+.result-card-nav button{width:34px;height:30px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:18px;font-weight:900;line-height:1}
+.result-card-nav .rc-count{flex:1;text-align:center;font-size:12px;font-weight:800;color:#cbd5e1}
+.result-dots{display:none;justify-content:center;gap:6px;margin-top:8px}
+.result-dots i{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.25)}
+.result-dots i.on{background:var(--gold)}
+.result-card-wrap.multi .result-card-title{margin-bottom:4px}
 .result-status{margin-top:8px;font-size:13px;font-weight:800;color:var(--green)}
 .winner-overlay.result-loser .result-status{color:#f87171}
 @media(max-width:420px){.result-card-wrap{width:min(100%,330px)}.result-card-cell{height:36px;font-size:13px}.result-card-head div{height:28px;font-size:13px}.winner-name{font-size:21px}.winner-amount{font-size:22px}}
@@ -3526,10 +3538,17 @@ body.game-screen-active > .bottom-nav{
   <div class="winner-amount" id="winnerAmount">0 ETB</div>
   <div class="winner-split-tag" id="splitTag" style="display:none">🤝 የተከፋፈለ ሽልማት</div>
   <div class="winner-msg" id="winnerMsg"></div>
+  <div class="winners-list" id="winnersList"></div>
   <div class="result-card-wrap" id="resultCardWrap">
+    <div class="result-card-nav" id="resultCardNav">
+      <button type="button" id="rcPrev" aria-label="Previous winner">‹</button>
+      <div class="rc-count" id="rcCount"></div>
+      <button type="button" id="rcNext" aria-label="Next winner">›</button>
+    </div>
     <div class="result-card-title" id="resultCardTitle">🏆 አሸናፊ ካርቴላ : —</div>
     <div class="result-card-head"><div class="rh-b">B</div><div class="rh-i">I</div><div class="rh-n">N</div><div class="rh-g">G</div><div class="rh-o">O</div></div>
     <div class="result-card-body" id="resultCardBody"></div>
+    <div class="result-dots" id="resultDots"></div>
   </div>
   <div class="result-status" id="resultStatus"></div>
   <div id="resetCountdown" style="margin-top:9px;font-size:13px;font-weight:800;color:var(--gold)">ቀጣዩ ዙር በ 20 ሰከንድ ውስጥ ይጀምራል</div>
@@ -5062,8 +5081,9 @@ function showWinnerOverlay(msg){
   document.getElementById('winnerLabel').innerText=noWinner?'ዙሩ ተጠናቋል':(iWon?'BINGO!':'ዙሩ ተጠናቋል');
   document.getElementById('resultTrophy').innerText=noWinner?'🎯':(iWon?'🏆':'😔');
   document.getElementById('resultConfetti').style.display=iWon?'block':'none';
-  document.getElementById('winnerName').innerText=winnerList.length?winnerList.join(' & '):'አሸናፊ የለም';
-  document.getElementById('winnerAmount').innerText=noWinner?'—':(iWon?`+${msg.winAmount} ETB`:`የሽልማት ገንዘብ: ${msg.winAmount} ETB`);
+  { const uniq=[...new Set(winnerList)];
+    document.getElementById('winnerName').innerText=!uniq.length?'አሸናፊ የለም':(uniq.length>2?`${uniq.length} አሸናፊዎች`:uniq.join(' & ')); }
+  document.getElementById('winnerAmount').innerText=noWinner?'—':(iWon?`+${msg.winAmount} ETB`:(msg.isSplit?`እያንዳንዳቸው: ${msg.winAmount} ETB`:`የሽልማት ገንዘብ: ${msg.winAmount} ETB`));
   document.getElementById('splitTag').style.display=msg.isSplit?'inline-block':'none';
   document.getElementById('winnerMsg').innerText=iWon?'🎉 እንኳን ደስ አላችሁ! ይህን ዙር አሸንፈዋል።':(noWinner?'በዚህ ዙር ትክክለኛ BINGO አልተገኘም።':'');
   document.getElementById('resultStatus').innerText=iWon?'የሽልማት ገንዘብዎ ወደ ሂሳብዎ ተጨምሯል።':(noWinner?'ሽልማት አልተሰጠም።':'');
@@ -5073,7 +5093,7 @@ function showWinnerOverlay(msg){
   if(iWon){
     winningCard=cards.find(c=>String(c.telegramId)===String(telegramId))||cards.find(c=>String(c.playerName)===String(myName))||winningCard;
   }
-  renderResultCard(winningCard,msg.calledNumbers||[]);
+  setupResultCards(cards,msg.calledNumbers||[],winningCard,iWon,msg);
   ov.classList.add('show');
   // Play Bingo sound when there is a winner
   if(!noWinner) 
@@ -5082,6 +5102,57 @@ function showWinnerOverlay(msg){
   }
   if(iWon) startConfetti(); else stopConfetti();
 }
+// ─── SEVERAL WINNERS: chips + swipeable winning cards ───────────
+let resultCardList=[], resultCardCalled=[], resultCardIdx=0, resultCardMine=-1;
+function setupResultCards(cards,called,startCard,iWon,msg){
+  const list=Array.isArray(cards)?cards.filter(c=>c&&Array.isArray(c.cardNumbers)&&c.cardNumbers.length>=25):[];
+  resultCardList=list; resultCardCalled=called||[];
+  const multi=list.length>1;
+  const chips=document.getElementById('winnersList'), nav=document.getElementById('resultCardNav'),
+        dots=document.getElementById('resultDots'), wrap=document.getElementById('resultCardWrap');
+  if(wrap) wrap.classList.toggle('multi',multi);
+  if(!multi){
+    chips.style.display='none'; nav.style.display='none'; dots.style.display='none';
+    resultCardMine=-1; resultCardIdx=0;
+    renderResultCard(startCard||list[0]||null,called);
+    return;
+  }
+  // my own winning cartelas (a player can win with more than one)
+  const isMine=c=>String(c.telegramId)===String(telegramId)||String(c.playerName)===String(myName);
+  resultCardMine=iWon?list.findIndex(isMine):-1;
+  resultCardIdx=resultCardMine>=0?resultCardMine:0;
+  chips.innerHTML='';
+  list.forEach((c,i)=>{
+    const b=document.createElement('button'); b.type='button';
+    b.className='winner-chip'+(isMine(c)&&iWon?' me':'');
+    b.textContent=`${c.playerName||'—'} · #${c.cardId}`;
+    b.onclick=()=>showResultCardAt(i);
+    chips.appendChild(b);
+  });
+  dots.innerHTML=list.map(()=>'<i></i>').join('');
+  chips.style.display='flex'; nav.style.display='flex'; dots.style.display=list.length<=12?'flex':'none';
+  document.getElementById('rcPrev').onclick=()=>showResultCardAt(resultCardIdx-1);
+  document.getElementById('rcNext').onclick=()=>showResultCardAt(resultCardIdx+1);
+  showResultCardAt(resultCardIdx);
+}
+function showResultCardAt(i){
+  const n=resultCardList.length; if(!n) return;
+  resultCardIdx=((i%n)+n)%n;
+  const c=resultCardList[resultCardIdx];
+  renderResultCard(c,resultCardCalled);
+  document.getElementById('resultCardTitle').innerText=`🏆 ካርቴላ ${c.cardId} · ${c.playerName||''}`;
+  document.getElementById('rcCount').innerText=`${resultCardIdx+1} / ${n}`;
+  document.querySelectorAll('#winnersList .winner-chip').forEach((el,k)=>{
+    el.classList.toggle('active',k===resultCardIdx);
+    if(k===resultCardIdx) try{ el.scrollIntoView({block:'nearest',inline:'nearest'}); }catch(e){}
+  });
+  document.querySelectorAll('#resultDots i').forEach((el,k)=>el.classList.toggle('on',k===resultCardIdx));
+}
+(function(){ // swipe left / right on the card
+  let x0=null;
+  document.addEventListener('touchstart',e=>{ const w=e.target.closest&&e.target.closest('#resultCardWrap'); x0=(w&&resultCardList.length>1)?e.touches[0].clientX:null; },{passive:true});
+  document.addEventListener('touchend',e=>{ if(x0===null) return; const dx=e.changedTouches[0].clientX-x0; x0=null; if(Math.abs(dx)>45) showResultCardAt(resultCardIdx+(dx<0?1:-1)); },{passive:true});
+})();
 function hideWinnerOverlay(){
   const ov=document.getElementById('winnerOverlay');
   if(ov){ ov.classList.remove('show'); ov.style.display='none'; }
