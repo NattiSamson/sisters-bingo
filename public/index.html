@@ -5867,6 +5867,52 @@ renderStakeTable(null);        // profile table shows 5 / 10 / 20 with zeros unt
 applyLobbyText();
 renderCachedStakes();
 connect();
+
+// ─── KEEP THE SCREEN AWAKE ─────────────────────────────────────
+// The phone screen must not time out while the game is open. Uses the Screen Wake Lock API; where a browser
+// does not offer it (older iOS / some in-app browsers) a tiny silent looping video keeps the screen on instead.
+// Both start on the first touch (browsers require a user gesture) and are renewed whenever the page comes back.
+(function(){
+  var lock=null, video=null, armed=false;
+  function makeVideo(){
+    if(video) return video;
+    try{
+      video=document.createElement('video');
+      video.setAttribute('playsinline',''); video.setAttribute('muted',''); video.muted=true; video.loop=true;
+      video.setAttribute('aria-hidden','true'); video.tabIndex=-1;
+      video.style.cssText='position:fixed;left:-10px;top:-10px;width:2px;height:2px;opacity:0.01;pointer-events:none;';
+      var s1=document.createElement('source'); s1.src='data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwEAAAAAAAInEU2bdLpNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHYTbuMU6uEElTDZ1OsggEeTbuMU6uEHFO7a1OsggIR7AEAAAAAAABZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmsirXsYMPQkBNgI1MYXZmNjAuMTYuMTAwV0GNTGF2ZjYwLjE2LjEwMESJiECfQAAAAAAAFlSua8GuAQAAAAAAADjXgQFzxYhlQl7s2d3e3JyBACK1nIN1bmSIgQCGhVZfVlA4g4EBI+ODhB3NZQDgibCBELqBEJqBAhJUw2f8c3OgY8CAZ8iaRaOHRU5DT0RFUkSHjUxhdmY2MC4xNi4xMDBzc9ZjwItjxYhlQl7s2d3e3GfIoUWjh0VOQ09ERVJEh5RMYXZjNjAuMzEuMTAyIGxpYnZweGfIoUWjiERVUkFUSU9ORIeTMDA6MDA6MDIuMDAwMDAwMDAwAB9DtnXt54EAo6OBAACAEAIAnQEqEAAQAABHCIWFiIWEiAICAAwNYAD+/6tQgKOVgQH0ALEBAAEQEAAYABhYL/QACAAAo5WBA+gAsQEAARAQABgAGFgv9AAIAACjlYEF3ACxAQABEBAAGAAYWC/0AAgAABxTu2uRu4+zgQC3iveBAfGCAZ/wgQM='; s1.type='video/webm';
+      var s2=document.createElement('source'); s2.src='data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAANhbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAB9AAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAot0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAB9AAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAABAAAAAQAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAfQAABAAAABAAAAAAIDbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAABAAAAAgABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABrm1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAW5zdGJsAAAAvnN0c2QAAAAAAAAAAQAAAK5hdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAABAAEABIAAAASAAAAAAAAAABFUxhdmM2MC4zMS4xMDIgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAANGF2Y0MBZAAK/+EAF2dkAAqs2V7ARAAAAwAEAAADABA8SJZYAQAGaOvjyyLA/fj4AAAAABBwYXNwAAAAAQAAAAEAAAAUYnRydAAAAAAAAAukAAALpAAAABhzdHRzAAAAAAAAAAEAAAAEAAAgAAAAABRzdHNzAAAAAAAAAAEAAAABAAAAKGN0dHMAAAAAAAAAAwAAAAEAAEAAAAAAAQAAgAAAAAACAAAgAAAAABxzdHNjAAAAAAAAAAEAAAABAAAABAAAAAEAAAAkc3RzegAAAAAAAAAAAAAABAAAAsUAAAAMAAAADAAAAAwAAAAUc3RjbwAAAAAAAAABAAADkQAAAGJ1ZHRhAAAAWm1ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAG1kaXJhcHBsAAAAAAAAAAAAAAAALWlsc3QAAAAlqXRvbwAAAB1kYXRhAAAAAQAAAABMYXZmNjAuMTYuMTAwAAAACGZyZWUAAALxbWRhdAAAAq0GBf//qdxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNjQgcjMxMDggMzFlMTlmOSAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMjMgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0xIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDM6MHgxMTMgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTEgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0xIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MyBiX3B5cmFtaWQ9MiBiX2FkYXB0PTEgYl9iaWFzPTAgZGlyZWN0PTEgd2VpZ2h0Yj0xIG9wZW5fZ29wPTAgd2VpZ2h0cD0yIGtleWludD0yNTAga2V5aW50X21pbj0yIHNjZW5lY3V0PTQwIGludHJhX3JlZnJlc2g9MCByY19sb29rYWhlYWQ9NDAgcmM9Y3JmIG1idHJlZT0xIGNyZj0yMy4wIHFjb21wPTAuNjAgcXBtaW49MCBxcG1heD02OSBxcHN0ZXA9NCBpcF9yYXRpbz0xLjQwIGFxPTE6MS4wMACAAAAAEGWIhAAV//73ye/Apuvb34EAAAAIQZojbEEv/uAAAAAIQZ5BeIJ/nIEAAAAIAZ5iakEvoYA='; s2.type='video/mp4';
+      video.appendChild(s1); video.appendChild(s2);
+      document.body.appendChild(video);
+    }catch(e){ video=null; }
+    return video;
+  }
+  async function keepAwake(){
+    if(document.visibilityState!=='visible') return;
+    try{
+      if('wakeLock' in navigator){
+        if(lock&&!lock.released) return;
+        lock=await navigator.wakeLock.request('screen');
+        lock.addEventListener('release',function(){ lock=null; });
+        return;
+      }
+    }catch(e){ lock=null; /* denied (low battery, etc.): try the video fallback below */ }
+    try{ var v=makeVideo(); if(v&&v.paused){ var p=v.play(); if(p&&p.catch) p.catch(function(){}); } }catch(e){}
+  }
+  function arm(){
+    if(armed) return; armed=true;
+    ['touchstart','pointerdown','click','keydown'].forEach(function(ev){
+      document.addEventListener(ev,function once(){ keepAwake(); },{passive:true});
+    });
+  }
+  document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible') keepAwake(); });
+  window.addEventListener('focus',keepAwake);
+  window.addEventListener('pageshow',keepAwake);
+  arm(); keepAwake();
+  // safety net: if the lock was dropped by the system, take it again
+  setInterval(function(){ if(document.visibilityState==='visible'&&(!lock||lock.released)&&('wakeLock' in navigator||(video&&video.paused))) keepAwake(); },15000);
+})();
 //--------------------------------------------------------------
 
 </script>
