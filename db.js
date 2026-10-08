@@ -5694,6 +5694,17 @@ async approveDeposit(receipt, telegramId) {
    *
    * @returns {Promise<string[]>}
    */
+  /**
+   * Takes unusable bonus money (completed / expired awards) out of the Bonus wallet.
+   * Needs public.expire_bonuses() from forfeit_bonus.sql.
+   * @returns {Promise<{forfeited_awards:number,forfeited_total:number,errors:number}>}
+   */
+  async expireBonuses(limit = 200) {
+    const n = Math.max(1, Math.min(1000, Number(limit) || 200));
+    const { rows } = await pool.query("SELECT public.expire_bonuses($1::integer) AS result", [n]);
+    return rows[0].result;
+  },
+
   async getBingoFundingWallets() {
     const { rows } = await pool.query(
       `
