@@ -9,15 +9,20 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL environment variable is missing");
 }
 
+// Neon (and most hosted Postgres) needs SSL: it is on unless the database is on this machine or DB_SSL=false.
+// DB_CONNECT_TIMEOUT_MS: a sleeping Neon database can need 5-20 s to wake up on the first connection.
+const DB_URL = process.env.DATABASE_URL;
+const DB_IS_LOCAL = /@(localhost|127\.0\.0\.1|\[::1\])[:\/]/.test(DB_URL);
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: DB_URL,
   ssl:
-    process.env.NODE_ENV === "production"
-      ? { rejectUnauthorized: false }
-      : false,
+    process.env.DB_SSL === "false" || DB_IS_LOCAL
+      ? false
+      : { rejectUnauthorized: false },
   max: Number(process.env.DB_POOL_MAX || 10),
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS || 30000),
+  keepAlive: true,
 });
 
 pool.on("error", (err) => {
@@ -295,14 +300,10 @@ async getActiveStakes() {
           id,
           telegram_id,
           name,
-          phone,          
-          total_games,
-          total_wins,
-          total_winnings,
+          phone,      
           is_admin,
           admin_role,
           is_active,
-          is_banned,
           is_blocked,
           created_at,
           last_seen
@@ -317,74 +318,7 @@ async getActiveStakes() {
     return rows[0] || null;
   },
 
-  async setBotUserState(
-  telegramId,
-  stateType,
-  stateData
-) {
-  await pool.query(
-    `
-    INSERT INTO bot_user_states (
-      telegram_id,
-      state_type,
-      state_data,
-      updated_at
-    )
-    VALUES ($1, $2, $3::jsonb, NOW())
 
-    ON CONFLICT (telegram_id)
-    DO UPDATE SET
-      state_type = EXCLUDED.state_type,
-      state_data = EXCLUDED.state_data,
-      updated_at = NOW()
-    `,
-    [
-      telegramId,
-      stateType,
-      JSON.stringify(stateData || {})
-    ]
-  );
-
-  return true;
-},
-
-async getBotUserState(telegramId) {
-  const { rows } = await pool.query(
-    `
-    SELECT
-      telegram_id,
-      state_type,
-      state_data,
-      updated_at
-    FROM bot_user_states
-    WHERE telegram_id = $1
-    `,
-    [telegramId]
-  );
-
-  if (!rows.length) {
-    return null;
-  }
-
-  return {
-    telegramId: Number(rows[0].telegram_id),
-    stateType: rows[0].state_type,
-    stateData: rows[0].state_data || {},
-    updatedAt: rows[0].updated_at
-  };
-},
-
-async clearBotUserState(telegramId) {
-  await pool.query(
-    `
-    DELETE FROM bot_user_states
-    WHERE telegram_id = $1
-    `,
-    [telegramId]
-  );
-
-  return true;
-},
 
   async getAdminFinancialStatistics() {
   const { rows } = await pool.query(`
@@ -553,14 +487,9 @@ async clearBotUserState(telegramId) {
           telegram_id,
           name,
           phone,
-          balance,
-          total_games,
-          total_wins,
-          total_winnings,
           is_admin,
           admin_role,
           is_active,
-          is_banned,
           is_blocked,
           created_at,
           last_seen
@@ -593,9 +522,7 @@ async clearBotUserState(telegramId) {
           id,
           telegram_id,
           name,
-          phone,
-          balance,
-          is_banned,
+          phone,          
           is_active,
           is_admin,
           is_blocked,
@@ -637,12 +564,10 @@ async clearBotUserState(telegramId) {
           telegram_id,
           name,
           phone,
-          balance,
           is_active,
           is_blocked,
           is_admin,
-          admin_role,
-          is_banned
+          admin_role          
         FROM users
         WHERE RIGHT(
           REGEXP_REPLACE(
@@ -662,195 +587,151 @@ async clearBotUserState(telegramId) {
     return rows[0] || null;
   },
 
-  async registerUser(
-    telegramId,
-    name,
-    phone
-  ) {
+async registerUser(telegramId, name, phone) {
+  const normalizedPhone = normalizeEthiopianPhone(phone);
 
-    const normalizedPhone =
-      normalizeEthiopianPhone(phone);
+  if (!normalizedPhone) {
+    throw new Error("Invalid Ethiopian phone number");
+  }
 
-    if (!normalizedPhone) {
-      throw new Error(
-        "Invalid Ethiopian phone number"
-      );
-    }
+  const client = await pool.connect();
 
-    const client =
-      await pool.connect();
+  try {
+    await client.query("BEGIN");
 
-    try {
+    const telegramResult = await client.query(
+      `
+      SELECT *
+      FROM users
+      WHERE telegram_id = $1
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [telegramId]
+    );
 
-      await client.query("BEGIN");
-
-      const telegramResult =
-        await client.query(
-          `
-          SELECT *
-          FROM users
-          WHERE telegram_id = $1
-          LIMIT 1
-          FOR UPDATE
-          `,
-          [telegramId]
-        );
-
-      if (
-        telegramResult.rows.length
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        return {
-          status:
-            "existing_telegram",
-          user:
-            telegramResult.rows[0]
-        };
-      }
-
-      const phoneResult =
-        await client.query(
-          `
-          SELECT *
-          FROM users
-          WHERE RIGHT(
-            REGEXP_REPLACE(
-              phone,
-              '[^0-9]',
-              '',
-              'g'
-            ),
-            9
-          ) = $1
-          LIMIT 1
-          FOR UPDATE
-          `,
-          [normalizedPhone.slice(-9)]
-        );
-
-      if (
-        phoneResult.rows.length
-      ) {
-
-        const existingUser =
-          phoneResult.rows[0];
-
-        if (
-          existingUser.is_banned
-        ) {
-
-          await client.query(
-            "ROLLBACK"
-          );
-
-          return {
-            status: "banned",
-            user: existingUser
-          };
-        }
-
-        const updated =
-          await client.query(
-            `
-            UPDATE users
-            SET
-              telegram_id = $1,
-              name = $2,
-              phone = $3,
-              is_active = TRUE,
-              last_seen = NOW()
-            WHERE id = $4
-            RETURNING *
-            `,
-            [
-              telegramId,
-              name,
-              normalizedPhone,
-              existingUser.id
-            ]
-          );
-
-        await client.query(
-          "COMMIT"
-        );
-
-        return {
-          status: "reconnected",
-          user: updated.rows[0]
-        };
-      }
-
-      const inserted =
-        await client.query(
-          `
-          INSERT INTO users (
-            telegram_id,
-            name,
-            phone,
-            balance,
-            is_active,
-            is_banned,
-            is_admin,
-            is_blocked,
-            last_seen
-          )
-          VALUES (
-            $1,
-            $2,
-            $3,
-            0,
-            TRUE,
-            FALSE,
-            FALSE,
-            FALSE,
-            NOW()
-          )
-          RETURNING *
-          `,
-          [
-            telegramId,
-            name,
-            normalizedPhone
-          ]
-        );
-
-      await client.query(
-        "COMMIT"
-      );
+    if (telegramResult.rows.length) {
+      await client.query("ROLLBACK");
 
       return {
-        status: "new",
-        user: inserted.rows[0]
+        status: "existing_telegram",
+        user: telegramResult.rows[0]
       };
+    }
 
-    } catch (err) {
+    const phoneResult = await client.query(
+      `
+      SELECT *
+      FROM users
+      WHERE RIGHT(
+        REGEXP_REPLACE(
+          phone,
+          '[^0-9]',
+          '',
+          'g'
+        ),
+        9
+      ) = $1
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [normalizedPhone.slice(-9)]
+    );
 
-      await safeRollback(
-        client
-      );
+    if (phoneResult.rows.length) {
+      const existingUser = phoneResult.rows[0];
 
-      if (
-        err.code === "23505"
-      ) {
+      // If the existing account is blocked/banned
+      if (existingUser.is_blocked) {
+        await client.query("ROLLBACK");
 
         return {
-          status: "already_exists",
-          user: null
+          status: "banned",
+          user: existingUser
         };
       }
 
-      throw err;
+      const updated = await client.query(
+        `
+        UPDATE users
+        SET
+          telegram_id = $1,
+          name = $2,
+          phone = $3,
+          is_active = TRUE,
+          last_seen = NOW()
+        WHERE id = $4
+        RETURNING *
+        `,
+        [
+          telegramId,
+          name,
+          normalizedPhone,
+          existingUser.id
+        ]
+      );
 
-    } finally {
+      await client.query("COMMIT");
 
-      client.release();
-
+      return {
+        status: "reconnected",
+        user: updated.rows[0]
+      };
     }
-  },
+
+    const inserted = await client.query(
+      `
+      INSERT INTO users (
+        telegram_id,
+        name,
+        phone,
+        is_active,
+        is_admin,
+        is_blocked,
+        last_seen
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        TRUE,
+        FALSE,
+        FALSE,
+        NOW()
+      )
+      RETURNING *
+      `,
+      [
+        telegramId,
+        name,
+        normalizedPhone
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      status: "new",
+      user: inserted.rows[0]
+    };
+
+  } catch (err) {
+    await safeRollback(client);
+
+    if (err.code === "23505") {
+      return {
+        status: "already_exists",
+        user: null
+      };
+    }
+
+    throw err;
+
+  } finally {
+    client.release();
+  }
+},
+
 
   async reconnectUserByPhone(
     telegramId,
@@ -909,18 +790,6 @@ async clearBotUserState(telegramId) {
 
       const user =
         rows[0];
-
-      if (user.is_banned) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-        return {
-          status: "banned",
-          user
-        };
-      }
 
       if (
         String(user.telegram_id) ===
@@ -1033,8 +902,7 @@ async clearBotUserState(telegramId) {
         SET
           is_active = TRUE,
           last_seen = NOW()
-        WHERE telegram_id = $1
-          AND is_banned = FALSE
+        WHERE telegram_id = $1          
         RETURNING *
         `,
         [telegramId]
@@ -1081,13 +949,11 @@ async clearBotUserState(telegramId) {
           is_admin,
           admin_role,
           is_active,
-          is_banned,
           is_blocked
         FROM users
         WHERE telegram_id = $1
           AND is_admin = TRUE
           AND is_active = TRUE
-          AND is_banned = FALSE
           AND is_blocked = FALSE
         LIMIT 1
         `,
@@ -1122,12 +988,10 @@ async clearBotUserState(telegramId) {
           is_admin,
           admin_role,
           is_active,
-          is_banned,
           is_blocked
         FROM users
         WHERE is_admin = TRUE
-          AND is_active = TRUE
-          AND is_banned = FALSE
+          AND is_active = TRUE          
           AND is_blocked = FALSE
         ORDER BY id
         `
@@ -1165,7 +1029,6 @@ async clearBotUserState(telegramId) {
           admin_role = $1
         WHERE id = $2
           AND is_active = TRUE
-          AND is_banned = FALSE
           AND is_blocked = FALSE
         RETURNING
           id,
@@ -1175,7 +1038,6 @@ async clearBotUserState(telegramId) {
           is_admin,
           admin_role,
           is_active,
-          is_banned,
           is_blocked
         `,
         [
@@ -1207,7 +1069,6 @@ async clearBotUserState(telegramId) {
           is_admin,
           admin_role,
           is_active,
-          is_banned,
           is_blocked
         `,
         [userId]
@@ -1233,11 +1094,9 @@ async clearBotUserState(telegramId) {
           telegram_id,
           name,
           phone,
-          balance,
           is_blocked,
           is_active,
-          is_admin,
-          is_banned
+          is_admin
         `,
         [
           Boolean(isBlocked),
@@ -2014,7 +1873,6 @@ async createWithdrawal(
       WHERE telegram_id = $1
         AND is_admin = TRUE
         AND is_active = TRUE
-        AND is_banned = FALSE
         AND is_blocked = FALSE
       LIMIT 1
       `,
@@ -2373,7 +2231,6 @@ async getWithdrawalHistory(
       ON requesting_admin.telegram_id = $1
       AND requesting_admin.is_admin = TRUE
       AND requesting_admin.is_active = TRUE
-      AND requesting_admin.is_banned = FALSE
       AND requesting_admin.is_blocked = FALSE
 
     WHERE
@@ -2977,7 +2834,6 @@ async rejectWithdrawal(
       WHERE telegram_id = $1
         AND is_admin = TRUE
         AND is_active = TRUE
-        AND is_banned = FALSE
         AND is_blocked = FALSE
       LIMIT 1
       `,
@@ -3571,7 +3427,6 @@ async getAllActiveUsers() {
     FROM users
     WHERE is_active = TRUE
       AND is_blocked = FALSE
-      AND is_banned = FALSE
     `
   );
 
@@ -4510,7 +4365,6 @@ async approveDeposit(receipt, telegramId) {
                 telegram_id,
                 name,
                 is_active,
-                is_banned,
                 is_blocked
             FROM users
             WHERE telegram_id = $1
@@ -4527,10 +4381,6 @@ async approveDeposit(receipt, telegramId) {
 
         if (!user.is_active) {
             throw new Error("User account is inactive.");
-        }
-
-        if (user.is_banned) {
-            throw new Error("User is banned.");
         }
 
         if (user.is_blocked) {
@@ -4989,9 +4839,9 @@ async approveDeposit(receipt, telegramId) {
 		        stack_group,
 		        priority
 		    FROM public.get_eligible_deposit_bonus_campaigns(
-		        $1,
-		        $2,
-		        $3
+		        $1::integer,
+		        $2::integer,
+		        $3::numeric
 		    )
 		    ORDER BY
 		        priority DESC,
@@ -5299,178 +5149,204 @@ async approveDeposit(receipt, telegramId) {
   return rows[0] || null;
 },
 
+  /**
+   * One cartela of a player in a game (bingo_participant_cards) together with his participant row.
+   */
   async getBingoParticipant(
   gameId,
   userId,
   cardId
 ) {
-  const game = toPositiveInteger(
-    gameId,
-    "gameId"
-  );
-
-  const user = toPositiveInteger(
-    userId,
-    "userId"
-  );
-
-  const card = toPositiveInteger(
-    cardId,
-    "cardId"
-  );
+  const game = toPositiveInteger(gameId, "gameId");
+  const user = toPositiveInteger(userId, "userId");
+  const card = toPositiveInteger(cardId, "cardId");
 
   const { rows } =
     await pool.query(
       `
       SELECT
         bp.*,
+        pc.id          AS participant_card_id,
+        pc.card_id     AS card_id,
+        pc.card_data   AS card_data,
+        pc.transaction_id AS card_transaction_id,
+        pc.is_disqualified AS card_disqualified,
         g.game_code,
         g.status AS game_status
       FROM bingo_participants bp
+      JOIN bingo_participant_cards pc
+        ON pc.participant_id = bp.id
       JOIN bingo_games g
         ON g.id = bp.game_id
       WHERE bp.game_id = $1
         AND bp.user_id = $2
-        AND bp.card_id = $3
+        AND pc.card_id = $3
       LIMIT 1
       `,
-      [
-        game,
-        user,
-        card
-      ]
+      [game, user, card]
     );
 
   return rows[0] || null;
 },
 
+  /**
+   * Every cartela a player has in a game (one row per cartela).
+   */
   async getBingoUserParticipants(
   gameId,
   userId
 ) {
-  const game = toPositiveInteger(
-    gameId,
-    "gameId"
-  );
-
-  const user = toPositiveInteger(
-    userId,
-    "userId"
-  );
+  const game = toPositiveInteger(gameId, "gameId");
+  const user = toPositiveInteger(userId, "userId");
 
   const { rows } =
     await pool.query(
       `
       SELECT
-        id,
-        game_id,
-        user_id,
-        card_id,
-        card_data,
-        transaction_id,
-        amount,
-        status,
-        is_winner,
-        is_disqualified,
-        amount_won,
-        joined_at
-      FROM bingo_participants
-      WHERE game_id = $1
-        AND user_id = $2
-      ORDER BY card_id
+        pc.id              AS id,
+        bp.id              AS participant_id,
+        bp.game_id,
+        bp.user_id,
+        pc.card_id,
+        pc.card_data,
+        pc.transaction_id,
+        bp.amount_paid,
+        bp.status,
+        EXISTS (
+          SELECT 1
+          FROM bingo_winners w
+          WHERE w.game_id = pc.game_id
+            AND w.participant_id = pc.participant_id
+            AND w.card_id = pc.card_id
+        )                  AS is_winner,
+        (bp.is_disqualified OR pc.is_disqualified) AS is_disqualified,
+        bp.amount_won,
+        bp.joined_at
+      FROM bingo_participants bp
+      JOIN bingo_participant_cards pc
+        ON pc.participant_id = bp.id
+      WHERE bp.game_id = $1
+        AND bp.user_id = $2
+      ORDER BY pc.card_id
       `,
-      [
-        game,
-        user
-      ]
+      [game, user]
     );
 
   return rows;
 },
 
+  /**
+   * Every cartela of the players who are still in a game (active and not disqualified).
+   */
   async getActiveBingoParticipants(
   gameId
+) {
+  const game = toPositiveInteger(gameId, "gameId");
+
+  const { rows } =
+    await pool.query(
+      `
+      SELECT
+        pc.id              AS id,
+        bp.id              AS participant_id,
+        bp.game_id,
+        bp.user_id,
+        pc.card_id,
+        pc.card_data,
+        pc.transaction_id,
+        bp.amount_paid,
+        bp.status,
+        bp.is_disqualified,
+        bp.amount_won,
+        bp.joined_at
+      FROM bingo_participants bp
+      JOIN bingo_participant_cards pc
+        ON pc.participant_id = bp.id
+      WHERE bp.game_id = $1
+        AND bp.status = 'active'
+        AND bp.is_disqualified = FALSE
+        AND pc.is_disqualified = FALSE
+      ORDER BY pc.id
+      `,
+      [game]
+    );
+
+  return rows;
+},
+
+ 
+
+     async endBingoGame(
+  gameId,
+  winnerParticipantCardIds,
+  calledNumbers
 ) {
   const game = toPositiveInteger(
     gameId,
     "gameId"
   );
 
-  const { rows } =
-    await pool.query(
-      `
-      SELECT
+  if (!Array.isArray(winnerParticipantCardIds)) {
+    throw new Error(
+      "winnerParticipantCardIds must be an array."
+    );
+  }
+
+  if (winnerParticipantCardIds.length === 0) {
+    throw new Error(
+      "At least one winning card is required."
+    );
+  }
+
+  const winnerIds =
+    winnerParticipantCardIds.map((id) =>
+      toPositiveInteger(
         id,
-        game_id,
-        user_id,
-        card_id,
-        card_data,
-        transaction_id,
-        amount,
-        status,
-        is_winner,
-        is_disqualified,
-        amount_won,
-        joined_at
-      FROM bingo_participants
-      WHERE game_id = $1
-        AND status = 'active'
-        AND is_disqualified = FALSE
-      ORDER BY id
-      `,
-      [game]
+        "winnerParticipantCardId"
+      )
     );
 
-  return rows;
-}, 
+  if (!Array.isArray(calledNumbers)) {
+    throw new Error(
+      "calledNumbers must be an array."
+    );
+  }
 
- 
+  if (calledNumbers.length === 0) {
+    throw new Error(
+      "At least one called number is required."
+    );
+  }
 
-   async endBingoGame(
-    gameId,
-    winnerParticipantCardIds
-  ) {
-    const game = toPositiveInteger(
-      gameId,
-      "gameId"
+  const numbersCalled =
+    calledNumbers.map((number) =>
+      toPositiveInteger(
+        number,
+        "calledNumber"
+      )
     );
 
-    if (!Array.isArray(winnerParticipantCardIds)) {
-      throw new Error(
-        "winnerParticipantCardIds must be an array."
-      );
-    }
+  const { rows } = await pool.query(
+    `
+    SELECT public.end_bingo_game(
+      $1::integer,
+      $2::integer[],
+      $3::integer[]
+    ) AS result
+    `,
+    [
+      game,
+      winnerIds,
+      numbersCalled
+    ]
+  );
 
-    if (winnerParticipantCardIds.length === 0) {
-      throw new Error(
-        "At least one winning card is required."
-      );
-    }
+  return rows[0]?.result || null;
+},
 
-    const winnerIds =
-      winnerParticipantCardIds.map((id) =>
-        toPositiveInteger(
-          id,
-          "winnerParticipantCardId"
-        )
-      );
-
-    const { rows } = await pool.query(
-      `
-      SELECT public.end_bingo_game(
-        $1::integer,
-        $2::bigint[]
-      ) AS result
-      `,
-      [
-        game,
-        winnerIds
-      ]
-    );
-
-    return rows[0]?.result || null;
-  },
-
+  /**
+   * The game of a room that is still open (waiting / selection / playing), with its players and their cartelas.
+   */
   async getActiveBingoGame(
   roomId
 ) {
@@ -5480,60 +5356,50 @@ async approveDeposit(receipt, telegramId) {
       g.*,
 
       COALESCE(
-        json_agg(
-          json_build_object(
-            'id',
-            bp.id,
-
-            'user_id',
-            bp.user_id,
-
-            'card_id',
-            bp.card_id,
-
-            'card_data',
-            bp.card_data,
-
-            'transaction_id',
-            bp.transaction_id,
-
-            'amount',
-            bp.amount,
-
-            'status',
-            bp.status,
-
-            'is_winner',
-            bp.is_winner,
-
-            'is_disqualified',
-            bp.is_disqualified,
-
-            'amount_won',
-            bp.amount_won,
-
-            'joined_at',
-            bp.joined_at
+        (
+          SELECT json_agg(
+            json_build_object(
+              'id',              bp.id,
+              'user_id',         bp.user_id,
+              'amount_paid',     bp.amount_paid,
+              'status',          bp.status,
+              'is_disqualified', bp.is_disqualified,
+              'amount_won',      bp.amount_won,
+              'joined_at',       bp.joined_at,
+              'cards', COALESCE(
+                (
+                  SELECT json_agg(
+                    json_build_object(
+                      'id',              pc.id,
+                      'card_id',         pc.card_id,
+                      'card_data',       pc.card_data,
+                      'transaction_id',  pc.transaction_id,
+                      'is_disqualified', pc.is_disqualified
+                    )
+                    ORDER BY pc.id
+                  )
+                  FROM bingo_participant_cards pc
+                  WHERE pc.participant_id = bp.id
+                ),
+                '[]'::json
+              )
+            )
+            ORDER BY bp.id
           )
-          ORDER BY bp.id
-        ) FILTER (
-          WHERE bp.id IS NOT NULL
+          FROM bingo_participants bp
+          WHERE bp.game_id = g.id
         ),
         '[]'::json
       ) AS participants
 
     FROM bingo_games g
 
-    LEFT JOIN bingo_participants bp
-      ON bp.game_id = g.id
-
     WHERE g.room_id = $1
       AND g.status IN (
         'waiting',
+        'selection',
         'playing'
       )
-
-    GROUP BY g.id
 
     ORDER BY g.created_at DESC
 
@@ -5564,16 +5430,34 @@ async approveDeposit(receipt, telegramId) {
         100
       );
 
+    // Built from the game tables: total won, games played, games won and win rate per player.
     const { rows } =
       await pool.query(
         `
         SELECT
-          name,
-          total_wins,
-          total_games,
-          total_winnings,
-          win_rate
-        FROM leaderboard
+          u.name,
+          COUNT(DISTINCT bp.game_id) FILTER (WHERE bp.amount_won > 0)::int AS total_wins,
+          COUNT(DISTINCT bp.game_id)::int                                  AS total_games,
+          COALESCE(SUM(bp.amount_won), 0)::numeric                         AS total_winnings,
+          COALESCE(
+            ROUND(
+              100.0
+              * COUNT(DISTINCT bp.game_id) FILTER (WHERE bp.amount_won > 0)
+              / NULLIF(COUNT(DISTINCT bp.game_id), 0),
+              2
+            ),
+            0
+          )::numeric                                                       AS win_rate
+        FROM bingo_participants bp
+        JOIN bingo_games g
+          ON g.id = bp.game_id
+         AND g.status = 'completed'
+        JOIN users u
+          ON u.id = bp.user_id
+        WHERE u.is_active = TRUE
+          AND u.is_blocked = FALSE
+        GROUP BY u.id, u.name
+        ORDER BY total_winnings DESC, total_wins DESC, u.id
         LIMIT $1
         `,
         [safeLimit]
@@ -5597,6 +5481,70 @@ async approveDeposit(receipt, telegramId) {
   // ============================================================
   // GAME-SERVER HELPERS (read-only) - added for the Node game server
   // ============================================================
+
+  /**
+   * Account flags the game server needs (admin / blocked / inactive).
+   * Reads only columns that exist in users, so it works with the current schema
+   * (getAdminByTelegramId / getUserByTelegramId also read * columns).
+   *
+   * @param {number|string} telegramId
+   * @returns {Promise<{id:number,is_admin:boolean,admin_role:string|null,is_active:boolean,is_blocked:boolean}|null>}
+   */
+  async getBingoUserFlags(telegramId) {
+    const { rows } = await pool.query(
+      `
+      SELECT
+        id,
+        is_admin,
+        admin_role,
+        is_active,
+        is_blocked
+      FROM users
+      WHERE telegram_id = $1::bigint
+      LIMIT 1
+      `,
+      [telegramId]
+    );
+
+    return rows[0] || null;
+  },
+
+  /**
+   * Database ids of the cartelas of a game.
+   * end_bingo_game() expects THESE ids (bingo_participant_cards.id), not the
+   * cartela numbers (1-400), so the game server loads them once after the game
+   * is created.
+   *
+   * @param {number} gameId
+   * @returns {Promise<Array<{participant_card_id:number,user_id:number,card_id:number}>>}
+   */
+  async getBingoGameCardIds(gameId) {
+    const game = toPositiveInteger(gameId, "gameId");
+
+    const mapRows = (rows) =>
+      rows.map((r) => ({
+        participant_card_id: Number(r.participant_card_id),
+        user_id: Number(r.user_id),
+        card_id: Number(r.card_id),
+      }));
+
+    const { rows } = await pool.query(
+      `
+      SELECT
+        pc.id::bigint        AS participant_card_id,
+        bp.user_id::integer  AS user_id,
+        pc.card_id::integer  AS card_id
+      FROM bingo_participant_cards pc
+      JOIN bingo_participants bp
+        ON bp.id = pc.participant_id
+      WHERE pc.game_id = $1
+      ORDER BY pc.id
+      `,
+      [game]
+    );
+
+    return mapRows(rows);
+  },
 
   /**
    * Store the numbers drawn in a game, in the order they were called (bingo_games.called_numbers).
@@ -5769,93 +5717,6 @@ async approveDeposit(receipt, telegramId) {
     );
 
     return rows.map((r) => String(r.wallet_type));
-  },
-
-  /**
-   * Account flags the game server needs (admin / blocked / inactive).
-   * Reads only columns that exist in users, so it works with the current schema
-   * (getAdminByTelegramId / getUserByTelegramId also read is_banned and total_* columns).
-   *
-   * @param {number|string} telegramId
-   * @returns {Promise<{id:number,is_admin:boolean,admin_role:string|null,is_active:boolean,is_blocked:boolean}|null>}
-   */
-  async getBingoUserFlags(telegramId) {
-    const { rows } = await pool.query(
-      `
-      SELECT
-        id,
-        is_admin,
-        admin_role,
-        is_active,
-        is_blocked
-      FROM users
-      WHERE telegram_id = $1::bigint
-      LIMIT 1
-      `,
-      [telegramId]
-    );
-
-    return rows[0] || null;
-  },
-
-  /**
-   * Database ids of the cartelas of a game.
-   * end_bingo_game() expects THESE ids (bingo_participant_cards.id), not the
-   * cartela numbers (1-400), so the game server loads them once after the game
-   * is created.
-   *
-   * @param {number} gameId
-   * @returns {Promise<Array<{participant_card_id:number,user_id:number,card_id:number}>>}
-   */
-  async getBingoGameCardIds(gameId) {
-    const game = toPositiveInteger(gameId, "gameId");
-
-    const mapRows = (rows) =>
-      rows.map((r) => ({
-        participant_card_id: Number(r.participant_card_id),
-        user_id: Number(r.user_id),
-        card_id: Number(r.card_id),
-      }));
-
-    try {
-      const { rows } = await pool.query(
-        `
-        SELECT
-          pc.id::bigint        AS participant_card_id,
-          bp.user_id::integer  AS user_id,
-          pc.card_id::integer  AS card_id
-        FROM bingo_participant_cards pc
-        JOIN bingo_participants bp
-          ON bp.id = pc.participant_id
-        WHERE pc.game_id = $1
-        ORDER BY pc.id
-        `,
-        [game]
-      );
-
-      return mapRows(rows);
-    } catch (err) {
-      // 42P01 = table missing, 42703 = column missing.
-      // Older layout: one bingo_participants row per cartela.
-      if (err && (err.code === "42P01" || err.code === "42703")) {
-        const { rows } = await pool.query(
-          `
-          SELECT
-            id::bigint       AS participant_card_id,
-            user_id::integer AS user_id,
-            card_id::integer AS card_id
-          FROM bingo_participants
-          WHERE game_id = $1
-          ORDER BY id
-          `,
-          [game]
-        );
-
-        return mapRows(rows);
-      }
-
-      throw err;
-    }
   },
 
   /**
