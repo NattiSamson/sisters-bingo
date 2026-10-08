@@ -452,6 +452,21 @@ if(bingoDb){
   setInterval(()=>recoverOrphanedGames({minAgeSec:900,reason:'stale_game'}),10*60*1000);
 }
 
+// release the seat of players who hold cartelas in a still-waiting room but have been gone for a very long time
+setInterval(()=>{
+  const now=Date.now();
+  Object.values(rooms).forEach(room=>{
+    if(room.status!=='waiting') return;
+    room.players.slice().forEach(p=>{
+      if(!p.absentSince||openSockets(p).length) return;
+      if(now-p.absentSince<ABSENT_RELEASE_MS) return;
+      console.warn(`player ${p.telegramId} was away for ${Math.round((now-p.absentSince)/60000)} min in waiting room ${room.stakeId}: cartelas released`);
+      const ghost={playerId:p.playerId,telegramId:p.telegramId,rooms:new Set([room.roomId]),ws:null,roomId:room.roomId};
+      leaveRoom(ghost,room.roomId).catch(()=>{});
+    });
+  });
+},60*1000);
+
 // ─── FIXED CARDS ─────────────────────────────────────────────
 function seededRandom(seed) {
   let s = seed;
@@ -707,6 +722,9 @@ const sendRoom=(room,ws,msg)=>send(ws,{roomId:room.roomId,stakeId:room.stakeId,.
 // How long a player who lost his connection before the round starts keeps his seat and cartelas.
 // (A page "Refresh" closes and re-opens the connection; the player must not lose his picks.)
 const DISCONNECT_GRACE_MS = 20000;
+// A room still waiting for a second player must not be held forever by a player who left for good:
+// his picks are released after this long without any connection (a countdown / round never waits for him).
+const ABSENT_RELEASE_MS = 30*60*1000;
 
 // ── One account = one player, on any number of devices ───────────────────────
 // A player's `ws` is a small multiplexer that holds every open connection (device) of that account,
@@ -719,7 +737,7 @@ function makeMux(initial){
     send(data){ for(const x of socks){ if(x&&x.readyState===1){ try{ x.send(data); }catch(e){} } } }
   };
 }
-function attachSocket(p,ws){ if(p.graceTimer){ clearTimeout(p.graceTimer); p.graceTimer=null; } if(!p.ws||!p.ws.sockets) p.ws=makeMux(p.ws?[p.ws]:[]); p.ws.sockets.add(ws); }
+function attachSocket(p,ws){ p.absentSince=0; if(p.graceTimer){ clearTimeout(p.graceTimer); p.graceTimer=null; } if(!p.ws||!p.ws.sockets) p.ws=makeMux(p.ws?[p.ws]:[]); p.ws.sockets.add(ws); }
 function detachSocket(p,ws){ if(p&&p.ws&&p.ws.sockets) p.ws.sockets.delete(ws); }
 function openSockets(p){ return (p&&p.ws&&p.ws.sockets)?[...p.ws.sockets].filter(x=>x&&x.readyState===1):[]; }
 // the room player that belongs to this connection: same connection id, else same Telegram account
@@ -780,7 +798,7 @@ function broadcastLobby(){
     Object.values(clients).forEach(c=>{
       if(!c.ws||c.ws.readyState!==WebSocket.OPEN) return;
       // stakes where this player has a game running (shown as "In game" in the lobby)
-      const joined=clientRooms(c).filter(r=>r.status==='playing'&&r.players.some(pl=>pl.playerId===c.playerId&&(getPlayerCardCount(pl)>0||pl.hasPaid))).map(r=>r.stakeId);
+      const joined=clientRooms(c).filter(r=>{ const pl=playerOf(r,c); return pl&&(getPlayerCardCount(pl)>0||pl.hasPaid)&&['waiting','countdown','starting','playing'].includes(r.status); }).map(r=>r.stakeId);
       c.ws.send(JSON.stringify({type:'lobbyUpdate',stakes:payload,joined}));
     });
   },250);
@@ -837,11 +855,6 @@ async function collectDbEntries(room){
   const entries=[];
   for(const p of room.players){
     if(getPlayerCardCount(p)===0) continue;
-    if(openSockets(p).length===0){                  // disconnected right now: no charge, no cartelas in this round
-      console.warn(`player ${p.telegramId} was not connected when the round started - cartelas released`);
-      releasePlayerCards(room,p);
-      continue;
-    }
     if(!p.userId){
       const u=await loadUser(p.telegramId,2,200);
       p.userId=u?.userId||null;
@@ -1291,7 +1304,7 @@ async function endGame(room, winners, customMsg, noWinner){
 
   // Broadcast the result to EVERY connected player in the room. Keep the room/stake
   // identifiers in this message so clients can return to the same stake.
-  const RESET_SECONDS=room.next_round_seconds;
+  const RESET_SECONDS=20;
   broadcast(room,{
     type:'gameOver',
     roomId:room.roomId,
@@ -1486,7 +1499,8 @@ wss.on('connection',(ws)=>{
                 client.telegramId=tid;
                 applyUserToClient(client,user);
                 client.playerName=user.name||client.playerName||'Player';
-                relinkAllRooms(client,ws,tid);   // keep receiving every game this account is playing
+                relinkAllRooms(client,ws,tid);
+                broadcastLobby();            // tell the lobby which stakes this player is already in   // keep receiving every game this account is playing
                 send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,wallets:client.wallets,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
               } else {
                 // Never convert a failed/late database lookup into a fake zero wallet.
@@ -1622,7 +1636,9 @@ wss.on('connection',(ws)=>{
                    const pl=playerOf(r,client);
                    const runningGame=pl&&(r.status==='playing'||r.status==='starting')&&(getPlayerCardCount(pl)>0||pl.hasPaid);
                    // the room of the stake being joined is kept: a second device of the same account shares it
-                   if(!runningGame && r.stakeId!==msg.stakeId) await leaveRoom(client,r.roomId);
+                   // picks he made in a room that has not started yet are kept too (he is still in that game)
+                    const holdsPicks=pl&&(getPlayerCardCount(pl)>0||pl.hasPaid)&&['waiting','countdown','starting','playing'].includes(r.status);
+                    if(!runningGame && !holdsPicks && r.stakeId!==msg.stakeId) await leaveRoom(client,r.roomId);
                  }
 
               // ── Re-link an existing player before spectator handling. ──
@@ -1962,16 +1978,23 @@ wss.on('connection',(ws)=>{
       if(p&&openSockets(p).length) return;                              // another device of this account is still connected
       if(room.status==='playing'&&p){ keepClient=true; }                // running games stay alive
       else if(p&&(room.status==='waiting'||room.status==='countdown')){
-        // keep the seat and the cartelas for a short while: a quick reconnect (Refresh) gets everything back
         keepClient=true;
         if(p.graceTimer) clearTimeout(p.graceTimer);
-        p.graceTimer=setTimeout(()=>{
-          p.graceTimer=null;
-          if(openSockets(p).length) return;                              // he came back (maybe on another connection)
-          leaveRoom(c,room.roomId).catch(()=>{});
-          if(!clientRooms(c).length) delete clients[c.playerId];
-          broadcastLobby();
-        },DISCONNECT_GRACE_MS);
+        p.absentSince=Date.now();
+        if(getPlayerCardCount(p)>0){
+          // He picked cartelas, so he is IN the game until he releases them himself: a screen timeout, the app in the
+          // background or a lost connection do not remove him. (A room still waiting for a second player is cleaned
+          // up by the absent-player sweep after a long time.)
+        }else{
+          // no picks: he was only looking at the room, leave after a short grace
+          p.graceTimer=setTimeout(()=>{
+            p.graceTimer=null;
+            if(openSockets(p).length) return;
+            leaveRoom(c,room.roomId).catch(()=>{});
+            if(!clientRooms(c).length) delete clients[c.playerId];
+            broadcastLobby();
+          },DISCONNECT_GRACE_MS);
+        }
       }
       else leaveRoom(c,room.roomId);
     });
