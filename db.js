@@ -233,7 +233,8 @@ async getActiveStakes() {
             br.max_players,
             br.card_count,
             br.max_cards_per_player,
-            br.selection_seconds
+            br.selection_seconds,
+            br.next_round_seconds
 
         FROM bingo_stakes bs
 
@@ -276,7 +277,8 @@ async getActiveStakes() {
 
         cardCount: Number(row.card_count),
         maxCardsPerPlayer: Number(row.max_cards_per_player),
-        selectionSeconds: Number(row.selection_seconds)
+        selectionSeconds: Number(row.selection_seconds),
+        nextRoundSeconds: Number(row.next_round_seconds)
     }));
 },
 
@@ -293,10 +295,14 @@ async getActiveStakes() {
           id,
           telegram_id,
           name,
-          phone,      
+          phone,          
+          total_games,
+          total_wins,
+          total_winnings,
           is_admin,
           admin_role,
           is_active,
+          is_banned,
           is_blocked,
           created_at,
           last_seen
@@ -547,9 +553,14 @@ async clearBotUserState(telegramId) {
           telegram_id,
           name,
           phone,
+          balance,
+          total_games,
+          total_wins,
+          total_winnings,
           is_admin,
           admin_role,
           is_active,
+          is_banned,
           is_blocked,
           created_at,
           last_seen
@@ -582,7 +593,9 @@ async clearBotUserState(telegramId) {
           id,
           telegram_id,
           name,
-          phone,          
+          phone,
+          balance,
+          is_banned,
           is_active,
           is_admin,
           is_blocked,
@@ -624,10 +637,12 @@ async clearBotUserState(telegramId) {
           telegram_id,
           name,
           phone,
+          balance,
           is_active,
           is_blocked,
           is_admin,
-          admin_role          
+          admin_role,
+          is_banned
         FROM users
         WHERE RIGHT(
           REGEXP_REPLACE(
@@ -647,151 +662,195 @@ async clearBotUserState(telegramId) {
     return rows[0] || null;
   },
 
-async registerUser(telegramId, name, phone) {
-  const normalizedPhone = normalizeEthiopianPhone(phone);
+  async registerUser(
+    telegramId,
+    name,
+    phone
+  ) {
 
-  if (!normalizedPhone) {
-    throw new Error("Invalid Ethiopian phone number");
-  }
+    const normalizedPhone =
+      normalizeEthiopianPhone(phone);
 
-  const client = await pool.connect();
-
-  try {
-    await client.query("BEGIN");
-
-    const telegramResult = await client.query(
-      `
-      SELECT *
-      FROM users
-      WHERE telegram_id = $1
-      LIMIT 1
-      FOR UPDATE
-      `,
-      [telegramId]
-    );
-
-    if (telegramResult.rows.length) {
-      await client.query("ROLLBACK");
-
-      return {
-        status: "existing_telegram",
-        user: telegramResult.rows[0]
-      };
+    if (!normalizedPhone) {
+      throw new Error(
+        "Invalid Ethiopian phone number"
+      );
     }
 
-    const phoneResult = await client.query(
-      `
-      SELECT *
-      FROM users
-      WHERE RIGHT(
-        REGEXP_REPLACE(
-          phone,
-          '[^0-9]',
-          '',
-          'g'
-        ),
-        9
-      ) = $1
-      LIMIT 1
-      FOR UPDATE
-      `,
-      [normalizedPhone.slice(-9)]
-    );
+    const client =
+      await pool.connect();
 
-    if (phoneResult.rows.length) {
-      const existingUser = phoneResult.rows[0];
+    try {
 
-      // If the existing account is blocked/banned
-      if (existingUser.is_blocked) {
-        await client.query("ROLLBACK");
+      await client.query("BEGIN");
+
+      const telegramResult =
+        await client.query(
+          `
+          SELECT *
+          FROM users
+          WHERE telegram_id = $1
+          LIMIT 1
+          FOR UPDATE
+          `,
+          [telegramId]
+        );
+
+      if (
+        telegramResult.rows.length
+      ) {
+
+        await client.query(
+          "ROLLBACK"
+        );
 
         return {
-          status: "banned",
-          user: existingUser
+          status:
+            "existing_telegram",
+          user:
+            telegramResult.rows[0]
         };
       }
 
-      const updated = await client.query(
-        `
-        UPDATE users
-        SET
-          telegram_id = $1,
-          name = $2,
-          phone = $3,
-          is_active = TRUE,
-          last_seen = NOW()
-        WHERE id = $4
-        RETURNING *
-        `,
-        [
-          telegramId,
-          name,
-          normalizedPhone,
-          existingUser.id
-        ]
+      const phoneResult =
+        await client.query(
+          `
+          SELECT *
+          FROM users
+          WHERE RIGHT(
+            REGEXP_REPLACE(
+              phone,
+              '[^0-9]',
+              '',
+              'g'
+            ),
+            9
+          ) = $1
+          LIMIT 1
+          FOR UPDATE
+          `,
+          [normalizedPhone.slice(-9)]
+        );
+
+      if (
+        phoneResult.rows.length
+      ) {
+
+        const existingUser =
+          phoneResult.rows[0];
+
+        if (
+          existingUser.is_banned
+        ) {
+
+          await client.query(
+            "ROLLBACK"
+          );
+
+          return {
+            status: "banned",
+            user: existingUser
+          };
+        }
+
+        const updated =
+          await client.query(
+            `
+            UPDATE users
+            SET
+              telegram_id = $1,
+              name = $2,
+              phone = $3,
+              is_active = TRUE,
+              last_seen = NOW()
+            WHERE id = $4
+            RETURNING *
+            `,
+            [
+              telegramId,
+              name,
+              normalizedPhone,
+              existingUser.id
+            ]
+          );
+
+        await client.query(
+          "COMMIT"
+        );
+
+        return {
+          status: "reconnected",
+          user: updated.rows[0]
+        };
+      }
+
+      const inserted =
+        await client.query(
+          `
+          INSERT INTO users (
+            telegram_id,
+            name,
+            phone,
+            balance,
+            is_active,
+            is_banned,
+            is_admin,
+            is_blocked,
+            last_seen
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            0,
+            TRUE,
+            FALSE,
+            FALSE,
+            FALSE,
+            NOW()
+          )
+          RETURNING *
+          `,
+          [
+            telegramId,
+            name,
+            normalizedPhone
+          ]
+        );
+
+      await client.query(
+        "COMMIT"
       );
 
-      await client.query("COMMIT");
-
       return {
-        status: "reconnected",
-        user: updated.rows[0]
+        status: "new",
+        user: inserted.rows[0]
       };
+
+    } catch (err) {
+
+      await safeRollback(
+        client
+      );
+
+      if (
+        err.code === "23505"
+      ) {
+
+        return {
+          status: "already_exists",
+          user: null
+        };
+      }
+
+      throw err;
+
+    } finally {
+
+      client.release();
+
     }
-
-    const inserted = await client.query(
-      `
-      INSERT INTO users (
-        telegram_id,
-        name,
-        phone,
-        is_active,
-        is_admin,
-        is_blocked,
-        last_seen
-      )
-      VALUES (
-        $1,
-        $2,
-        $3,
-        TRUE,
-        FALSE,
-        FALSE,
-        NOW()
-      )
-      RETURNING *
-      `,
-      [
-        telegramId,
-        name,
-        normalizedPhone
-      ]
-    );
-
-    await client.query("COMMIT");
-
-    return {
-      status: "new",
-      user: inserted.rows[0]
-    };
-
-  } catch (err) {
-    await safeRollback(client);
-
-    if (err.code === "23505") {
-      return {
-        status: "already_exists",
-        user: null
-      };
-    }
-
-    throw err;
-
-  } finally {
-    client.release();
-  }
-},
-
+  },
 
   async reconnectUserByPhone(
     telegramId,
@@ -850,6 +909,18 @@ async registerUser(telegramId, name, phone) {
 
       const user =
         rows[0];
+
+      if (user.is_banned) {
+
+        await client.query(
+          "ROLLBACK"
+        );
+
+        return {
+          status: "banned",
+          user
+        };
+      }
 
       if (
         String(user.telegram_id) ===
@@ -962,7 +1033,8 @@ async registerUser(telegramId, name, phone) {
         SET
           is_active = TRUE,
           last_seen = NOW()
-        WHERE telegram_id = $1          
+        WHERE telegram_id = $1
+          AND is_banned = FALSE
         RETURNING *
         `,
         [telegramId]
@@ -1009,11 +1081,13 @@ async registerUser(telegramId, name, phone) {
           is_admin,
           admin_role,
           is_active,
+          is_banned,
           is_blocked
         FROM users
         WHERE telegram_id = $1
           AND is_admin = TRUE
           AND is_active = TRUE
+          AND is_banned = FALSE
           AND is_blocked = FALSE
         LIMIT 1
         `,
@@ -1048,10 +1122,12 @@ async registerUser(telegramId, name, phone) {
           is_admin,
           admin_role,
           is_active,
+          is_banned,
           is_blocked
         FROM users
         WHERE is_admin = TRUE
-          AND is_active = TRUE          
+          AND is_active = TRUE
+          AND is_banned = FALSE
           AND is_blocked = FALSE
         ORDER BY id
         `
@@ -1089,6 +1165,7 @@ async registerUser(telegramId, name, phone) {
           admin_role = $1
         WHERE id = $2
           AND is_active = TRUE
+          AND is_banned = FALSE
           AND is_blocked = FALSE
         RETURNING
           id,
@@ -1098,6 +1175,7 @@ async registerUser(telegramId, name, phone) {
           is_admin,
           admin_role,
           is_active,
+          is_banned,
           is_blocked
         `,
         [
@@ -1129,6 +1207,7 @@ async registerUser(telegramId, name, phone) {
           is_admin,
           admin_role,
           is_active,
+          is_banned,
           is_blocked
         `,
         [userId]
@@ -1154,9 +1233,11 @@ async registerUser(telegramId, name, phone) {
           telegram_id,
           name,
           phone,
+          balance,
           is_blocked,
           is_active,
-          is_admin
+          is_admin,
+          is_banned
         `,
         [
           Boolean(isBlocked),
@@ -1933,6 +2014,7 @@ async createWithdrawal(
       WHERE telegram_id = $1
         AND is_admin = TRUE
         AND is_active = TRUE
+        AND is_banned = FALSE
         AND is_blocked = FALSE
       LIMIT 1
       `,
@@ -2291,6 +2373,7 @@ async getWithdrawalHistory(
       ON requesting_admin.telegram_id = $1
       AND requesting_admin.is_admin = TRUE
       AND requesting_admin.is_active = TRUE
+      AND requesting_admin.is_banned = FALSE
       AND requesting_admin.is_blocked = FALSE
 
     WHERE
@@ -2894,6 +2977,7 @@ async rejectWithdrawal(
       WHERE telegram_id = $1
         AND is_admin = TRUE
         AND is_active = TRUE
+        AND is_banned = FALSE
         AND is_blocked = FALSE
       LIMIT 1
       `,
@@ -3487,6 +3571,7 @@ async getAllActiveUsers() {
     FROM users
     WHERE is_active = TRUE
       AND is_blocked = FALSE
+      AND is_banned = FALSE
     `
   );
 
@@ -4425,6 +4510,7 @@ async approveDeposit(receipt, telegramId) {
                 telegram_id,
                 name,
                 is_active,
+                is_banned,
                 is_blocked
             FROM users
             WHERE telegram_id = $1
@@ -4441,6 +4527,10 @@ async approveDeposit(receipt, telegramId) {
 
         if (!user.is_active) {
             throw new Error("User account is inactive.");
+        }
+
+        if (user.is_banned) {
+            throw new Error("User is banned.");
         }
 
         if (user.is_blocked) {
@@ -5337,72 +5427,49 @@ async approveDeposit(receipt, telegramId) {
  
 
    async endBingoGame(
-  gameId,
-  winnerParticipantCardIds,
-  calledNumbers
-) {
-  const game = toPositiveInteger(
     gameId,
-    "gameId"
-  );
-
-  if (!Array.isArray(winnerParticipantCardIds)) {
-    throw new Error(
-      "winnerParticipantCardIds must be an array."
-    );
-  }
-
-  if (winnerParticipantCardIds.length === 0) {
-    throw new Error(
-      "At least one winning card is required."
-    );
-  }
-
-  const winnerIds =
-    winnerParticipantCardIds.map((id) =>
-      toPositiveInteger(
-        id,
-        "winnerParticipantCardId"
-      )
+    winnerParticipantCardIds
+  ) {
+    const game = toPositiveInteger(
+      gameId,
+      "gameId"
     );
 
-  if (!Array.isArray(calledNumbers)) {
-    throw new Error(
-      "calledNumbers must be an array."
+    if (!Array.isArray(winnerParticipantCardIds)) {
+      throw new Error(
+        "winnerParticipantCardIds must be an array."
+      );
+    }
+
+    if (winnerParticipantCardIds.length === 0) {
+      throw new Error(
+        "At least one winning card is required."
+      );
+    }
+
+    const winnerIds =
+      winnerParticipantCardIds.map((id) =>
+        toPositiveInteger(
+          id,
+          "winnerParticipantCardId"
+        )
+      );
+
+    const { rows } = await pool.query(
+      `
+      SELECT public.end_bingo_game(
+        $1::integer,
+        $2::bigint[]
+      ) AS result
+      `,
+      [
+        game,
+        winnerIds
+      ]
     );
-  }
 
-  if (calledNumbers.length === 0) {
-    throw new Error(
-      "At least one called number is required."
-    );
-  }
-
-  const numbersCalled =
-    calledNumbers.map((number) =>
-      toPositiveInteger(
-        number,
-        "calledNumber"
-      )
-    );
-
-  const { rows } = await pool.query(
-    `
-    SELECT public.end_bingo_game(
-      $1::integer,
-      $2::integer[],
-      $3::integer[]
-    ) AS result
-    `,
-    [
-      game,
-      winnerIds,
-      numbersCalled
-    ]
-  );
-
-  return rows[0]?.result || null;
-},
+    return rows[0]?.result || null;
+  },
 
   async getActiveBingoGame(
   roomId
@@ -5532,9 +5599,182 @@ async approveDeposit(receipt, telegramId) {
   // ============================================================
 
   /**
+   * Store the numbers drawn in a game, in the order they were called (bingo_games.called_numbers).
+   * This is the audit trail needed to settle a dispute ("number X was never called").
+   *
+   * @param {number} gameId
+   * @param {number[]} numbers
+   */
+  async saveBingoCalledNumbers(gameId, numbers) {
+    const game = toPositiveInteger(gameId, "gameId");
+
+    const list = (Array.isArray(numbers) ? numbers : [])
+      .map((n) => Number(n))
+      .filter((n) => Number.isInteger(n) && n >= 1 && n <= 75);
+
+    await pool.query(
+      `
+      UPDATE public.bingo_games
+      SET called_numbers = $2::integer[]
+      WHERE id = $1::integer
+      `,
+      [game, list]
+    );
+  },
+
+  /**
+   * Games that were created but never finished (status waiting / selection).
+   * While one is open, no new game can be created for the same room + stake.
+   *
+   * @param {number|null} roomId   optional
+   * @param {string|null} stakeId  optional database stake id (e.g. "S5")
+   * @returns {Promise<Array<{id:number,game_code:string,room_id:number,stake_id:string,
+   *   status:string,age_seconds:number,winners:number}>>}
+   */
+  async getUnfinishedBingoGames(roomId = null, stakeId = null) {
+    const { rows } = await pool.query(
+      `
+      SELECT
+        g.id::integer     AS id,
+        g.game_code       AS game_code,
+        g.room_id::bigint AS room_id,
+        g.stake_id        AS stake_id,
+        g.status          AS status,
+        EXTRACT(EPOCH FROM (NOW() - g.created_at))::integer AS age_seconds,
+        (
+          SELECT COUNT(*)
+          FROM public.bingo_winners w
+          WHERE w.game_id = g.id
+        )::integer        AS winners
+      FROM public.bingo_games g
+      WHERE g.status IN ('waiting', 'selection')
+        AND ($1::bigint  IS NULL OR g.room_id  = $1::bigint)
+        AND ($2::varchar IS NULL OR g.stake_id = $2::varchar)
+      ORDER BY g.created_at
+      `,
+      [roomId, stakeId]
+    );
+
+    return rows.map((r) => ({
+      id: Number(r.id),
+      game_code: r.game_code,
+      room_id: Number(r.room_id),
+      stake_id: r.stake_id,
+      status: r.status,
+      age_seconds: Number(r.age_seconds) || 0,
+      winners: Number(r.winners) || 0,
+    }));
+  },
+
+  /**
+   * Cancel an unfinished game and refund every player (see cancel_bingo_game.sql).
+   *
+   * @param {number} gameId
+   * @param {string} reason
+   * @returns {Promise<object|null>}
+   */
+  async cancelBingoGame(gameId, reason = "game_cancelled") {
+    const game = toPositiveInteger(gameId, "gameId");
+
+    const { rows } = await pool.query(
+      `
+      SELECT public.cancel_bingo_game(
+        $1::integer,
+        $2::text
+      ) AS result
+      `,
+      [game, String(reason || "game_cancelled")]
+    );
+
+    return rows[0]?.result || null;
+  },
+
+  /**
+   * Bonus wallet balance vs. the bonus awards that can actually be spent, per user.
+   * place_stake() charges the Bonus wallet first and then requires every cent of it to be
+   * covered by an ACTIVE, unexpired row in user_bonuses; otherwise it raises
+   * "Bonus consumption mismatch" and the whole game cannot be created.
+   *
+   * @param {number[]} userIds
+   * @returns {Promise<Array<{user_id:number,bonus_balance:number,usable:number}>>}
+   */
+  async getBingoBonusStatus(userIds) {
+    const ids = (Array.isArray(userIds) ? userIds : [])
+      .map((n) => Number(n))
+      .filter((n) => Number.isInteger(n) && n > 0);
+
+    if (ids.length === 0) return [];
+
+    const { rows } = await pool.query(
+      `
+      SELECT
+        u.id AS user_id,
+        COALESCE(wb.balance, 0)::numeric AS bonus_balance,
+        COALESCE(
+          (
+            SELECT SUM(ub.remaining_amount)
+            FROM public.user_bonuses ub
+            WHERE ub.user_id = u.id
+              AND ub.status = 'active'
+              AND ub.remaining_amount > 0
+              AND (ub.expires_at IS NULL OR ub.expires_at >= NOW())
+          ),
+          0
+        )::numeric AS usable
+      FROM public.users u
+      JOIN public.wallets w
+        ON w.user_id = u.id
+       AND w.wallet_type = 'bonus'
+      LEFT JOIN public.wallet_balances wb
+        ON wb.wallet_id = w.id
+      WHERE u.id = ANY($1::int[])
+      `,
+      [ids]
+    );
+
+    return rows.map((r) => ({
+      user_id: Number(r.user_id),
+      bonus_balance: Number(r.bonus_balance) || 0,
+      usable: Number(r.usable) || 0,
+    }));
+  },
+
+  /**
+   * The wallets the active stake funding policy may charge, in charging order,
+   * e.g. ["bonus", "play", "main"]. place_stake() only counts wallets that are in
+   * this list, so the game server uses it to decide whether a player can afford a cartela.
+   *
+   * @returns {Promise<string[]>}
+   */
+  async getBingoFundingWallets() {
+    const { rows } = await pool.query(
+      `
+      SELECT w.wallet_type
+      FROM public.stake_funding_policy_wallets w
+      WHERE w.is_active = TRUE
+        AND w.policy_id = (
+          SELECT p.id
+          FROM public.get_stake_funding_policy(
+            (
+              SELECT gs.id
+              FROM public.game_systems gs
+              WHERE gs.code = 'bingo'
+                AND gs.status = 'active'
+              LIMIT 1
+            )
+          ) AS p
+        )
+      ORDER BY w.funding_order
+      `
+    );
+
+    return rows.map((r) => String(r.wallet_type));
+  },
+
+  /**
    * Account flags the game server needs (admin / blocked / inactive).
    * Reads only columns that exist in users, so it works with the current schema
-   * (getAdminByTelegramId / getUserByTelegramId also read * columns).
+   * (getAdminByTelegramId / getUserByTelegramId also read is_banned and total_* columns).
    *
    * @param {number|string} telegramId
    * @returns {Promise<{id:number,is_admin:boolean,admin_role:string|null,is_active:boolean,is_blocked:boolean}|null>}
