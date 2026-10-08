@@ -1,6 +1,9 @@
 --
 -- PostgreSQL database dump
 --
+
+
+
 -- Dumped from database version 18.6 (4e955f5)
 -- Dumped by pg_dump version 18.4
 
@@ -512,6 +515,122 @@ $$;
 
 
 ALTER FUNCTION public.award_bonus(p_user_id integer, p_campaign_id bigint, p_amount numeric, p_source_type character varying, p_source_id character varying, p_idempotency_key character varying, p_description text, p_metadata jsonb) OWNER TO neondb_owner;
+
+--
+-- Name: cancel_bingo_game(integer, text); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.cancel_bingo_game(p_game_id integer, p_reason text DEFAULT 'game_cancelled'::text) RETURNS jsonb
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_game                  public.bingo_games%ROWTYPE;
+    v_card                  RECORD;
+    v_consumption           RECORD;
+    v_refund_transaction_id bigint;
+    v_refunded_cards        integer       := 0;
+    v_refunded_total        numeric(18,2) := 0;
+    v_card_total            numeric(18,2);
+    v_reason                text;
+BEGIN
+    IF p_game_id IS NULL OR p_game_id <= 0 THEN
+        RAISE EXCEPTION 'Invalid Bingo game ID';
+    END IF;
+
+    v_reason := COALESCE(NULLIF(BTRIM(p_reason), ''), 'game_cancelled');
+
+    SELECT * INTO v_game
+    FROM public.bingo_games
+    WHERE id = p_game_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Bingo game % not found', p_game_id;
+    END IF;
+
+    -- safe to call twice
+    IF v_game.status = 'cancelled' THEN
+        RETURN jsonb_build_object('success', TRUE, 'idempotent', TRUE,
+            'game_id', v_game.id, 'game_code', v_game.game_code, 'status', 'cancelled');
+    END IF;
+
+    IF v_game.status = 'completed' THEN
+        RAISE EXCEPTION 'Bingo game % is already completed and cannot be cancelled', p_game_id;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM public.bingo_winners w WHERE w.game_id = p_game_id) THEN
+        RAISE EXCEPTION 'Bingo game % already has winners and cannot be cancelled', p_game_id;
+    END IF;
+
+    -- refund every cartela
+    FOR v_card IN
+        SELECT pc.id AS participant_card_id, pc.card_id, pc.transaction_id, bp.user_id
+        FROM public.bingo_participant_cards pc
+        JOIN public.bingo_participants bp ON bp.id = pc.participant_id
+        WHERE pc.game_id = p_game_id
+        ORDER BY pc.id
+    LOOP
+        -- skip cartelas already refunded by an earlier interrupted run
+        IF EXISTS (SELECT 1 FROM public.financial_transactions ft
+                   WHERE ft.reversed_transaction_id = v_card.transaction_id) THEN
+            CONTINUE;
+        END IF;
+
+        v_refund_transaction_id := public.refund_stake(
+            v_card.user_id,
+            v_card.transaction_id,
+            format('bingo-cancel:%s:%s', p_game_id, v_card.transaction_id),
+            format('Refund: Bingo game %s was cancelled', v_game.game_code),
+            jsonb_build_object(
+                'game_id', p_game_id, 'game_code', v_game.game_code,
+                'participant_card_id', v_card.participant_card_id,
+                'card_id', v_card.card_id, 'reason', v_reason)
+        );
+
+        SELECT COALESCE(SUM(le.amount), 0) INTO v_card_total
+        FROM public.ledger_entries le
+        WHERE le.transaction_id = v_refund_transaction_id;
+
+        -- give the bonus part back to the awards it was taken from
+        FOR v_consumption IN
+            SELECT c.id, c.user_bonus_id, c.amount, c.wagering_amount
+            FROM public.user_bonus_consumptions c
+            WHERE c.stake_transaction_id = v_card.transaction_id
+            ORDER BY c.id
+            FOR UPDATE
+        LOOP
+            UPDATE public.user_bonuses
+            SET remaining_amount  = remaining_amount + v_consumption.amount,
+                wagering_progress = GREATEST(wagering_progress - v_consumption.wagering_amount, 0),
+                updated_at        = NOW()
+            WHERE id = v_consumption.user_bonus_id AND status = 'active';
+
+            IF FOUND THEN
+                DELETE FROM public.user_bonus_consumptions WHERE id = v_consumption.id;
+            END IF;
+        END LOOP;
+
+        v_refunded_cards := v_refunded_cards + 1;
+        v_refunded_total := ROUND(v_refunded_total + v_card_total, 2);
+    END LOOP;
+
+    UPDATE public.bingo_participants SET status = 'refunded'
+    WHERE game_id = p_game_id AND status = 'active';
+
+    UPDATE public.bingo_games SET status = 'cancelled', ended_at = NOW()
+    WHERE id = p_game_id;
+
+    RETURN jsonb_build_object(
+        'success', TRUE, 'idempotent', FALSE,
+        'game_id', v_game.id, 'game_code', v_game.game_code,
+        'room_id', v_game.room_id, 'stake_id', v_game.stake_id,
+        'status', 'cancelled', 'reason', v_reason,
+        'refunded_cards', v_refunded_cards, 'refunded_total', v_refunded_total);
+END;
+$$;
+
+
+ALTER FUNCTION public.cancel_bingo_game(p_game_id integer, p_reason text) OWNER TO neondb_owner;
 
 --
 -- Name: complete_bonus_wagering(bigint); Type: FUNCTION; Schema: public; Owner: neondb_owner
@@ -5641,6 +5760,48 @@ $$;
 ALTER FUNCTION public.end_bingo_game(p_game_id integer, p_winner_card_ids bigint[], p_game_system_id bigint) OWNER TO neondb_owner;
 
 --
+-- Name: expire_bonuses(integer); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.expire_bonuses(p_limit integer DEFAULT 200) RETURNS jsonb
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_row        RECORD;
+    v_amount     numeric(18,2);
+    v_processed  integer := 0;
+    v_forfeited  numeric(18,2) := 0;
+    v_errors     integer := 0;
+BEGIN
+    FOR v_row IN
+        SELECT ub.id
+        FROM public.user_bonuses ub
+        WHERE (ub.status = 'active'    AND ub.expires_at IS NOT NULL AND ub.expires_at < NOW())
+           OR (ub.status = 'completed'
+               AND (ub.remaining_amount - ub.converted_amount) > 0)
+        ORDER BY ub.id
+        LIMIT GREATEST(COALESCE(p_limit, 200), 1)
+    LOOP
+        BEGIN
+            v_amount := public.forfeit_bonus(v_row.id, 'expired');
+            v_forfeited := v_forfeited + COALESCE(v_amount, 0);
+            IF COALESCE(v_amount, 0) > 0 THEN v_processed := v_processed + 1; END IF;
+        EXCEPTION WHEN OTHERS THEN
+            v_errors := v_errors + 1;       -- one bad award must not stop the others
+            RAISE WARNING 'expire_bonuses: award % failed: %', v_row.id, SQLERRM;
+        END;
+    END LOOP;
+
+    RETURN jsonb_build_object('forfeited_awards', v_processed,
+                              'forfeited_total',  v_forfeited,
+                              'errors',           v_errors);
+END;
+$$;
+
+
+ALTER FUNCTION public.expire_bonuses(p_limit integer) OWNER TO neondb_owner;
+
+--
 -- Name: find_transfer_recipient(character varying); Type: FUNCTION; Schema: public; Owner: neondb_owner
 --
 
@@ -5679,6 +5840,147 @@ $$;
 
 
 ALTER FUNCTION public.find_transfer_recipient(p_phone character varying) OWNER TO neondb_owner;
+
+--
+-- Name: forfeit_bonus(bigint, text); Type: FUNCTION; Schema: public; Owner: neondb_owner
+--
+
+CREATE FUNCTION public.forfeit_bonus(p_user_bonus_id bigint, p_reason text DEFAULT 'forfeited'::text) RETURNS numeric
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_bonus            public.user_bonuses%ROWTYPE;
+    v_campaign         public.bonus_campaigns%ROWTYPE;
+    v_bonus_wallet_id  bigint;
+    v_balance          numeric(18,2);
+    v_leftover         numeric(18,2);
+    v_amount           numeric(18,2);
+    v_new_status       text;
+    v_expired          boolean;
+    v_key              varchar(150);
+    v_tx_id            bigint;
+    v_created          boolean;
+BEGIN
+    IF p_user_bonus_id IS NULL THEN
+        RAISE EXCEPTION 'User bonus ID is required';
+    END IF;
+
+    SELECT * INTO v_bonus
+    FROM public.user_bonuses
+    WHERE id = p_user_bonus_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'User bonus % does not exist', p_user_bonus_id;
+    END IF;
+
+    -- already closed: nothing to do (idempotent)
+    IF v_bonus.status IN ('forfeited', 'expired', 'cancelled', 'pending') THEN
+        RETURN 0;
+    END IF;
+
+    v_expired := v_bonus.expires_at IS NOT NULL AND v_bonus.expires_at < NOW();
+
+    IF v_bonus.status = 'active' THEN
+        IF NOT v_expired THEN
+            RAISE EXCEPTION 'Bonus % is still active and not expired', p_user_bonus_id;
+        END IF;
+        v_new_status := 'expired';
+        v_leftover   := GREATEST(v_bonus.remaining_amount, 0);
+
+    ELSIF v_bonus.status = 'completed' THEN
+        v_new_status := 'forfeited';
+        -- conversion still open? keep it until the award expires
+        IF NOT v_expired
+           AND COALESCE(v_bonus.convertible_amount, 0) > COALESCE(v_bonus.converted_amount, 0)
+           AND NOT EXISTS (
+                SELECT 1 FROM public.financial_transactions ft
+                WHERE ft.idempotency_key = 'bonus-conversion:' || p_user_bonus_id::varchar
+           )
+        THEN
+            RETURN 0;
+        END IF;
+        v_leftover := GREATEST(
+            COALESCE(v_bonus.remaining_amount, 0) - COALESCE(v_bonus.converted_amount, 0), 0);
+    ELSE
+        RAISE EXCEPTION 'Bonus % has unsupported status %', p_user_bonus_id, v_bonus.status;
+    END IF;
+
+    v_leftover := ROUND(v_leftover, 2);
+    v_amount   := 0;
+
+    IF v_leftover > 0 THEN
+        SELECT id INTO v_bonus_wallet_id
+        FROM public.wallets
+        WHERE user_id = v_bonus.user_id AND wallet_type = 'bonus' AND is_active = TRUE
+        LIMIT 1;
+
+        IF v_bonus_wallet_id IS NOT NULL THEN
+            SELECT balance INTO v_balance
+            FROM public.wallet_balances
+            WHERE wallet_id = v_bonus_wallet_id
+            FOR UPDATE;
+
+            -- never take more than the wallet really holds
+            v_amount := ROUND(LEAST(v_leftover, GREATEST(COALESCE(v_balance, 0), 0)), 2);
+        END IF;
+    END IF;
+
+    IF v_amount > 0 THEN
+        SELECT * INTO v_campaign FROM public.bonus_campaigns WHERE id = v_bonus.campaign_id;
+        v_key := 'bonus-forfeit:' || p_user_bonus_id::varchar;
+
+        SELECT r.transaction_id, r.created
+        INTO v_tx_id, v_created
+        FROM public.create_financial_transaction(
+            v_bonus.user_id,
+            'bonus',
+            'completed',
+            v_campaign.game_system_id,
+            'bonus_forfeit',
+            p_user_bonus_id::varchar,
+            v_key,
+            'Unused bonus removed from Bonus wallet (' || COALESCE(NULLIF(BTRIM(p_reason), ''), 'forfeited') || ')',
+            jsonb_build_object(
+                'operation',          'bonus_forfeit',
+                'reason',             COALESCE(NULLIF(BTRIM(p_reason), ''), 'forfeited'),
+                'user_bonus_id',      v_bonus.id,
+                'bonus_campaign_id',  v_bonus.campaign_id,
+                'previous_status',    v_bonus.status,
+                'leftover_amount',    v_leftover,
+                'forfeited_amount',   v_amount,
+                'bonus_wallet_id',    v_bonus_wallet_id
+            )
+        ) AS r;
+
+        IF v_created THEN
+            UPDATE public.wallet_balances
+            SET balance = balance - v_amount, updated_at = NOW()
+            WHERE wallet_id = v_bonus_wallet_id;
+
+            INSERT INTO public.ledger_entries (transaction_id, wallet_id, amount, created_at)
+            VALUES (v_tx_id, v_bonus_wallet_id, -v_amount, NOW());
+        END IF;
+    END IF;
+
+    UPDATE public.user_bonuses
+    SET status             = v_new_status,
+        remaining_amount   = 0,
+        -- close the conversion too, so convert_bonus_to_main() can never take money again
+        convertible_amount = LEAST(convertible_amount, converted_amount),
+        metadata           = metadata || jsonb_build_object(
+                                 'forfeited_amount', v_amount,
+                                 'forfeited_at',     NOW(),
+                                 'forfeit_reason',   COALESCE(NULLIF(BTRIM(p_reason), ''), 'forfeited')),
+        updated_at         = NOW()
+    WHERE id = v_bonus.id;
+
+    RETURN v_amount;
+END;
+$$;
+
+
+ALTER FUNCTION public.forfeit_bonus(p_user_bonus_id bigint, p_reason text) OWNER TO neondb_owner;
 
 --
 -- Name: generate_bingo_game_code(); Type: FUNCTION; Schema: public; Owner: neondb_owner
@@ -6558,293 +6860,6 @@ $$;
 
 
 ALTER FUNCTION public.get_bingo_user_dashboard(p_user_id integer) OWNER TO neondb_owner;
-
---
--- Name: get_eligible_deposit_bonus_campaigns(integer, integer, numeric); Type: FUNCTION; Schema: public; Owner: neondb_owner
---
-
-CREATE FUNCTION public.get_eligible_deposit_bonus_campaigns(p_user_id integer, p_deposit_id integer, p_deposit_amount numeric) RETURNS TABLE(campaign_id bigint, campaign_code character varying, campaign_name character varying, bonus_type character varying, game_system_id bigint, amount numeric, percentage numeric, multiplier numeric, wagering_multiplier numeric, min_deposit_amount numeric, max_bonus_amount numeric, validity_hours integer, stackable boolean, stack_group character varying, priority integer)
-    LANGUAGE plpgsql STABLE
-    AS $$
-DECLARE
-    v_is_first_deposit BOOLEAN;
-BEGIN
-
-    ----------------------------------------------------------------
-    -- 1. Validate input
-    ----------------------------------------------------------------
-
-    IF p_user_id IS NULL OR p_user_id <= 0 THEN
-        RAISE EXCEPTION 'Invalid user ID';
-    END IF;
-
-    IF p_deposit_id IS NULL OR p_deposit_id <= 0 THEN
-        RAISE EXCEPTION 'Invalid deposit ID';
-    END IF;
-
-    IF p_deposit_amount IS NULL OR p_deposit_amount <= 0 THEN
-        RETURN;
-    END IF;
-
-
-    ----------------------------------------------------------------
-    -- 2. Verify the deposit belongs to the user
-    ----------------------------------------------------------------
-
-    IF NOT EXISTS (
-        SELECT 1
-        FROM public.deposits d
-        WHERE d.id = p_deposit_id
-          AND d.user_id = p_user_id
-    ) THEN
-
-        RAISE EXCEPTION
-            'Deposit % does not belong to user %',
-            p_deposit_id,
-            p_user_id;
-
-    END IF;
-
-
-    ----------------------------------------------------------------
-    -- 3. Determine whether this is the user's first completed
-    --    deposit.
-    --
-    -- The current deposit may still be pending while this function
-    -- is called, so we count completed deposits EXCLUDING this one.
-    ----------------------------------------------------------------
-
-    SELECT NOT EXISTS (
-        SELECT 1
-        FROM public.deposits d
-        WHERE d.user_id = p_user_id
-          AND d.status = 'completed'
-          AND d.id <> p_deposit_id
-    )
-    INTO v_is_first_deposit;
-
-
-    ----------------------------------------------------------------
-    -- 4. Find eligible campaigns
-    --
-    -- We first build the complete eligible set.
-    -- Stacking is resolved afterwards.
-    ----------------------------------------------------------------
-
-    RETURN QUERY
-
-    WITH eligible AS (
-
-        SELECT
-            bc.id,
-            bc.code,
-            bc.name,
-            bc.bonus_type,
-            bc.game_system_id,
-            bc.amount,
-            bc.percentage,
-            bc.multiplier,
-            bc.wagering_multiplier,
-            bc.min_deposit_amount,
-            bc.max_bonus_amount,
-            bc.validity_hours,
-            bc.stackable,
-            bc.stack_group,
-            bc.priority,
-
-            /*
-             * A NULL stack_group means this campaign gets its
-             * own isolated stack group.
-             */
-            COALESCE(
-                NULLIF(BTRIM(bc.stack_group), ''),
-                '__campaign_' || bc.id::TEXT
-            ) AS effective_stack_group
-
-        FROM public.bonus_campaigns bc
-
-        WHERE bc.is_active = TRUE
-
-
-        ----------------------------------------------------------------
-        -- Campaign must currently be inside its active date window.
-        ----------------------------------------------------------------
-
-        AND (
-            bc.starts_at IS NULL
-            OR bc.starts_at <= NOW()
-        )
-
-        AND (
-            bc.ends_at IS NULL
-            OR bc.ends_at >= NOW()
-        )
-
-
-        ----------------------------------------------------------------
-        -- Deposit-triggered campaigns.
-        --
-        -- welcome:
-        --   only first successful deposit
-        --
-        -- deposit:
-        --   normal deposit bonus
-        --
-        -- reload:
-        --   deposits after the first deposit
-        ----------------------------------------------------------------
-
-        AND (
-            (
-                bc.bonus_type = 'welcome'
-                AND v_is_first_deposit = TRUE
-            )
-
-            OR
-
-            bc.bonus_type = 'deposit'
-
-            OR
-
-            (
-                bc.bonus_type = 'reload'
-                AND v_is_first_deposit = FALSE
-            )
-        )
-
-
-        ----------------------------------------------------------------
-        -- Minimum deposit requirement.
-        --
-        -- Only deposit/reload campaigns use min_deposit_amount.
-        ----------------------------------------------------------------
-
-        AND (
-            bc.bonus_type = 'welcome'
-
-            OR
-
-            bc.min_deposit_amount IS NULL
-
-            OR
-
-            p_deposit_amount >= bc.min_deposit_amount
-        )
-
-
-        ----------------------------------------------------------------
-        -- Do not select a campaign that has already been awarded
-        -- for this exact deposit.
-        ----------------------------------------------------------------
-
-        AND NOT EXISTS (
-            SELECT 1
-            FROM public.user_bonuses ub
-            WHERE ub.user_id = p_user_id
-              AND ub.campaign_id = bc.id
-              AND ub.source_type = 'deposit'
-              AND ub.source_id = p_deposit_id::VARCHAR
-        )
-
-    ),
-
-    ----------------------------------------------------------------
-    -- 5. Resolve stacking.
-    --
-    -- If a stack group contains a non-stackable campaign,
-    -- only the highest-priority non-stackable campaign wins.
-    --
-    -- Otherwise all eligible stackable campaigns survive.
-    ----------------------------------------------------------------
-
-    resolved AS (
-
-        SELECT e.*
-
-        FROM eligible e
-
-        WHERE
-
-            ----------------------------------------------------------------
-            -- Case A:
-            -- This group has no non-stackable campaign.
-            --
-            -- Therefore all stackable campaigns can coexist.
-            ----------------------------------------------------------------
-
-            (
-                NOT EXISTS (
-                    SELECT 1
-                    FROM eligible conflict
-                    WHERE conflict.effective_stack_group =
-                          e.effective_stack_group
-
-                      AND conflict.stackable = FALSE
-                )
-
-                AND e.stackable = TRUE
-            )
-
-            OR
-
-            ----------------------------------------------------------------
-            -- Case B:
-            -- This group contains a non-stackable campaign.
-            --
-            -- Select only the highest-priority non-stackable campaign.
-            ----------------------------------------------------------------
-
-            (
-                e.stackable = FALSE
-
-                AND NOT EXISTS (
-                    SELECT 1
-                    FROM eligible higher
-                    WHERE higher.effective_stack_group =
-                          e.effective_stack_group
-
-                      AND higher.stackable = FALSE
-
-                      AND (
-                          higher.priority > e.priority
-
-                          OR (
-                              higher.priority = e.priority
-                              AND higher.id > e.id
-                          )
-                      )
-                )
-            )
-    )
-
-    SELECT
-        r.id,
-        r.code,
-        r.name,
-        r.bonus_type,
-        r.game_system_id,
-        r.amount,
-        r.percentage,
-        r.multiplier,
-        r.wagering_multiplier,
-        r.min_deposit_amount,
-        r.max_bonus_amount,
-        r.validity_hours,
-        r.stackable,
-        r.stack_group,
-        r.priority
-
-    FROM resolved r
-
-    ORDER BY
-        r.priority DESC,
-        r.id ASC;
-
-END;
-$$;
-
-
-ALTER FUNCTION public.get_eligible_deposit_bonus_campaigns(p_user_id integer, p_deposit_id integer, p_deposit_amount numeric) OWNER TO neondb_owner;
 
 --
 -- Name: get_eligible_deposit_bonus_campaigns(integer, bigint, numeric); Type: FUNCTION; Schema: public; Owner: neondb_owner
@@ -13767,4 +13782,6 @@ ALTER TABLE ONLY public.withdrawals
 --
 -- PostgreSQL database dump complete
 --
+
+
 
