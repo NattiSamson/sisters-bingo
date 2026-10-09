@@ -5847,7 +5847,7 @@ function renderRoomsPage(){
     const d=document.createElement('div'); d.className='rm-card'+(mine?' mine':'');
     d.innerHTML=
       `<div class="rm-row"><div class="rm-no c${(i%4)+1}"><small>${L.roomN('').trim()}</small><big>${i+1}</big></div>`+
-      `<div class="rm-mid"><div class="rm-name">${L.roomN(i+1)}${nm?' \u00b7 '+nm:''}</div><div class="rm-chip ${chipCls}"${cd?` data-cd="${cd}"`:''}><i></i><span>${chipTxt}</span></div></div>`+
+      `<div class="rm-mid"><div class="rm-name">${nm||L.roomN(i+1)}</div><div class="rm-chip ${chipCls}"${cd?` data-cd="${cd}"`:''}><i></i><span>${chipTxt}</span></div></div>`+
       `<div class="${btnCls}">${btn}</div></div>`+
       `<div class="rm-info"><div><em>\u{1F465} ${L.players2}</em><b>${pc} / ${max}</b></div><div><em>\u{1F3C6} ${L.prize}</em><b class="gold">${prize}</b></div><div>${third}</div></div>`+
       `<div class="rm-bar"><span style="width:${pct}%"></span></div>`;
@@ -5989,12 +5989,13 @@ function leaveGameView(){
 }
 
 function leaveRoom(){
-  const _grp=stakeOfTable(myStakeId), _multi=_grp&&(showRoomPageFor(_grp)||stakeRooms(_grp).length>1)&&!(myCardId||myCardId2||myCardId3||myCardId4)?_grp.stakeId:null;
+  const _grp=stakeOfTable(myStakeId), _multi=_grp&&(showRoomPageFor(_grp)||stakeRooms(_grp).length>1)?_grp.stakeId:null;   // stake whose room page Back returns to
   // BACK with cartelas picked: he stays in the game (seat and picks are kept on the server) and only returns to the
   // lobby; he can open the game again from there. Cartelas are released only when he deselects them himself.
   if(myRoomId && (myCardId||myCardId2||myCardId3||myCardId4)){
     try{ localStorage.setItem('gameViewDetached','1'); }catch(e){}     // after a refresh the app opens on the lobby
-    navGo('screenLobby','navHome');
+    if(_multi){ roomsPageStake=_multi; renderRoomsPage(); navGo('screenRooms','navHome'); }
+    else navGo('screenLobby','navHome');
     return;
   }
   localStorage.removeItem('gameViewDetached');
