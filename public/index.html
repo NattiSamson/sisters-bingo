@@ -3591,7 +3591,7 @@ body.game-screen-active > .bottom-nav{
 
 
 <div class="winner-overlay" id="winnerOverlay">
-  <div class="confetti-row" id="resultConfetti"> </div>
+  <div class="confetti-row" id="resultConfetti">🎊🎉🎊🎉🎊</div>
   <div class="winner-trophy" id="resultTrophy">🏆</div>
   <div class="winner-label" id="winnerLabel">BINGO!</div>
   <div class="winner-name" id="winnerName">—</div>
@@ -5917,7 +5917,7 @@ let audioUnlocked = false;
 function preloadAudio(){
   for(let i=1;i<=76;i++)
   { 
-    const path = i === 76 ? '/audio/Bingo.mp3' : `/audio/${i}.mp3`;  
+    const path = `/audio/${i}.mp3`;      // 76.mp3 is the winner (BINGO) sound
     const a=new Audio(path);
     a.preload='auto';
     audioCache[i]=a;
@@ -5943,10 +5943,11 @@ function playBallAudio(n){
   try{
     // Use cached audio if available, otherwise create new
     let a = audioCache[n];
-    if(a){
+    if(a && !a.error){
       a.currentTime=0;
       a.play().catch(()=>{});
-    } else {      
+    } else {
+      // not preloaded yet (or it failed to load): create a fresh one
       const fresh=new Audio(`/audio/${n}.mp3`);
       fresh.play().catch(()=>{});
       audioCache[n]=fresh;
@@ -6621,11 +6622,19 @@ html body #screenCards #poolGrid::-webkit-scrollbar{width:4px}
 html body #screenCards #poolGrid::-webkit-scrollbar-thumb{background:rgba(255,255,255,.3);border-radius:4px}
 html body #screenCards #poolGrid::-webkit-scrollbar-track{background:transparent}
 
-/* default (no cartela selected): pool is ~67% of the screen and leaves room above the nav */
+/* default (no cartela selected): the number pool fills the WHOLE free area down to the nav */
+html body #screenCards .cards-selection-viewport:not(.has-selection){
+  display:flex!important;flex-direction:column!important;
+  flex:1 1 auto!important;min-height:0!important;
+}
 html body #screenCards .cards-selection-viewport:not(.has-selection) > #poolGrid{
-  height:min(67dvh,calc(100dvh - 205px))!important;
+  flex:1 1 auto!important;
+  height:auto!important;
   min-height:150px!important;
   max-height:none!important;
+}
+html body #screenCards .cards-selection-viewport:not(.has-selection) > #selectionCardsSection{
+  display:none!important;
 }
 html body #screenCards .cards-selection-viewport{
   display:block!important;overflow:visible!important;height:auto!important;
