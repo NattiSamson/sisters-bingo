@@ -3251,6 +3251,49 @@ body.game-screen-active > .bottom-nav{
   <div class="loading-text" id="loadingText">Connecting<u class="lc-dots"><s></s><s></s><s></s></u></div>
 </div>
 
+<style id="roomsCss">
+#screenRooms{padding:12px 14px 90px!important}
+.rm-back,.rm-go{cursor:pointer}.rm-card.mine{border-color:#ffd43b}
+.rm-go.off{pointer-events:none}
+.rm-top{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.rm-back{width:40px;height:40px;border-radius:12px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.08);color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center}
+.rm-title{font-weight:900;font-size:19px;color:#fff;line-height:1.1}
+.rm-sub{font-size:11px;color:#b8baf5;margin-top:2px}
+.rm-stake{margin-left:auto;display:flex;align-items:center;gap:6px;padding:5px 12px 5px 6px;border-radius:30px;background:linear-gradient(135deg,rgba(124,92,255,.35),rgba(60,120,255,.25));border:1px solid rgba(160,180,255,.45)}
+.rm-stake b{width:30px;height:30px;border-radius:50%;background:linear-gradient(145deg,#6aa5ff,#7c5cff);display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff}
+.rm-stake span{font-weight:900;color:#ffd43b;font-size:14px}
+.rm-card{position:relative;border-radius:20px;padding:12px 12px 12px;margin-bottom:11px;background:linear-gradient(145deg,rgba(40,46,86,.92),rgba(22,26,52,.95));border:1px solid rgba(255,255,255,.17);box-shadow:0 8px 22px rgba(0,0,0,.28)}
+.rm-row{display:flex;align-items:center;gap:11px}
+.rm-no{flex:0 0 54px;height:54px;border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-weight:900;box-shadow:inset 0 0 0 2px rgba(255,255,255,.25)}
+.rm-no small{font-size:9px;font-weight:700;opacity:.85;letter-spacing:.5px}
+.rm-no big{font-size:22px;line-height:1}
+.c1{background:linear-gradient(145deg,#3b82f6,#6366f1)}.c2{background:linear-gradient(145deg,#a855f7,#7c3aed)}.c3{background:linear-gradient(145deg,#10b981,#0e9f6e)}.c4{background:linear-gradient(145deg,#f97316,#ef4444)}
+.rm-mid{flex:1;min-width:0}
+.rm-name{font-weight:900;color:#fff;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rm-chip{display:inline-flex;align-items:center;gap:6px;margin-top:4px;padding:3px 10px;border-radius:14px;font-size:11.5px;font-weight:800}
+.rm-chip i{width:8px;height:8px;border-radius:50%;background:currentColor}
+.s-wait{background:rgba(96,165,250,.18);color:#93c5fd}.s-start{background:rgba(250,204,21,.18);color:#fcd34d}.s-play{background:rgba(34,214,122,.16);color:#4ade80}.s-full{background:rgba(248,113,113,.16);color:#fca5a5}
+.rm-go{flex:0 0 auto;min-width:74px;padding:11px 14px;border-radius:26px;font-weight:900;font-size:14px;color:#fff;text-align:center;background:linear-gradient(135deg,#ff7a59,#ff4d2d);box-shadow:0 6px 16px rgba(255,90,50,.35)}
+.rm-go.watch{background:linear-gradient(135deg,#7c8cff,#5b4bdc);box-shadow:0 6px 16px rgba(100,90,230,.35)}
+.rm-go.off{background:rgba(255,255,255,.1);color:#9aa0c8;box-shadow:none}
+.rm-info{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+.rm-info div{background:rgba(255,255,255,.07);border-radius:11px;padding:6px 4px;text-align:center}
+.rm-info em{display:block;font-style:normal;font-size:10px;color:#b8baf5}
+.rm-info b{display:block;font-size:13.5px;color:#fff;margin-top:1px}
+.rm-info b.gold{color:#ffd43b}
+.rm-bar{height:6px;border-radius:6px;background:rgba(255,255,255,.12);margin-top:9px;overflow:hidden}
+.rm-bar span{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#2dd4bf,#7c5cff)}
+.rm-hint{margin-top:2px;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.06);border:1px dashed rgba(255,255,255,.2);font-size:11.5px;color:#b8baf5;line-height:1.45}
+</style>
+<div id="screenRooms" class="screen">
+  <div class="rm-top">
+    <button class="rm-back" id="rmBack" type="button" aria-label="Back">&#8249;</button>
+    <div><div class="rm-title" data-rm="title">ክፍል ይምረጡ</div><div class="rm-sub" data-rm="sub">ለመጫወት ክፍል ይንኩ</div></div>
+    <div class="rm-stake"><b>ETB</b><span id="rmStakeAmt">0</span></div>
+  </div>
+  <div id="roomsList"></div>
+</div>
+
 <div id="screenLobby" class="screen active">
   <div class="lb-hello">
     <div class="lb-av" id="lobbyAvatar">M</div>
@@ -3965,7 +4008,7 @@ function renderSpectatorView(msg={}){
   const nums=(msg.calledNumbers||Array.from(calledNumbersSet||[])).map(Number);
   calledNumbersSet=new Set(nums);
   const stake=Number(msg.stakeAmount||0);
-  if(stakeVal) stakeVal.innerText=stake?`${stake} ETB`:(myStakeId||'').replace(/^st/,'')+' ETB';
+  if(stakeVal) stakeVal.innerText=stake?`${stake} ETB`:(myStakeId||'').replace(/^st/,'').replace(/r\d+$/,'')+' ETB';
   if(playersVal) playersVal.innerText=Number(msg.playerCount||0);
   if(nums.length){
     const last=nums[nums.length-1], cfg=numConfig(last);
@@ -4218,14 +4261,14 @@ const LOBBY_I18N={
       tip:'በተመሳሳይ ሰዓት በአንድ ጊዜ ውስጥ <b>እስከ 3 ጨዋታዎችን</b> መጫወት ይቻላል።',navGame:'ጨዋታ',navProfile:'መገለጫ',
       game:n=>`የ${n} ብር ጨዋታ`,startsIn:n=>`በ${n} ሰከንድ ይጀምራል`,starting:'በመጀመር ላይ…',inProgress:'በመካሄድ ላይ',
       waiting:'ተጫዋቾችን በመጠበቅ ላይ',finished:'ጨዋታው አብቅቷል',players:n=>`${n} ተጫዋቾች`,
-      play:'ተጫወት',open:'ክፈት',watch:'ተመልከት',yours:'የእርስዎ ጨዋታ',unavailable:'አሁን አይገኝም',noStakes:'አሁን የሚገኝ የውርርድ መጠን የለም። እባክዎ ትንሽ ቆይተው ይሞክሩ።',
+      play:'ተጫወት',open:'ክፈት',watch:'ተመልከት',enter:'ግባ ›',full:'ሞልቷል',roomN:n=>`ክፍል ${n}`,players2:'ተጫዋቾች',prize:'ሽልማት',cards:'ካርቴላ',upTo:n=>`እስከ ${n}`,called:'የተጠሩ',stakeBr:n=>`${n} ብር`,yours:'የእርስዎ ጨዋታ',unavailable:'አሁን አይገኝም',noStakes:'አሁን የሚገኝ የውርርድ መጠን የለም። እባክዎ ትንሽ ቆይተው ይሞክሩ።',
       connecting:'Connecting',noconn:()=>'Reconnecting'},
   en:{hello:'Welcome back',player:'Player',online:'Online now',active:'active players',
       heroTitle:'Pick a room, win big',heroSub:'Marking is automatic',choose:'Choose your stake',
       tip:'You can play <b>up to 3 games at once</b> \u2014 one in each stake.',navGame:'Game',navProfile:'Profile',
       game:n=>`Play ${n}`,startsIn:n=>`Starts in ${n}s`,starting:'Starting\u2026',inProgress:'In progress',
       waiting:'Waiting for players',finished:'Game finished',players:n=>`${n} players`,
-      play:'Play',open:'Open',watch:'Watch',yours:'YOUR GAME',unavailable:'Not available',noStakes:'No stakes are available right now. Please try again shortly.',
+      play:'Play',open:'Open',watch:'Watch',enter:'Join \u203a',full:'Full',roomN:n=>`Room ${n}`,players2:'Players',prize:'Prize',cards:'Cards',upTo:n=>`up to ${n}`,called:'Called',stakeBr:n=>`${n} ETB`,yours:'YOUR GAME',unavailable:'Not available',noStakes:'No stakes are available right now. Please try again shortly.',
       connecting:'Connecting',noconn:()=>'Reconnecting'}
 }[LOBBY_LANG];
 function applyLobbyText(){
@@ -4862,7 +4905,7 @@ function handle(msg){
 
     case 'leftRoom': if(msg.roomId && myRoomId && String(msg.roomId)!==String(myRoomId)) break;
       restoreSelection=null;
-      clearSelectionCardsPreview(); clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; myCardNumbers=[]; myCardNumbers2=[]; myCardNumbers3=[]; myCardNumbers4=[]; navGo('screenLobby'); break;
+      clearSelectionCardsPreview(); clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; myCardNumbers=[]; myCardNumbers2=[]; myCardNumbers3=[]; myCardNumbers4=[]; if(!document.getElementById('screenRooms')?.classList.contains('active')) navGo('screenLobby'); break;
 
     case 'notification': showToast(msg.message, msg.message.startsWith('✅')?'':'error'); break;
 
@@ -5749,6 +5792,77 @@ function deselectCard(slot){
 let knownStakes=[];               // stake amounts the database offers (from the server), lowest first
 // 5 -> "5", 2.5 -> "2.5", 100 -> "100"
 function stakeAmountText(a){ const x=Number(a); if(!Number.isFinite(x)) return '0'; return Number.isInteger(x)?String(x):String(Number(x.toFixed(2))); }
+// ─── ROOMS (a stake can have several rooms) ──────────────────────
+let lobbyStakesNow=[];            // last stake list from the server (each stake has a `rooms` array)
+let roomsPageStake=null;          // stakeId (primary id) of the stake whose room page is open
+// the rooms of a stake; an older server (no `rooms`) means exactly one room
+function stakeRooms(s){ return (s&&Array.isArray(s.rooms)&&s.rooms.length)?s.rooms:[s]; }
+function stakeOfTable(tid){ return lobbyStakesNow.find(x=>stakeRooms(x).some(r=>r.stakeId===tid))||null; }
+// join / re-open the room with this table id (stakeId as the server knows it)
+function enterRoom(tableId){
+  const tid=telegramId||getTelegramId();
+  let saved=null;
+  try{ saved=JSON.parse(localStorage.getItem('activeGameState')||'null'); }catch(e){ saved=null; }
+  const sameActiveRoom=String(saved?.stakeId||myStakeId||'')===String(tableId||'') &&
+    ['countdown','playing','spectating'].includes(String(saved?.phase||activeGamePhase||'none')) &&
+    !!(saved?.roomId||myRoomId||localStorage.getItem('roomId'));
+  localStorage.removeItem('gameViewDetached');
+  if(sameActiveRoom){
+    myRoomId=saved?.roomId||myRoomId||localStorage.getItem('roomId');
+    myStakeId=tableId;
+    pendingStakeJoin=tableId;          // if that saved game no longer exists, join the stake normally
+    wsSend({type:'reconnect',roomId:myRoomId,telegramId:tid});
+  }else{
+    wsSend({type:'joinRoom',stakeId:tableId,telegramId:tid});
+  }
+}
+// tap on a stake in the lobby
+function openStake(s){
+  const rs=stakeRooms(s);
+  if(rs.length<=1){ enterRoom(rs[0].stakeId); return; }       // one room: straight to card selection
+  const mineRoom=rs.find(r=>joinedStakes.has(r.stakeId));
+  if(mineRoom){ enterRoom(mineRoom.stakeId); return; }          // I already play in one of them
+  roomsPageStake=s.stakeId; renderRoomsPage(); navGo('screenRooms','navHome');
+}
+function renderRoomsPage(){
+  const s=lobbyStakesNow.find(x=>x.stakeId===roomsPageStake);
+  const list=document.getElementById('roomsList'); if(!s||!list) return;
+  const L=LOBBY_I18N, rs=stakeRooms(s);
+  document.getElementById('rmStakeAmt').textContent=L.stakeBr(stakeAmountText(s.amount));
+  const frag=document.createDocumentFragment();
+  rs.forEach((r,i)=>{
+    const st=String(r.status||'waiting'), pc=Number(r.playerCount)||0, max=Number(r.maxPlayers)||0;
+    const mine=joinedStakes.has(r.stakeId), full=!!r.full&&!mine;
+    let chipCls='s-wait', chipTxt=L.waiting, btn=L.enter, btnCls='rm-go', cd=0;
+    if(st==='countdown'){ chipCls='s-start'; cd=Math.max(0,Number(r.countdown)||0); chipTxt=L.startsIn(cd); }
+    else if(st==='playing'||st==='starting'){ chipCls='s-play'; chipTxt=L.inProgress; btn=L.watch; btnCls='rm-go watch'; }
+    if(full){ chipCls='s-full'; chipTxt=L.full; btn=L.full; btnCls='rm-go off'; }
+    if(mine){ btn=L.open; btnCls='rm-go'; }
+    const pct=max?Math.min(100,Math.max(pc?3:0,Math.round(pc/max*100))):0;
+    const third=(st==='playing')?`<em>\u{1F522} ${L.called}</em><b>${Number(r.called)||0} / 75</b>`:`<em>\u{1F3B4} ${L.cards}</em><b>${L.upTo(r.maxCards||4)}</b>`;
+    const prize=Number(r.pot)>0?Math.floor(r.pot).toLocaleString()+' ETB':'\u2014';
+    const nm=String(r.name||'').replace(/[<>&]/g,'');
+    const d=document.createElement('div'); d.className='rm-card'+(mine?' mine':'');
+    d.innerHTML=
+      `<div class="rm-row"><div class="rm-no c${(i%4)+1}"><small>${L.roomN('').trim()}</small><big>${i+1}</big></div>`+
+      `<div class="rm-mid"><div class="rm-name">${L.roomN(i+1)}${nm?' \u00b7 '+nm:''}</div><div class="rm-chip ${chipCls}"${cd?` data-cd="${cd}"`:''}><i></i><span>${chipTxt}</span></div></div>`+
+      `<div class="${btnCls}">${btn}</div></div>`+
+      `<div class="rm-info"><div><em>\u{1F465} ${L.players2}</em><b>${pc} / ${max}</b></div><div><em>\u{1F3C6} ${L.prize}</em><b class="gold">${prize}</b></div><div>${third}</div></div>`+
+      `<div class="rm-bar"><span style="width:${pct}%"></span></div>`;
+    if(!full) d.onclick=()=>enterRoom(r.stakeId);
+    frag.appendChild(d);
+  });
+  list.replaceChildren(frag);
+}
+function closeRoomsPage(){ roomsPageStake=null; navGo('screenLobby','navHome'); }
+document.getElementById('rmBack').onclick=closeRoomsPage;
+setInterval(()=>{   // countdowns on the room page tick between server updates
+  document.querySelectorAll('#roomsList .rm-chip[data-cd]').forEach(el=>{
+    let v=Number(el.dataset.cd)-1; const sp=el.querySelector('span');
+    if(v>0){ el.dataset.cd=v; sp.textContent=LOBBY_I18N.startsIn(v); }
+    else{ el.removeAttribute('data-cd'); sp.textContent=LOBBY_I18N.starting; }
+  });
+},1000);
 function renderStakes(arr,fromCache){
   const grid=document.getElementById('stakesGrid');
   if(!grid) return;
@@ -5756,6 +5870,7 @@ function renderStakes(arr,fromCache){
   const stakes=(Array.isArray(arr)?arr:[]).filter(s=>Number(s.amount)>0).slice().sort((a,b)=>Number(a.amount)-Number(b.amount));
   lobbyHasStakes=true; lobbyFromCache=!!fromCache;
   knownStakes=stakes.map(s=>Number(s.amount));
+  lobbyStakesNow=stakes;
   if(!fromCache){
     showLobbyStatus('',false);
     try{ if(stakes.length) localStorage.setItem('melaLobbyStakes',JSON.stringify({t:Date.now(),stakes})); else localStorage.removeItem('melaLobbyStakes'); }catch(e){}
@@ -5781,7 +5896,7 @@ function renderStakes(arr,fromCache){
       players=Number(s.playerCount)||0;
       const max=Number(s.maxPlayers)||0;
       pct=max?Math.min(100,Math.max(players?3:0,Math.round(players/max*100))):0;
-      mine=joinedStakes.has(s.stakeId);
+      mine=stakeRooms(s).some(r=>joinedStakes.has(r.stakeId));
       if(st==='countdown'){ chipCls='start'; cd=Math.max(0,Number(s.countdown)||0); chipTxt=L.startsIn(cd); }
       else if(st==='playing'||st==='starting'){ chipCls='play'; chipTxt=L.inProgress; btnTxt=L.watch; btnCls='lb-go watch'; }
       else if(st==='finished'){ chipTxt=L.finished; }
@@ -5795,29 +5910,12 @@ function renderStakes(arr,fromCache){
       `<span class="lb-pl">${L.players(players)}</span></div>`+
       `<div class="lb-bar"><u style="width:${pct}%"></u></div></div>`+
       `<div class="${btnCls}">${btnTxt}</div>`;
-    {
-      d.onclick=()=>{
-        const tid=telegramId||getTelegramId();
-        let saved=null;
-        try{ saved=JSON.parse(localStorage.getItem('activeGameState')||'null'); }catch(e){ saved=null; }
-        const sameActiveRoom=String(saved?.stakeId||myStakeId||'')===String(s.stakeId||'') &&
-          ['countdown','playing','spectating'].includes(String(saved?.phase||activeGamePhase||'none')) &&
-          !!(saved?.roomId||myRoomId||localStorage.getItem('roomId'));
-        localStorage.removeItem('gameViewDetached');
-        if(sameActiveRoom){
-          myRoomId=saved?.roomId||myRoomId||localStorage.getItem('roomId');
-          myStakeId=s.stakeId;
-          pendingStakeJoin=s.stakeId;          // if that saved game no longer exists, join the stake normally
-          wsSend({type:'reconnect',roomId:myRoomId,telegramId:tid});
-        }else{
-          wsSend({type:'joinRoom',stakeId:s.stakeId,telegramId:tid});
-        }
-      };
-    }
+    d.onclick=()=>openStake(s);
     frag.appendChild(d);
   });
   grid.replaceChildren(frag);
   renderStakeTable(lastStakeStatsRows);      // profile table rows follow the database stakes
+  if(roomsPageStake&&document.getElementById('screenRooms').classList.contains('active')) renderRoomsPage();
 }
 // countdown chips tick every second between server updates
 setInterval(()=>{
@@ -5889,6 +5987,7 @@ function leaveGameView(){
 }
 
 function leaveRoom(){
+  const _grp=stakeOfTable(myStakeId), _multi=_grp&&stakeRooms(_grp).length>1&&!(myCardId||myCardId2||myCardId3||myCardId4)?_grp.stakeId:null;
   // BACK with cartelas picked: he stays in the game (seat and picks are kept on the server) and only returns to the
   // lobby; he can open the game again from there. Cartelas are released only when he deselects them himself.
   if(myRoomId && (myCardId||myCardId2||myCardId3||myCardId4)){
@@ -5905,7 +6004,8 @@ function leaveRoom(){
   clearActiveGameState();
   localStorage.removeItem('roomId'); localStorage.removeItem('stakeId');
   setSpectatorMode(false);
-  navGo('screenLobby','navHome');
+  if(_multi){ roomsPageStake=_multi; renderRoomsPage(); navGo('screenRooms','navHome'); }
+  else navGo('screenLobby','navHome');
 }
 
 // ─── AUDIO SYSTEM ────────────────────────────────────────────
