@@ -4309,6 +4309,7 @@ function handle(msg){
 
     case 'connected':
       myPlayerId=msg.playerId;
+      if(Number.isFinite(msg.online)) lobbyOnline=msg.online;
       if(msg.stakes) renderStakes(msg.stakes);
       
       const pageParam = new URLSearchParams(location.search).get('page');
@@ -4381,7 +4382,7 @@ function handle(msg){
       }
       break;
 
-   case 'lobbyUpdate': joinedStakes=new Set(msg.joined||[]); renderStakes(msg.stakes); break;
+   case 'lobbyUpdate': joinedStakes=new Set(msg.joined||[]); if(Number.isFinite(msg.online)) lobbyOnline=msg.online; renderStakes(msg.stakes); break;
 
     case 'roomClosed': closeFinishedRoomLocally(msg.roomId); break;
 
@@ -5501,6 +5502,7 @@ setInterval(()=>{
     else{ el.removeAttribute('data-cd'); sp.textContent=LOBBY_I18N.starting; }
   });
 },1000);
+let lobbyOnline=0;
 function blockLobby(){
   authBlocked=true; authPending=true; pendingStakes=null;
   try{ localStorage.removeItem('melaLobbyStakes'); }catch(e){}
@@ -5524,8 +5526,7 @@ function renderStakes(arr,fromCache){
   }
   const activeEl=document.getElementById('lobbyActivePlayers');
   if(activeEl){
-    const total=stakes.reduce((sum,s)=>sum+(parseInt(s.playerCount,10)||0),0);
-    activeEl.innerText=total.toLocaleString();
+    activeEl.innerText=lobbyOnline.toLocaleString();
   }
   const L=LOBBY_I18N;
   const frag=document.createDocumentFragment();
