@@ -21,6 +21,13 @@ if (!BOT_TOKEN)
   throw new Error("BOT_TOKEN environment variable is missing");
 }
 const bot = new Bot(BOT_TOKEN);
+
+// Player names are typed by players. Inside a Markdown message they could break the formatting (or fake bold / links),
+// so the special characters are escaped before a name is put into a Markdown text.
+function mdEsc(text) {
+  return String(text ?? "").replace(/([_*`\[\]])/g, "\\$1");
+}
+
 // ============================================================
 // STATE
 // ============================================================
@@ -105,9 +112,33 @@ bot.use(async (ctx, next) => {
   } catch (err) 
   {
     console.error("Blocked user guard error:", err);
-    // Do not break the bot if the database check fails
-    return next();
+    // Fail CLOSED: when the account state cannot be checked nobody is let through (a blocked user must not slip past an outage)
+    try {
+      if (ctx.callbackQuery) { await ctx.answerCallbackQuery({ text: "⚠️ Please try again in a moment.", show_alert: true }); return; }
+      return ctx.reply("⚠️ Service is busy. Please try again in a moment.");
+    } catch (_) { return; }
   }
+});
+
+// ============================================================
+// ADMIN GATE (defence in depth)
+// ============================================================
+// Every button that belongs to the admin area is checked against the database BEFORE its handler runs, so a handler
+// that forgets its own check (or a forged / replayed callback_data) can never be used by a normal user.
+// The role rules inside each handler (main / withdrawal / broadcast / statistics) still apply on top of this.
+const ADMIN_CALLBACK_RE = /^(admin_|approve_withdrawal_|reject_withdrawal_|remove_admin_|set_admin_|broadcast_)/;
+bot.use(async (ctx, next) => {
+  const data = ctx.callbackQuery?.data;
+  if (typeof data !== "string" || !ADMIN_CALLBACK_RE.test(data)) return next();
+  let admin = null;
+  try { admin = ctx.from?.id ? await db.getAdminByTelegramId(ctx.from.id) : null; }
+  catch (err) { console.error("Admin gate lookup error:", err); }
+  if (!admin) {
+    console.warn(`[security] non-admin ${ctx.from?.id} pressed admin button "${data.slice(0, 40)}"`);
+    try { await ctx.answerCallbackQuery({ text: "❌ Unauthorized", show_alert: true }); } catch (_) {}
+    return;
+  }
+  return next();
 });
 
 async function cleanupExpiredAdminWithdrawalUI(telegramId) 
@@ -427,6 +458,64 @@ async function getCurrentAdminPermission(ctx, permission)
     }
     return admin;
 }
+
+// ============================================================
+// DEPOSIT RECEIPT CHECKS (before any money is credited)
+// ============================================================
+// approveDeposit() (db.js) already refuses a receipt number that was used before and checks that the money went to one
+// of YOUR payment accounts. These extra checks stop old or unrelated receipts from being claimed:
+//   * the payment must be "Completed"
+//   * it must be recent (DEPOSIT_MAX_AGE_HOURS, default 24)
+//   * optional: DEPOSIT_REQUIRE_PAYER_MATCH=1  -> the payer's phone (last 4 digits of the masked number on the receipt)
+//     must be the phone the player registered with. Off by default because a relative may pay for the player.
+//   * optional: DEPOSIT_MAX_ETB -> refuse a single deposit above this amount (it goes to manual review)
+const DEPOSIT_MAX_AGE_HOURS = Number(process.env.DEPOSIT_MAX_AGE_HOURS) || 24;
+const DEPOSIT_REQUIRE_PAYER_MATCH = process.env.DEPOSIT_REQUIRE_PAYER_MATCH === "1";
+const DEPOSIT_MAX_ETB = Number(process.env.DEPOSIT_MAX_ETB) || 0;
+
+// "15-10-2025 15:26:23" or "2025-10-15 15:26:23" (Ethiopia time, UTC+3) -> epoch ms, or null
+function parseReceiptDate(text) {
+  const t = String(text || "");
+  let y, mo, d, h, mi, se;
+  let m = t.match(/(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (m) { [, d, mo, y, h, mi, se] = m.map(Number); }
+  else {
+    m = t.match(/(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return null;
+    [, y, mo, d, h, mi, se] = m.map(Number);
+  }
+  const ms = Date.UTC(y, mo - 1, d, h - 3, mi, se || 0);   // Ethiopia = UTC+3
+  return Number.isFinite(ms) ? ms : null;
+}
+
+// returns null when the receipt may be credited, or a short reason (for the log / main admin).
+// A field the receipt page does not show at all is only logged (a layout change at the provider must not stop every
+// deposit); a field that is shown and wrong is refused.
+function checkReceiptForDeposit(receipt, user) {
+  if (!receipt || typeof receipt !== "object") return "no receipt data";
+  const status = String(receipt.transactionStatus || "").trim().toLowerCase();
+  if (!status) console.warn(`[deposit] receipt ${receipt.receiptNo}: no transactionStatus on the receipt`);
+  else if (status !== "completed") return `transaction status is "${receipt.transactionStatus}", not Completed`;
+
+  const when = parseReceiptDate(receipt.paymentDate);
+  if (when === null) console.warn(`[deposit] receipt ${receipt.receiptNo}: payment date unreadable: ${JSON.stringify(receipt.paymentDate)}`);
+  else {
+    const ageH = (Date.now() - when) / 3600000;
+    if (ageH > DEPOSIT_MAX_AGE_HOURS) return `receipt is ${Math.round(ageH)} h old (limit ${DEPOSIT_MAX_AGE_HOURS} h)`;
+    if (ageH < -1) return "payment date is in the future";
+  }
+
+  const amount = Number(String(receipt.settledAmount ?? "").replace(/[^0-9.]/g, ""));
+  if (DEPOSIT_MAX_ETB > 0 && amount > DEPOSIT_MAX_ETB) return `amount ${amount} is above DEPOSIT_MAX_ETB ${DEPOSIT_MAX_ETB}`;
+
+  if (DEPOSIT_REQUIRE_PAYER_MATCH) {
+    const payer = String(receipt.payerTelebirrNo || "").replace(/\D/g, "").slice(-4);
+    const mine = String(user?.phone || "").replace(/\D/g, "").slice(-4);
+    if (!payer || !mine || payer !== mine) return "payer phone does not match the player's registered phone";
+  }
+  return null;
+}
+
 // ============================================================
 // BROADCAST HELPERS
 // ============================================================
@@ -1398,7 +1487,7 @@ bot.callbackQuery(
 
         `🚫 *User Blocked Successfully*\n\n` +
 
-        `👤 Name: *${updatedUser.name || "Unknown"}*\n` +
+        `👤 Name: *${mdEsc(updatedUser.name || "Unknown")}*\n` +
 
         `📱 Phone: \`${updatedUser.phone || "Not available"}\`\n\n` +
 
@@ -1513,7 +1602,7 @@ bot.callbackQuery(
 
       await ctx.editMessageText(
         `✅ *Admin Role Updated*\n\n` +
-        `👤 Name: *${updatedUser.name || "Unknown"}*\n` +
+        `👤 Name: *${mdEsc(updatedUser.name || "Unknown")}*\n` +
         `📱 Phone: \`${updatedUser.phone || "Not available"}\`\n\n` +
         `🔐 New Role: *${roleNames[role]}*`,
         {
@@ -1601,7 +1690,7 @@ bot.callbackQuery(
 
       await ctx.editMessageText(
         `🚫 *Admin Rights Removed*\n\n` +
-        `👤 Name: *${updatedUser.name || "Unknown"}*\n` +
+        `👤 Name: *${mdEsc(updatedUser.name || "Unknown")}*\n` +
         `📱 Phone: \`${updatedUser.phone || "Not available"}\`\n\n` +
         `The user is now a normal user.`,
         {
@@ -1700,7 +1789,7 @@ bot.callbackQuery(
 
         `✅ *User Unblocked Successfully*\n\n` +
 
-        `👤 Name: *${updatedUser.name || "Unknown"}*\n` +
+        `👤 Name: *${mdEsc(updatedUser.name || "Unknown")}*\n` +
 
         `📱 Phone: \`${updatedUser.phone || "Not available"}\`\n\n` +
 
@@ -6221,7 +6310,7 @@ if (claimNew) {
 
         message +=
           `*${index + 1}. Withdrawal #${withdrawal.id}*\n` +
-          `👤 User: *${withdrawal.name || "Unknown"}*\n` +
+          `👤 User: *${mdEsc(withdrawal.name || "Unknown")}*\n` +
           `💰 Amount: *${withdrawal.amount} ETB*\n` +
           `📱 Account: \`${withdrawal.account_number}\`\n\n`;
 
@@ -6430,7 +6519,7 @@ bot.callbackQuery("admin_refresh_withdrawals", async (ctx) => {
     withdrawals.forEach((withdrawal, index) => {
       message +=
         `*${index + 1}. Withdrawal #${withdrawal.id}*\n` +
-        `👤 User: *${withdrawal.name || "Unknown"}*\n` +
+        `👤 User: *${mdEsc(withdrawal.name || "Unknown")}*\n` +
         `💰 Amount: *${withdrawal.amount} ETB*\n` +
         `📱 Account: \`${withdrawal.account_number}\`\n\n`;
     });
@@ -6972,7 +7061,7 @@ bot.callbackQuery(
 
         `🆔 Withdrawal: *#${withdrawalId}*\n` +
 
-        `👤 User: *${withdrawal.name || "Unknown"}*\n` +
+        `👤 User: *${mdEsc(withdrawal.name || "Unknown")}*\n` +
 
         `💰 Amount: *${withdrawal.amount} ETB*\n` +
 
@@ -9829,13 +9918,25 @@ bot.on(
             const receipt =
               result.result.receipt;
 
-            if (!receipt && !receipt.payerName) {
+            if (!receipt || !receipt.payerName) {
 
               return ctx.reply(
                 "❌ የክፍያ ደረሰኝ  መረጃ አልተገኘም።"
               );
 
-            }            
+            }
+
+            // extra safety checks (status, age, optional payer match / amount limit) before any money moves
+            const depositUser = await db.getUserByTelegramId(telegramId);
+            const rejectReason = checkReceiptForDeposit(receipt, depositUser);
+            if (rejectReason) {
+              console.warn(`[deposit] refused for ${telegramId}, receipt ${receipt.receiptNo}: ${rejectReason}`);
+              let refusal = "❌ የገቢ ጥያቄዎ አልተሳካም። ደረሰኙ ትክክለኛ ወይም አዲስ አይደለም። እባክዎ ድጋፍን ያነጋግሩ።";
+              if (depositUser?.is_admin === true && depositUser?.admin_role === "main") {
+                refusal += "\n\n" + rejectReason;
+              }
+              return ctx.reply(refusal);
+            }
 
             const result2 =
               await db.approveDeposit(
@@ -9863,13 +9964,14 @@ bot.on(
               );
 
             }
-            let chkUser = db.getUserByTelegramId(telegramId);
             let mess = "❌ የገቢ ጥያቄዎ አልተሳካም።";
-            if(chkUser.is_admin === true && chkUser.admin_role ==="main")
-            {
-              mess = mess + "\n\n" + result2.errorMessage
-            }
-            
+            try {
+              const chkUser = await db.getUserByTelegramId(telegramId);
+              if (chkUser?.is_admin === true && chkUser?.admin_role === "main") {
+                mess = mess + "\n\n" + (result2.errorMessage || "");
+              }
+            } catch (_) {}
+
             return ctx.reply(
               mess
             );
@@ -9887,15 +9989,7 @@ bot.on(
             "Deposit processing error:",
             err
           );
-            let chkUser = db.getUserByTelegramId(telegramId);
-           if(chkUser.is_admin === true && chkUser.admin_role ==="main")
-            {
-              mess = mess + "\n\n" + result2.errorMessage
-            }
-            let mess = "❌ ክፍያውን ማረጋገጥ አልተቻለም።"
-            return ctx.reply(
-              mess
-            );
+          return ctx.reply("❌ ክፍያውን ማረጋገጥ አልተቻለም።");
         }
 
       }
@@ -10256,7 +10350,7 @@ if (
 
   return ctx.reply(
     "👤 *Recipient Found*\n\n" +
-    `👤 Name: *${user.name || "Unknown"}*\n` +
+    `👤 Name: *${mdEsc(user.name || "Unknown")}*\n` +
     `📱 Phone: \`${user.phone || phone}\`\n\n` +
     "Do you want to send the broadcast to this person?",
     {
@@ -10826,4 +10920,16 @@ bot.catch((err) => {console.error("Telegram bot error:", err.error); });
 // ============================================================
 // VERCEL WEBHOOK
 // ============================================================
-module.exports = webhookCallback(bot, "http", { timeoutMilliseconds: 30000, onTimeout: "return",});
+// Telegram sends the secret you give to setWebhook(secret_token) in the header X-Telegram-Bot-Api-Secret-Token.
+// With WEBHOOK_SECRET set, a request without the right header is answered 401 and never reaches the bot, so nobody
+// who only knows the URL can send fake updates (for example "from" an admin).
+const WEBHOOK_SECRET = String(process.env.WEBHOOK_SECRET || "").trim();
+if (!WEBHOOK_SECRET) {
+  console.error("❌ WEBHOOK_SECRET is not set: anyone who knows the webhook URL can send fake Telegram updates. " +
+    "Set WEBHOOK_SECRET and register the webhook with the same secret_token.");
+}
+module.exports = webhookCallback(bot, "http", {
+  timeoutMilliseconds: 30000,
+  onTimeout: "return",
+  ...(WEBHOOK_SECRET ? { secretToken: WEBHOOK_SECRET } : {}),
+});
