@@ -4300,6 +4300,11 @@ function closeFinishedRoomLocally(roomId){
   if(gameOn||cardsOn) navGo('screenLobby','navHome');
 }
 
+function followGame(){
+  const on=id=>document.getElementById(id)?.classList.contains('active');
+  if(localStorage.getItem('gameViewDetached')==='1') return;
+  if(on('screenCards')||on('screenGame')) navGo('screenGame','navGame');
+}
 function handle(msg){
   if(msg.roomId && ROOM_SCOPED_MESSAGES.has(msg.type) && String(msg.roomId)!==String(myRoomId||'')){
     handleBackgroundRoomMessage(msg);
@@ -4509,7 +4514,6 @@ function handle(msg){
 
     case 'yourCard':
       restoreSelection=null;
-      try{ localStorage.removeItem('gameViewDetached'); }catch(e){}
       myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
       myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
       myCardId3=msg.cardId3||null; myCardNumbers3=msg.cardNumbers3||[];
@@ -4521,7 +4525,7 @@ function handle(msg){
       resetAutomaticGameState();
       renderBothCards();
       document.getElementById('bingoBtn').style.display='flex';
-      navGo('screenGame','navGame');
+      followGame();
       break;
 
     case 'spectating':
@@ -4532,7 +4536,7 @@ function handle(msg){
       syncPlayerAreaStats(msg);
       claimWindowOpen=false;
       renderSpectatorView({playerCount:msg.playerCount||0,calledNumbers:msg.calledNumbers||[],stakeAmount:msg.stakeAmount||0});
-      navGo('screenGame','navGame');
+      followGame();
       break;
     case 'gameStart':
       activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
@@ -4546,7 +4550,7 @@ function handle(msg){
       updateActivePlayers(msg.players||msg.activePlayers||[]);
       renderBothCards();
       refreshCardCells();
-      navGo('screenGame','navGame'); break;
+      followGame(); break;
 
     case 'reconnected':
       pendingStakeJoin=null;
@@ -4561,7 +4565,7 @@ function handle(msg){
       autoClaimSent=false;
       if(!myCardId&&!myCardId2){
         renderSpectatorView({playerCount:msg.playerCount||0,calledNumbers:msg.calledNumbers||[],stakeAmount:msg.stakeAmount||0});
-        navGo('screenGame','navGame');
+        followGame();
         break;
       }
       activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
@@ -4575,7 +4579,7 @@ function handle(msg){
        if(initialLast){const latestEl=document.getElementById('tb'+initialLast);if(latestEl)latestEl.classList.add('latest');prevLastCalled=initialLast;}
       renderBothCards();
       refreshCardCells();
-      navGo('screenGame','navGame'); break;
+      followGame(); break;
 
     case 'numberCalled': onNumberCalled(msg); break;
 
