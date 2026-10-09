@@ -4541,6 +4541,7 @@ function handle(msg){
       syncPlayerAreaStats(msg);
       resetAutomaticGameState();
       resetTrackerBoard(); claimWindowOpen=false;
+      for(const k in pendingCardSelections) delete pendingCardSelections[k];
       updateActivePlayers(msg.players||msg.activePlayers||[]);
       renderBothCards();
       refreshCardCells();
