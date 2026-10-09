@@ -5795,7 +5795,7 @@ function stakeAmountText(a){ const x=Number(a); if(!Number.isFinite(x)) return '
 // ─── ROOMS (a stake can have several rooms) ──────────────────────
 let lobbyStakesNow=[];            // last stake list from the server (each stake has a `rooms` array)
 // true: the room page is shown for EVERY stake (even with one room); false: only when a stake has 2+ rooms
-const ALWAYS_SHOW_ROOM_PAGE=true;
+const ALWAYS_SHOW_ROOM_PAGE=false;
 let roomsPageStake=null;          // stakeId (primary id) of the stake whose room page is open
 // the rooms of a stake; an older server (no `rooms`) means exactly one room
 function stakeRooms(s){ return (s&&Array.isArray(s.rooms)&&s.rooms.length)?s.rooms:[s]; }
