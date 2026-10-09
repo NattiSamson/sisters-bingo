@@ -5794,6 +5794,8 @@ let knownStakes=[];               // stake amounts the database offers (from the
 function stakeAmountText(a){ const x=Number(a); if(!Number.isFinite(x)) return '0'; return Number.isInteger(x)?String(x):String(Number(x.toFixed(2))); }
 // ─── ROOMS (a stake can have several rooms) ──────────────────────
 let lobbyStakesNow=[];            // last stake list from the server (each stake has a `rooms` array)
+// true: the room page is shown for EVERY stake (even with one room); false: only when a stake has 2+ rooms
+const ALWAYS_SHOW_ROOM_PAGE=true;
 let roomsPageStake=null;          // stakeId (primary id) of the stake whose room page is open
 // the rooms of a stake; an older server (no `rooms`) means exactly one room
 function stakeRooms(s){ return (s&&Array.isArray(s.rooms)&&s.rooms.length)?s.rooms:[s]; }
@@ -5819,7 +5821,7 @@ function enterRoom(tableId){
 // tap on a stake in the lobby
 function openStake(s){
   const rs=stakeRooms(s);
-  if(rs.length<=1){ enterRoom(rs[0].stakeId); return; }       // one room: straight to card selection
+  if(rs.length<=1&&!ALWAYS_SHOW_ROOM_PAGE){ enterRoom(rs[0].stakeId); return; }       // one room: straight to card selection
   const mineRoom=rs.find(r=>joinedStakes.has(r.stakeId));
   if(mineRoom){ enterRoom(mineRoom.stakeId); return; }          // I already play in one of them
   roomsPageStake=s.stakeId; renderRoomsPage(); navGo('screenRooms','navHome');
@@ -5987,7 +5989,7 @@ function leaveGameView(){
 }
 
 function leaveRoom(){
-  const _grp=stakeOfTable(myStakeId), _multi=_grp&&stakeRooms(_grp).length>1&&!(myCardId||myCardId2||myCardId3||myCardId4)?_grp.stakeId:null;
+  const _grp=stakeOfTable(myStakeId), _multi=_grp&&(ALWAYS_SHOW_ROOM_PAGE||stakeRooms(_grp).length>1)&&!(myCardId||myCardId2||myCardId3||myCardId4)?_grp.stakeId:null;
   // BACK with cartelas picked: he stays in the game (seat and picks are kept on the server) and only returns to the
   // lobby; he can open the game again from there. Cartelas are released only when he deselects them himself.
   if(myRoomId && (myCardId||myCardId2||myCardId3||myCardId4)){
