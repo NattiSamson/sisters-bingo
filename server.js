@@ -103,7 +103,7 @@ const PORT   = process.env.PORT || 3000;
 // Open https://your-server/health in a browser to see that the server is up (no secrets are shown).
 app.get('/health',(req,res)=>{
   res.json({ok:true,time:new Date().toISOString(),uptimeSeconds:Math.round(process.uptime()),node:process.version,
-    stakesLoaded:STAKES.length,rooms:Object.keys(rooms).length,players:Object.keys(clients).length,
+    stakesLoaded:STAKES.length,stakeList:STAKES.map(x=>({id:x.id,amount:x.amount,room:x.roomName||x.dbRoomId,showRoomPage:x.showRoomPage})),rooms:Object.keys(rooms).length,players:Object.keys(clients).length,
     botTokenSet:!!BOT_TOKEN,unverifiedAuth:ALLOW_UNVERIFIED_AUTH});
 });
 app.use(express.static(path.join(__dirname, 'public')));
@@ -163,7 +163,7 @@ async function loadStakesFromDb(){
       const group=stakeKey(s.amount);
       const first=!seen.has(group); seen.add(group);
       next.push({
-        id:first?group:group+'r'+s.roomId, group, dbStakeId:s.dbId, dbRoomId:s.roomId, roomName:s.roomName||'', name:s.displayName||s.name,
+        id:first?group:group+'r'+s.roomId, group, showRoomPage:s.showRoomPage===true, dbStakeId:s.dbId, dbRoomId:s.roomId, roomName:s.roomName||'', name:s.displayName||s.name,
         amount:s.amount,
         maxPlayers:s.maxPlayers||400,
         cardLimit:Math.max(1,Math.min(TOTAL_CARDS,s.cardCount||TOTAL_CARDS)),
@@ -175,7 +175,7 @@ async function loadStakesFromDb(){
     }
     if(!next.length){ console.warn('⚠️ getActiveStakes returned no active stakes (bingo_stakes + bingo_room_stakes + bingo_rooms must be active)'); retryStakesSoon(); return false; }
     STAKES.splice(0,STAKES.length,...next);
-    console.log('✅ Stakes loaded from database:',next.map(x=>`${x.id}=${x.amount} (room ${x.dbRoomId}, ${x.minPlayers}-${x.maxPlayers} players, ${x.maxCards} cards)`).join(' | '));
+    console.log('✅ Stakes loaded from database:',next.map(x=>`${x.id}=${x.amount} (room ${x.dbRoomId}, ${x.minPlayers}-${x.maxPlayers} players, ${x.maxCards} cards, room page ${x.showRoomPage?'on':'off'})`).join(' | '));
     broadcastLobby();
     return true;
   }catch(e){ console.error('loadStakesFromDb:',e.message); retryStakesSoon(); return false; }
@@ -288,9 +288,8 @@ async function loadUser(tid,retries=6,delayMs=500) {
         const r=await bingoDb.getUserWalletBalances(id);
         if(!r) return null;                      // genuinely not registered
         const prev=userCache[id]||{};
-        const phone=r.phone||'';
         const u={
-          userId:Number(r.user_id), name:r.name||'', phone
+          userId:Number(r.user_id), name:r.name||''
         };
         applyWallets(u,walletsFromRow(r));
         // blocked / inactive flags are looked up once per user, not on every refresh
@@ -460,7 +459,7 @@ function buildLobbyStakes(){
       return{stakeId:s.id,roomId:s.dbRoomId,name:s.roomName||'',amount:s.amount,maxPlayers:s.maxPlayers,minPlayers:s.minPlayers||2,maxCards:s.maxCards||4,
         playerCount:pc,status:st,countdown:r&&st==='countdown'?r.countdownLeft:0,pot:r?(r.pot||0):0,called:r&&r.calledNumbers?r.calledNumbers.length:0,full:pc>=s.maxPlayers};});
     const f=rs[0], cd=rs.filter(x=>x.status==='countdown');
-    return{stakeId:f.stakeId,amount:f.amount,maxPlayers:f.maxPlayers,maxCards:f.maxCards,
+    return{stakeId:f.stakeId,amount:f.amount,maxPlayers:f.maxPlayers,maxCards:f.maxCards,showRoomPage:list[0].showRoomPage===true,
       playerCount:rs.reduce((a,x)=>a+x.playerCount,0),
       status:cd.length?'countdown':(rs.some(x=>x.status==='waiting')?'waiting':f.status),
       countdown:cd.length?Math.min(...cd.map(x=>x.countdown)):0,
@@ -1508,7 +1507,7 @@ async function getBingoProfile(tid){
   const hit=profileCache.get(tid);
   if(hit&&Date.now()-hit.t<PROFILE_TTL_MS) return hit.data;
 
-  // A signed-in player is already in userCache (userId, name, phone): start the dashboard at once,
+  // A signed-in player is already in userCache (userId, name): start the dashboard at once,
   // no extra wallet query first. Only an unknown user is loaded from the database.
   let u=userCache[tid];
   if(!u||!u.userId) u=await loadUser(tid,3,300);
@@ -1559,7 +1558,6 @@ async function getBingoProfile(tid){
   const out={
     telegramId:String(tid),
     name:u.name||'',
-    phone:u.phone||'',
     balance:round2(wallets.main+wallets.play),          // header amount (main + play)
     main_wallet:wallets.main,
     play_wallet:wallets.play,
