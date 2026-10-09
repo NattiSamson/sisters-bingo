@@ -3254,6 +3254,8 @@ body.game-screen-active > .bottom-nav{
 <style id="authCss">
 /* until the server has accepted the Telegram login (or refused it) the lobby shows only the status pill */
 html body.auth-pending #screenLobby>*:not(#lobbyConn):not(#authX):not(#authY){display:none!important}
+/* the status message sits in the middle of the page while the lobby is hidden */
+html body.auth-pending #screenLobby:not(#q1):not(#q2) #lobbyConn:not([hidden]){position:fixed!important;top:50%!important;left:50%!important;transform:translate(-50%,-50%)!important;margin:0!important;width:max-content!important;max-width:calc(100vw - 48px)!important;padding:14px 20px!important;font-size:15px!important;text-align:center!important;justify-content:center!important;z-index:5}
 html body.auth-pending .bottom-nav:not(#authX),html body.auth-pending #balanceEl:not(#authX),html body.auth-pending #soundBtn:not(#authX){display:none!important}
 </style>
 <style id="roomsCss">
