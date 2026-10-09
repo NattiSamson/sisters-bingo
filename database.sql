@@ -2,8 +2,6 @@
 -- PostgreSQL database dump
 --
 
-
-
 -- Dumped from database version 18.6 (4e955f5)
 -- Dumped by pg_dump version 18.4
 
@@ -13782,6 +13780,4 @@ ALTER TABLE ONLY public.withdrawals
 --
 -- PostgreSQL database dump complete
 --
-
-
 
