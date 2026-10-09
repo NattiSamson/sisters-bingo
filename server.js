@@ -158,10 +158,12 @@ async function loadStakesFromDb(){
     const list=await bingoDb.getActiveStakes();
     const seen=new Set(), next=[];
     for(const s of list){
-      if(seen.has(stakeKey(s.amount))) continue;   // one room per stake
-      seen.add(stakeKey(s.amount));
+      // a stake can have SEVERAL rooms. The first (lowest id) room keeps the plain id (st10) so existing
+      // clients keep working; further rooms get st10r<roomId>. `group` ties the rooms of one stake together.
+      const group=stakeKey(s.amount);
+      const first=!seen.has(group); seen.add(group);
       next.push({
-        id:stakeKey(s.amount), dbStakeId:s.dbId, dbRoomId:s.roomId, name:s.displayName||s.name,
+        id:first?group:group+'r'+s.roomId, group, dbStakeId:s.dbId, dbRoomId:s.roomId, roomName:s.roomName||'', name:s.displayName||s.name,
         amount:s.amount,
         maxPlayers:s.maxPlayers||400,
         cardLimit:Math.max(1,Math.min(TOTAL_CARDS,s.cardCount||TOTAL_CARDS)),
@@ -362,7 +364,7 @@ function getOrCreateRoom(sid){
   if(r) return r;
   const s=STAKES.find(s=>s.id===sid), roomId=uuidv4();
   r={roomId,stakeId:sid,stake:s.amount,maxPlayers:s.maxPlayers,cardLimit:s.cardLimit,
-     dbStakeId:s.dbStakeId||null,dbRoomId:s.dbRoomId||null,minPlayers:s.minPlayers||2,maxCards:s.maxCards||4,selectionSeconds:s.selectionSeconds||0,
+     group:s.group||sid,dbStakeId:s.dbStakeId||null,dbRoomId:s.dbRoomId||null,minPlayers:s.minPlayers||2,maxCards:s.maxCards||4,selectionSeconds:s.selectionSeconds||0,
      status:'waiting',players:[],calledNumbers:[],
      availableNumbers:Array.from({length:75},(_,i)=>i+1),callTimer:null,countdownTimer:null,claimEvalTimer:null,
      countdownLeft:Math.ceil((s.selectionSeconds?s.selectionSeconds*1000:LOBBY_WAIT_MS)/1000),claimWindowOpen:false,claimedThisRound:[],resetCountdownTimer:null,resetTimer:null,
@@ -444,6 +446,27 @@ function relinkAllRooms(client,ws,tid){
   });
 }
 const broadcast=(room,msg)=>{const s=JSON.stringify({roomId:room.roomId,stakeId:room.stakeId,gameId:room.dbGameCode||undefined,...msg});room.players.forEach(p=>{if(p.ws&&p.ws.readyState===WebSocket.OPEN)p.ws.send(s);});};
+// Lobby payload: one entry per stake (amount); a stake with several rooms lists them in `rooms`.
+function liveRoomOf(sid){
+  const all=Object.values(rooms).filter(r=>r.stakeId===sid);
+  return all.find(r=>r.status==='waiting'||r.status==='countdown')||all[0]||null;
+}
+function buildLobbyStakes(){
+  const groups=new Map();
+  for(const s of STAKES){ const g=s.group||s.id; if(!groups.has(g)) groups.set(g,[]); groups.get(g).push(s); }
+  return [...groups.values()].map(list=>{
+    const rs=list.map(s=>{ const r=liveRoomOf(s.id);
+      const pc=r?r.players.length:0, st=r?r.status:'waiting';
+      return{stakeId:s.id,roomId:s.dbRoomId,name:s.roomName||'',amount:s.amount,maxPlayers:s.maxPlayers,minPlayers:s.minPlayers||2,maxCards:s.maxCards||4,
+        playerCount:pc,status:st,countdown:r&&st==='countdown'?r.countdownLeft:0,pot:r?(r.pot||0):0,called:r&&r.calledNumbers?r.calledNumbers.length:0,full:pc>=s.maxPlayers};});
+    const f=rs[0], cd=rs.filter(x=>x.status==='countdown');
+    return{stakeId:f.stakeId,amount:f.amount,maxPlayers:f.maxPlayers,maxCards:f.maxCards,
+      playerCount:rs.reduce((a,x)=>a+x.playerCount,0),
+      status:cd.length?'countdown':(rs.some(x=>x.status==='waiting')?'waiting':f.status),
+      countdown:cd.length?Math.min(...cd.map(x=>x.countdown)):0,
+      rooms:rs};
+  });
+}
 function broadcastLobby(){
   // Debounced: many joins/leaves happening in quick succession (busy lobby with
   // hundreds of players) will collapse into a single broadcast every 250ms,
@@ -452,8 +475,7 @@ function broadcastLobby(){
   broadcastLobby._pending=true;
   setTimeout(()=>{
     broadcastLobby._pending=false;
-    const payload=STAKES.map(s=>{const r=Object.values(rooms).find(r=>r.stakeId===s.id);
-      return{stakeId:s.id,amount:s.amount,maxPlayers:s.maxPlayers,maxCards:s.maxCards||4,playerCount:r?r.players.length:0,status:r?r.status:'waiting',countdown:r&&r.status==='countdown'?r.countdownLeft:0};});
+    const payload=buildLobbyStakes();
     Object.values(clients).forEach(c=>{
       if(!c.ws||c.ws.readyState!==WebSocket.OPEN) return;
       // stakes where this player has a game running (shown as "In game" in the lobby)
@@ -1017,8 +1039,7 @@ wss.on('connection',(ws)=>{
   const client={playerId,playerName:'',telegramId:null,balance:0,roomId:null,rooms:new Set(),ws};
   clients[playerId]=client; ws._pid=playerId;
 
-  const lobbyStakes=STAKES.map(s=>{const r=Object.values(rooms).find(r=>r.stakeId===s.id);
-    return{stakeId:s.id,amount:s.amount,maxPlayers:s.maxPlayers,maxCards:s.maxCards||4,playerCount:r?r.players.length:0,status:r?r.status:'waiting',countdown:r&&r.status==='countdown'?r.countdownLeft:0};});
+  const lobbyStakes=buildLobbyStakes();
   send(ws,{type:'connected',playerId,balance:0,stakes:lobbyStakes});
 
   ws.on('message',async raw=>{
