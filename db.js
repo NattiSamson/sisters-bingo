@@ -255,7 +255,8 @@ async getActiveStakes() {
 
         ORDER BY
             bs.display_order ASC,
-            bs.amount ASC
+            bs.amount ASC,
+            br.id ASC
     `);
 
     return rows.map(row => ({
