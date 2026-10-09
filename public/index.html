@@ -3251,6 +3251,7 @@ body.game-screen-active > .bottom-nav{
   <div class="loading-text" id="loadingText">Connecting<u class="lc-dots"><s></s><s></s><s></s></u></div>
 </div>
 
+<style id="authCss">body.auth-blocked .lb-tip{display:none!important}</style>
 <style id="roomsCss">
 #screenRooms{padding:12px 14px 90px!important}
 .rm-back,.rm-go{cursor:pointer}.rm-card.mine{border-color:#ffd43b}
@@ -4592,7 +4593,7 @@ function handle(msg){
       break;
 
     case 'authSuccess':
-      if(authBlocked){ authBlocked=false; }
+      if(authBlocked){ authBlocked=false; document.body.classList.remove('auth-blocked'); }
   // Accept a WebSocket balance only for a confirmed registered account.
   myName=msg.playerName||myName||'Player';
   if(msg.wallets) setWallets(msg.wallets);
@@ -5871,10 +5872,10 @@ setInterval(()=>{   // countdowns on the room page tick between server updates
   });
 },1000);
 function showAuthBlockedNotice(){
-  const grid=document.getElementById('stakesGrid'); if(!grid) return;
-  const e=document.createElement('div'); e.className='lb-empty'; e.textContent='Open the game from Our Telegram Bot';
-  grid.replaceChildren(e);
+  // login refused: nothing of the lobby is shown (no stake cards, no tip); only the status pill above explains why
+  const grid=document.getElementById('stakesGrid'); if(grid) grid.replaceChildren();
   const a=document.getElementById('lobbyActivePlayers'); if(a) a.innerText='0';
+  document.body.classList.add('auth-blocked');
 }
 function renderStakes(arr,fromCache){
   const grid=document.getElementById('stakesGrid');
