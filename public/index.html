@@ -1193,6 +1193,64 @@ body{
 }
 /* If the active game state does not exist, GAME always returns to the lobby. */
 .card-pending{opacity:.88;transform:scale(.98);transition:transform .08s ease,opacity .08s ease;}
+
+/* ═══ WINNER'S RESULT SCREEN: GOLD ═══ */
+.winner-overlay.result-winner{
+  background:
+    radial-gradient(circle at 50% 14%,rgba(255,205,70,.34),transparent 46%),
+    radial-gradient(circle at 50% 108%,rgba(255,160,0,.20),transparent 52%),
+    linear-gradient(180deg,#120d02 0%,#0a0804 100%)!important;
+}
+.winner-overlay.result-winner::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(2px 2px at 12% 22%,rgba(255,233,160,.9),transparent 60%),
+    radial-gradient(2px 2px at 82% 16%,rgba(255,233,160,.8),transparent 60%),
+    radial-gradient(1.5px 1.5px at 30% 62%,rgba(255,233,160,.7),transparent 60%),
+    radial-gradient(2px 2px at 90% 58%,rgba(255,233,160,.8),transparent 60%),
+    radial-gradient(1.5px 1.5px at 6% 80%,rgba(255,233,160,.7),transparent 60%);
+  animation:goldTwinkle 2.4s ease-in-out infinite alternate}
+@keyframes goldTwinkle{from{opacity:.35}to{opacity:1}}
+@keyframes goldShimmer{0%{background-position:0% 50%}100%{background-position:200% 50%}}
+.winner-overlay.result-winner .winner-trophy{
+  filter:drop-shadow(0 0 22px rgba(255,200,40,.95)) drop-shadow(0 0 48px rgba(255,160,0,.55))}
+.winner-overlay.result-winner .winner-label{
+  font-family:'Orbitron',sans-serif;font-size:22px;font-weight:900;letter-spacing:6px;
+  background:linear-gradient(100deg,#b8860b 0%,#ffe27a 25%,#fff7c8 50%,#ffd24a 75%,#b8860b 100%);
+  background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;
+  animation:goldShimmer 3s linear infinite;text-shadow:none}
+.winner-overlay.result-winner .winner-name{
+  background:linear-gradient(100deg,#d4a017 0%,#ffe27a 30%,#fff3b0 50%,#ffd24a 70%,#d4a017 100%);
+  background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;
+  animation:goldShimmer 3.5s linear infinite;text-shadow:none;filter:drop-shadow(0 0 14px rgba(255,190,40,.55))}
+.winner-overlay.result-winner .winner-amount{
+  font-family:'Orbitron',sans-serif;font-size:30px;font-weight:900;
+  background:linear-gradient(180deg,#fff7c8 0%,#ffd24a 45%,#c98a0a 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 16px rgba(255,190,40,.6))}
+.winner-overlay.result-winner .winner-split-tag{
+  background:linear-gradient(135deg,#ffe27a,#d4a017);color:#2b1c00;border:1px solid #fff0a8;font-weight:800;
+  box-shadow:0 0 16px rgba(255,200,60,.45)}
+.winner-overlay.result-winner .winner-msg{color:#f6e3a1}
+.winner-overlay.result-winner .result-card-wrap{
+  background:linear-gradient(160deg,#2a2008 0%,#17110a 100%)!important;
+  border:2px solid transparent!important;
+  background-image:linear-gradient(160deg,#2a2008,#17110a),linear-gradient(135deg,#fff3b0,#d4a017 35%,#8a5a00 60%,#ffe27a)!important;
+  background-origin:border-box!important;background-clip:padding-box,border-box!important;
+  box-shadow:0 0 28px rgba(255,190,40,.38),0 14px 35px rgba(0,0,0,.5)!important}
+.winner-overlay.result-winner .result-card-body{background:rgba(255,215,100,.05)!important;border-color:rgba(255,200,60,.3)!important}
+.winner-overlay.result-winner .result-card-title{color:#ffe27a!important;text-shadow:0 0 12px rgba(255,190,40,.45)}
+.winner-overlay.result-winner .result-card-cell.winning{
+  background:linear-gradient(145deg,#fff3b0 0%,#ffd24a 45%,#e0a010 100%);color:#2b1c00;
+  box-shadow:0 0 12px rgba(255,200,60,.7),inset 0 0 0 1px rgba(255,255,255,.55)}
+.winner-overlay.result-winner .result-card-cell.called{background:#8a6414;color:#ffeeb0}
+.winner-overlay.result-winner .result-card-cell.free{color:#b8860b}
+.winner-overlay.result-winner .result-status{color:#ffe27a;text-shadow:0 0 10px rgba(255,190,40,.4)}
+.winner-overlay.result-winner #resetCountdown{color:#ffd24a!important}
+.winner-overlay.result-winner .winner-chip{border-color:rgba(255,215,100,.6);background:rgba(255,215,100,.12)}
+.winner-overlay.result-winner .winner-chip.active{background:linear-gradient(135deg,#fff3b0,#e0a010);color:#2b1c00}
+.winner-overlay.result-winner .winner-chip.me{box-shadow:0 0 0 2px #fff3b0,0 0 14px rgba(255,200,60,.8)}
+.winner-overlay.result-winner .result-card-nav button{border-color:rgba(255,215,100,.5);background:rgba(255,215,100,.12);color:#ffe27a}
+.winner-overlay.result-winner .result-dots i.on{background:#ffd24a}
 </style>
 
 <style id="mela-responsive-layout-fix">
@@ -5078,6 +5136,7 @@ function showWinnerOverlay(msg){
              (Array.isArray(msg.winnerTelegramIds)&&msg.winnerTelegramIds.map(String).includes(String(telegramId)));
   const noWinner=!!msg.noWinner;
   ov.classList.toggle('result-loser',!iWon&&!noWinner);
+  ov.classList.toggle('result-winner',!!iWon&&!noWinner);
   document.getElementById('winnerLabel').innerText=noWinner?'ዙሩ ተጠናቋል':(iWon?'BINGO!':'ዙሩ ተጠናቋል');
   document.getElementById('resultTrophy').innerText=noWinner?'🎯':(iWon?'🏆':'😔');
   document.getElementById('resultConfetti').style.display=iWon?'block':'none';
@@ -5164,7 +5223,7 @@ let cCv,cCt,cPs=[],cRaf;
 function startConfetti(){
   if(!cCv){cCv=document.createElement('canvas');cCv.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:501';document.body.appendChild(cCv);}
   cCv.width=window.innerWidth; cCv.height=window.innerHeight; cCt=cCv.getContext('2d'); cPs=[];
-  const cols=['#facc15','#22c55e','#8b5cf6','#ef4444','#3b82f6','#fff'];
+  const cols=['#ffd700','#ffc107','#ffe082','#fff3b0','#ff9800','#ffffff','#e0a010'];
   for(let i=0;i<120;i++) cPs.push({x:Math.random()*cCv.width,y:-10-Math.random()*cCv.height*.5,w:6+Math.random()*8,h:10+Math.random()*8,color:cols[Math.floor(Math.random()*cols.length)],vy:3+Math.random()*5,vx:(Math.random()-.5)*3,rot:Math.random()*360,rs:(Math.random()-.5)*8});
   animC();
 }
