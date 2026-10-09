@@ -229,6 +229,7 @@ async getActiveStakes() {
             bs.is_active,
             bs.display_order,
             bs.display_name,
+            bs.show_room_page,
 
             br.id AS room_id,
             br.name AS room_name,
@@ -267,6 +268,7 @@ async getActiveStakes() {
         displayName: row.display_name,
         amount: Number(row.amount),
 
+        showRoomPage: row.show_room_page === true,
         isActive: row.is_active,
         displayOrder: Number(row.display_order),
 
