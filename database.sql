@@ -1,8 +1,7 @@
 --
 -- PostgreSQL database dump
 --
-
--- Dumped from database version 18.6 (4e955f5)
+-- Dumped from database version 18.6 (c021049)
 -- Dumped by pg_dump version 18.4
 
 SET statement_timeout = 0;
@@ -11145,6 +11144,7 @@ CREATE TABLE public.bingo_stakes (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     display_name character varying(20) NOT NULL,
+    show_room_page boolean DEFAULT false NOT NULL,
     CONSTRAINT bingo_stakes_amount_positive CHECK ((amount > (0)::numeric)),
     CONSTRAINT bingo_stakes_display_order_check CHECK ((display_order >= 0))
 );
@@ -13780,4 +13780,3 @@ ALTER TABLE ONLY public.withdrawals
 --
 -- PostgreSQL database dump complete
 --
-
