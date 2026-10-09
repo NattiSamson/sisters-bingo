@@ -3234,7 +3234,7 @@ body.game-screen-active > .bottom-nav{
 }
 </style>
 </head>
-<body>
+<body class="auth-pending">
 
 <div class="navbar">
   <div class="header-left">
@@ -3251,7 +3251,11 @@ body.game-screen-active > .bottom-nav{
   <div class="loading-text" id="loadingText">Connecting<u class="lc-dots"><s></s><s></s><s></s></u></div>
 </div>
 
-<style id="authCss">body.auth-blocked .lb-tip{display:none!important}</style>
+<style id="authCss">
+/* until the server has accepted the Telegram login (or refused it) the lobby shows only the status pill */
+html body.auth-pending #screenLobby>*:not(#lobbyConn):not(#authX):not(#authY){display:none!important}
+html body.auth-pending .bottom-nav:not(#authX),html body.auth-pending #balanceEl:not(#authX),html body.auth-pending #soundBtn:not(#authX){display:none!important}
+</style>
 <style id="roomsCss">
 #screenRooms{padding:12px 14px 90px!important}
 .rm-back,.rm-go{cursor:pointer}.rm-card.mine{border-color:#ffd43b}
@@ -4485,7 +4489,9 @@ const ROOM_SCOPED_MESSAGES=new Set(['numberCalled','gameStart','yourCard','spect
   'disqualified','claimTooLate']);
 const bgGames={};                 // roomId -> {stakeId, called, phase}
 let pendingStakeJoin=null;        // stake tapped while a saved game was being reconnected
-let authBlocked=false;            // true after the server refused the Telegram login: the stake list stays hidden
+let authBlocked=false;            // true after the server refused the Telegram login: the lobby stays hidden
+let authPending=true;             // true until the Telegram login is accepted (lobby hidden meanwhile)
+let pendingStakes=null;           // stake list received before the login was accepted; shown after it
 let joinedStakes=new Set();       // stakes where I have a running game (lobby "In game" tag)
 function stakeLabel(stakeId){ const m=String(stakeId||'').match(/([0-9]+)/); return m?`Play ${m[1]}`:'Game'; }
 function iWonGame(msg){
@@ -4564,7 +4570,7 @@ function handle(msg){
       waitForTelegramId(40,250).then(async tid=>{
         if(!tid){
           
-          setTimeout(()=>{ const retryId=getTelegramId(); if(retryId) sendTelegramAuth(retryId); },1000);
+          setTimeout(()=>{ const retryId=getTelegramId(); if(retryId) sendTelegramAuth(retryId); else blockLobby(); },1000);
           return;
         }
         telegramId=tid;
@@ -4576,10 +4582,7 @@ function handle(msg){
 
     case 'authFailed':
       // the server could not verify the Telegram login: the game must be opened from Telegram
-      authBlocked=true;
-      try{ localStorage.removeItem('melaLobbyStakes'); }catch(e){}
-      showAuthBlockedNotice();
-      showLobbyStatus('Open the game from Our Telegram Bot',true);
+      blockLobby();
       break;
 
     case 'authRetry':
@@ -4593,7 +4596,7 @@ function handle(msg){
       break;
 
     case 'authSuccess':
-      if(authBlocked){ authBlocked=false; document.body.classList.remove('auth-blocked'); }
+      if(authBlocked||authPending){ authBlocked=false; authPending=false; document.body.classList.remove('auth-pending'); showLobbyStatus('',false); if(pendingStakes){ const ps=pendingStakes; pendingStakes=null; renderStakes(ps); } }
   // Accept a WebSocket balance only for a confirmed registered account.
   myName=msg.playerName||myName||'Player';
   if(msg.wallets) setWallets(msg.wallets);
@@ -5871,16 +5874,20 @@ setInterval(()=>{   // countdowns on the room page tick between server updates
     else{ el.removeAttribute('data-cd'); sp.textContent=LOBBY_I18N.starting; }
   });
 },1000);
-function showAuthBlockedNotice(){
-  // login refused: nothing of the lobby is shown (no stake cards, no tip); only the status pill above explains why
+function blockLobby(){
+  // login refused / no Telegram identity: nothing of the lobby is shown, only the status pill explains why
+  authBlocked=true; authPending=true; pendingStakes=null;
+  try{ localStorage.removeItem('melaLobbyStakes'); }catch(e){}
+  document.body.classList.add('auth-pending');
   const grid=document.getElementById('stakesGrid'); if(grid) grid.replaceChildren();
   const a=document.getElementById('lobbyActivePlayers'); if(a) a.innerText='0';
-  document.body.classList.add('auth-blocked');
+  showLobbyStatus('Open the game from Our Telegram Bot',true);
 }
 function renderStakes(arr,fromCache){
   const grid=document.getElementById('stakesGrid');
   if(!grid) return;
-  if(authBlocked){ showAuthBlockedNotice(); return; }
+  if(authBlocked) return;
+  if(authPending){ pendingStakes=arr; return; }     // shown as soon as the login is accepted
   // the stakes are exactly what the server (database) sent, lowest amount first
   const stakes=(Array.isArray(arr)?arr:[]).filter(s=>Number(s.amount)>0).slice().sort((a,b)=>Number(a.amount)-Number(b.amount));
   lobbyHasStakes=true; lobbyFromCache=!!fromCache;
