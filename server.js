@@ -450,16 +450,29 @@ function liveRoomOf(sid){
   const all=Object.values(rooms).filter(r=>r.stakeId===sid);
   return all.find(r=>r.status==='waiting'||r.status==='countdown')||all[0]||null;
 }
+// Players counted in the lobby: before the start = users holding at least one cartela (2-4 cartelas still count once);
+// once the round runs = the users taking part in it. Never above the room's max_players.
+function roomHeadcount(r,max){
+  if(!r) return 0;
+  const n=(r.status==='waiting'||r.status==='countdown')?r.players.filter(p=>getPlayerCardCount(p)>0).length:livePlayerCount(r);
+  return max>0?Math.min(n,max):n;
+}
+// everybody connected to the server right now (one person with several tabs / devices counts once)
+function onlineCount(){
+  const ids=new Set();
+  for(const c of Object.values(clients)){ if(c.ws&&c.ws.readyState===WebSocket.OPEN) ids.add(c.telegramId?'t'+c.telegramId:'p'+c.playerId); }
+  return ids.size;
+}
 function buildLobbyStakes(){
   const groups=new Map();
   for(const s of STAKES){ const g=s.group||s.id; if(!groups.has(g)) groups.set(g,[]); groups.get(g).push(s); }
   return [...groups.values()].map(list=>{
     const rs=list.map(s=>{ const r=liveRoomOf(s.id);
-      const pc=r?r.players.length:0, st=r?r.status:'waiting';
+      const pc=roomHeadcount(r,s.maxPlayers), st=r?r.status:'waiting';
       return{stakeId:s.id,roomId:s.dbRoomId,name:s.roomName||'',amount:s.amount,maxPlayers:s.maxPlayers,minPlayers:s.minPlayers||2,maxCards:s.maxCards||4,
         playerCount:pc,status:st,countdown:r&&st==='countdown'?r.countdownLeft:0,pot:r?(r.pot||0):0,called:r&&r.calledNumbers?r.calledNumbers.length:0,full:pc>=s.maxPlayers};});
     const f=rs[0], cd=rs.filter(x=>x.status==='countdown');
-    return{stakeId:f.stakeId,amount:f.amount,maxPlayers:f.maxPlayers,maxCards:f.maxCards,showRoomPage:list[0].showRoomPage===true,
+    return{stakeId:f.stakeId,amount:f.amount,maxPlayers:rs.reduce((a,x)=>a+x.maxPlayers,0),maxCards:f.maxCards,showRoomPage:list[0].showRoomPage===true,
       playerCount:rs.reduce((a,x)=>a+x.playerCount,0),
       status:cd.length?'countdown':(rs.some(x=>x.status==='waiting')?'waiting':f.status),
       countdown:cd.length?Math.min(...cd.map(x=>x.countdown)):0,
@@ -474,12 +487,12 @@ function broadcastLobby(){
   broadcastLobby._pending=true;
   setTimeout(()=>{
     broadcastLobby._pending=false;
-    const payload=buildLobbyStakes();
+    const payload=buildLobbyStakes(), online=onlineCount();
     Object.values(clients).forEach(c=>{
       if(!c.ws||c.ws.readyState!==WebSocket.OPEN) return;
       // stakes where this player has a game running (shown as "In game" in the lobby)
       const joined=clientRooms(c).filter(r=>{ const pl=playerOf(r,c); return pl&&(getPlayerCardCount(pl)>0||pl.hasPaid)&&['waiting','countdown','starting','playing'].includes(r.status); }).map(r=>r.stakeId);
-      c.ws.send(JSON.stringify({type:'lobbyUpdate',stakes:payload,joined}));
+      c.ws.send(JSON.stringify({type:'lobbyUpdate',stakes:payload,joined,online}));
     });
   },250);
 }
@@ -1043,7 +1056,8 @@ wss.on('connection',(ws)=>{
   clients[playerId]=client; ws._pid=playerId;
 
   const lobbyStakes=buildLobbyStakes();
-  send(ws,{type:'connected',playerId,balance:0,stakes:lobbyStakes});
+  send(ws,{type:'connected',playerId,balance:0,stakes:lobbyStakes,online:onlineCount()});
+  broadcastLobby();
 
   ws.on('message',async raw=>{
 
@@ -1355,7 +1369,7 @@ wss.on('connection',(ws)=>{
               room.takenCardIds.add(cardId);
               const card=getCard(cardId);
               sendRoom(room,p.ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot});
-              broadcastCardDiff(room,Array.from(changedIds));
+              broadcastCardDiff(room,Array.from(changedIds)); broadcastLobby();
               const readyCount=room.players.filter(p=>p.cardId).length;
               if(readyCount>=(room.minPlayers||2)&&room.status==='waiting') startCountdown(room);
               break;
@@ -1381,7 +1395,7 @@ wss.on('connection',(ws)=>{
               p[field]=null;
               if(getPlayerCardCount(p)===0) p.hasPaid=false;
               sendRoom(room,p.ws,{type:'cardDeselected',cardId:releasedId,slot});   // all devices drop it
-              broadcastCardDiff(room,[releasedId]);
+              broadcastCardDiff(room,[releasedId]); broadcastLobby();
               break;
             }
             case 'claimBingo':{
