@@ -5433,7 +5433,7 @@ function deselectCard(slot){
 let knownStakes=[];               
 function stakeAmountText(a){ const x=Number(a); if(!Number.isFinite(x)) return '0'; return Number.isInteger(x)?String(x):String(Number(x.toFixed(2))); }
 let lobbyStakesNow=[];            
-const showRoomPageFor=s=>!s||s.showRoomPage!==false;
+const showRoomPageFor=s=>!!s&&s.showRoomPage===true;   // the server does not say / says false: one-room stakes go straight to card selection
 let roomsPageStake=null;          
 function stakeRooms(s){ return (s&&Array.isArray(s.rooms)&&s.rooms.length)?s.rooms:[s]; }
 function stakeOfTable(tid){ return lobbyStakesNow.find(x=>stakeRooms(x).some(r=>r.stakeId===tid))||null; }
