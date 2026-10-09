@@ -241,6 +241,8 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .winner-name{font-family:'Orbitron',sans-serif;font-size:24px;font-weight:900;color:var(--gold);margin:4px 0;text-shadow:0 0 20px var(--gold)}
 .winner-amount{font-size:25px;font-weight:800;color:var(--green);margin:3px 0}
 .winner-overlay.result-loser .winner-amount{color:var(--red)}
+.winner-amount-sub{font-size:13px;font-weight:800;color:#f6e3a1;margin:-2px 0 4px}
+.winner-overlay.result-winner .winner-amount-sub{color:#ffe27a;text-shadow:0 0 10px rgba(255,190,40,.4)}
 .winner-split-tag{background:rgba(245,197,24,.15);border:1px solid var(--gold);color:var(--gold);padding:4px 12px;border-radius:20px;font-size:11px;margin:4px 0}
 .winner-msg{font-size:12px;color:var(--gray);margin:3px 0 8px;max-width:310px}
 .result-card-wrap{width:min(100%,350px);background:linear-gradient(145deg,#303b4b,#243444);border:1px solid rgba(255,255,255,.16);border-radius:18px;padding:10px 10px 12px;box-shadow:0 14px 35px rgba(0,0,0,.35)}
@@ -3594,6 +3596,7 @@ body.game-screen-active > .bottom-nav{
   <div class="winner-label" id="winnerLabel">BINGO!</div>
   <div class="winner-name" id="winnerName">—</div>
   <div class="winner-amount" id="winnerAmount">0 ETB</div>
+  <div class="winner-amount-sub" id="winnerAmountSub" style="display:none"></div>
   <div class="winner-split-tag" id="splitTag" style="display:none">🤝 የተከፋፈለ ሽልማት</div>
   <div class="winner-msg" id="winnerMsg"></div>
   <div class="winners-list" id="winnersList"></div>
@@ -5148,6 +5151,18 @@ function showWinnerOverlay(msg){
   document.getElementById('resultStatus').innerText=iWon?'የሽልማት ገንዘብዎ ወደ ሂሳብዎ ተጨምሯል።':(noWinner?'ሽልማት አልተሰጠም።':'');
 
   const cards=Array.isArray(msg.winningCards)?msg.winningCards:[];
+  // a player who won with 2 or more cartelas: show the total and how it is made up
+  {
+    const sub=document.getElementById('winnerAmountSub'); sub.style.display='none';
+    const share=Number(msg.winAmount);
+    const mine=iWon?cards.filter(c=>String(c.telegramId)===String(telegramId)||String(c.playerName)===String(myName)):[];
+    if(mine.length>1&&Number.isFinite(share)){
+      const total=Math.round(share*mine.length*100)/100;
+      document.getElementById('winnerAmount').innerText=`+${total.toFixed(2)} ETB`;
+      sub.innerText=`🎯 ${mine.length} ካርቴላዎች አሸንፈዋል × ${share.toFixed(2)} ETB`;
+      sub.style.display='block';
+    }
+  }
   let winningCard=cards[0]||null;
   if(iWon){
     winningCard=cards.find(c=>String(c.telegramId)===String(telegramId))||cards.find(c=>String(c.playerName)===String(myName))||winningCard;
