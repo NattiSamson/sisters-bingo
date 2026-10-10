@@ -199,6 +199,62 @@ async function runBonusExpiry(){
 setTimeout(runBonusExpiry,30*1000);
 setInterval(runBonusExpiry,5*60*1000);
 
+// ─── BLOCKED ACCOUNTS: cut off within seconds ───────────────
+// Every BLOCK_CHECK_MS one query tells which connected accounts were blocked / deactivated meanwhile.
+//  - rooms that have not started: his cartelas are released (nothing was charged yet) and he leaves the room
+//  - running games: he stays in them (his stake is already in the prize pool); if he wins, the prize is paid
+//    into his (locked) Main wallet by the database as usual
+//  - his connection(s) are closed; sign-in is refused from now on (see telegramAuth)
+const BLOCK_CHECK_MS=15*1000;
+let blockCheckRunning=false;
+async function kickBlockedClients(){
+  if(blockCheckRunning||!bingoDb||typeof bingoDb.getAccountRestrictions!=='function') return;
+  blockCheckRunning=true;
+  try{
+    const online=Object.values(clients).filter(c=>c.telegramId&&!c.blocked&&c.ws&&c.ws.readyState===WebSocket.OPEN);
+    if(!online.length) return;
+    const r=await bingoDb.getAccountRestrictions([...new Set(online.map(c=>String(c.telegramId)))]);
+    const bad=new Set(r.blocked), idle=new Set(r.inactive);
+    for(const c of online){
+      const tid=String(c.telegramId);
+      // ── inactive: stays connected as a watcher, loses the cartelas of rooms that have not started ──
+      const nowInactive=idle.has(tid);
+      if(nowInactive!==(c.inactive===true)){
+        c.inactive=nowInactive;
+        const u=userCache[tid]; if(u){ u.inactive=nowInactive; u.flagsAt=Date.now(); }
+        console.warn(`[account] ${tid} is now ${nowInactive?'inactive (watch only)':'active again'}`);
+        send(c.ws,{type:'accountStatus',inactive:nowInactive});
+        if(nowInactive){
+          for(const room of clientRooms(c)){
+            if(room.status!=='waiting'&&room.status!=='countdown') continue;
+            const p=playerOf(room,c); if(!p||getPlayerCardCount(p)===0) continue;
+            const ids=getPlayerCardIds(p); const slots=[1,2,3,4].map(sl=>[sl,p[getCardField(sl)]]).filter(x=>x[1]);
+            releasePlayerCards(room,p);
+            slots.forEach(([sl,id])=>sendRoom(room,p.ws,{type:'cardDeselected',cardId:id,slot:sl}));
+            broadcastCardPool(room);
+          }
+        }
+        broadcastLobby();
+      }
+      // ── blocked: cut off ──
+      if(!bad.has(tid)) continue;
+      console.warn(`[block] ${c.telegramId} was blocked: disconnecting`);
+      c.blocked=true;
+      const u=userCache[String(c.telegramId)]; if(u){ u.blocked=true; u.flagsAt=Date.now(); }
+      for(const room of clientRooms(c)){
+        if(room.status==='waiting'||room.status==='countdown'){ await leaveRoom(c,room.roomId).catch(()=>{}); }
+      }
+      const socks=new Set([c.ws]);
+      for(const room of clientRooms(c)){ const p=playerOf(room,c); if(p&&p.ws&&p.ws.sockets) p.ws.sockets.forEach(x=>socks.add(x)); }
+      Object.values(clients).forEach(o=>{ if(o!==c&&String(o.telegramId||'')===String(c.telegramId)&&o.ws) socks.add(o.ws); });
+      socks.forEach(x=>{ if(x&&x.readyState===1){ try{ x.send(JSON.stringify({type:'authFailed',reason:'blocked'})); }catch(e){} try{ x.close(4003,'blocked'); }catch(e){} } });
+    }
+    broadcastLobby();
+  }catch(e){ console.error('kickBlockedClients:',e.message); }
+  finally{ blockCheckRunning=false; }
+}
+setInterval(kickBlockedClients,BLOCK_CHECK_MS);
+
 // release the seat of players who hold cartelas in a still-waiting room but have been gone for a very long time
 setInterval(()=>{
   const now=Date.now();
@@ -1131,20 +1187,28 @@ wss.on('connection',(ws)=>{
                 break;
               }
               const user=await loadUser(tid,6,500);
-              if(user&&(user.blocked||user.inactive)){
+              if(user&&user.blocked){
+                // never trust the cached flag for a refusal: ask the database again (an unblocked account gets in at once)
+                try{
+                  const f=await bingoDb.getBingoUserFlags(tid);
+                  if(f){ user.blocked=f.is_blocked===true; user.inactive=f.is_active===false; user.flagsAt=Date.now(); if(userCache[tid]) Object.assign(userCache[tid],{blocked:user.blocked,inactive:user.inactive,flagsAt:user.flagsAt}); }
+                }catch(e){ console.error('getBingoUserFlags:',e.message); }
+              }
+              if(user&&user.blocked){
                 client.blocked=true; client.telegramId=null;
-                console.warn(`[auth] blocked/inactive account refused: ${tid}`);
+                console.warn(`[auth] blocked account refused: ${tid}`);
                 send(ws,{type:'authFailed',reason:'blocked'});
                 break;
               }
               if(user){
                 client.blocked=false;
+                client.inactive=user.inactive===true;       // inactive: may look at stakes / rooms / games, cannot play
                 client.telegramId=tid;
                 applyUserToClient(client,user);
                 client.playerName=user.name||client.playerName||'Player';
                 relinkAllRooms(client,ws,tid);
                 broadcastLobby();            // tell the lobby which stakes this player is already in   // keep receiving every game this account is playing
-                send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,wallets:client.wallets,isRegistered:true});
+                send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,wallets:client.wallets,isRegistered:true,inactive:client.inactive===true});
               } else {
                 // Never convert a failed/late database lookup into a fake zero wallet.
                 send(ws,{type:'authRetry',retryAfter:1000});
@@ -1363,7 +1427,8 @@ wss.on('connection',(ws)=>{
               const p=playerOf(room,client);
               if(!p) break;
               if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'ይህ ካርቴላ ቀድሞውኑ ተመርጧል!'});
-              { const uu=userCache[String(p.telegramId||client.telegramId||'')]; if(uu&&(uu.blocked||uu.inactive)) return send(ws,{type:'error',message:'መለያዎ ለጊዜው ተዘግቷል። እባክዎ ድጋፍን ያነጋግሩ።'}); }
+              if(client.inactive===true) return send(ws,{type:'error',message:'Your account is inactive: you can watch games but cannot play. Please contact support.'});
+              { const uu=userCache[String(p.telegramId||client.telegramId||'')]; if(uu&&uu.blocked) return send(ws,{type:'error',message:'መለያዎ ለጊዜው ተዘግቷል። እባክዎ ድጋፍን ያነጋግሩ።'}); }
 
               const field=getCardField(slot);
               const previous=p[field];
