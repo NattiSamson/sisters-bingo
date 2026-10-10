@@ -5494,6 +5494,31 @@ async approveDeposit(receipt, telegramId) {
    * @returns {Promise<{id:number,is_admin:boolean,admin_role:string|null,is_active:boolean,is_blocked:boolean}|null>}
    */
   /**
+   * Account restrictions of these Telegram ids, one query for all of them.
+   * blocked  = is_blocked  -> no access at all
+   * inactive = is_active = false (and not blocked) -> may watch, cannot play
+   * @param {Array<string|number>} telegramIds
+   * @returns {Promise<{blocked:string[], inactive:string[]}>}
+   */
+  async getAccountRestrictions(telegramIds) {
+    const ids = (telegramIds || []).map(String).filter((x) => /^\d+$/.test(x));
+    if (!ids.length) return { blocked: [], inactive: [] };
+    const { rows } = await pool.query(
+      `
+      SELECT telegram_id::text AS telegram_id, is_blocked, is_active
+      FROM users
+      WHERE telegram_id = ANY($1::bigint[])
+        AND (is_blocked = TRUE OR is_active = FALSE)
+      `,
+      [ids]
+    );
+    return {
+      blocked: rows.filter((r) => r.is_blocked === true).map((r) => r.telegram_id),
+      inactive: rows.filter((r) => r.is_blocked !== true && r.is_active === false).map((r) => r.telegram_id),
+    };
+  },
+
+  /**
    * Which of these Telegram ids belong to a blocked or deactivated account (one query for all of them).
    * @param {Array<string|number>} telegramIds
    * @returns {Promise<string[]>} the blocked / inactive ids, as strings
