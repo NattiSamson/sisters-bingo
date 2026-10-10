@@ -4334,7 +4334,7 @@ function handle(msg){
       break;
 
     case 'authFailed':
-      blockLobby();
+      blockLobby(msg.reason==='blocked'?'Your account is blocked. Please contact support.':undefined);
       break;
 
     case 'authRetry':
@@ -4613,7 +4613,7 @@ function handle(msg){
       const iWon=winnerList.includes(String(myName)) ||
                  winnerList.includes(String(myPlayerId)) ||
                  (Array.isArray(msg.winnerTelegramIds)&&msg.winnerTelegramIds.map(String).includes(String(telegramId)));
-      showToast(iWon?'🏆 አሸንፈዋል! የሽልማት ገንዘብዎ ወደ ሂሳብዎ ተጨምሯል።':'ዙሩ ተጠናቋል — ሂሳብዎ በጨዋታው ሰርቨር ተስተካክሏል።','');
+      if(iWon) showToast('🏆 አሸንፈዋል! የሽልማት ገንዘብዎ ወደ ሂሳብዎ ተጨምሯል።','');
       schedulePostGameAutoRefresh(Number(msg.resetCountdown)||20);
       updatePostGameCountdown(Number(msg.resetCountdown)||20);   
       break;
@@ -5514,13 +5514,13 @@ setInterval(()=>{
   });
 },1000);
 let lobbyOnline=0;
-function blockLobby(){
+function blockLobby(text){
   authBlocked=true; authPending=true; pendingStakes=null;
   try{ localStorage.removeItem('melaLobbyStakes'); }catch(e){}
   document.body.classList.add('auth-pending');
   const grid=document.getElementById('stakesGrid'); if(grid) grid.replaceChildren();
   const a=document.getElementById('lobbyActivePlayers'); if(a) a.innerText='0';
-  showLobbyStatus('Open the game from Our Telegram Bot',true);
+  showLobbyStatus(text||'Open the game from Our Telegram Bot',true);
 }
 function renderStakes(arr,fromCache){
   const grid=document.getElementById('stakesGrid');
