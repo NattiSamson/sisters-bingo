@@ -293,14 +293,14 @@ async function loadUser(tid,retries=6,delayMs=500) {
         };
         applyWallets(u,walletsFromRow(r));
         // blocked / inactive flags are looked up once per user, not on every refresh
-        if(prev.flagsChecked){
-          u.flagsChecked=true; u.blocked=prev.blocked===true; u.inactive=prev.inactive===true;
+        if(prev.flagsChecked&&Date.now()-(prev.flagsAt||0)<120000){
+          u.flagsChecked=true; u.flagsAt=prev.flagsAt; u.blocked=prev.blocked===true; u.inactive=prev.inactive===true;
         }else{
           try{
             const f=await bingoDb.getBingoUserFlags(id);
             if(f){ u.blocked=f.is_blocked===true; u.inactive=f.is_active===false; }
           }catch(e){ console.error('getBingoUserFlags:',e.message); }
-          u.flagsChecked=true;
+          u.flagsChecked=true; u.flagsAt=Date.now();
         }
         userCache[id]=u;
         return u;
@@ -529,10 +529,10 @@ function startCountdown(room){
   room.status='countdown'; room.countdownLeft=Math.ceil((room.selectionSeconds?room.selectionSeconds*1000:LOBBY_WAIT_MS)/1000);
   room.countdownTimer=setInterval(()=>{
     room.countdownLeft--;
-    const ready=room.players.filter(p=>p.cardId).length;
+    const ready=room.players.filter(p=>getPlayerCardCount(p)>0).length;
     if(ready<(room.minPlayers||2)){clearInterval(room.countdownTimer);room.status='waiting';broadcast(room,{type:'waitingForPlayers'});broadcastLobby();return;}
     broadcast(room,{type:'countdown',seconds:room.countdownLeft});
-    if(room.countdownLeft<=0){clearInterval(room.countdownTimer);startGame(room);}
+    if(room.countdownLeft<=0){clearInterval(room.countdownTimer);startGame(room).catch(e=>{ console.error('startGame crashed:',e&&e.stack||e); failStart(room,'internal error: '+(e&&e.message)); });}
   },1000);
 }
 
@@ -576,6 +576,22 @@ async function dropUnaffordablePlayers(room){
       sendRoom(room,p.ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። ${need} ብር ያስፈልጋል።`});
       dropped=true;
     }
+  });
+  if(dropped) broadcastCardPool(room);
+  return dropped;
+}
+// Players the database would refuse (blocked / deactivated account): release their cartelas so they do not
+// hold the room's countdown, and tell them why. Run on a failed start, with fresh flags.
+async function dropIneligiblePlayers(room){
+  let dropped=false;
+  await forEachLimit(room.players.filter(p=>getPlayerCardCount(p)>0),10,async p=>{
+    let f=null; try{ f=await bingoDb.getBingoUserFlags(String(p.telegramId)); }catch(e){ return; }
+    if(!f||!(f.is_blocked===true||f.is_active===false)) return;
+    console.warn(`player ${p.telegramId} is ${f.is_blocked===true?'blocked':'inactive'}: removed from the round`);
+    const u=userCache[String(p.telegramId)]; if(u){ u.blocked=f.is_blocked===true; u.inactive=f.is_active===false; u.flagsAt=Date.now(); }
+    releasePlayerCards(room,p);
+    sendRoom(room,p.ws,{type:'error',message:'መለያዎ ለጊዜው ተዘግቷል። እባክዎ ድጋፍን ያነጋግሩ።'});
+    dropped=true;
   });
   if(dropped) broadcastCardPool(room);
   return dropped;
@@ -631,7 +647,7 @@ function failStart(room,reason){
   broadcastCardPool(room);
   broadcastLobby();
   // Try again if enough players still hold cards (at most 3 automatic retries)
-  const ready=room.players.filter(p=>p.cardId).length;
+  const ready=room.players.filter(p=>getPlayerCardCount(p)>0).length;
   if(ready>=(room.minPlayers||2)&&room.startFailures<3){
     setTimeout(()=>{ if(rooms[room.roomId]&&room.status==='waiting') startCountdown(room); },3000);
   }
@@ -673,6 +689,7 @@ async function startDbGame(room){
   for(let attempt=1;attempt<=3;attempt++){
     const entries=await collectDbEntries(room);
     if(!entries.length) return failStart(room,'no cartelas selected');
+    if(new Set(entries.map(e=>e.userId)).size<(room.minPlayers||2)) return failStart(room,'at least '+(room.minPlayers||2)+' players are required');
     if(!room.dbRoomId||!room.dbStakeId) return failStart(room,'room/stake ids are missing (stakes not loaded from the database)');
 
     let result;
@@ -691,7 +708,7 @@ async function startDbGame(room){
         if(n>0) continue;
       }
       // retry without the players who cannot pay / whose bonus is inconsistent (up to 2 retries)
-      if(attempt<3 && ((await dropBonusMismatchPlayers(room)) || (await dropUnaffordablePlayers(room)))) continue;
+      if(attempt<3 && ((await dropBonusMismatchPlayers(room)) || (await dropUnaffordablePlayers(room)) || (await dropIneligiblePlayers(room)))) continue;
       return failStart(room,e.message);
     }
 
@@ -1098,6 +1115,11 @@ wss.on('connection',(ws)=>{
 
           const msg=JSON.parse(raw);
 
+          // a blocked / deactivated account has no access to the game system at all
+          if(client.blocked && ['joinRoom','reconnect','selectCard','deselectCard','claimBingo','leaveRoom'].includes(msg.type)){
+            send(ws,{type:'authFailed',reason:'blocked'});
+            return;
+          }
 
           switch(msg.type){
 
@@ -1109,7 +1131,14 @@ wss.on('connection',(ws)=>{
                 break;
               }
               const user=await loadUser(tid,6,500);
+              if(user&&(user.blocked||user.inactive)){
+                client.blocked=true; client.telegramId=null;
+                console.warn(`[auth] blocked/inactive account refused: ${tid}`);
+                send(ws,{type:'authFailed',reason:'blocked'});
+                break;
+              }
               if(user){
+                client.blocked=false;
                 client.telegramId=tid;
                 applyUserToClient(client,user);
                 client.playerName=user.name||client.playerName||'Player';
@@ -1314,7 +1343,7 @@ wss.on('connection',(ws)=>{
 
               broadcastCardPool(room); broadcastLobby();
 
-                 const readyPlayers=room.players.filter(p=>p.cardId).length;
+                 const readyPlayers=room.players.filter(p=>getPlayerCardCount(p)>0).length;
 
               if(readyPlayers>=(room.minPlayers||2)&&room.status==='waiting') startCountdown(room);
 
@@ -1334,6 +1363,7 @@ wss.on('connection',(ws)=>{
               const p=playerOf(room,client);
               if(!p) break;
               if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'ይህ ካርቴላ ቀድሞውኑ ተመርጧል!'});
+              { const uu=userCache[String(p.telegramId||client.telegramId||'')]; if(uu&&(uu.blocked||uu.inactive)) return send(ws,{type:'error',message:'መለያዎ ለጊዜው ተዘግቷል። እባክዎ ድጋፍን ያነጋግሩ።'}); }
 
               const field=getCardField(slot);
               const previous=p[field];
@@ -1370,7 +1400,7 @@ wss.on('connection',(ws)=>{
               const card=getCard(cardId);
               sendRoom(room,p.ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot});
               broadcastCardDiff(room,Array.from(changedIds)); broadcastLobby();
-              const readyCount=room.players.filter(p=>p.cardId).length;
+              const readyCount=room.players.filter(p=>getPlayerCardCount(p)>0).length;
               if(readyCount>=(room.minPlayers||2)&&room.status==='waiting') startCountdown(room);
               break;
             }
@@ -1484,7 +1514,7 @@ wss.on('connection',(ws)=>{
       const p=playerOf(room,c);
       if(p) detachSocket(p,ws);
       if(p&&openSockets(p).length) return;                              // another device of this account is still connected
-      if(room.status==='playing'&&p){ keepClient=true; }                // running games stay alive
+      if((room.status==='playing'||room.status==='starting')&&p){ keepClient=true; }   // running games (and one being created right now) stay alive
       else if(p&&(room.status==='waiting'||room.status==='countdown')){
         keepClient=true;
         if(p.graceTimer) clearTimeout(p.graceTimer);
