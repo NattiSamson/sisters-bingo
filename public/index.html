@@ -4342,6 +4342,11 @@ function handle(msg){
       }
       break;
 
+    case 'accountStatus':
+      setInactiveNotice(msg.inactive===true);
+      if(msg.inactive===true){ myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; myCardNumbers=[]; myCardNumbers2=[]; myCardNumbers3=[]; myCardNumbers4=[]; try{ updateSlotUI(); renderSelectionCardsPreview(); }catch(e){} showToast('Your account is inactive: you can watch games but cannot play.','warn'); }
+      break;
+
     case 'authRetry':
       
       setTimeout(()=>{
@@ -4351,6 +4356,7 @@ function handle(msg){
       break;
 
     case 'authSuccess':
+      setInactiveNotice(msg.inactive===true);
       if(authBlocked||authPending){ authBlocked=false; authPending=false; document.body.classList.remove('auth-pending'); showLobbyStatus('',false); if(pendingStakes){ const ps=pendingStakes; pendingStakes=null; renderStakes(ps); } }
   myName=msg.playerName||myName||'Player';
   if(msg.wallets) setWallets(msg.wallets);
@@ -5519,7 +5525,18 @@ setInterval(()=>{
   });
 },1000);
 let lobbyOnline=0;
+function setInactiveNotice(on){     // inactive account: may watch, cannot play
+  let bar=document.getElementById('inactiveBar');
+  if(!on){ if(bar) bar.remove(); return; }
+  if(!bar){
+    bar=document.createElement('div'); bar.id='inactiveBar';
+    bar.style.cssText='position:sticky;top:0;z-index:99;background:#f59e0b;color:#1b1030;font:700 12px Inter,sans-serif;text-align:center;padding:6px 10px';
+    bar.textContent='Your account is inactive: you can watch games but cannot play.';
+    const nav=document.querySelector('.navbar'); if(nav&&nav.parentNode) nav.parentNode.insertBefore(bar,nav.nextSibling); else document.body.prepend(bar);
+  }
+}
 function leaveAllScreens(){      // signed out by the server: drop every game / card-selection / room view and show the lobby message
+  setInactiveNotice(false);
   try{ hideWinnerOverlay(); }catch(e){}
   try{ clearSelectionCardsPreview(); }catch(e){}
   try{ clearActiveGameState(); }catch(e){}
