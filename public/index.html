@@ -4300,6 +4300,13 @@ function closeFinishedRoomLocally(roomId){
   if(gameOn||cardsOn) navGo('screenLobby','navHome');
 }
 
+let openingRoom=false;          // the player tapped a stake / room himself: the answer must open the game window
+function followGame(){
+  const on=id=>document.getElementById(id)?.classList.contains('active');
+  if(openingRoom){ openingRoom=false; navGo('screenGame','navGame'); return; }
+  if(localStorage.getItem('gameViewDetached')==='1') return;
+  if(on('screenCards')||on('screenGame')) navGo('screenGame','navGame');
+}
 function handle(msg){
   if(msg.roomId && ROOM_SCOPED_MESSAGES.has(msg.type) && String(msg.roomId)!==String(myRoomId||'')){
     handleBackgroundRoomMessage(msg);
@@ -4374,7 +4381,7 @@ function handle(msg){
         wsSend({type:'joinRoom',stakeId:restoreSelection.stakeId,telegramId:telegramId||getTelegramId()});
         break;
       }
-      restoringActiveGame=false; clearActiveGameState(); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; myCardNumbers=[]; myCardNumbers2=[]; goScreen('screenLobby');
+      openingRoom=false; restoringActiveGame=false; clearActiveGameState(); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; myCardNumbers=[]; myCardNumbers2=[]; goScreen('screenLobby');
       if(pendingStakeJoin){
         const sid=pendingStakeJoin; pendingStakeJoin=null;
         localStorage.removeItem('roomId'); localStorage.removeItem('stakeId');
@@ -4387,7 +4394,7 @@ function handle(msg){
     case 'roomClosed': closeFinishedRoomLocally(msg.roomId); break;
 
    case 'joinedRoom':
-      pendingStakeJoin=null;
+      pendingStakeJoin=null; openingRoom=false;
       if(msg.status!=='playing') currentGameCode=null;
       if(restoreSelection){
         if(restoreSelection.joining && (msg.status==='waiting'||msg.status==='countdown') && !(msg.cardId||msg.cardId2||msg.cardId3||msg.cardId4)){
@@ -4410,12 +4417,14 @@ function handle(msg){
       localStorage.setItem('roomId', msg.roomId);
       myRoomId=msg.roomId; myStakeId=msg.stakeId; localStorage.setItem('roomId',msg.roomId); localStorage.setItem('stakeId',msg.stakeId);
       if(msg.status==='countdown'){
-        activeGamePhase='countdown'; activeCountdownLeft=Number(msg.countdown||msg.countdownLeft||activeCountdownLeft||0);
+        activeGamePhase='countdown'; activeCountdownLeft=Number(msg.countdown||msg.countdownLeft||0);
       }else if(msg.status==='playing'){
+        activeCountdownLeft=0;
         activeGamePhase=(myCardId||myCardId2||myCardId3||myCardId4)?'playing':'spectating';
       }else if(!myCardId&&!myCardId2&&!myCardId3&&!myCardId4){
         activeGamePhase='none'; activeCountdownLeft=0;
       }
+      if(msg.status!=='countdown') activeCountdownLeft=0;
       saveActiveGameState(activeGamePhase);
       if(msg.status!=='countdown' && msg.status!=='playing' && !msg._hasCards) { myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; }
       resetAutomaticGameState();
@@ -4438,7 +4447,7 @@ function handle(msg){
       } else {
         navGo('screenCards','navCards');
         if(msg._hasCards){ updateSlotUI(); renderSelectionCardsPreview(); }
-        if(msg.status==='countdown') showSavedCountdown();
+        showSavedCountdown();
       }
       break;
 
@@ -4509,7 +4518,6 @@ function handle(msg){
 
     case 'yourCard':
       restoreSelection=null;
-      try{ localStorage.removeItem('gameViewDetached'); }catch(e){}
       myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
       myCardId2=msg.cardId2||null; myCardNumbers2=msg.cardNumbers2||[];
       myCardId3=msg.cardId3||null; myCardNumbers3=msg.cardNumbers3||[];
@@ -4521,7 +4529,7 @@ function handle(msg){
       resetAutomaticGameState();
       renderBothCards();
       document.getElementById('bingoBtn').style.display='flex';
-      navGo('screenGame','navGame');
+      followGame();
       break;
 
     case 'spectating':
@@ -4532,7 +4540,7 @@ function handle(msg){
       syncPlayerAreaStats(msg);
       claimWindowOpen=false;
       renderSpectatorView({playerCount:msg.playerCount||0,calledNumbers:msg.calledNumbers||[],stakeAmount:msg.stakeAmount||0});
-      navGo('screenGame','navGame');
+      followGame();
       break;
     case 'gameStart':
       activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
@@ -4546,7 +4554,7 @@ function handle(msg){
       updateActivePlayers(msg.players||msg.activePlayers||[]);
       renderBothCards();
       refreshCardCells();
-      navGo('screenGame','navGame'); break;
+      followGame(); break;
 
     case 'reconnected':
       pendingStakeJoin=null;
@@ -4561,7 +4569,7 @@ function handle(msg){
       autoClaimSent=false;
       if(!myCardId&&!myCardId2){
         renderSpectatorView({playerCount:msg.playerCount||0,calledNumbers:msg.calledNumbers||[],stakeAmount:msg.stakeAmount||0});
-        navGo('screenGame','navGame');
+        followGame();
         break;
       }
       activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
@@ -4575,7 +4583,7 @@ function handle(msg){
        if(initialLast){const latestEl=document.getElementById('tb'+initialLast);if(latestEl)latestEl.classList.add('latest');prevLastCalled=initialLast;}
       renderBothCards();
       refreshCardCells();
-      navGo('screenGame','navGame'); break;
+      followGame(); break;
 
     case 'numberCalled': onNumberCalled(msg); break;
 
@@ -5447,6 +5455,7 @@ function enterRoom(tableId){
     ['countdown','playing','spectating'].includes(String(saved?.phase||activeGamePhase||'none')) &&
     !!(saved?.roomId||myRoomId||localStorage.getItem('roomId'));
   localStorage.removeItem('gameViewDetached');
+  openingRoom=true;
   if(sameActiveRoom){
     myRoomId=saved?.roomId||myRoomId||localStorage.getItem('roomId');
     myStakeId=tableId;
