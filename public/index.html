@@ -4335,6 +4335,10 @@ function handle(msg){
 
     case 'authFailed':
       blockLobby(msg.reason==='blocked'?'Your account is blocked. Please contact support.':undefined);
+      if(msg.reason==='blocked'){      // ask again every 20 s: once the account is unblocked the lobby opens by itself
+        clearTimeout(window._blockedRetryT);
+        window._blockedRetryT=setTimeout(()=>{ const id=getTelegramId(); if(id&&authBlocked&&ws&&ws.readyState===1) sendTelegramAuth(id); },20000);
+      }
       break;
 
     case 'authRetry':
