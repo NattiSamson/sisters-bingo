@@ -4335,6 +4335,7 @@ function handle(msg){
 
     case 'authFailed':
       blockLobby(msg.reason==='blocked'?'Your account is blocked. Please contact support.':undefined);
+      leaveAllScreens();
       if(msg.reason==='blocked'){      // ask again every 20 s: once the account is unblocked the lobby opens by itself
         clearTimeout(window._blockedRetryT);
         window._blockedRetryT=setTimeout(()=>{ const id=getTelegramId(); if(id&&authBlocked&&ws&&ws.readyState===1) sendTelegramAuth(id); },20000);
@@ -5518,6 +5519,19 @@ setInterval(()=>{
   });
 },1000);
 let lobbyOnline=0;
+function leaveAllScreens(){      // signed out by the server: drop every game / card-selection / room view and show the lobby message
+  try{ hideWinnerOverlay(); }catch(e){}
+  try{ clearSelectionCardsPreview(); }catch(e){}
+  try{ clearActiveGameState(); }catch(e){}
+  try{ ['roomId','stakeId','gameViewDetached'].forEach(k=>localStorage.removeItem(k)); }catch(e){}
+  myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null;
+  myCardNumbers=[]; myCardNumbers2=[]; myCardNumbers3=[]; myCardNumbers4=[];
+  restoreSelection=null; pendingStakeJoin=null; roomsPageStake=null; openingRoom=false;
+  for(const k in pendingCardSelections) delete pendingCardSelections[k];
+  for(const k in bgGames) delete bgGames[k];
+  setSpectatorMode(false);
+  navGo('screenLobby','navHome');
+}
 function blockLobby(text){
   authBlocked=true; authPending=true; pendingStakes=null;
   try{ localStorage.removeItem('melaLobbyStakes'); }catch(e){}
