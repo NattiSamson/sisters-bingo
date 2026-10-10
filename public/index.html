@@ -2336,7 +2336,7 @@ body{padding:0 0 72px!important}
 
 #screenGame{padding:8px 7px 8px!important;max-width:520px!important;overflow:hidden!important;background:linear-gradient(180deg,#151a58 0%,#111744 100%)!important;color:#fff}
 #screenGame .player-game-topbar{display:grid!important;grid-template-columns:1.18fr .86fr .70fr .92fr .76fr;gap:5px;margin:0 0 7px}
-#screenGame .player-stat.game-id-stat strong{font-size:clamp(10px,1.8vw,15px)!important;letter-spacing:.1px}
+#screenGame .player-stat.game-id-stat strong{font-size:10px!important;letter-spacing:0}
 #screenGame .player-stat.game-id-stat{background:linear-gradient(145deg,#402b78,#2b2b64)!important}
 #screenGame .player-stat:nth-child(2) strong{color:#fff}
 #screenGame .player-stat:nth-child(5) strong{color:#fff}
@@ -4220,7 +4220,7 @@ function finishPostGameReset(msg={}){
   myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null;
   myCardNumbers=[]; myCardNumbers2=[]; myCardNumbers3=[]; myCardNumbers4=[];
   renderSelectionCardsPreview();
-  resetAutomaticGameState();
+  resetAutomaticGameState(); resetTrackerBoard(); updateSpectatorTracker([]);
   claimWindowOpen=false;
   autoClaimSent=false;
   activePlayers=[]; updateActivePlayers([]);
@@ -4565,6 +4565,7 @@ function handle(msg){
       if(msg.stakeId) myStakeId=msg.stakeId;
       restoringActiveGame=false;
       resetAutomaticGameState();
+      resetTrackerBoard();
       calledNumbersSet=new Set((msg.calledNumbers||[]).map(Number));
       autoClaimSent=false;
       if(!myCardId&&!myCardId2){
@@ -4607,6 +4608,7 @@ function handle(msg){
       claimWindowOpen=false;
       autoClaimSent=true;
       showWinnerOverlay(msg);
+      resetAutomaticGameState(); resetTrackerBoard(); updateSpectatorTracker([]);
       const winnerList=Array.isArray(msg.winners)?msg.winners.map(String):[];
       const iWon=winnerList.includes(String(myName)) ||
                  winnerList.includes(String(myPlayerId)) ||
@@ -7144,9 +7146,9 @@ html body #screenProfile:not(#q1):not(#q2) #pfRows{display:block}
 
 <style id="mela-game-id-space-final">
 
-html body #screenGame:not(#q1):not(#q2) .player-game-topbar{grid-template-columns:minmax(0,2fr) minmax(0,.95fr) minmax(0,.75fr) minmax(0,1.05fr) minmax(0,.9fr)!important}
+html body #screenGame:not(#q1):not(#q2) .player-game-topbar{grid-template-columns:minmax(0,1.6fr) minmax(0,.95fr) minmax(0,.75fr) minmax(0,1.05fr) minmax(0,.9fr)!important}
 html body #screenGame:not(#q1):not(#q2) .player-stat.game-id-stat strong{
-  font-size:clamp(10px,3vw,12.5px)!important;letter-spacing:-.15px;overflow:visible!important;text-overflow:clip!important;
+  font-size:clamp(9px,2.6vw,11px)!important;letter-spacing:-.1px;overflow:visible!important;text-overflow:clip!important;
 }
 </style>
 
