@@ -1,1687 +1,5821 @@
 /**
- * Mela Bingo — Server v1
- * Changes:
- *  - Disqualification only notifies the cheater (silent to others)
- *  - Full DB integration
+ * db.js — PostgreSQL database layer for Sisters Bingo
+ * Compatible with the current public schema in beteseb-bingo.sql.
  */
 
-require('dotenv').config();
-const crypto=require('crypto');
+const { Pool } = require("pg");
 
-// ─── LOG FILE ────────────────────────────────────────────────
-// Hosting panels (cPanel / Passenger) often do not keep the console output. Everything the server prints, and every
-// crash, is also appended to server.log next to this file (kept below ~2 MB: it starts again when it gets bigger).
-(function setupFileLog(){
-  try{
-    const fs=require('fs'), p=require('path').join(__dirname,'server.log');
-    try{ if(fs.statSync(p).size>2*1024*1024) fs.renameSync(p,p+'.old'); }catch(e){}
-    const write=(lvl,args)=>{
-      try{
-        const text=args.map(a=>a instanceof Error?(a.stack||a.message):(typeof a==='string'?a:JSON.stringify(a))).join(' ');
-        fs.appendFileSync(p,new Date().toISOString()+' '+lvl+' '+text+'\n');
-      }catch(e){}
-    };
-    ['log','warn','error'].forEach(k=>{
-      const orig=console[k].bind(console);
-      console[k]=(...args)=>{ orig(...args); write(k.toUpperCase(),args); };
-    });
-    process.on('uncaughtException',e=>{ write('CRASH',[e]); try{ console.error('uncaughtException:',e); }catch(_){} process.exit(1); });
-    process.on('unhandledRejection',e=>{ write('UNHANDLED',[e]); });
-    write('START',['server process starting, node '+process.version+', pid '+process.pid+', PORT='+(process.env.PORT||'(not set)')]);
-  }catch(e){}
-})();
-
-// Fair random pick for the number draw: an unbiased integer in [0, n) from the operating system's
-// cryptographic random generator (not Math.random, whose internal state can be reconstructed from its output).
-function randomIndex(n){
-  n=Math.max(1,Math.floor(Number(n)||1));
-  if(typeof crypto.randomInt==='function') return crypto.randomInt(n);       // Node 14.10+
-  const limit=Math.floor(0x100000000/n)*n;                                   // older Node: rejection sampling, no modulo bias
-  let x; do{ x=crypto.randomBytes(4).readUInt32BE(0); }while(x>=limit);
-  return x%n;
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL environment variable is missing");
 }
 
-const express   = require('express');
-const http      = require('http');
-const WebSocket = require('ws');
-const { v4: uuidv4 } = require('uuid');
-const path      = require('path');
-const bingoDb=require('./db');
-console.log('✅ db.js loaded (wallets, stakes, bingo games)');
-
-// ─── TELEGRAM SIGN-IN VERIFICATION ───────────────────────────
-// The Telegram ID a player sends is NOT trusted. The page sends Telegram's signed `initData`; it is checked here
-// with the bot token (HMAC-SHA256, https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app)
-// and the player's ID is taken from the verified data only.
-//   BOT_TOKEN                 token of the bot that opens the web app (required)
-//   INITDATA_MAX_AGE_SEC      how old initData may be (default 86400 = 24 h)
-//   ALLOW_UNVERIFIED_AUTH=1   old behaviour (trust the ID the page sends). For local development only.
-const BOT_TOKEN=String(process.env.BOT_TOKEN||'').trim().replace(/^["']|["']$/g,'');
-const ALLOW_UNVERIFIED_AUTH=process.env.ALLOW_UNVERIFIED_AUTH==='1';
-const INITDATA_MAX_AGE_SEC=Number(process.env.INITDATA_MAX_AGE_SEC)||86400;
-const INITDATA_SECRET=BOT_TOKEN?crypto.createHmac('sha256','WebAppData').update(BOT_TOKEN).digest():null;
-if(ALLOW_UNVERIFIED_AUTH) console.warn('⚠️ ALLOW_UNVERIFIED_AUTH=1: Telegram IDs are NOT verified. Never use this in production.');
-else if(!BOT_TOKEN) console.error('❌ BOT_TOKEN is not set: every sign-in will be refused. Set BOT_TOKEN (or ALLOW_UNVERIFIED_AUTH=1 for local tests).');
-// returns the verified Telegram ID (string) or null
-function verifyInitData(initData){
-  try{
-    if(!INITDATA_SECRET) return fail('BOT_TOKEN not set');
-    if(typeof initData!=='string'||initData.length<10) return fail('initData empty - page was not opened as a Telegram Web App (length '+(initData&&initData.length||0)+')');
-    if(initData.length>4096) return fail('initData too long');
-    const params=new URLSearchParams(initData);
-    const hash=params.get('hash'); if(!hash||!/^[0-9a-f]{64}$/i.test(hash)) return fail('no valid hash in initData');
-    params.delete('hash');
-    const check=[...params.entries()].map(([k,v])=>k+'='+v).sort().join('\n');
-    const calc=crypto.createHmac('sha256',INITDATA_SECRET).update(check).digest();
-    const given=Buffer.from(hash,'hex');
-    if(given.length!==calc.length||!crypto.timingSafeEqual(calc,given)) return fail('signature mismatch - BOT_TOKEN on the server is not the token of the bot that opened this app');
-    const age=Math.floor(Date.now()/1000)-Number(params.get('auth_date')||0);
-    if(!(age>=-60&&age<=INITDATA_MAX_AGE_SEC)) return fail('initData too old/future: age '+age+'s (server clock '+new Date().toISOString()+')');
-    const user=JSON.parse(params.get('user')||'null');
-    const id=String(user&&user.id||'');
-    return /^\d+$/.test(id)&&Number(id)>0?id:fail('no user id in initData');
-  }catch(e){ return fail('exception '+e.message); }
-}
-function fail(why){ console.warn('[auth] sign-in refused: '+why); return null; }
-// the Telegram ID for a request: verified from initData, or (development only) the one the page claims
-function resolveTelegramId(initData,claimedId){
-  if(INITDATA_SECRET){
-    const id=verifyInitData(initData);
-    if(id) return id;
-    if(!ALLOW_UNVERIFIED_AUTH) return null;
-  }
-  if(!ALLOW_UNVERIFIED_AUTH) return null;
-  const id=String(claimedId||'').trim();
-  return /^\d+$/.test(id)&&Number(id)>0?id:null;
-}
-
-const app    = express();
-const server = http.createServer(app);
-const wss    = new WebSocket.Server({ server });
-const PORT   = process.env.PORT || 3000;
-
-// Open https://your-server/health in a browser to see that the server is up (no secrets are shown).
-app.get('/health',(req,res)=>{
-  res.json({ok:true,time:new Date().toISOString(),uptimeSeconds:Math.round(process.uptime()),node:process.version,
-    stakesLoaded:STAKES.length,stakeList:STAKES.map(x=>({id:x.id,amount:x.amount,room:x.roomName||x.dbRoomId,showRoomPage:x.showRoomPage})),rooms:Object.keys(rooms).length,players:Object.keys(clients).length,
-    botTokenSet:!!BOT_TOKEN,unverifiedAuth:ALLOW_UNVERIFIED_AUTH});
-});
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/audio', express.static(path.join(__dirname, 'audio')));
-app.use(express.json());
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  res.setHeader('Access-Control-Allow-Origin', origin || '*');
-  res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Telegram-Init-Data');
-  if (req.method === 'OPTIONS') return res.sendStatus(204);
-  next();
+// Neon (and most hosted Postgres) needs SSL: it is on unless the database is on this machine or DB_SSL=false.
+// DB_CONNECT_TIMEOUT_MS: a sleeping Neon database can need 5-20 s to wake up on the first connection.
+const DB_URL = process.env.DATABASE_URL;
+const DB_IS_LOCAL = /@(localhost|127\.0\.0\.1|\[::1\])[:\/]/.test(DB_URL);
+const pool = new Pool({
+  connectionString: DB_URL,
+  ssl:
+    process.env.DB_SSL === "false" || DB_IS_LOCAL
+      ? false
+      : { rejectUnauthorized: false },
+  max: Number(process.env.DB_POOL_MAX || 10),
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS || 30000),
+  keepAlive: true,
 });
 
-function paidPlayersOf(room){ return room.players.filter(p=>p.hasPaid); }
-function livePlayerCount(room){ return paidPlayersOf(room).length; }
-function paidPlayerList(room){ return paidPlayersOf(room).map(p=>({playerId:p.playerId,playerName:p.playerName})); }
+pool.on("error", (err) => {
+  console.error("Unexpected PostgreSQL pool error:", err);
+});
 
-// ─── DATABASE ─────────────────────────────────────────────────
-// db.js is the ONLY way this server reaches the database (it owns the connection and every query):
-//   getUserWalletBalances -> main + play + bonus wallets
-//   getBingoUserFlags     -> blocked / inactive flags
-//   getActiveStakes       -> rooms and stakes (loaded at start, refreshed every 10 min)
-//   createBingoGame       -> charges every cartela and creates the game (called when a round starts)
-//   endBingoGame          -> pays the winners (called when a round ends)
-//   cancelBingoGame       -> closes a game without a winner and refunds it
-//   getBingoUserDashboard / getBingoProfileStats -> profile page data
+function normalizeEthiopianPhone(phone) {
+  if (phone == null) return null;
+
+  let digits = String(phone).replace(/\D/g, "");
+
+  if (!digits) return null;
+
+  if (
+    /^09\d{8}$/.test(digits) ||
+    /^07\d{8}$/.test(digits)
+  ) {
+    digits = "251" + digits.slice(1);
+  } else if (/^[97]\d{8}$/.test(digits)) {
+    digits = "251" + digits;
+  }
+
+  return /^251[97]\d{8}$/.test(digits)
+    ? digits
+    : null;
+}
+
+function last9(phone) {
+  if (phone == null) return null;
+
+  const digits = String(phone).replace(/\D/g, "");
+
+  return digits.length >= 9
+    ? digits.slice(-9)
+    : null;
+}
+
+function toPositiveInteger(value, field) {
+  const n = Number(value);
+
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new Error(`Invalid ${field}`);
+  }
+
+  return n;
+}
+
+function toPositiveAmount(value, field = "amount") {
+  const n = Number(value);
+
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`Invalid ${field}`);
+  }
+
+  return n;
+}
+
+function amountFromReceipt(receipt) {
+  const raw = receipt?.settledAmount;
+
+  if (raw === null || raw === undefined) {
+    throw new Error("Deposit amount is missing");
+  }
+
+  const cleaned =
+    String(raw).replace(/[^0-9.]/g, "");
+
+  const amount = Number(cleaned);
+
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
+    throw new Error("Invalid deposit amount amount = " + amount);
+  }
+
+  return amount;
+}
+
+async function safeRollback(client) {
+  try {
+    await client.query("ROLLBACK");
+  } catch (err) {
+    console.error(
+      "Rollback error:",
+      err
+    );
+  }
+}
 
 
-// ─── CONFIG ──────────────────────────────────────────────────
-const LOBBY_WAIT_MS    = 30000;
-const CALL_INTERVAL_MS = 5000;
-const CLAIM_WINDOW_MS  = 4800;
-const CLAIM_COLLECT_MS = 700; // grace period to gather simultaneous BINGO claims
-const TOTAL_CARDS      = 600;   // largest card_count a room may use (your rooms use 600)
+module.exports = {
 
-// Stakes come ONLY from the database (bingo_stakes / bingo_rooms), see loadStakesFromDb().
-const STAKES = [];
-// used only when the database gives no valid next_round_seconds
-const DEFAULT_NEXT_ROUND_SECONDS = 20;
-const STAKES_RETRY_MS = 10000;
-let stakesRetryTimer=null;
-function retryStakesSoon(){ if(stakesRetryTimer||STAKES.length) return; stakesRetryTimer=setTimeout(()=>{ stakesRetryTimer=null; loadStakesFromDb(); },STAKES_RETRY_MS); }
+async getBingoUserDashboard(userId) {
+  const id = toPositiveInteger(
+    userId,
+    "userId"
+  );
 
-// Stakes / rooms come from the database (bingo_stakes + bingo_rooms). They are loaded ONCE at
-// start-up and refreshed every 10 minutes; the constants above are only the fallback.
-// The app names a stake by its amount (st5, st10, st20); the database's own id (S5, S10, ...) is kept in dbStakeId.
-const stakeKey=a=>'st'+(Number.isInteger(Number(a))?Number(a):String(a).replace('.','p'));
-async function loadStakesFromDb(){
-  try{
-    const list=await bingoDb.getActiveStakes();
-    const seen=new Set(), next=[];
-    for(const s of list){
-      // a stake can have SEVERAL rooms. The first (lowest id) room keeps the plain id (st10) so existing
-      // clients keep working; further rooms get st10r<roomId>. `group` ties the rooms of one stake together.
-      const group=stakeKey(s.amount);
-      const first=!seen.has(group); seen.add(group);
-      next.push({
-        id:first?group:group+'r'+s.roomId, group, showRoomPage:s.showRoomPage===true, dbStakeId:s.dbId, dbRoomId:s.roomId, roomName:s.roomName||'', name:s.displayName||s.name,
-        amount:s.amount,
-        maxPlayers:s.maxPlayers||400,
-        cardLimit:Math.max(1,Math.min(TOTAL_CARDS,s.cardCount||TOTAL_CARDS)),
-        minPlayers:Math.max(2,s.minPlayers||2),
-        maxCards:Math.max(1,Math.min(4,s.maxCardsPerPlayer||4)),
-        selectionSeconds:s.selectionSeconds||Math.ceil(LOBBY_WAIT_MS/1000),
-        nextRoundSeconds:s.nextRoundSeconds     // bingo_rooms.next_round_seconds: pause between the end of a game and the next round
-      });
+  const { rows } = await pool.query(
+    `
+      SELECT public.get_bingo_user_dashboard(
+        $1::integer
+      ) AS result
+    `,
+    [id]
+  );
+
+  const result = rows[0]?.result;
+
+  if (!result) {
+    throw new Error(
+      "Failed to retrieve Bingo user dashboard."
+    );
+  }
+
+  return result;
+},
+
+	/**
+ * Get transfer limits and current usage for a user's wallet.
+ *
+ * @param {number} userId
+ * @param {"main"|"play"} walletType
+ * @returns {Promise<object>}
+ */
+async getTransferLimits(userId, walletType) {
+    if (!userId) {
+        throw new Error("User ID is required");
     }
-    if(!next.length){ console.warn('⚠️ getActiveStakes returned no active stakes (bingo_stakes + bingo_room_stakes + bingo_rooms must be active)'); retryStakesSoon(); return false; }
-    STAKES.splice(0,STAKES.length,...next);
-    console.log('✅ Stakes loaded from database:',next.map(x=>`${x.id}=${x.amount} (room ${x.dbRoomId}, ${x.minPlayers}-${x.maxPlayers} players, ${x.maxCards} cards, room page ${x.showRoomPage?'on':'off'})`).join(' | '));
-    broadcastLobby();
-    return true;
-  }catch(e){ console.error('loadStakesFromDb:',e.message); retryStakesSoon(); return false; }
-}
 
-loadStakesFromDb(); loadFundingWallets();
-setInterval(()=>{ loadStakesFromDb(); loadFundingWallets(); },10*60*1000);
-// clean up games left open by an earlier run (restart / crash); young ones are left alone
-setTimeout(()=>recoverOrphanedGames({minAgeSec:600,reason:'startup_cleanup'}),20*1000);
-setInterval(()=>recoverOrphanedGames({minAgeSec:900,reason:'stale_game'}),10*60*1000);
-// unusable bonus money (completed / expired awards) is removed from the Bonus wallet (forfeit_bonus.sql)
-let bonusExpiryWarned=false;
-async function runBonusExpiry(){
-  try{
-    const r=await bingoDb.expireBonuses(200);
-    if(r&&(r.forfeited_awards>0||r.errors>0)) console.log('Bonus expiry: forfeited',r.forfeited_awards,'award(s),',r.forfeited_total,'total, errors',r.errors);
-  }catch(e){
-    if(!bonusExpiryWarned){ bonusExpiryWarned=true; console.warn('Bonus expiry skipped:',e.message,'- install forfeit_bonus.sql'); }
-  }
-}
-setTimeout(runBonusExpiry,30*1000);
-setInterval(runBonusExpiry,5*60*1000);
-
-// ─── BLOCKED ACCOUNTS: cut off within seconds ───────────────
-// Every BLOCK_CHECK_MS one query tells which connected accounts were blocked / deactivated meanwhile.
-//  - rooms that have not started: his cartelas are released (nothing was charged yet) and he leaves the room
-//  - running games: he stays in them (his stake is already in the prize pool); if he wins, the prize is paid
-//    into his (locked) Main wallet by the database as usual
-//  - his connection(s) are closed; sign-in is refused from now on (see telegramAuth)
-const BLOCK_CHECK_MS=15*1000;
-let blockCheckRunning=false;
-async function kickBlockedClients(){
-  if(blockCheckRunning||!bingoDb||typeof bingoDb.getBlockedTelegramIds!=='function') return;
-  blockCheckRunning=true;
-  try{
-    const online=Object.values(clients).filter(c=>c.telegramId&&!c.blocked&&c.ws&&c.ws.readyState===WebSocket.OPEN);
-    if(!online.length) return;
-    const bad=new Set(await bingoDb.getBlockedTelegramIds([...new Set(online.map(c=>String(c.telegramId)))]));
-    if(!bad.size) return;
-    for(const c of online){
-      if(!bad.has(String(c.telegramId))) continue;
-      console.warn(`[block] ${c.telegramId} was blocked: disconnecting`);
-      c.blocked=true;
-      const u=userCache[String(c.telegramId)]; if(u){ u.blocked=true; u.flagsAt=Date.now(); }
-      for(const room of clientRooms(c)){
-        if(room.status==='waiting'||room.status==='countdown'){ await leaveRoom(c,room.roomId).catch(()=>{}); }
-      }
-      const socks=new Set([c.ws]);
-      for(const room of clientRooms(c)){ const p=playerOf(room,c); if(p&&p.ws&&p.ws.sockets) p.ws.sockets.forEach(x=>socks.add(x)); }
-      Object.values(clients).forEach(o=>{ if(o!==c&&String(o.telegramId||'')===String(c.telegramId)&&o.ws) socks.add(o.ws); });
-      socks.forEach(x=>{ if(x&&x.readyState===1){ try{ x.send(JSON.stringify({type:'authFailed',reason:'blocked'})); }catch(e){} try{ x.close(4003,'blocked'); }catch(e){} } });
+    if (!["main", "play"].includes(walletType)) {
+        throw new Error("Invalid wallet type");
     }
-    broadcastLobby();
-  }catch(e){ console.error('kickBlockedClients:',e.message); }
-  finally{ blockCheckRunning=false; }
-}
-setInterval(kickBlockedClients,BLOCK_CHECK_MS);
 
-// release the seat of players who hold cartelas in a still-waiting room but have been gone for a very long time
-setInterval(()=>{
-  const now=Date.now();
-  Object.values(rooms).forEach(room=>{
-    if(room.status!=='waiting') return;
-    room.players.slice().forEach(p=>{
-      if(!p.absentSince||openSockets(p).length) return;
-      if(now-p.absentSince<ABSENT_RELEASE_MS) return;
-      console.warn(`player ${p.telegramId} was away for ${Math.round((now-p.absentSince)/60000)} min in waiting room ${room.stakeId}: cartelas released`);
-      const ghost={playerId:p.playerId,telegramId:p.telegramId,rooms:new Set([room.roomId]),ws:null,roomId:room.roomId};
-      leaveRoom(ghost,room.roomId).catch(()=>{});
-    });
-  });
-},60*1000);
+    const { rows } = await pool.query(
+        `
+        SELECT public.get_transfer_limits($1, $2) AS limits
+        `,
+        [
+            userId,
+            walletType
+        ]
+    );
 
-// ─── FIXED CARDS ─────────────────────────────────────────────
-function seededRandom(seed) {
-  let s = seed;
-  return () => { s|=0; s=s+0x6D2B79F5|0; let t=Math.imul(s^s>>>15,1|s); t=t+Math.imul(t^t>>>7,61|t)^t; return((t^t>>>14)>>>0)/4294967296; };
-}
-function generateFixedCard(idx) {
-  const rng=seededRandom(idx*7919), ranges=[[1,15],[16,30],[31,45],[46,60],[61,75]], nums=Array(25).fill(0);
-  for(let col=0;col<5;col++){
-    const[lo,hi]=ranges[col], pool=Array.from({length:hi-lo+1},(_,i)=>lo+i), picked=[];
-    for(let i=0;i<5;i++){const j=Math.floor(rng()*pool.length);picked.push(pool.splice(j,1)[0]);}
-    picked.sort((a,b)=>a-b);
-    for(let row=0;row<5;row++){const ci=row*5+col; nums[ci]=ci===12?0:picked[row];}
-  }
-  return nums;
-}
-const CARD_POOL=[];
-for(let i=1;i<=TOTAL_CARDS;i++) CARD_POOL.push({id:i,numbers:generateFixedCard(i)});
-const getCard=id=>CARD_POOL.find(c=>c.id===id);
-const getCardPoolForRoom=room=>CARD_POOL.slice(0,Math.min(TOTAL_CARDS,Number(room?.cardLimit)||TOTAL_CARDS));
-
-// ─── WIN CHECK ───────────────────────────────────────────────
-function checkWin(nums, called, marked) {
-  const cs=new Set(called), ms=new Set(marked||[]); ms.add(12);
-  const hit=i=>i===12||(cs.has(nums[i])&&ms.has(i));
-  return [[0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],
-          [0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],
-          [0,6,12,18,24],[4,8,12,16,20],[0,4,20,24]].some(p=>p.every(i=>hit(i)));
-}
-
-// ─── STATE ───────────────────────────────────────────────────
-const clients={}, rooms={}, userCache={};
-
-// ─── USER HELPERS ────────────────────────────────────────────
-const round2=v=>Math.round((Number(v)||0)*100)/100;
-function walletsFromRow(r){
-  const n=v=>{const x=Number.parseFloat(v);return Number.isFinite(x)&&x>0?x:0;};
-  return {main:n(r.main_balance),play:n(r.play_balance),bonus:n(r.bonus_balance)};
-}
-// Wallets the stake funding policy may charge, in order (read once from the database; refreshed with the stakes).
-// place_stake() only counts these wallets, so a wallet that is not in the list cannot pay for a cartela.
-let FUNDING_WALLETS=['main','play','bonus'];
-async function loadFundingWallets(){
-  if(!bingoDb||typeof bingoDb.getBingoFundingWallets!=='function') return false;
-  try{
-    const list=(await bingoDb.getBingoFundingWallets()).filter(x=>['main','play','bonus'].includes(x));
-    if(!list.length){ console.warn('⚠️ the stake funding policy lists no wallets - keeping the default'); return false; }
-    FUNDING_WALLETS=list;
-    console.log('✅ Stakes are paid from:',list.join(' -> '));
-    return true;
-  }catch(e){ console.error('loadFundingWallets:',e.message); return false; }
-}
-// balance   = main + play   (the amount shown in the header)
-// spendable = the wallets the funding policy can charge (fast local check before picking cartelas;
-//             the database makes the final call)
-function applyWallets(target,w){
-  target.wallets={main:round2(w.main),play:round2(w.play),bonus:round2(w.bonus)};
-  target.balance=round2(w.main+w.play);
-  target.spendable=round2(FUNDING_WALLETS.reduce((t,k)=>t+(Number(w[k])||0),0));
-}
-// Cached per-user profile answers (a game start/end clears the entry)
-const profileCache=new Map();
-const PROFILE_TTL_MS=10000;
-
-async function loadUser(tid,retries=6,delayMs=500) {
-  const id=String(tid||'').trim();
-  if(!/^\d+$/.test(id) || Number(id)<=0) return null;
-
-  // ── Real wallets (db.js) ──
-  {
-    for(let attempt=1;attempt<=retries;attempt++){
-      try{
-        const r=await bingoDb.getUserWalletBalances(id);
-        if(!r) return null;                      // genuinely not registered
-        const prev=userCache[id]||{};
-        const u={
-          userId:Number(r.user_id), name:r.name||''
-        };
-        applyWallets(u,walletsFromRow(r));
-        // blocked / inactive flags are looked up once per user, not on every refresh
-        if(prev.flagsChecked&&Date.now()-(prev.flagsAt||0)<120000){
-          u.flagsChecked=true; u.flagsAt=prev.flagsAt; u.blocked=prev.blocked===true; u.inactive=prev.inactive===true;
-        }else{
-          try{
-            const f=await bingoDb.getBingoUserFlags(id);
-            if(f){ u.blocked=f.is_blocked===true; u.inactive=f.is_active===false; }
-          }catch(e){ console.error('getBingoUserFlags:',e.message); }
-          u.flagsChecked=true; u.flagsAt=Date.now();
-        }
-        userCache[id]=u;
-        return u;
-      }catch(e){
-        console.error(`loadUser attempt ${attempt}/${retries}:`,e.message);
-        if(attempt<retries) await new Promise(r=>setTimeout(r,delayMs*Math.min(attempt,3)));
-      }
+    if (!rows.length || !rows[0].limits) {
+        throw new Error("Unable to load transfer limits");
     }
-    return userCache[id]||null;
-  }
 
-  return userCache[id]||null;
-}
+    return rows[0].limits;
+},
 
-// copy a loaded user onto a live connection
-function applyUserToClient(client,u){
-  if(!client||!u) return;
-  if(u.wallets){ client.wallets=u.wallets; client.spendable=u.spendable; }
-  client.balance=Number.isFinite(Number(u.balance))?Number(u.balance):0;
-  if(u.userId) client.userId=u.userId;
-  client.playerName=u.name||client.playerName;  
-}
+async getTransferRecipient(phone) {
+  const { rows } = await pool.query(
+    `
+    SELECT *
+    FROM find_transfer_recipient($1)
+    LIMIT 1
+    `,
+    [phone]
+  );
 
-async function refreshClientBalance(client){
-  if(!client?.telegramId) return Number.isFinite(Number(client?.balance));
-  try{
-    const u=await loadUser(String(client.telegramId),1,0);
-    if(!u) return false;
-    applyUserToClient(client,u);
-    return true;
-  }catch(e){
-    console.error('refreshClientBalance:',e.message);
-    return false;
-  }
-}
+  return rows[0] || null;
+},
 
-// Reload a player's wallets once and push them to the app (after a round starts / ends).
-async function pushWallets(p){
-  const tid=String(p?.telegramId||'');
-  if(!tid) return;
-  profileCache.delete(tid);
-  const u=await loadUser(tid,1,0);
-  if(!u) return;
-  const cl=clients[p.playerId];
-  if(cl) applyUserToClient(cl,u);
-  send(p.ws||cl?.ws,{type:'balanceUpdate',balance:u.balance,wallets:u.wallets});
-}
-// run an async function over a list with a small concurrency limit (protects the DB pool)
-async function forEachLimit(items,limit,fn){
-  let i=0;
-  const workers=Array.from({length:Math.min(limit,items.length)},async()=>{
-    while(i<items.length){ const item=items[i++]; try{ await fn(item); }catch(e){ console.error('forEachLimit:',e.message); } }
-  });
-  await Promise.all(workers);
-}
+async transferWallet(
+  senderUserId,
+  receiverPhone,
+  walletType,
+  amount,
+  idempotencyKey,
+  description = "Telegram wallet transfer"
+) {
+  const { rows } = await pool.query(
+    `
+    SELECT public.transfer_wallet(
+      $1::integer,
+      $2::varchar,
+      $3::varchar,
+      $4::numeric,
+      $5::varchar,
+      $6::text
+    ) AS result
+    `,
+    [
+      senderUserId,
+      receiverPhone,
+      walletType,
+      amount,
+      idempotencyKey,
+      description
+    ]
+  );
 
-// ─── ROOM HELPERS ────────────────────────────────────────────
-function getOrCreateRoom(sid){
-  let r=Object.values(rooms).find(r=>r.stakeId===sid&&(r.status==='waiting'||r.status==='countdown'));
-  if(r) return r;
-  const s=STAKES.find(s=>s.id===sid), roomId=uuidv4();
-  r={roomId,stakeId:sid,stake:s.amount,maxPlayers:s.maxPlayers,cardLimit:s.cardLimit,
-     group:s.group||sid,dbStakeId:s.dbStakeId||null,dbRoomId:s.dbRoomId||null,minPlayers:s.minPlayers||2,maxCards:s.maxCards||4,selectionSeconds:s.selectionSeconds||0,
-     status:'waiting',players:[],calledNumbers:[],
-     availableNumbers:Array.from({length:75},(_,i)=>i+1),callTimer:null,countdownTimer:null,claimEvalTimer:null,
-     countdownLeft:Math.ceil((s.selectionSeconds?s.selectionSeconds*1000:LOBBY_WAIT_MS)/1000),claimWindowOpen:false,claimedThisRound:[],resetCountdownTimer:null,resetTimer:null,
-     takenCardIds:new Set(),pot:0,grossPot:0,dbGameId:null,dbGameCode:null,participantCards:null,startFailures:0};
-  rooms[roomId]=r; return r;
-}
-const send=(ws,msg)=>{
-  if(!ws||ws.readyState!==WebSocket.OPEN) return;
-  // every message about a running game carries the game code returned by createBingoGame (shown as "Game ID")
-  if(msg&&msg.roomId&&msg.gameId===undefined){ const r=rooms[msg.roomId]; if(r&&r.dbGameCode) msg={...msg,gameId:r.dbGameCode}; }
-  ws.send(JSON.stringify(msg));
-};
-// A player can be in SEVERAL rooms at once (one per stake: 5 / 10 / 20 = up to 3 games at a time).
-// Every room message carries roomId + stakeId so the app can handle each game separately.
-const sendRoom=(room,ws,msg)=>send(ws,{roomId:room.roomId,stakeId:room.stakeId,...msg});
-// How long a player who lost his connection before the round starts keeps his seat and cartelas.
-// (A page "Refresh" closes and re-opens the connection; the player must not lose his picks.)
-const DISCONNECT_GRACE_MS = 20000;
-// A room still waiting for a second player must not be held forever by a player who left for good:
-// his picks are released after this long without any connection (a countdown / round never waits for him).
-const ABSENT_RELEASE_MS = 30*60*1000;
+  return rows[0]?.result || null;
+},	
+	
+async getActiveStakes() {
+    const { rows } = await pool.query(`
+        SELECT
+            bs.id AS stake_id,
+            bs.name AS stake_name,
+            bs.amount,
+            bs.is_active,
+            bs.display_order,
+            bs.display_name,
+            bs.show_room_page,
 
-// ── One account = one player, on any number of devices ───────────────────────
-// A player's `ws` is a small multiplexer that holds every open connection (device) of that account,
-// so every message sent to the player reaches all of his devices and they always show the same state.
-function makeMux(initial){
-  const socks=new Set(initial||[]);
-  return {
-    sockets:socks,
-    get readyState(){ for(const x of socks) if(x&&x.readyState===1) return 1; return 3; },
-    send(data){ for(const x of socks){ if(x&&x.readyState===1){ try{ x.send(data); }catch(e){} } } }
-  };
-}
-function attachSocket(p,ws){ p.absentSince=0; if(p.graceTimer){ clearTimeout(p.graceTimer); p.graceTimer=null; } if(!p.ws||!p.ws.sockets) p.ws=makeMux(p.ws?[p.ws]:[]); p.ws.sockets.add(ws); }
-function detachSocket(p,ws){ if(p&&p.ws&&p.ws.sockets) p.ws.sockets.delete(ws); }
-function openSockets(p){ return (p&&p.ws&&p.ws.sockets)?[...p.ws.sockets].filter(x=>x&&x.readyState===1):[]; }
-// the room player that belongs to this connection: same connection id, else same Telegram account
-function playerOf(room,client){
-  if(!room||!client) return null;
-  let p=room.players.find(x=>x.playerId===client.playerId);
-  if(!p&&client.telegramId) p=room.players.find(x=>String(x.telegramId||'')===String(client.telegramId));
-  return p||null;
-}
-// everything a device needs to show the player's current cartelas
-function selectionPayload(p){
-  const num=id=>{const c=id?getCard(id):null;return c?c.numbers:[];};
-  return {cardId:p.cardId||null,cardNumbers:num(p.cardId),cardId2:p.cardId2||null,cardNumbers2:num(p.cardId2),
-          cardId3:p.cardId3||null,cardNumbers3:num(p.cardId3),cardId4:p.cardId4||null,cardNumbers4:num(p.cardId4)};
-}
+            br.id AS room_id,
+            br.name AS room_name,
+            br.code AS room_code,
+            br.status AS room_status,
+            br.min_players,
+            br.max_players,
+            br.card_count,
+            br.max_cards_per_player,
+            br.selection_seconds,
+            br.next_round_seconds
 
-function clientRooms(client){
-  if(!client.rooms) client.rooms=new Set();
-  return Array.from(client.rooms).map(id=>rooms[id]).filter(Boolean);
-}
-// the room a message is about: msg.roomId if the client belongs to it, else the room it is viewing
-function roomForMsg(client,msg){
-  const id=(msg&&msg.roomId&&client.rooms&&client.rooms.has(msg.roomId))?msg.roomId:client.roomId;
-  return id?rooms[id]:null;
-}
-// money already reserved by this client's card picks in OTHER rooms that have not started yet
-function reservedElsewhere(client,room){
-  return clientRooms(client).reduce((sum,r)=>{
-    if(r.roomId===room.roomId||(r.status!=='waiting'&&r.status!=='countdown')) return sum;
-    const pl=playerOf(r,client);
-    return sum+(pl?Number(r.stake)*getPlayerCardCount(pl):0);
-  },0);
-}
-// re-link every room entry of a Telegram account to this connection (after a reload / reconnect)
-function relinkAllRooms(client,ws,tid){
-  if(!tid) return;
-  if(!client.rooms) client.rooms=new Set();
-  Object.values(rooms).forEach(r=>{
-    r.players.forEach(pl=>{
-      if(String(pl.telegramId||'')!==String(tid)) return;
-      attachSocket(pl,ws);                 // this device joins the same player (other devices keep working)
-      pl.playerId=client.playerId;         // the newest device is the primary one
-      client.rooms.add(r.roomId);
-    });
-  });
-}
-const broadcast=(room,msg)=>{const s=JSON.stringify({roomId:room.roomId,stakeId:room.stakeId,gameId:room.dbGameCode||undefined,...msg});room.players.forEach(p=>{if(p.ws&&p.ws.readyState===WebSocket.OPEN)p.ws.send(s);});};
-// Lobby payload: one entry per stake (amount); a stake with several rooms lists them in `rooms`.
-function liveRoomOf(sid){
-  const all=Object.values(rooms).filter(r=>r.stakeId===sid);
-  return all.find(r=>r.status==='waiting'||r.status==='countdown')||all[0]||null;
-}
-// Players counted in the lobby: before the start = users holding at least one cartela (2-4 cartelas still count once);
-// once the round runs = the users taking part in it. Never above the room's max_players.
-function roomHeadcount(r,max){
-  if(!r) return 0;
-  const n=(r.status==='waiting'||r.status==='countdown')?r.players.filter(p=>getPlayerCardCount(p)>0).length:livePlayerCount(r);
-  return max>0?Math.min(n,max):n;
-}
-// everybody connected to the server right now (one person with several tabs / devices counts once)
-function onlineCount(){
-  const ids=new Set();
-  for(const c of Object.values(clients)){ if(c.ws&&c.ws.readyState===WebSocket.OPEN) ids.add(c.telegramId?'t'+c.telegramId:'p'+c.playerId); }
-  return ids.size;
-}
-function buildLobbyStakes(){
-  const groups=new Map();
-  for(const s of STAKES){ const g=s.group||s.id; if(!groups.has(g)) groups.set(g,[]); groups.get(g).push(s); }
-  return [...groups.values()].map(list=>{
-    const rs=list.map(s=>{ const r=liveRoomOf(s.id);
-      const pc=roomHeadcount(r,s.maxPlayers), st=r?r.status:'waiting';
-      return{stakeId:s.id,roomId:s.dbRoomId,name:s.roomName||'',amount:s.amount,maxPlayers:s.maxPlayers,minPlayers:s.minPlayers||2,maxCards:s.maxCards||4,
-        playerCount:pc,status:st,countdown:r&&st==='countdown'?r.countdownLeft:0,pot:r?(r.pot||0):0,called:r&&r.calledNumbers?r.calledNumbers.length:0,full:pc>=s.maxPlayers};});
-    const f=rs[0], cd=rs.filter(x=>x.status==='countdown');
-    return{stakeId:f.stakeId,amount:f.amount,maxPlayers:rs.reduce((a,x)=>a+x.maxPlayers,0),maxCards:f.maxCards,showRoomPage:list[0].showRoomPage===true,
-      playerCount:rs.reduce((a,x)=>a+x.playerCount,0),
-      status:cd.length?'countdown':(rs.some(x=>x.status==='waiting')?'waiting':f.status),
-      countdown:cd.length?Math.min(...cd.map(x=>x.countdown)):0,
-      rooms:rs};
-  });
-}
-function broadcastLobby(){
-  // Debounced: many joins/leaves happening in quick succession (busy lobby with
-  // hundreds of players) will collapse into a single broadcast every 250ms,
-  // instead of one full broadcast-to-everyone per event.
-  if(broadcastLobby._pending) return;
-  broadcastLobby._pending=true;
-  setTimeout(()=>{
-    broadcastLobby._pending=false;
-    const payload=buildLobbyStakes(), online=onlineCount();
-    Object.values(clients).forEach(c=>{
-      if(!c.ws||c.ws.readyState!==WebSocket.OPEN) return;
-      // stakes where this player has a game running (shown as "In game" in the lobby)
-      const joined=clientRooms(c).filter(r=>{ const pl=playerOf(r,c); return pl&&(getPlayerCardCount(pl)>0||pl.hasPaid)&&['waiting','countdown','starting','playing'].includes(r.status); }).map(r=>r.stakeId);
-      c.ws.send(JSON.stringify({type:'lobbyUpdate',stakes:payload,joined,online}));
-    });
-  },250);
-}
-function getPlayerCardIds(p){
-  return [p.cardId,p.cardId2,p.cardId3,p.cardId4].filter(Boolean);
-}
-function getPlayerCardCount(p){ return getPlayerCardIds(p).length; }
-function getCardField(slot){ return slot===1?'cardId':slot===2?'cardId2':slot===3?'cardId3':'cardId4'; }
-function getNumbersField(slot){ return slot===1?'cardNumbers':slot===2?'cardNumbers2':slot===3?'cardNumbers3':'cardNumbers4'; }
+        FROM bingo_stakes bs
 
-function broadcastCardPool(room){
-  // Send only the FULL pool once when needed (e.g. on join); for live picks use broadcastCardDiff instead.
-  const base=getCardPoolForRoom(room).map(c=>({id:c.id,taken:room.takenCardIds.has(c.id)}));
-  const cardCount=room.players.reduce((sum,p)=>sum+getPlayerCardCount(p),0);
-  room.players.forEach(p=>send(p.ws,{roomId:room.roomId,stakeId:room.stakeId,type:'cardPoolUpdate',pool:base.map(c=>({...c,takenByMe:getPlayerCardIds(p).includes(c.id)})),playerCount:cardCount,stakeAmount:room.stake}));
-}
-// Lightweight update: tell everyone in the room only WHICH card(s) changed state,
-// instead of re-sending the entire 400-card array on every single pick.
-// This is the #1 fix for handling 400 concurrent players smoothly.
-function broadcastCardDiff(room, changedCardIds){
-  const cardCount=room.players.reduce((sum,p)=>sum+getPlayerCardCount(p),0);
-  const changes=changedCardIds.map(id=>({id,taken:room.takenCardIds.has(id)}));
-  room.players.forEach(p=>send(p.ws,{
-    roomId:room.roomId,stakeId:room.stakeId,
-    type:'cardPoolDiff',
-    changes:changes.map(c=>({...c,takenByMe:getPlayerCardIds(p).includes(c.id)})),
-    playerCount:cardCount,
-    stakeAmount:room.stake
-  }));
-}
+        INNER JOIN bingo_room_stakes brs
+            ON brs.stake_id = bs.id
+            AND brs.status = 'active'
 
-// ─── GAME LIFECYCLE ──────────────────────────────────────────
-function startCountdown(room){
-  room.status='countdown'; room.countdownLeft=Math.ceil((room.selectionSeconds?room.selectionSeconds*1000:LOBBY_WAIT_MS)/1000);
-  room.countdownTimer=setInterval(()=>{
-    room.countdownLeft--;
-    const ready=room.players.filter(p=>getPlayerCardCount(p)>0).length;
-    if(ready<(room.minPlayers||2)){clearInterval(room.countdownTimer);room.status='waiting';broadcast(room,{type:'waitingForPlayers'});broadcastLobby();return;}
-    broadcast(room,{type:'countdown',seconds:room.countdownLeft});
-    if(room.countdownLeft<=0){clearInterval(room.countdownTimer);startGame(room).catch(e=>{ console.error('startGame crashed:',e&&e.stack||e); failStart(room,'internal error: '+(e&&e.message)); });}
-  },1000);
-}
+        INNER JOIN bingo_rooms br
+            ON br.id = brs.room_id
+            AND br.status = 'active'
 
-// ── Round start with db.js ──────────────────────────────────────
-// createBingoGame() validates the room + stake, charges EVERY cartela from the player's wallets
-// (play / main / bonus, in the order the funding policy says), creates the game and returns the
-// prize pool. It is one database transaction: either the whole game is created or nothing is charged.
-function releasePlayerCards(room,p){
-  getPlayerCardIds(p).forEach(id=>room.takenCardIds.delete(id));
-  p.cardId=null; p.cardId2=null; p.cardId3=null; p.cardId4=null; p.hasPaid=false;
-}
-async function collectDbEntries(room){
-  const entries=[];
-  for(const p of room.players){
-    if(getPlayerCardCount(p)===0) continue;
-    if(!p.userId){
-      const u=await loadUser(p.telegramId,2,200);
-      p.userId=u?.userId||null;
-    }
-    if(!p.userId){                                  // not registered: cannot play
-      sendRoom(room,p.ws,{type:'error',message:'መለያዎ አልተገኘም። እባክዎ በቦቱ ይመዝገቡ።'});
-      releasePlayerCards(room,p);
-      continue;
-    }
-    [1,2,3,4].forEach(slot=>{
-      const id=p[getCardField(slot)];
-      if(id) entries.push({p,slot,cardId:id,userId:p.userId});
-    });
-  }
-  return entries;
-}
-// After a failed attempt: find players who cannot afford their cartelas, release their cards.
-async function dropUnaffordablePlayers(room){
-  let dropped=false;
-  await forEachLimit(room.players.filter(p=>getPlayerCardCount(p)>0),10,async p=>{
-    const u=await loadUser(p.telegramId,1,0);
-    if(!u) return;
-    const need=room.stake*getPlayerCardCount(p);
-    if(Number(u.spendable)<need){
-      releasePlayerCards(room,p);
-      sendRoom(room,p.ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። ${need} ብር ያስፈልጋል።`});
-      dropped=true;
-    }
-  });
-  if(dropped) broadcastCardPool(room);
-  return dropped;
-}
-// Players the database would refuse (blocked / deactivated account): release their cartelas so they do not
-// hold the room's countdown, and tell them why. Run on a failed start, with fresh flags.
-async function dropIneligiblePlayers(room){
-  let dropped=false;
-  await forEachLimit(room.players.filter(p=>getPlayerCardCount(p)>0),10,async p=>{
-    let f=null; try{ f=await bingoDb.getBingoUserFlags(String(p.telegramId)); }catch(e){ return; }
-    if(!f||!(f.is_blocked===true||f.is_active===false)) return;
-    console.warn(`player ${p.telegramId} is ${f.is_blocked===true?'blocked':'inactive'}: removed from the round`);
-    const u=userCache[String(p.telegramId)]; if(u){ u.blocked=f.is_blocked===true; u.inactive=f.is_active===false; u.flagsAt=Date.now(); }
-    releasePlayerCards(room,p);
-    sendRoom(room,p.ws,{type:'error',message:'መለያዎ ለጊዜው ተዘግቷል። እባክዎ ድጋፍን ያነጋግሩ።'});
-    dropped=true;
-  });
-  if(dropped) broadcastCardPool(room);
-  return dropped;
-}
-// Short, friendly reason + code for players.
-function startFailureInfo(reason){
-  const r=String(reason||'');
-  if(/at least \d+ players|players are required|minimum.*players|min.*players/i.test(r))
-    return {code:'MIN_PLAYERS',text:'ጨዋታውን ለመጀመር ቢያንስ 2 የተለያዩ ተጫዋቾች ያስፈልጋሉ።'};
-  if(/room.*(not found|not active)|stake.*(not active|not exist|not available)|game system|funding policy|commission rule|ids are missing|configuration/i.test(r))
-    return {code:'SETUP',text:'የክፍሉ ማዋቀር አልተጠናቀቀም። እባክዎ አስተዳዳሪን ያነጋግሩ።'};
-  if(/uq_bingo_games_active_room_stake|active game/i.test(r))
-    return {code:'STUCK_GAME',text:'ለዚህ ክፍል ያልተጠናቀቀ የቀድሞ ጨዋታ አለ። እባክዎ ትንሽ ቆይተው ይሞክሩ።'};
-  if(/bonus consumption mismatch/i.test(r))
-    return {code:'BONUS',text:'የቦነስ ሂሳብ ችግር አለ። እባክዎ አስተዳዳሪን ያነጋግሩ።'};
-  if(/insufficient|balance/i.test(r))
-    return {code:'BALANCE',text:'አንዳንድ ተጫዋቾች በቂ ቀሪ ሂሳብ የላቸውም።'};
-  if(/no cartelas/i.test(r))
-    return {code:'NO_CARTELAS',text:'ካርቴላ አልተመረጠም።'};
-  return {code:'UNKNOWN',text:'ጨዋታው መጀመር አልተቻለም። እባክዎ እንደገና ይሞክሩ።'};
-}
-// A player whose Bonus wallet is not covered by active bonus awards would make place_stake() raise
-// "Bonus consumption mismatch" and block the round for EVERYONE. Take only those players out.
-async function dropBonusMismatchPlayers(room){
-  if(typeof bingoDb.getBingoBonusStatus!=='function') return false;
-  const players=room.players.filter(p=>getPlayerCardCount(p)>0&&p.userId);
-  if(!players.length) return false;
-  let rows;
-  try{ rows=await bingoDb.getBingoBonusStatus(players.map(p=>p.userId)); }
-  catch(e){ console.error('getBingoBonusStatus:',e.message); return false; }
-  const bad=new Set(rows.filter(r=>Number(r.bonus_balance)-Number(r.usable)>0.009).map(r=>Number(r.user_id)));
-  if(!bad.size) return false;
-  for(const p of players){
-    if(!bad.has(Number(p.userId))) continue;
-    const r=rows.find(x=>Number(x.user_id)===Number(p.userId));
-    console.error(`⚠️ user ${p.userId}: Bonus wallet ${r.bonus_balance} is not covered by active bonuses (${r.usable}); removed from the round`);
-    releasePlayerCards(room,p);
-    sendRoom(room,p.ws,{type:'error',message:'የቦነስ ሂሳብዎ ላይ ችግር ስላለ በዚህ ዙር መሳተፍ አልተቻለም። እባክዎ ድጋፍን ያነጋግሩ። (BONUS)'});
-  }
-  broadcastCardPool(room);
-  return true;
-}
-function failStart(room,reason){
-  console.error(`⚠️ Round could not start (${room.stakeId}): ${reason}`);
-  room.status='waiting';
-  room.startFailures=(room.startFailures||0)+1;
-  room.lastStartError=String(reason||'');
-  const info=startFailureInfo(reason);
-  room.players.forEach(p=>{
-    sendRoom(room,p.ws,{type:'error',message:`${info.text} (${info.code})`});
-  });
-  broadcast(room,{type:'waitingForPlayers'});
-  broadcastCardPool(room);
-  broadcastLobby();
-  // Try again if enough players still hold cards (at most 3 automatic retries)
-  const ready=room.players.filter(p=>getPlayerCardCount(p)>0).length;
-  if(ready>=(room.minPlayers||2)&&room.startFailures<3){
-    setTimeout(()=>{ if(rooms[room.roomId]&&room.status==='waiting') startCountdown(room); },3000);
-  }
-  return false;
-}
-// ── Orphaned games ──────────────────────────────────────────────────────────
-// A game is created as "selection" and only end_bingo_game() closes it. If this server restarted in the
-// middle of a round, the round is lost from memory but the game stays open in the database, and the unique
-// index uq_bingo_games_active_room_stake then refuses every new game for that room + stake.
-// Open games that no room of THIS server owns are cancelled with a full refund (cancel_bingo_game).
-function ownedGameIds(){
-  const ids=new Set();
-  Object.values(rooms).forEach(r=>{ if(r.dbGameId) ids.add(Number(r.dbGameId)); });
-  return ids;
-}
-async function recoverOrphanedGames({roomId=null,stakeId=null,minAgeSec=0,reason='orphaned_game'}={}){
-  if(!bingoDb||typeof bingoDb.getUnfinishedBingoGames!=='function'||typeof bingoDb.cancelBingoGame!=='function') return 0;
-  let games;
-  try{ games=await bingoDb.getUnfinishedBingoGames(roomId,stakeId); }
-  catch(e){ console.error('getUnfinishedBingoGames:',e.message); return 0; }
-  const owned=ownedGameIds();
-  let cancelled=0;
-  for(const g of games){
-    if(owned.has(Number(g.id))) continue;                 // a round of this server is still running it
-    if(g.winners>0){ console.warn(`⚠️ Game ${g.game_code} has winners but is still open: finish it with end_bingo_game(), it is not cancelled automatically.`); continue; }
-    if(g.age_seconds<minAgeSec) continue;                 // too young: it may belong to another instance during a deploy
-    try{
-      const r=await bingoDb.cancelBingoGame(g.id,reason);
-      console.warn(`🧹 Cancelled unfinished game ${g.game_code} (${g.status}, ${g.age_seconds}s old, ${reason}): refunded ${r&&r.refunded_cards} cartela(s), ${r&&r.refunded_total} ETB`);
-      cancelled++;
-    }catch(e){
-      console.error(`cancel_bingo_game(${g.id}) failed:`,e.message,e.message&&/cancel_bingo_game/.test(e.message)?'- install cancel_bingo_game.sql in the database':'');
-    }
-  }
-  return cancelled;
-}
+        WHERE bs.is_active = true
 
-async function startDbGame(room){
-  for(let attempt=1;attempt<=3;attempt++){
-    const entries=await collectDbEntries(room);
-    if(!entries.length) return failStart(room,'no cartelas selected');
-    if(new Set(entries.map(e=>e.userId)).size<(room.minPlayers||2)) return failStart(room,'at least '+(room.minPlayers||2)+' players are required');
-    if(!room.dbRoomId||!room.dbStakeId) return failStart(room,'room/stake ids are missing (stakes not loaded from the database)');
+        ORDER BY
+            bs.display_order ASC,
+            bs.amount ASC,
+            br.id ASC
+    `);
 
-    let result;
-    try{
-      result=await bingoDb.createBingoGame(
-        room.dbRoomId,
-        room.dbStakeId,
-        entries.map(e=>({user_id:e.userId,card_id:e.cardId,card_data:{numbers:(getCard(e.cardId)||{}).numbers||[],slot:e.slot}}))
+    return rows.map(row => ({
+        id: String(row.stake_id).toLowerCase(),
+
+        dbId: row.stake_id,
+        name: row.stake_name,
+        displayName: row.display_name,
+        amount: Number(row.amount),
+
+        showRoomPage: row.show_room_page === true,
+        isActive: row.is_active,
+        displayOrder: Number(row.display_order),
+
+        roomId: Number(row.room_id),
+        roomName: row.room_name,
+        roomCode: row.room_code,
+
+        minPlayers: Number(row.min_players),
+
+        maxPlayers:
+            row.max_players === null
+                ? null
+                : Number(row.max_players),
+
+        cardCount: Number(row.card_count),
+        maxCardsPerPlayer: Number(row.max_cards_per_player),
+        selectionSeconds: Number(row.selection_seconds),
+        nextRoundSeconds: Number(row.next_round_seconds)
+    }));
+},
+
+  // ============================================================
+  // USER LOOKUPS / REGISTRATION
+  // ============================================================
+
+  async getUserByTelegramId(telegramId) {
+
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+          id,
+          telegram_id,
+          name,
+          phone,      
+          is_admin,
+          admin_role,
+          is_active,
+          is_blocked,
+          created_at,
+          last_seen
+        FROM users
+        WHERE telegram_id = $1
+          AND is_active = TRUE
+        LIMIT 1
+        `,
+        [telegramId]
       );
-    }catch(e){
-      console.error(`createBingoGame failed (attempt ${attempt}):`,e.message);
-      if(/is_banned/.test(e.message)) console.error('DATABASE FIX NEEDED: create_bingo_game_from_selections reads users.is_banned but the column does not exist. Run: ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_banned boolean NOT NULL DEFAULT false;');
-      // an older game of this room + stake was never closed: cancel it (refunding its players) and try again
-      if(/uq_bingo_games_active_room_stake/i.test(e.message) && attempt<3){
-        const n=await recoverOrphanedGames({roomId:room.dbRoomId,stakeId:room.dbStakeId,minAgeSec:120,reason:'orphaned_game'});
-        if(n>0) continue;
+
+    return rows[0] || null;
+  },
+
+
+
+  async getAdminFinancialStatistics() {
+  const { rows } = await pool.query(`
+    WITH deposit_stats AS (
+      SELECT
+        d.payment_account_id,
+        COUNT(*) AS deposit_count,
+        COALESCE(SUM(d.amount), 0) AS deposit_amount
+      FROM deposits d
+      GROUP BY d.payment_account_id
+    ),
+
+    withdrawal_stats AS (
+      SELECT
+        w.payment_account_id,
+        COUNT(*) AS withdrawal_count,
+        COALESCE(SUM(w.amount), 0) AS withdrawal_amount
+      FROM withdrawals w
+      WHERE w.status = 'approved'
+        AND w.payment_account_id IS NOT NULL
+      GROUP BY w.payment_account_id
+    ),
+
+    account_stats AS (
+      SELECT
+        pa.id AS payment_account_id,
+        pa.account_name,
+        pa.account_number,
+        pa.balance,
+
+        pm.id AS payment_method_id,
+        pm.name AS payment_method_name,
+        pm.amharic_name AS payment_method_amharic,
+        pm.emoji AS payment_method_emoji,
+
+        COALESCE(ds.deposit_count, 0) AS deposit_count,
+        COALESCE(ds.deposit_amount, 0) AS deposit_amount,
+
+        COALESCE(ws.withdrawal_count, 0) AS withdrawal_count,
+        COALESCE(ws.withdrawal_amount, 0) AS withdrawal_amount
+
+      FROM payment_accounts pa
+
+      JOIN payment_methods pm
+        ON pm.id = pa.payment_method_id
+
+      LEFT JOIN deposit_stats ds
+        ON ds.payment_account_id = pa.id
+
+      LEFT JOIN withdrawal_stats ws
+        ON ws.payment_account_id = pa.id
+
+      WHERE pa.is_removed = FALSE
+    )
+
+    SELECT
+      payment_account_id,
+      account_name,
+      account_number,
+      balance,
+
+      payment_method_id,
+      payment_method_name,
+      payment_method_amharic,
+      payment_method_emoji,
+
+      deposit_count,
+      deposit_amount,
+
+      withdrawal_count,
+      withdrawal_amount
+
+    FROM account_stats
+
+    ORDER BY
+      payment_method_id ASC,
+      payment_account_id ASC
+  `);
+
+  const accounts = rows.map((row) => ({
+    paymentAccountId:
+      Number(row.payment_account_id),
+
+    accountName:
+      row.account_name || "Unnamed Account",
+
+    accountNumber:
+      row.account_number || "",
+
+    balance:
+      Number(row.balance || 0),
+
+    paymentMethodId:
+      Number(row.payment_method_id),
+
+    paymentMethodName:
+      row.payment_method_name || "Payment Method",
+
+    paymentMethodAmharic:
+      row.payment_method_amharic || "",
+
+    paymentMethodEmoji:
+      row.payment_method_emoji || "💳",
+
+    depositCount:
+      Number(row.deposit_count || 0),
+
+    depositAmount:
+      Number(row.deposit_amount || 0),
+
+    withdrawalCount:
+      Number(row.withdrawal_count || 0),
+
+    withdrawalAmount:
+      Number(row.withdrawal_amount || 0)
+  }));
+
+  const totalDepositCount =
+    accounts.reduce(
+      (sum, account) =>
+        sum + account.depositCount,
+      0
+    );
+
+  const totalDepositAmount =
+    accounts.reduce(
+      (sum, account) =>
+        sum + account.depositAmount,
+      0
+    );
+
+  const totalWithdrawalCount =
+    accounts.reduce(
+      (sum, account) =>
+        sum + account.withdrawalCount,
+      0
+    );
+
+  const totalWithdrawalAmount =
+    accounts.reduce(
+      (sum, account) =>
+        sum + account.withdrawalAmount,
+      0
+    );
+
+  return {
+    accounts,
+
+    totalDepositCount,
+    totalDepositAmount,
+
+    totalWithdrawalCount,
+    totalWithdrawalAmount
+  };
+},
+
+  async getUserByTelegramIdIncludingInactive(
+    telegramId
+  ) {
+
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+          id,
+          telegram_id,
+          name,
+          phone,
+          is_admin,
+          admin_role,
+          is_active,
+          is_blocked,
+          created_at,
+          last_seen
+        FROM users
+        WHERE telegram_id = $1
+        LIMIT 1
+        `,
+        [telegramId]
+      );
+
+    return rows[0] || null;
+  },
+
+  async getUserByPhone(phone) {
+
+    const normalized =
+      normalizeEthiopianPhone(phone);
+
+    const searchLast9 =
+      last9(normalized || phone);
+
+    if (!searchLast9) {
+      return null;
+    }
+
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+          id,
+          telegram_id,
+          name,
+          phone,          
+          is_active,
+          is_admin,
+          is_blocked,
+          admin_role
+        FROM users
+        WHERE RIGHT(
+          REGEXP_REPLACE(
+            phone,
+            '[^0-9]',
+            '',
+            'g'
+          ),
+          9
+        ) = $1
+          AND is_active = TRUE          
+          AND is_blocked = FALSE
+        LIMIT 1
+        `,
+        [searchLast9]
+      );
+
+    return rows[0] || null;
+  },
+
+  async getUserByPhoneForAdmin(phone) {
+
+    const searchLast9 =
+      last9(phone);
+
+    if (!searchLast9) {
+      return null;
+    }
+
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+          id,
+          telegram_id,
+          name,
+          phone,
+          is_active,
+          is_blocked,
+          is_admin,
+          admin_role          
+        FROM users
+        WHERE RIGHT(
+          REGEXP_REPLACE(
+            phone,
+            '[^0-9]',
+            '',
+            'g'
+          ),
+          9
+        ) = $1
+          AND is_active = TRUE
+        LIMIT 1
+        `,
+        [searchLast9]
+      );
+
+    return rows[0] || null;
+  },
+
+async registerUser(telegramId, name, phone) {
+  const normalizedPhone = normalizeEthiopianPhone(phone);
+
+  if (!normalizedPhone) {
+    throw new Error("Invalid Ethiopian phone number");
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const telegramResult = await client.query(
+      `
+      SELECT *
+      FROM users
+      WHERE telegram_id = $1
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [telegramId]
+    );
+
+    if (telegramResult.rows.length) {
+      await client.query("ROLLBACK");
+
+      return {
+        status: "existing_telegram",
+        user: telegramResult.rows[0]
+      };
+    }
+
+    const phoneResult = await client.query(
+      `
+      SELECT *
+      FROM users
+      WHERE RIGHT(
+        REGEXP_REPLACE(
+          phone,
+          '[^0-9]',
+          '',
+          'g'
+        ),
+        9
+      ) = $1
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [normalizedPhone.slice(-9)]
+    );
+
+    if (phoneResult.rows.length) {
+      const existingUser = phoneResult.rows[0];
+
+      // If the existing account is blocked/banned
+      if (existingUser.is_blocked) {
+        await client.query("ROLLBACK");
+
+        return {
+          status: "banned",
+          user: existingUser
+        };
       }
-      // retry without the players who cannot pay / whose bonus is inconsistent (up to 2 retries)
-      if(attempt<3 && ((await dropBonusMismatchPlayers(room)) || (await dropUnaffordablePlayers(room)) || (await dropIneligiblePlayers(room)))) continue;
-      return failStart(room,e.message);
+
+      const updated = await client.query(
+        `
+        UPDATE users
+        SET
+          telegram_id = $1,
+          name = $2,
+          phone = $3,
+          is_active = TRUE,
+          last_seen = NOW()
+        WHERE id = $4
+        RETURNING *
+        `,
+        [
+          telegramId,
+          name,
+          normalizedPhone,
+          existingUser.id
+        ]
+      );
+
+      await client.query("COMMIT");
+
+      return {
+        status: "reconnected",
+        user: updated.rows[0]
+      };
     }
 
-    // Keep exactly the cartelas the database accepted (and charged).
-    const accepted=new Set((result.accepted||[]).map(a=>`${a.user_id}:${a.card_id}`));
-    for(const e of entries){
-      if(accepted.has(`${e.userId}:${e.cardId}`)) continue;
-      room.takenCardIds.delete(e.cardId);
-      e.p[getCardField(e.slot)]=null;
-      const rej=(result.rejected||[]).find(r=>Number(r.user_id)===e.userId&&Number(r.card_id)===e.cardId);
-      const why=rej&&rej.reason;
-      const text=why==='insufficient_balance'?`ካርቴላ ${e.cardId} አልተቀበለም — በቂ ቀሪ ሂሳብ የለም።`
-        :(why==='user_blocked'||why==='user_banned'||why==='user_inactive')?'መለያዎ ለጊዜው ተዘግቷል። እባክዎ ድጋፍን ያነጋግሩ።'
-        :why==='max_cards_per_player_reached'?`በዚህ ክፍል የሚፈቀደው የካርቴላ ብዛት አልፏል።`
-        :`ካርቴላ ${e.cardId} አልተቀበለም።`;
-      console.warn(`cartela ${e.cardId} of user ${e.userId} refused by the database: ${why||'not accepted'}`);
-      sendRoom(room,e.p.ws,{type:'error',message:text});
-    }
-    room.players.forEach(p=>{ p.hasPaid=getPlayerCardCount(p)>0; });
+    const inserted = await client.query(
+      `
+      INSERT INTO users (
+        telegram_id,
+        name,
+        phone,
+        is_active,
+        is_admin,
+        is_blocked,
+        last_seen
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        TRUE,
+        FALSE,
+        FALSE,
+        NOW()
+      )
+      RETURNING *
+      `,
+      [
+        telegramId,
+        name,
+        normalizedPhone
+      ]
+    );
 
-    room.pot=Number(result.prize_pool)||0;          // the prize pool the DATABASE calculated (after commission)
-    room.grossPot=Number(result.gross_pot)||0;
-    room.dbGameId=Number(result.game_id)||null;
-    room.dbGameCode=result.game_code||null;
-    room.startFailures=0;
-    console.log(`🎮 Game ${room.dbGameCode||room.dbGameId} created (${room.stakeId}): ${result.total_participants} players, ${result.total_cards} cartelas, gross ${result.gross_pot}, prize ${result.prize_pool}`);
+    await client.query("COMMIT");
 
-    // Everyone's wallets changed: reload them once and push them to the apps.
-    forEachLimit(room.players.filter(p=>p.hasPaid),10,pushWallets).catch(()=>{});
-    return true;
-  }
-  return false;
-}
-
-async function startGame(room){
-  // Lock the room before the first await so no new card reservations can race
-  // with the final financial commit. Card selection itself is always memory-only.
-  room.status='starting';
-
-  {
-    const ok=await startDbGame(room);
-    if(!ok) return;
-  }
-
-  room.status='playing';
-  room.calledNumbers=[]; room.availableNumbers=Array.from({length:75},(_,i)=>i+1);
-  room.claimedThisRound=[]; room.claimWindowOpen=false;
-
-  room.players.forEach(p=>{
-    if(getPlayerCardCount(p)>0){
-      const card=p.cardId?getCard(p.cardId):null;
-      const card2=p.cardId2?getCard(p.cardId2):null;
-      sendRoom(room,p.ws,{type:'yourCard',
-        cardId:p.cardId,cardNumbers:card?card.numbers:[],
-        cardId2:p.cardId2||null,cardNumbers2:card2?card2.numbers:[],
-        cardId3:p.cardId3||null,cardNumbers3:p.cardId3?getCard(p.cardId3).numbers:[],
-        cardId4:p.cardId4||null,cardNumbers4:p.cardId4?getCard(p.cardId4).numbers:[],
-        pot:room.pot,playerCount:livePlayerCount(room),spectator:false});
-    }else{
-      sendRoom(room,p.ws,{type:'spectating',pot:room.pot,playerCount:room.players.filter(p=>p.hasPaid).length,calledNumbers:room.calledNumbers});
-    }
-  });
-
-  broadcast(room,{type:'gameStart',pot:room.pot,playerCount:livePlayerCount(room),players:paidPlayerList(room)});
-  // The round is running: its picks now belong to the game (kept on the players and in participantCards),
-  // so the card-selection board of this room is emptied for everybody at once.
-  room.takenCardIds=new Set();
-  broadcastCardPool(room);
-  broadcastLobby(); scheduleNextCall(room);
-}
-
-function scheduleNextCall(room){room.callTimer=setTimeout(()=>callNumber(room),CALL_INTERVAL_MS);}
-
-function callNumber(room){
-  if(room.status!=='playing') return;
-
-  // FIX 1: Evaluate ALL pending claims BEFORE calling next number.
-  // This lets multiple simultaneous winners be detected in the same window.
-  if(room.claimedThisRound.length>0){evaluateClaims(room);return;}
-  room.claimWindowOpen=false; room.claimedThisRound=[];
-  if(room.availableNumbers.length===0){endGame(room,[],null,true);return;}
-  const idx=randomIndex(room.availableNumbers.length);
-  const drawn=room.availableNumbers.splice(idx,1)[0];
-  room.calledNumbers.push(drawn);
-  broadcast(room,{type:'numberCalled',number:drawn,calledNumbers:room.calledNumbers,callCount:room.calledNumbers.length,claimWindowMs:CLAIM_WINDOW_MS,pot:room.pot,playerCount:livePlayerCount(room),players:paidPlayerList(room)});
-  room.claimWindowOpen=true; scheduleNextCall(room);
-  autoClaimForAll(room);
-}
-
-// The game is fully automatic: every called number is marked on every cartela.
-// The server therefore claims BINGO for any winning player itself. This is what lets a
-// player run 2-3 games at the same time: a game he is not looking at (or whose screen is
-// closed) is still claimed and paid correctly. Duplicate claims from the app are ignored.
-function autoClaimForAll(room){
-  if(room.status!=='playing') return;
-  room.players.forEach(p=>{
-    if(p.disqualified||!p.hasPaid||getPlayerCardCount(p)===0) return;
-    if(room.claimedThisRound.find(c=>c.playerId===p.playerId)) return;
-    const claim={playerId:p.playerId,markedIndices:[],cardId2:null,markedIndices2:[],cardId3:null,markedIndices3:[],cardId4:null,markedIndices4:[]};
-    let wins=false;
-    [1,2,3,4].forEach(slot=>{
-      const id=p[getCardField(slot)]; if(!id) return;
-      const card=getCard(id); if(!card) return;
-      const marks=[]; card.numbers.forEach((num,i)=>{ if(i===12||room.calledNumbers.includes(num)) marks.push(i); });
-      claim['markedIndices'+(slot===1?'':slot)]=marks;
-      if(slot>1) claim['cardId'+slot]=id;
-      if(checkWin(card.numbers,room.calledNumbers,marks)) wins=true;
-    });
-    if(wins) room.claimedThisRound.push(claim);
-  });
-  if(room.claimedThisRound.length){
-    if(room.callTimer) clearTimeout(room.callTimer);
-    if(room.claimEvalTimer) clearTimeout(room.claimEvalTimer);
-    room.claimEvalTimer=setTimeout(()=>evaluateClaims(room),CLAIM_COLLECT_MS);
-  }
-}
-
-function evaluateClaims(room){
-  room.claimEvalTimer=null;
-  const winners=[], cheaters=[];
-  room.claimedThisRound.forEach(claim=>{
-    const p=room.players.find(p=>p.playerId===claim.playerId);
-    if(!p||p.disqualified||getPlayerCardCount(p)===0) return;
-    const wins=[1,2,3,4].map(slot=>{
-      const id=p[getCardField(slot)];
-      const card=id?getCard(id):null;
-      const marks=claim['markedIndices'+(slot===1?'':slot)]||[];
-      return {slot,id,win:!!(card&&checkWin(card.numbers,room.calledNumbers,marks)),marks};
-    });
-    const winning=wins.find(x=>x.win);
-    if(winning){
-      p._winningCardId=winning.id;
-      p._winningMarkedIndices=Array.from(winning.marks);
-      winners.push(p);
-    }else cheaters.push(p);
-  });
-
-  cheaters.forEach(p=>{
-    p.disqualified=true;
-    sendRoom(room,p.ws,{type:'disqualified',message:'🚫 የተሳሳተ BINGO ጥያቄ — ከጨዋታው ተሰርዘዋል!'});
-  });
-
-  room.claimedThisRound=[]; room.claimWindowOpen=false;
-
-  if(winners.length>0) endGame(room,winners,null,false);
-  else scheduleNextCall(room);
-}
-
-// Pay the winners with db.js. Returns {winAmount, names, tids} or null if the database call failed.
-// end_bingo_game(game, winning CARTELA numbers, numbers called in this round) pays every winner from the prize
-// pool in one transaction and stores the called numbers with the game.
-async function settleDbGame(room,winners){
-  if(!room.dbGameId){ console.error('settleDbGame: this round has no database game id'); return null; }
-  const ids=[...new Set(winners.map(w=>Number(w._winningCardId||w.cardId)).filter(n=>Number.isInteger(n)&&n>0))];
-  const called=(room.calledNumbers||[]).map(Number).filter(n=>Number.isInteger(n)&&n>=1&&n<=75);   // snapshot at the moment of the win
-  if(!ids.length||!called.length){
-    console.error(`CRITICAL: cannot settle game ${room.dbGameCode||room.dbGameId}: winning cartelas ${JSON.stringify(ids)}, called numbers ${called.length}`);
-    return null;
-  }
-  let result=null;
-  for(let attempt=1;attempt<=3&&!result;attempt++){
-    try{ result=await bingoDb.endBingoGame(room.dbGameId,ids,called); }
-    catch(e){
-      console.error(`endBingoGame failed (attempt ${attempt}/3) game ${room.dbGameCode||room.dbGameId}:`,e.message);
-      if(/already completed|already been settled/i.test(e.message)){ result={winner_details:[],already:true}; break; }
-      if(attempt<3) await new Promise(r=>setTimeout(r,attempt*1500));
-    }
-  }
-  if(!result){
-    console.error(`CRITICAL: winners of game ${room.dbGameCode||room.dbGameId} were NOT paid. Run: SELECT public.end_bingo_game(${room.dbGameId}, ARRAY[${ids.join(',')}]::integer[], ARRAY[${called.join(',')}]::integer[]);`);
-    return null;
-  }
-  const rows=Array.isArray(result.winner_details)?result.winner_details:(Array.isArray(result.winners)?result.winners:[]);
-  const names=winners.map(w=>w.playerName);
-  const tids=winners.map(w=>String(w.telegramId||'')).filter(Boolean);
-  const first=rows.length?Number(rows[0].payout):Math.floor((room.pot||0)/winners.length);
-  console.log(`🏆 Game ${room.dbGameCode||room.dbGameId} settled: paid ${result.total_payout??result.total_paid??'?'} to ${rows.length||winners.length} winning cartela(s), ${called.length} numbers called`);
-  // the winners' wallets changed: reload once and push
-  forEachLimit(winners,10,async w=>{ await pushWallets(w); }).catch(()=>{});
-  return {winAmount:first,names,tids};
-}
-
-async function endGame(room, winners, customMsg, noWinner){
-  if(room.callTimer) clearTimeout(room.callTimer);
-  if(room.countdownTimer) clearInterval(room.countdownTimer);
-  if(room.claimEvalTimer) clearTimeout(room.claimEvalTimer);
-  room.status='finished'; room.claimWindowOpen=false;
-
-  let winAmount=0, winnerNames=[], winnerTids=[];
-
-  {
-    // ── db.js: endBingoGame() pays every winner from the prize pool in ONE transaction ──
-    if(winners&&winners.length>0){
-      const paid=await settleDbGame(room,winners);
-      if(paid){ winAmount=paid.winAmount; winnerNames=paid.names; winnerTids=paid.tids; }
-      else{ winnerNames=winners.map(w=>w.playerName); winnerTids=winners.map(w=>String(w.telegramId||'')).filter(Boolean); winAmount=Math.floor((room.pot||0)/winners.length); }
-    }else if(room.dbGameId){
-      // nobody won (all numbers called): close the game and give every stake back
-      try{
-        if(typeof bingoDb.cancelBingoGame!=='function') throw new Error('cancelBingoGame is not available in db.js');
-        const r=await bingoDb.cancelBingoGame(room.dbGameId,'no_winner');
-        console.warn(`↩️ Game ${room.dbGameCode||room.dbGameId} ended with no winner: refunded ${r&&r.refunded_cards} cartela(s), ${r&&r.refunded_total} ETB`);
-        forEachLimit(room.players.filter(p=>p.hasPaid),10,pushWallets).catch(()=>{});
-      }catch(e){
-        console.error(`⚠️ Game ${room.dbGameCode||room.dbGameId} ended with no winner and could not be cancelled: ${e.message}. The game stays open and blocks this stake: install cancel_bingo_game.sql (adds cancel_bingo_game) and cancelBingoGame in db.js, or cancel it by hand.`);
-      }
-    }
-    if(room.dbGameId){
-      room.players.forEach(p=>{ if(p.telegramId) profileCache.delete(String(p.telegramId)); });
-    }
-  }
-
-  const isSplit=winners&&winners.length>1;
-  const msg=customMsg||(noWinner?'በዚህ ዙር አሸናፊ የለም':
-    isSplit?`🤝 የተከፋፈለ ሽልማት! ${winnerNames.join(' & ')} እያንዳንዳቸው ${winAmount} ETB አሸንፈዋል!`
-           :`🏆 ${winnerNames[0]} ${winAmount} ETB አሸንፈዋል!`);
-
-  // Include the winning cartela(s) so both winners and losers see a clear
-  // result page with the winning card, just like the reference design.
-  const winningCards=(winners||[]).map(w=>{
-    const winningId=w._winningCardId||w.cardId||null;
-    const card=winningId?getCard(winningId):null;
     return {
-      playerName:w.playerName,
-      telegramId:String(w.telegramId||clients[w.playerId]?.telegramId||''),
-      cardId:winningId,
-      cardNumbers:card?card.numbers:[],
-      markedIndices:Array.isArray(w._winningMarkedIndices)?w._winningMarkedIndices:[]
+      status: "new",
+      user: inserted.rows[0]
     };
-  });
 
-  // Broadcast the result to EVERY connected player in the room. Keep the room/stake
-  // identifiers in this message so clients can return to the same stake.
-  // The pause before the next round comes from the database (bingo_rooms.next_round_seconds), read with the stakes.
-  const stakeCfg=STAKES.find(x=>x.id===room.stakeId);
-  const nrs=Number(stakeCfg&&stakeCfg.nextRoundSeconds);
-  const RESET_SECONDS=Number.isFinite(nrs)&&nrs>=1?Math.min(300,Math.floor(nrs)):DEFAULT_NEXT_ROUND_SECONDS;
-  broadcast(room,{
-    type:'gameOver',
-    roomId:room.roomId,
-    stakeId:room.stakeId,
-    winners:winnerNames,
-    winAmount,
-    isSplit,
-    message:msg,
-    noWinner:!!noWinner,
-    winnerTelegramIds:winnerTids,
-    winningCards,
-    calledNumbers:room.calledNumbers,
-    resetCountdown:RESET_SECONDS
-  });
+  } catch (err) {
+    await safeRollback(client);
 
-  // Send a real 9 -> 8 -> ... -> 1 countdown. The room remains finished during
-  // this period, then is reset to WAITING and the SAME room is reused.
-  if(room.resetCountdownTimer) clearInterval(room.resetCountdownTimer);
-  let resetSeconds=RESET_SECONDS;
-  room.resetCountdownTimer=setInterval(()=>{
-    resetSeconds--;
-    if(resetSeconds>0){
-      broadcast(room,{type:'resetCountdown',roomId:room.roomId,stakeId:room.stakeId,seconds:resetSeconds});
-    }
-  },1000);
-
-  room.resetTimer=setTimeout(()=>{
-    if(room.resetCountdownTimer) clearInterval(room.resetCountdownTimer);
-    room.resetCountdownTimer=null;
-    if(!rooms[room.roomId]) return;
-
-    room.status='waiting';
-    room.calledNumbers=[];
-    room.availableNumbers=Array.from({length:75},(_,i)=>i+1);
-    room.pot=0;
-    room.takenCardIds=new Set();
-    room.claimedThisRound=[];
-    room.claimWindowOpen=false;
-    room.dbGameId=null;
-    room.dbGameCode=null;
-    room.participantCards=null;
-    room.grossPot=0;
-    room.startFailures=0;
-    room.callTimer=null;
-    room.claimEvalTimer=null;
-
-    // IMPORTANT: players stay in this room, but their old cards/payment flags are
-    // cleared so they can choose fresh cards for the next round.
-    room.players.forEach(p=>{
-      p.cardId=null;
-      p.cardId2=null;
-      p.cardId3=null;
-      p.cardId4=null;
-      p.hasPaid=false;
-      p.disqualified=false;
-    });
-
-    // Players who had LEFT this game's screen (detached, usually playing another game now)
-    // are removed from the finished room instead of being pulled back into it.
-    room.players=room.players.filter(p=>{
-      if(!p.detached) return true;
-      const cl=clients[p.playerId];
-      if(cl&&cl.rooms) cl.rooms.delete(room.roomId);
-      if(cl&&cl.roomId===room.roomId) cl.roomId=null;
-      sendRoom(room,p.ws,{type:'roomClosed'});
-      return false;
-    });
-    if(room.players.length===0){ delete rooms[room.roomId]; broadcastLobby(); return; }
-
-    room.players.forEach(p=>{
-      const cl=clients[p.playerId];
-      send(p.ws,{
-        type:'backToCardSelection',
-        roomId:room.roomId,
-        stakeId:room.stakeId,
-        balance:cl?cl.balance:0,
-        wallets:cl?cl.wallets:undefined,
-        playerCount:0,
-        stakeAmount:room.stake,
-        status:'waiting',
-        // Include the fresh pool in the reset response so the client can switch
-        // to card selection and render the new pool without a page reload.
-        pool:getCardPoolForRoom(room).map(c=>({id:c.id,taken:false,takenByMe:false}))
-      });
-    });
-
-    broadcastCardPool(room);
-    broadcastLobby();
-    // Do NOT start countdown here. Players must select fresh cards first.
-  },RESET_SECONDS*1000);
-}
-
-async function leaveRoom(client,roomId){
-  const rid=roomId||client.roomId;
-  if(!rid) return;
-  if(client.rooms) client.rooms.delete(rid);
-  const room=rooms[rid];
-  if(!room){ if(client.roomId===rid) client.roomId=null; return; }
-  const p=playerOf(room,client);
-  if(p){
-    // another device of the same account is still in this room: only THIS device leaves,
-    // the player and his cartelas stay for the other device(s)
-    detachSocket(p,client.ws);
-    if(openSockets(p).length){ if(client.roomId===rid) client.roomId=null; return; }
-    if(p.cardId) room.takenCardIds.delete(p.cardId);
-    getPlayerCardIds(p).forEach(id=>room.takenCardIds.delete(id));
-
-  }
-  room.players=room.players.filter(x=>x!==p);
-  if(client.roomId===rid) client.roomId=null;
-  if(room.players.length===0){
-    if(room.callTimer)clearTimeout(room.callTimer);
-    if(room.countdownTimer)clearInterval(room.countdownTimer);
-    delete rooms[room.roomId];
-  }else{
-    broadcastCardPool(room);broadcast(room,{type:'playerLeft',playerCount:room.players.length,players:room.players.map(p=>({playerId:p.playerId,playerName:p.playerName}))});
-  }
-  broadcastLobby();
-}
-
-// ─── WEBSOCKET ────────────────────────────────────────────────
-wss.on('connection',(ws)=>{
-  const playerId=uuidv4();
-  const client={playerId,playerName:'',telegramId:null,balance:0,roomId:null,rooms:new Set(),ws};
-  clients[playerId]=client; ws._pid=playerId;
-
-  const lobbyStakes=buildLobbyStakes();
-  send(ws,{type:'connected',playerId,balance:0,stakes:lobbyStakes,online:onlineCount()});
-  broadcastLobby();
-
-  ws.on('message',async raw=>{
-
-    const queueClient=clients[ws._pid];
-
-    queueClient.messageQueue=(queueClient.messageQueue||Promise.resolve()).then(async()=>{
-
-
-        try{
-
-          const client=clients[ws._pid];
-
-          if(!client) return;
-
-
-          // ── Rate limiting: max 15 messages/sec per connection ──
-
-          // Protects against spam/DoS and prevents one misbehaving client
-
-          // (buggy or malicious) from hogging CPU when 400 people are connected.
-
-          const now=Date.now();
-
-          if(!client._rl||now-client._rl.windowStart>1000){
-
-            client._rl={windowStart:now,count:0};
-
-          }
-
-          client._rl.count++;
-
-          if(client._rl.count>15){
-
-            return; // silently drop excess messages this second
-
-          }
-
-
-          const msg=JSON.parse(raw);
-
-          // a blocked / deactivated account has no access to the game system at all
-          if(client.blocked && ['joinRoom','reconnect','selectCard','deselectCard','claimBingo','leaveRoom'].includes(msg.type)){
-            send(ws,{type:'authFailed',reason:'blocked'});
-            return;
-          }
-
-          switch(msg.type){
-
-            case 'telegramAuth':{
-              const tid=resolveTelegramId(msg.initData,msg.telegramId);
-              if(!tid){
-                // not signed by Telegram: refuse (no retry loop); the page tells the player to open the game from Telegram
-                send(ws,{type:'authFailed',reason:'invalid_init_data'});
-                break;
-              }
-              const user=await loadUser(tid,6,500);
-              if(user&&(user.blocked||user.inactive)){
-                // never trust the cached flag for a refusal: ask the database again (an unblocked account gets in at once)
-                try{
-                  const f=await bingoDb.getBingoUserFlags(tid);
-                  if(f){ user.blocked=f.is_blocked===true; user.inactive=f.is_active===false; user.flagsAt=Date.now(); if(userCache[tid]) Object.assign(userCache[tid],{blocked:user.blocked,inactive:user.inactive,flagsAt:user.flagsAt}); }
-                }catch(e){ console.error('getBingoUserFlags:',e.message); }
-              }
-              if(user&&(user.blocked||user.inactive)){
-                client.blocked=true; client.telegramId=null;
-                console.warn(`[auth] blocked/inactive account refused: ${tid}`);
-                send(ws,{type:'authFailed',reason:'blocked'});
-                break;
-              }
-              if(user){
-                client.blocked=false;
-                client.telegramId=tid;
-                applyUserToClient(client,user);
-                client.playerName=user.name||client.playerName||'Player';
-                relinkAllRooms(client,ws,tid);
-                broadcastLobby();            // tell the lobby which stakes this player is already in   // keep receiving every game this account is playing
-                send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,wallets:client.wallets,isRegistered:true});
-              } else {
-                // Never convert a failed/late database lookup into a fake zero wallet.
-                send(ws,{type:'authRetry',retryAfter:1000});
-              }
-              break;
-            }
-
-            case 'setName':{
-
-              if(msg.name&&msg.name.trim()){client.playerName=msg.name.trim().substring(0,20);send(ws,{type:'nameSet',playerName:client.playerName});}
-
-              break;
-
-            }
-
-          case 'reconnect':{
-
-      const room=rooms[msg.roomId];
-
-      if(!room){
-        send(ws,{type:'reconnectFailed'}); break;
-      }
-
-      // After a round finishes the same room is deliberately kept in WAITING state.
-      // Allow a page reload/reconnect to return to that room instead of forcing the
-      // player back to the lobby.
-      if(room.status!=='playing' && room.status!=='waiting' && room.status!=='countdown'){
-        send(ws,{type:'reconnectFailed'}); break;
-      }
-
-      // Try by playerId first, fall back to telegramId for page-reload reconnects
-
-      // only the signed-in identity counts; a Telegram ID sent in this message is ignored
-      if(!client.telegramId){ send(ws,{type:'authRetry',retryAfter:500}); break; }
-      let ep=playerOf(room,client);
-      if(!ep){
-        const tid=String(client.telegramId);
-        ep=room.players.find(p=>String(p.telegramId)===tid);
-        if(ep) client.telegramId=tid;       // another device (or a reload) of the same account SHARES this player
-      }
-      if(ep){
-        await refreshClientBalance(client);
-        attachSocket(ep,ws); ep.playerId=client.playerId; client.roomId=msg.roomId; ep.detached=false;
-        if(ep.detachedSockets) ep.detachedSockets.delete(ws);
-        if(!client.rooms) client.rooms=new Set(); client.rooms.add(msg.roomId);
-        relinkAllRooms(client,ws,String(client.telegramId||''));
-
-        const card=ep.cardId?getCard(ep.cardId):null;
-
-        const card2=ep.cardId2?getCard(ep.cardId2):null;
-
-        if(room.status==='playing'){
-          send(ws,{type:'reconnected',roomId:msg.roomId,stakeId:room.stakeId,
-
-            cardId:ep.cardId,cardNumbers:card?card.numbers:[],
-
-            cardId2:ep.cardId2||null,cardNumbers2:card2?card2.numbers:[],
-            cardId3:ep.cardId3||null,cardNumbers3:ep.cardId3?getCard(ep.cardId3).numbers:[],
-            cardId4:ep.cardId4||null,cardNumbers4:ep.cardId4?getCard(ep.cardId4).numbers:[],
-
-            calledNumbers:room.calledNumbers,pot:room.pot,playerCount:livePlayerCount(room),balance:client.balance});
-        }else{
-          // WAITING/COUNTDOWN room: show fresh card selection state.
-          send(ws,{type:'joinedRoom',roomId:room.roomId,stakeId:room.stakeId,
-            balance:client.balance,status:room.status,
-            countdownLeft:room.status==='countdown'?room.countdownLeft:0,
-            countdown:room.status==='countdown'?room.countdownLeft:0,
-            playerCount:room.players.reduce((sum,p)=>getPlayerCardCount(p)+sum,0),
-            stakeAmount:room.stake,
-            ...selectionPayload(ep)});
-          broadcastCardPool(room);
-          broadcastLobby();
-        }
-
-      } else {
-
-        send(ws,{type:'reconnectFailed'});
-
-      }
-
-      break;
-
+    if (err.code === "23505") {
+      return {
+        status: "already_exists",
+        user: null
+      };
     }
 
-           case 'joinRoom':{
+    throw err;
 
-                  let sc=STAKES.find(s=>s.id===msg.stakeId);
-                 if(!sc){
-                   // an older / differently written name ("s5", "S5", "stake5") still finds the stake with that amount
-                   const m=String(msg.stakeId||'').match(/([0-9]+(?:\.[0-9]+)?)/);
-                   if(m) sc=STAKES.find(s=>Number(s.amount)===Number(m[1]));
-                   if(sc) msg.stakeId=sc.id;
-                 }
-                 if(!sc) return send(ws,{type:'error',message:'የተሳሳተ የውርርድ መጠን።'});
+  } finally {
+    client.release();
+  }
+},
 
 
-                 // Joining/navigating to page 2 must never be blocked by a database
+  async reconnectUserByPhone(
+    telegramId,
+    name,
+    phone
+  ) {
 
-                 // availability check. The wallet is validated only when a paid card
+    const searchLast9 =
+      last9(phone);
 
-                 // is selected. Accept the Telegram ID here so the server can use it
+    if (!searchLast9) {
+      return {
+        status: "not_found"
+      };
+    }
 
-                 // for that later validation even if telegramAuth arrived slightly late.
+    const client =
+      await pool.connect();
 
-                 // A player may play several games at once (one room per stake). Rooms where he
-                 // has a RUNNING game stay open. Any other room (card selection not started yet,
-                 // or just watching) is left, which releases the picked cards as before.
-                 for(const r of clientRooms(client)){
-                   const pl=playerOf(r,client);
-                   const runningGame=pl&&(r.status==='playing'||r.status==='starting')&&(getPlayerCardCount(pl)>0||pl.hasPaid);
-                   // the room of the stake being joined is kept: a second device of the same account shares it
-                   // picks he made in a room that has not started yet are kept too (he is still in that game)
-                    const holdsPicks=pl&&(getPlayerCardCount(pl)>0||pl.hasPaid)&&['waiting','countdown','starting','playing'].includes(r.status);
-                    if(!runningGame && !holdsPicks && r.stakeId!==msg.stakeId) await leaveRoom(client,r.roomId);
-                 }
+    try {
 
-              // ── Re-link an existing player before spectator handling. ──
-              // A page/app reload creates a new WebSocket/playerId. If this Telegram
-              // account already owns cards in the same stake room, it is the SAME
-              // player and must never be added as a spectator/new player.
-              const reconnectTid=String(client.telegramId||'').trim();
-              if(reconnectTid){
-                const existingRoom=Object.values(rooms).find(r=>
-                  r.stakeId===msg.stakeId &&
-                  (r.status==='waiting'||r.status==='countdown'||r.status==='playing') &&
-                  r.players.some(p=>String(p.telegramId||'')===reconnectTid)
-                );
-                if(existingRoom){
-                  const ep=existingRoom.players.find(p=>String(p.telegramId||'')===reconnectTid);
-                  // second device of the same account: it joins the SAME player and sees the same cartelas
-                  attachSocket(ep,ws);
-                  ep.playerId=client.playerId;
-                  ep.telegramId=reconnectTid;
-                  if(ep.detachedSockets) ep.detachedSockets.delete(ws);
-                  client.telegramId=reconnectTid;
-                  client.roomId=existingRoom.roomId; ep.detached=false;
-                  if(!client.rooms) client.rooms=new Set(); client.rooms.add(existingRoom.roomId);
-                  relinkAllRooms(client,ws,reconnectTid);
-                  await refreshClientBalance(client);
-                  const card=ep.cardId?getCard(ep.cardId):null;
-                  const card2=ep.cardId2?getCard(ep.cardId2):null;
-                  if(existingRoom.status==='playing'){
-                    send(ws,{type:'reconnected',roomId:existingRoom.roomId,stakeId:existingRoom.stakeId,
-                      cardId:ep.cardId,cardNumbers:card?card.numbers:[],
-                      cardId2:ep.cardId2||null,cardNumbers2:card2?card2.numbers:[],
-            cardId3:ep.cardId3||null,cardNumbers3:ep.cardId3?getCard(ep.cardId3).numbers:[],
-            cardId4:ep.cardId4||null,cardNumbers4:ep.cardId4?getCard(ep.cardId4).numbers:[],
-                      calledNumbers:existingRoom.calledNumbers,pot:existingRoom.pot,
-                      playerCount:livePlayerCount(existingRoom),balance:client.balance});
-                  }else{
-                    send(ws,{type:'joinedRoom',roomId:existingRoom.roomId,stakeId:existingRoom.stakeId,
-                      balance:client.balance,status:existingRoom.status,
-                      countdownLeft:existingRoom.status==='countdown'?existingRoom.countdownLeft:0,
-                      countdown:existingRoom.status==='countdown'?existingRoom.countdownLeft:0,
-                      playerCount:existingRoom.players.filter(p=>p.hasPaid).length,
-                      stakeAmount:existingRoom.stake,
-                      ...selectionPayload(ep)});
-                    broadcastCardPool(existingRoom);
-                  }
-                  broadcastLobby();
-                  break;
-                }
-              }
+      await client.query(
+        "BEGIN"
+      );
 
-              // ── If a game for this stake is already in progress, join as a spectator ──
+      const { rows } =
+        await client.query(
+          `
+          SELECT *
+          FROM users
+          WHERE RIGHT(
+            REGEXP_REPLACE(
+              phone,
+              '[^0-9]',
+              '',
+              'g'
+            ),
+            9
+          ) = $1
+          LIMIT 1
+          FOR UPDATE
+          `,
+          [searchLast9]
+        );
 
-              const liveRoom=Object.values(rooms).find(r=>r.stakeId===msg.stakeId&&r.status==='playing');
+      if (!rows.length) {
 
-              if(liveRoom){
-                if(liveRoom.players.length>=liveRoom.maxPlayers) return send(ws,{type:'error',message:`ይህ ክፍል ሙሉ ነው። ከፍተኛው ተጫዋቾች: ${liveRoom.maxPlayers}`});
-                liveRoom.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,userId:client.userId||userCache[String(client.telegramId)]?.userId||null,ws:makeMux([ws]),cardId:null,cardId2:null,cardId3:null,cardId4:null,hasPaid:false,disqualified:false});
+        await client.query(
+          "ROLLBACK"
+        );
 
-                client.roomId=liveRoom.roomId; client.rooms.add(liveRoom.roomId);
+        return {
+          status: "not_found"
+        };
+      }
 
-                send(ws,{type:'joinedRoom',roomId:liveRoom.roomId,stakeId:liveRoom.stakeId,balance:client.balance,status:liveRoom.status});
+      const user =
+        rows[0];
 
-                sendRoom(liveRoom,ws,{type:'spectating',pot:liveRoom.pot,playerCount:liveRoom.players.filter(p=>p.hasPaid).length,calledNumbers:liveRoom.calledNumbers});
+      if (
+        String(user.telegram_id) ===
+        String(telegramId)
+      ) {
 
-                broadcastLobby();
+        await client.query(
+          "ROLLBACK"
+        );
 
-                break;
+        return {
+          status: "same_account",
+          user
+        };
+      }
 
-              }
+      /*
+       * SECURITY:
+       * Do not allow an active account to be
+       * taken over simply by knowing its phone.
+       */
+      if (user.is_active) {
 
-          
+        await client.query(
+          "ROLLBACK"
+        );
 
-              const room=getOrCreateRoom(msg.stakeId);
+        return {
+          status: "account_active",
+          user
+        };
+      }
 
-              if(room.status!=='waiting'&&room.status!=='countdown') return send(ws,{type:'error',message:'ጨዋታው ቀድሞውኑ ተጀምሯል።'});
+      const existingTelegram =
+        await client.query(
+          `
+          SELECT id
+          FROM users
+          WHERE telegram_id = $1
+          LIMIT 1
+          `,
+          [telegramId]
+        );
 
-              room.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,userId:client.userId||userCache[String(client.telegramId)]?.userId||null,ws:makeMux([ws]),cardId:null,cardId2:null,cardId3:null,cardId4:null,hasPaid:false,disqualified:false});
+      if (
+        existingTelegram.rows.length
+      ) {
 
-              client.roomId=room.roomId; client.rooms.add(room.roomId);
+        await client.query(
+          "ROLLBACK"
+        );
 
-              send(ws,{type:'joinedRoom',roomId:room.roomId,stakeId:room.stakeId,balance:client.balance,status:room.status,playerCount:room.players.reduce((sum,p)=>sum+getPlayerCardCount(p),0),stakeAmount:room.stake});
+        return {
+          status:
+            "telegram_already_used"
+        };
+      }
 
-              broadcastCardPool(room); broadcastLobby();
+      const updated =
+        await client.query(
+          `
+          UPDATE users
+          SET
+            telegram_id = $1,
+            name = $2,
+            is_active = TRUE,
+            last_seen = NOW()
+          WHERE id = $3
+          RETURNING *
+          `,
+          [
+            telegramId,
+            name,
+            user.id
+          ]
+        );
 
-                 const readyPlayers=room.players.filter(p=>getPlayerCardCount(p)>0).length;
+      await client.query(
+        "COMMIT"
+      );
 
-              if(readyPlayers>=(room.minPlayers||2)&&room.status==='waiting') startCountdown(room);
+      return {
+        status: "reconnected",
+        user: updated.rows[0]
+      };
 
-              break;
+    } catch (err) {
 
-            }
+      await safeRollback(
+        client
+      );
 
-            case 'selectCard':{
-              const room=roomForMsg(client,msg);
-              if(!room) break;
-              // Selecting a card is intentionally memory-only. Never wait for the DB here.
-              if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
-              const cardId=parseInt(msg.cardId);
-              const slot=Math.max(1,Math.min(4,parseInt(msg.slot)||1));
-              if(cardId<1||cardId>room.cardLimit) break;
-              if(slot>(room.maxCards||4)) return send(ws,{type:'error',message:`በዚህ ክፍል እስከ ${room.maxCards||4} ካርቴላ ብቻ መምረጥ ይቻላል።`});
-              const p=playerOf(room,client);
-              if(!p) break;
-              if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'ይህ ካርቴላ ቀድሞውኑ ተመርጧል!'});
-              { const uu=userCache[String(p.telegramId||client.telegramId||'')]; if(uu&&(uu.blocked||uu.inactive)) return send(ws,{type:'error',message:'መለያዎ ለጊዜው ተዘግቷል። እባክዎ ድጋፍን ያነጋግሩ።'}); }
+      throw err;
 
-              const field=getCardField(slot);
-              const previous=p[field];
-              const changedIds=new Set([cardId]);
-              if(previous){
-                room.takenCardIds.delete(previous);
-                changedIds.add(previous);
-              }
+    } finally {
 
-              // The player's selected cards are reservations only. No balance change
-              // and no database call happens here, so rapid clicks are safe.
-              if(!previous){
-                const reservedAfter=getPlayerCardCount(p)+1;
-                const required=Number(room.stake)*reservedAfter+reservedElsewhere(client,room);
-                // Fast local guard only. The authoritative DB balance is checked again
-                // once, when the game actually starts.
-                let have=Number(client.spendable??client.balance);
-                if(have<required){
-                  // The wallet may have been topped up since sign-in: reload it once before refusing.
-                  await refreshClientBalance(client);
-                  have=Number(client.spendable??client.balance);
-                  // the room may have changed while we waited
-                  if(room.status!=='waiting'&&room.status!=='countdown') break;
-                  if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'ይህ ካርቴላ ቀድሞውኑ ተመርጧል!'});
-                }
-                if(have<required){
-                  if(previous) room.takenCardIds.add(previous);
-                  return send(ws,{type:'error',message:`በቂ ቀሪ ሂሳብ የለዎትም። ለ${reservedAfter} ካርድ(ዎች) ${required} ብር ያስፈልጋል።`});
-                }
-              }
+      client.release();
 
-              p[field]=cardId;
-              room.takenCardIds.add(cardId);
-              const card=getCard(cardId);
-              sendRoom(room,p.ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot});
-              broadcastCardDiff(room,Array.from(changedIds)); broadcastLobby();
-              const readyCount=room.players.filter(p=>getPlayerCardCount(p)>0).length;
-              if(readyCount>=(room.minPlayers||2)&&room.status==='waiting') startCountdown(room);
-              break;
-            }
-            case 'deselectCard':{
-              const room=roomForMsg(client,msg);
-              if(!room) break;
-              if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
-              const p=playerOf(room,client);
-              if(!p) break;
-              let slot=Math.max(1,Math.min(4,parseInt(msg.slot)||1));
-              const wanted=parseInt(msg.cardId);
-              if(wanted&&p[getCardField(slot)]!==wanted){                  // the slot sent does not hold this cartela: find the one that does
-                const found=[1,2,3,4].find(sl=>p[getCardField(sl)]===wanted);
-                if(found) slot=found;
-              }
-              const field=getCardField(slot);
-              const releasedId=p[field];
-              if(!releasedId) break;
-              // Before the game starts this is only a reservation release.
-              // Nothing was charged yet, so there is nothing to refund.
-              room.takenCardIds.delete(releasedId);
-              p[field]=null;
-              if(getPlayerCardCount(p)===0) p.hasPaid=false;
-              sendRoom(room,p.ws,{type:'cardDeselected',cardId:releasedId,slot});   // all devices drop it
-              broadcastCardDiff(room,[releasedId]); broadcastLobby();
-              break;
-            }
-            case 'claimBingo':{
+    }
+  },
 
-              const room=roomForMsg(client,msg);
-              if(!room) return;
+  async reactivateUserByTelegramId(
+    telegramId
+  ) {
 
-              if(!room||room.status!=='playing') return;
+    const { rows } =
+      await pool.query(
+        `
+        UPDATE users
+        SET
+          is_active = TRUE,
+          last_seen = NOW()
+        WHERE telegram_id = $1          
+        RETURNING *
+        `,
+        [telegramId]
+      );
 
-              const p=playerOf(room,client);
+    return rows[0] || null;
+  },
 
-              if(!p||p.disqualified||getPlayerCardCount(p)===0) return;
+  async deactivateUser(
+    telegramId
+  ) {
 
-              if(!room.claimWindowOpen) return sendRoom(room,ws,{type:'claimTooLate',message:'ጊዜው አልፏል!'});
+    const { rows } =
+      await pool.query(
+        `
+        UPDATE users
+        SET is_active = FALSE
+        WHERE telegram_id = $1
+          AND is_admin = FALSE
+        RETURNING *
+        `,
+        [telegramId]
+      );
 
-              if(!room.claimedThisRound.find(c=>c.playerId===p.playerId))
+    return rows[0] || null;
+  },
 
-                room.claimedThisRound.push({
+  // ============================================================
+  // ADMIN / USER MANAGEMENT
+  // ============================================================
 
-                  playerId:p.playerId,
+  async getAdminByTelegramId(
+    telegramId
+  ) {
 
-                  markedIndices:msg.markedIndices||[],
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+          id,
+          telegram_id,
+          name,
+          phone,
+          is_admin,
+          admin_role,
+          is_active,
+          is_blocked
+        FROM users
+        WHERE telegram_id = $1
+          AND is_admin = TRUE
+          AND is_active = TRUE
+          AND is_blocked = FALSE
+        LIMIT 1
+        `,
+        [telegramId]
+      );
 
-                  cardId2:msg.cardId2||null,
+    return rows[0] || null;
+  },
 
-                  markedIndices2:msg.markedIndices2||[],
+  async isAdmin(
+    telegramId
+  ) {
 
-                  cardId3:msg.cardId3||null,
+    const admin =
+      await this.getAdminByTelegramId(
+        telegramId
+      );
 
-                  markedIndices3:msg.markedIndices3||[],
+    return !!admin;
+  },
 
-                  cardId4:msg.cardId4||null,
+  async getAllAdmins() {
 
-                  markedIndices4:msg.markedIndices4||[]
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+          id,
+          telegram_id,
+          name,
+          phone,
+          is_admin,
+          admin_role,
+          is_active,
+          is_blocked
+        FROM users
+        WHERE is_admin = TRUE
+          AND is_active = TRUE          
+          AND is_blocked = FALSE
+        ORDER BY id
+        `
+      );
 
-                });
+    return rows;
+  },
 
-              if(room.callTimer) clearTimeout(room.callTimer);
+  async setUserAdminRole(
+    userId,
+    role
+  ) {
 
-              if(room.claimEvalTimer) clearTimeout(room.claimEvalTimer);
+    const validRoles = [
+      "main",
+      "statistics",
+      "withdrawal",
+      "broadcast"
+    ];
 
-              room.claimEvalTimer=setTimeout(()=>evaluateClaims(room), CLAIM_COLLECT_MS);
+    if (
+      !validRoles.includes(role)
+    ) {
+      throw new Error(
+        "Invalid admin role"
+      );
+    }
 
-              break;
+    const { rows } =
+      await pool.query(
+        `
+        UPDATE users
+        SET
+          is_admin = TRUE,
+          admin_role = $1
+        WHERE id = $2
+          AND is_active = TRUE
+          AND is_blocked = FALSE
+        RETURNING
+          id,
+          telegram_id,
+          name,
+          phone,
+          is_admin,
+          admin_role,
+          is_active,
+          is_blocked
+        `,
+        [
+          role,
+          userId
+        ]
+      );
 
-            }
+    return rows[0] || null;
+  },
 
-            case 'leaveRoom':
+  async removeUserAdminRole(
+    userId
+  ) {
 
-              await leaveRoom(client,msg.roomId); send(ws,{type:'leftRoom',roomId:msg.roomId||null,balance:client.balance}); break;
+    const { rows } =
+      await pool.query(
+        `
+        UPDATE users
+        SET
+          is_admin = FALSE,
+          admin_role = NULL
+        WHERE id = $1
+        RETURNING
+          id,
+          telegram_id,
+          name,
+          phone,
+          is_admin,
+          admin_role,
+          is_active,
+          is_blocked
+        `,
+        [userId]
+      );
 
-            // The player left the screen of a running game but is still playing it
-            // (usually because he opened another game). Used to clean up after that game ends.
-            case 'detachRoom':{
-              const room=roomForMsg(client,msg);
-              if(!room) break;
-              const pl=playerOf(room,client);
-              if(pl){
-                pl.detachedSockets=(pl.detachedSockets||new Set()).add(ws);
-                pl.detached=openSockets(pl).every(x=>pl.detachedSockets.has(x));
-              }
-              if(client.roomId===room.roomId) client.roomId=null;
-              broadcastLobby();
-              break;
-            }
+    return rows[0] || null;
+  },
 
+  async setUserBlocked(
+    userId,
+    isBlocked
+  ) {
 
-          }
+    const { rows } =
+      await pool.query(
+        `
+        UPDATE users
+        SET is_blocked = $1
+        WHERE id = $2
+          AND is_admin = FALSE
+        RETURNING
+          id,
+          telegram_id,
+          name,
+          phone,
+          is_blocked,
+          is_active,
+          is_admin
+        `,
+        [
+          Boolean(isBlocked),
+          userId
+        ]
+      );
 
-        }catch(err){console.error('WS:',err);}
+    return rows[0] || null;
+  },
+
+  // ============================================================
+  // USER STATISTICS
+  // ============================================================
+
+  async getUserStatistics(
+    telegramId
+  ) {
+
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+
+          (
+            SELECT COUNT(*)
+            FROM deposits d
+            WHERE d.user_id = u.id
+          ) AS total_deposits,
+
+          (
+            SELECT COUNT(*)
+            FROM withdrawals w
+            WHERE w.user_id = u.id
+              AND w.status IN ('pending', 'processing')
+          ) AS pending_withdrawals,
+
+          (
+            SELECT COUNT(*)
+            FROM withdrawals w
+            WHERE w.user_id = u.id
+              AND w.status = 'approved'
+          ) AS approved_withdrawals,
+
+          (
+            SELECT COUNT(*)
+            FROM withdrawals w
+            WHERE w.user_id = u.id
+              AND w.status = 'rejected'              
+          ) AS rejected_withdrawals
+
+        FROM users u
+
+        WHERE u.telegram_id = $1
+          AND u.is_active = TRUE
+
+        LIMIT 1
+        `,
+        [telegramId]
+      );
+
+    if (!rows.length) {
+      return null;
+    }
+
+    const r = rows[0];
+
+    return {
+      totalDeposits:
+        Number(r.total_deposits || 0),
+
+      pendingWithdrawals:
+        Number(
+          r.pending_withdrawals || 0
+        ),
+
+      approvedWithdrawals:
+        Number(
+          r.approved_withdrawals || 0
+        ),
+
+      rejectedWithdrawals:
+        Number(
+          r.rejected_withdrawals || 0
+        )
+    };
+  },
+
+  async getUserFinancialStatistics(
+    userId
+  ) {
+
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+
+          (
+            SELECT COALESCE(
+              SUM(d.amount),
+              0
+            )
+            FROM deposits d
+            WHERE d.user_id = u.id
+          ) AS total_deposit_amount,
+
+          (
+            SELECT COALESCE(
+              SUM(w.amount),
+              0
+            )
+            FROM withdrawals w
+            WHERE w.user_id = u.id
+              AND w.status = 'approved'
+          ) AS approved_withdrawal_amount,
+
+          (
+            SELECT COALESCE(
+              SUM(w.amount),
+              0
+            )
+            FROM withdrawals w
+            WHERE w.user_id = u.id
+              AND w.status IN ('pending', 'processing')
+          ) AS pending_withdrawal_amount,
+
+          (
+            SELECT COALESCE(
+              SUM(w.amount),
+              0
+            )
+            FROM withdrawals w
+            WHERE w.user_id = u.id
+              AND w.status = 'rejected'
+          ) AS rejected_withdrawal_amount
+
+        FROM users u
+        WHERE u.id = $1
+        LIMIT 1
+        `,
+        [userId]
+      );
+
+    if (!rows.length) {
+      return null;
+    }
+
+    const r = rows[0];
+
+    return {
+      totalDepositAmount:
+        Number(
+          r.total_deposit_amount || 0
+        ),
+
+      approvedWithdrawalAmount:
+        Number(
+          r.approved_withdrawal_amount || 0
+        ),
+
+      pendingWithdrawalAmount:
+        Number(
+          r.pending_withdrawal_amount || 0
+        ),
+
+      rejectedWithdrawalAmount:
+        Number(
+          r.rejected_withdrawal_amount || 0
+        )
+    };
+  },
+
+ 
+  async getAdminStatistics() {
+
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+
+          (
+            SELECT COUNT(*)
+            FROM withdrawals
+            WHERE status IN ('pending', 'processing')            
+          ) AS pending_withdrawals,
+
+          (
+            SELECT COUNT(*)
+            FROM withdrawals
+            WHERE status = 'approved'
+          ) AS approved_withdrawals,
+
+          (
+            SELECT COUNT(*)
+            FROM withdrawals
+            WHERE status = 'rejected'
+          ) AS rejected_withdrawals,
+
+          (
+            SELECT COUNT(*)
+            FROM users
+            WHERE is_active = TRUE              
+          ) AS active_users,
+
+          (
+            SELECT COUNT(*)
+            FROM users
+            WHERE is_active = FALSE
+          ) AS inactive_users,
+
+          (
+            SELECT COUNT(*)
+            FROM users
+            WHERE is_blocked = TRUE
+          ) AS blocked_users,
+
+          (
+            SELECT COUNT(*)
+            FROM users
+            WHERE is_admin = TRUE
+              AND is_active = TRUE
+              AND is_blocked = FALSE
+              AND admin_role = 'main'
+          ) AS main_admin,                
+                    
+          (
+            SELECT COUNT(*)
+            FROM users
+            WHERE is_admin = TRUE
+              AND is_active = TRUE
+              AND is_blocked = FALSE
+              AND admin_role = 'statistics'
+          ) AS statistics_admin,
+
+          (
+            SELECT COUNT(*)
+            FROM users
+            WHERE is_admin = TRUE
+              AND is_active = TRUE
+              AND is_blocked = FALSE
+              AND admin_role = 'withdrawal'
+          ) AS withdrawal_admin,
+
+          (
+            SELECT COUNT(*)
+            FROM users
+            WHERE is_admin = TRUE
+              AND is_active = TRUE
+              AND is_blocked = FALSE
+              AND admin_role = 'broadcast'
+          ) AS broadcast_admin
+        `
+      );
+
+    const r = rows[0];
+
+    return {
+      pendingWithdrawals:
+        Number(
+          r.pending_withdrawals || 0
+        ),
+
+      approvedWithdrawals:
+        Number(
+          r.approved_withdrawals || 0
+        ),
+
+      rejectedWithdrawals:
+        Number(
+          r.rejected_withdrawals || 0
+        ),
+      
+      activeUsers:
+        Number(
+          r.active_users || 0
+        ),
+
+      inactiveUsers:
+        Number(
+          r.inactive_users || 0
+        ),
+
+      blockedUsers:
+        Number(
+          r.blocked_users || 0
+        ),
+
+      mainAdmin:
+        Number(
+          r.main_admin || 0
+        ),
+
+        statisticsAdmin:
+        Number(
+          r.statistics_admin || 0
+        ),
+      
+        withdrawalAdmin:
+        Number(
+          r.withdrawal_admin || 0
+        ),
+
+        broadcastAdmin:
+        Number(
+          r.broadcast_admin || 0
+        )
+      
+    };
+  },
+
+  // ============================================================
+  // WITHDRAWALS
+  // ============================================================
+
+async createWithdrawal(
+  telegramId,
+  paymentMethodId,
+  accountNumber,
+  amount
+) {
+  const methodId = toPositiveInteger(
+    paymentMethodId,
+    "paymentMethodId"
+  );
+
+  const withdrawalAmount =
+    toPositiveAmount(amount);
+
+  if (withdrawalAmount < 10) {
+    return {
+      success: false,
+      message: "Withdrawal amount must be at least 10 ETB."
+    };
+  }
+
+  const cleanAccount =
+    String(accountNumber ?? "")
+      .trim()
+      .replace(/[\s\-()]/g, "");
+
+  if (!/^\d{1,50}$/.test(cleanAccount)) {
+    return {
+      success: false,
+      message: "Invalid account number."
+    };
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    /*
+     * ============================================================
+     * 1. Lock and verify the user
+     * ============================================================
+     *
+     * The user row is locked for the entire transaction.
+     *
+     * We do NOT use users.balance for financial authorization.
+     * The wallet reservation function is responsible for checking
+     * and reserving the actual available balance.
+     */
+    const userResult = await client.query(
+      `
+      SELECT
+        id,
+        telegram_id,
+        name
+      FROM users
+      WHERE telegram_id = $1
+        AND is_active = TRUE
+        AND is_blocked = FALSE
+      FOR UPDATE
+      `,
+      [telegramId]
+    );
+
+    if (userResult.rowCount !== 1) {
+      throw new Error(
+        "Account not found or blocked."
+      );
+    }
+
+    const user = userResult.rows[0];
+
+    /*
+     * ============================================================
+     * 2. Verify payment method
+     * ============================================================
+     */
+    const methodResult = await client.query(
+      `
+      SELECT
+        id,
+        name,
+        amharic_name,
+        emoji
+      FROM payment_methods
+      WHERE id = $1
+        AND is_active = TRUE
+      `,
+      [methodId]
+    );
+
+    if (methodResult.rowCount !== 1) {
+      throw new Error(
+        "Payment method not found or inactive."
+      );
+    }
+
+    const paymentMethod =
+      methodResult.rows[0];
+
+    /*
+     * ============================================================
+     * 3. Create withdrawal request
+     * ============================================================
+     *
+     * The withdrawal starts as pending.
+     *
+     * The user's money is NOT considered successfully reserved
+     * until reserve_withdrawal_from_main() succeeds below.
+     *
+     * Everything is inside one DB transaction, so if the wallet
+     * reservation fails, this INSERT is rolled back as well.
+     */
+    const withdrawalResult =
+      await client.query(
+        `
+        INSERT INTO withdrawals (
+          user_id,
+          payment_method_id,
+          payment_account_id,
+          approved_by_id,
+          rejected_by_id,
+          account_number,
+          amount,
+          status,
+          rejection_reason,
+          claimed_by_id,
+          claimed_at,
+          processed_at,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          $1,
+          $2,
+          NULL,
+          NULL,
+          NULL,
+          $3,
+          $4,
+          'pending',
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NOW(),
+          NOW()
+        )
+        RETURNING *
+        `,
+        [
+          user.id,
+          paymentMethod.id,
+          cleanAccount,
+          withdrawalAmount
+        ]
+      );
+
+    if (withdrawalResult.rowCount !== 1) {
+      throw new Error(
+        "Could not create withdrawal request."
+      );
+    }
+
+    const withdrawal =
+      withdrawalResult.rows[0];
+
+    /*
+     * ============================================================
+     * 4. Reserve money from the user's main wallet
+     * ============================================================
+     *
+     * IMPORTANT:
+     *
+     * reserve_withdrawal_from_main() should atomically:
+     *
+     *   - lock the appropriate wallet/balance row
+     *   - verify sufficient available funds
+     *   - deduct/reserve the withdrawal amount
+     *   - create the financial transaction
+     *   - return the financial transaction ID
+     *
+     * It must raise an exception if the reservation cannot be made.
+     */
+    const reservationResult =
+      await client.query(
+        `
+        SELECT reserve_withdrawal_from_main(
+          $1,
+          $2,
+          $3,
+          $4,
+          $5
+        ) AS transaction_id
+        `,
+        [
+          user.id,
+          withdrawalAmount,
+          withdrawal.id,
+          `withdrawal:reserve:${withdrawal.id}`,
+          `Withdrawal request #${withdrawal.id}`
+        ]
+      );
+
+    const transactionId =
+      reservationResult.rows[0]?.transaction_id;
+
+    if (!transactionId) {
+      throw new Error(
+        "Withdrawal reservation transaction was not created."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 5. Verify the ledger transaction
+     * ============================================================
+     *
+     * This is defensive validation.
+     *
+     * We expect the reservation function to create:
+     *
+     *   type   = withdrawal
+     *   status = completed
+     *
+     * If that isn't true, the entire transaction is rolled back.
+     */
+    const financialTransactionResult =
+      await client.query(
+        `
+        SELECT
+          id,
+          type,
+          status
+        FROM financial_transactions
+        WHERE id = $1
+        FOR UPDATE
+        `,
+        [transactionId]
+      );
+
+    if (financialTransactionResult.rowCount !== 1) {
+      throw new Error(
+        "Withdrawal reservation transaction not found."
+      );
+    }
+
+    const financialTransaction =
+      financialTransactionResult.rows[0];
+
+    if (
+      financialTransaction.type !==
+      "withdrawal"
+    ) {
+      throw new Error(
+        "Withdrawal reservation has an invalid transaction type."
+      );
+    }
+
+    if (
+      financialTransaction.status !==
+      "completed"
+    ) {
+      throw new Error(
+        "Withdrawal reservation transaction is not completed."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 6. Connect withdrawal to ledger transaction
+     * ============================================================
+     */
+    const linkResult =
+      await client.query(
+        `
+        UPDATE withdrawals
+        SET
+          transaction_id = $1,
+          updated_at = NOW()
+        WHERE id = $2
+          AND transaction_id IS NULL
+        RETURNING *
+        `,
+        [
+          transactionId,
+          withdrawal.id
+        ]
+      );
+
+    if (linkResult.rowCount !== 1) {
+      throw new Error(
+        "Could not link withdrawal to financial transaction."
+      );
+    }
+
+    const finalWithdrawal =
+      linkResult.rows[0];
+
+    /*
+     * ============================================================
+     * 7. Read current wallet balances
+     * ============================================================
+     *
+     * This is only for returning the balances to the caller.
+     *
+     * Financial authorization/reservation has already happened
+     * inside reserve_withdrawal_from_main().
+     */
+    const balanceResult =
+      await client.query(
+        `
+        SELECT
+          main_balance,
+          play_balance,
+          total_balance
+        FROM user_wallet_balances
+        WHERE user_id = $1
+        `,
+        [user.id]
+      );
+
+    if (balanceResult.rowCount !== 1) {
+      throw new Error(
+        "User wallet balance record not found."
+      );
+    }
+
+    const balances =
+      balanceResult.rows[0];
+
+    /*
+     * ============================================================
+     * 8. Commit
+     * ============================================================
+     *
+     * At this point:
+     *
+     *   withdrawal       = pending
+     *   user's funds     = reserved/deducted
+     *   ledger entry     = completed
+     *   transaction link = established
+     *
+     * If COMMIT fails, nothing should be considered successful.
+     */
+    await client.query("COMMIT");
+
+    /*
+     * ============================================================
+     * 9. Return result
+     * ============================================================
+     */
+    return {
+      success: true,
+
+      withdrawal: {
+        ...finalWithdrawal,
+        transaction_id: transactionId
+      },
+
+      withdrawal_id:
+        finalWithdrawal.id,
+
+      user_id:
+        user.id,
+
+      telegram_id:
+        user.telegram_id,
+
+      user_name:
+        user.name,
+
+      amount:
+        withdrawalAmount,
+
+      payment_method_id:
+        paymentMethod.id,
+
+      payment_method_name:
+        paymentMethod.name,
+
+      payment_method_amharic_name:
+        paymentMethod.amharic_name,
+
+      payment_method_emoji:
+        paymentMethod.emoji,
+
+      account_number:
+        cleanAccount,
+
+      transaction_id:
+        transactionId,
+
+      main_balance:
+        Number(balances.main_balance),
+
+      play_balance:
+        Number(balances.play_balance),
+
+      total_balance:
+        Number(balances.total_balance)
+    };
+
+  } catch (err) {
+    /*
+     * Any error anywhere above rolls back:
+     *
+     *   - withdrawal INSERT
+     *   - wallet reservation
+     *   - financial transaction
+     *   - withdrawal/transaction link
+     */
+    await safeRollback(client);
+
+    console.error(
+      "createWithdrawal error:",
+      err
+    );
+
+    return {
+      success: false,
+      message:
+        err?.message ||
+        "Could not create withdrawal request."
+    };
+
+  } finally {
+    client.release();
+  }
+},
+
+  async claimPendingWithdrawals(
+  adminTelegramId,
+  paymentMethodId = null,
+  limit = 10
+) {
+  const safeLimit = Math.min(
+    Math.max(Number(limit) || 10, 1),
+    50
+  );
+
+  const methodId = paymentMethodId
+    ? toPositiveInteger(
+        paymentMethodId,
+        "paymentMethodId"
+      )
+    : null;
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    /*
+     * Verify admin.
+     */
+    const adminResult = await client.query(
+      `
+      SELECT id, name, telegram_id
+      FROM users
+      WHERE telegram_id = $1
+        AND is_admin = TRUE
+        AND is_active = TRUE
+        AND is_blocked = FALSE
+      LIMIT 1
+      `,
+      [adminTelegramId]
+    );
+
+    if (!adminResult.rows.length) {
+      await client.query("ROLLBACK");
+
+      return {
+        success: false,
+        message: "Admin account not found."
+      };
+    }
+
+    const admin = adminResult.rows[0];
+
+    /*
+     * 5-minute lease.
+     *
+     * Expired processing requests become claimable again.
+     */
+    const result = await client.query(
+      `
+              WITH candidates AS (
+            SELECT
+                w.id
+            FROM withdrawals w
+            WHERE
+                (
+                    w.status = 'pending'
+                    OR (
+                        w.status = 'processing'
+                        AND w.claimed_at IS NOT NULL
+                        AND w.claimed_at < NOW() - INTERVAL '5 minutes'
+                    )
+                )
+                AND (
+                    $1::bigint IS NULL
+                    OR w.payment_method_id = $1
+                )
+            ORDER BY
+                w.created_at ASC,
+                w.id ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT $2
+        ),
+        claimed AS (
+            UPDATE withdrawals w
+            SET
+                status = 'processing',
+                claimed_by_id = $3,
+                claimed_at = NOW(),
+                updated_at = NOW()
+            FROM candidates c
+            WHERE w.id = c.id
+            RETURNING w.*
+        )
+        SELECT
+            c.*,
+            u.name
+        FROM claimed c
+        JOIN users u
+            ON u.id = c.user_id
+        ORDER BY
+            c.created_at ASC,
+            c.id ASC
+      `,
+      [
+        methodId,
+        safeLimit,
+        admin.id
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      success: true,
+      admin_id: admin.id,
+      withdrawals: result.rows,
+      count: result.rows.length
+    };
+
+  } catch (err) {
+    await safeRollback(client);
+
+    console.error(
+      "claimPendingWithdrawals error:",
+      err
+    );
+
+    return {
+      success: false,
+      message: "Could not claim withdrawals."
+    };
+
+  } finally {
+    client.release();
+  }
+},
   
-    }).catch(e=>{
+async getPendingWithdrawals(
+  limit = 10,
+  paymentMethodId = null
+) {
+  const safeLimit = Math.min(
+    Math.max(Number(limit) || 10, 1),
+    100
+  );
 
-      console.error('WS message queue error:',e);
+  const methodId = paymentMethodId
+    ? toPositiveInteger(
+        paymentMethodId,
+        "paymentMethodId"
+      )
+    : null;
 
-      send(ws,{type:'error',message:e.message||'Server error.'});
+  const { rows } = await pool.query(
+    `
+    SELECT
+      w.id,
+      w.user_id,
+      w.payment_method_id,
+      w.payment_account_id,
 
-    });
-});
+      w.account_number,
+      w.amount,
+      w.status,
+      w.rejection_reason,
 
-  ws.on('close',()=>{
-    const c=clients[ws._pid];
-    if(!c) return;
-    let keepClient=false;
-    clientRooms(c).forEach(room=>{
-      const p=playerOf(room,c);
-      if(p) detachSocket(p,ws);
-      if(p&&openSockets(p).length) return;                              // another device of this account is still connected
-      if((room.status==='playing'||room.status==='starting')&&p){ keepClient=true; }   // running games (and one being created right now) stay alive
-      else if(p&&(room.status==='waiting'||room.status==='countdown')){
-        keepClient=true;
-        if(p.graceTimer) clearTimeout(p.graceTimer);
-        p.absentSince=Date.now();
-        if(getPlayerCardCount(p)>0){
-          // He picked cartelas, so he is IN the game until he releases them himself: a screen timeout, the app in the
-          // background or a lost connection do not remove him. (A room still waiting for a second player is cleaned
-          // up by the absent-player sweep after a long time.)
-        }else{
-          // no picks: he was only looking at the room, leave after a short grace
-          p.graceTimer=setTimeout(()=>{
-            p.graceTimer=null;
-            if(openSockets(p).length) return;
-            leaveRoom(c,room.roomId).catch(()=>{});
-            if(!clientRooms(c).length) delete clients[c.playerId];
-            broadcastLobby();
-          },DISCONNECT_GRACE_MS);
-        }
+      w.created_at,
+      w.updated_at,
+
+      u.telegram_id,
+      u.name,
+      u.phone,
+
+      pm.name AS payment_method,
+      pm.amharic_name AS payment_method_amharic,
+      pm.emoji AS payment_method_emoji
+
+    FROM withdrawals w
+
+    JOIN users u
+      ON u.id = w.user_id
+
+    LEFT JOIN payment_methods pm
+      ON pm.id = w.payment_method_id
+
+    WHERE w.status IN ('pending', 'processing')
+
+      AND (
+        $1::bigint IS NULL
+        OR w.payment_method_id = $1
+      )
+
+    ORDER BY
+      w.created_at ASC,
+      w.id ASC
+
+    LIMIT $2
+    `,
+    [
+      methodId,
+      safeLimit
+    ]
+  );
+
+  return rows;
+},
+  async renewWithdrawalClaim(
+  withdrawalId,
+  adminTelegramId
+) {
+  const result = await pool.query(
+    `
+    UPDATE withdrawals w
+    SET
+      claimed_at = NOW(),
+      updated_at = NOW()
+    FROM users admin
+    WHERE w.id = $1
+      AND admin.telegram_id = $2
+      AND admin.is_admin = TRUE
+      AND admin.is_active = TRUE
+      AND w.status = 'processing'
+      AND w.claimed_by_id = admin.id
+    RETURNING w.*
+    `,
+    [
+      withdrawalId,
+      adminTelegramId
+    ]
+  );
+
+  if (!result.rows.length) {
+    return {
+      success: false,
+      message:
+        "Withdrawal is not owned by this admin or no longer processing."
+    };
+  }
+
+  return {
+    success: true,
+    withdrawal: result.rows[0]
+  };
+},
+async getWithdrawalHistory(
+  telegramId,
+  limit = 20,
+  offset = 0
+) {
+  const safeLimit = Math.min(
+    Math.max(Number(limit) || 20, 1),
+    100
+  );
+
+  const safeOffset = Math.max(
+    Number(offset) || 0,
+    0
+  );
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      w.id,
+      w.amount,
+      w.account_number,
+
+      w.status,
+      w.rejection_reason,
+
+      w.payment_method_id,
+      w.payment_account_id,
+
+      w.approved_by_id,
+      w.rejected_by_id,
+
+      w.created_at,
+      w.updated_at,
+      w.processed_at,
+
+      pm.name AS payment_method,
+      pm.amharic_name AS payment_method_amharic,
+      pm.emoji AS payment_method_emoji,
+
+      pa.account_number AS payment_account_number,
+      pa.account_name AS payment_account_name,
+
+      approved_admin.name AS approved_by_name,
+      rejected_admin.name AS rejected_by_name
+
+    FROM withdrawals w
+
+    JOIN users u
+      ON u.id = w.user_id
+
+    LEFT JOIN payment_methods pm
+      ON pm.id = w.payment_method_id
+
+    LEFT JOIN payment_accounts pa
+      ON pa.id = w.payment_account_id
+
+    LEFT JOIN users approved_admin
+      ON approved_admin.id = w.approved_by_id
+
+    LEFT JOIN users rejected_admin
+      ON rejected_admin.id = w.rejected_by_id
+
+    WHERE u.telegram_id = $1
+
+    ORDER BY
+      w.created_at DESC,
+      w.id DESC
+
+    LIMIT $2
+    OFFSET $3
+    `,
+    [
+      telegramId,
+      safeLimit,
+      safeOffset
+    ]
+  );
+
+  return rows;
+},
+
+  async getAdminWithdrawalHistory(
+  adminTelegramId,
+  limit = 50,
+  offset = 0
+) {
+  const safeLimit = Math.min(
+    Math.max(Number(limit) || 50, 1),
+    100
+  );
+
+  const safeOffset = Math.max(
+    Number(offset) || 0,
+    0
+  );
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      w.id,
+      w.user_id,
+      w.account_number,
+      w.amount,
+      w.status,
+      w.rejection_reason,
+
+      w.payment_method_id,
+      w.payment_account_id,
+
+      w.approved_by_id,
+      w.rejected_by_id,
+
+      w.created_at,
+      w.processed_at,
+      w.updated_at,
+
+      u.telegram_id AS user_telegram_id,
+      u.name AS user_name,
+
+      pm.name AS payment_method,
+      pm.amharic_name AS payment_method_amharic,
+      pm.emoji AS payment_method_emoji,
+
+      pa.account_number AS payment_account_number,
+
+      approved_admin.name AS approved_by_name,
+      rejected_admin.name AS rejected_by_name
+
+    FROM withdrawals w
+
+    JOIN users u
+      ON u.id = w.user_id
+
+    LEFT JOIN payment_methods pm
+      ON pm.id = w.payment_method_id
+
+    LEFT JOIN payment_accounts pa
+      ON pa.id = w.payment_account_id
+
+    LEFT JOIN users approved_admin
+      ON approved_admin.id = w.approved_by_id
+
+    LEFT JOIN users rejected_admin
+      ON rejected_admin.id = w.rejected_by_id
+
+    JOIN users requesting_admin
+      ON requesting_admin.telegram_id = $1
+      AND requesting_admin.is_admin = TRUE
+      AND requesting_admin.is_active = TRUE
+      AND requesting_admin.is_blocked = FALSE
+
+    WHERE
+      w.approved_by_id = requesting_admin.id
+      OR w.rejected_by_id = requesting_admin.id
+
+    ORDER BY
+      w.processed_at DESC NULLS LAST,
+      w.id DESC
+
+    LIMIT $2
+    OFFSET $3
+    `,
+    [
+      adminTelegramId,
+      safeLimit,
+      safeOffset
+    ]
+  );
+
+  return rows;
+},
+  
+  async approveWithdrawal(
+  withdrawalId,
+  adminTelegramId,
+  paymentAccountId
+) {
+  const withdrawalIdNum =
+    toPositiveInteger(
+      withdrawalId,
+      "withdrawalId"
+    );
+
+  const accountId =
+    toPositiveInteger(
+      paymentAccountId,
+      "paymentAccountId"
+    );
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    /*
+     * ============================================================
+     * 1. Verify admin
+     * ============================================================
+     */
+    const adminResult = await client.query(
+      `
+      SELECT
+        id,
+        telegram_id,
+        name
+      FROM users
+      WHERE telegram_id = $1
+        AND is_admin = TRUE
+        AND is_active = TRUE
+        AND is_blocked = FALSE
+      LIMIT 1
+      `,
+      [adminTelegramId]
+    );
+
+    if (adminResult.rowCount !== 1) {
+      throw new Error(
+        "Admin account not found."
+      );
+    }
+
+    const admin =
+      adminResult.rows[0];
+
+    /*
+     * ============================================================
+     * 2. Lock the withdrawal
+     * ============================================================
+     *
+     * IMPORTANT:
+     *
+     * We lock ONLY the withdrawal row here.
+     *
+     * We do not need to lock the user's wallet because the user's
+     * withdrawal amount was already reserved when the withdrawal
+     * was created.
+     */
+    const withdrawalResult =
+      await client.query(
+        `
+        SELECT
+          w.*,
+          u.telegram_id,
+          u.name
+        FROM withdrawals w
+        JOIN users u
+          ON u.id = w.user_id
+        WHERE w.id = $1
+        FOR UPDATE OF w
+        `,
+        [withdrawalIdNum]
+      );
+
+    if (withdrawalResult.rowCount !== 1) {
+      throw new Error(
+        "Withdrawal request not found."
+      );
+    }
+
+    const withdrawal =
+      withdrawalResult.rows[0];
+
+    /*
+     * ============================================================
+     * 3. Verify withdrawal state
+     * ============================================================
+     */
+    if (withdrawal.status !== "processing") {
+      throw new Error(
+        `Withdrawal is not being processed. Current status: ${withdrawal.status}`
+      );
+    }
+
+    /*
+     * ============================================================
+     * 4. Verify the admin who claimed the withdrawal
+     * ============================================================
+     */
+    if (
+      Number(withdrawal.claimed_by_id) !==
+      Number(admin.id)
+    ) {
+      throw new Error(
+        "This withdrawal is assigned to another admin."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 5. Verify claim lease
+     * ============================================================
+     */
+    const claimedAt =
+      withdrawal.claimed_at
+        ? new Date(withdrawal.claimed_at)
+        : null;
+
+    if (
+      !claimedAt ||
+      Number.isNaN(claimedAt.getTime())
+    ) {
+      throw new Error(
+        "This withdrawal has an invalid claim timestamp."
+      );
+    }
+
+    const CLAIM_TIMEOUT_MS =
+      5 * 60 * 1000;
+
+    const claimAge =
+      Date.now() -
+      claimedAt.getTime();
+
+    if (claimAge > CLAIM_TIMEOUT_MS) {
+      throw new Error(
+        "This withdrawal claim has expired. Please claim it again."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 6. Validate withdrawal amount
+     * ============================================================
+     */
+    const amount =
+      Number(withdrawal.amount);
+
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      throw new Error(
+        "Invalid withdrawal amount."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 7. Make sure the withdrawal has a reservation transaction
+     * ============================================================
+     *
+     * The user's funds should already have been reserved by
+     * createWithdrawal().
+     *
+     * Therefore an approved withdrawal must have a linked
+     * financial transaction.
+     */
+    if (!withdrawal.transaction_id) {
+      throw new Error(
+        "Withdrawal has no reservation transaction."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 8. Verify the reservation transaction
+     * ============================================================
+     */
+    const transactionResult =
+      await client.query(
+        `
+        SELECT
+          id,
+          type,
+          status
+        FROM financial_transactions
+        WHERE id = $1
+        FOR UPDATE
+        `,
+        [withdrawal.transaction_id]
+      );
+
+    if (transactionResult.rowCount !== 1) {
+      throw new Error(
+        "Withdrawal reservation transaction not found."
+      );
+    }
+
+    const financialTransaction =
+      transactionResult.rows[0];
+
+    if (
+      financialTransaction.type !==
+      "withdrawal"
+    ) {
+      throw new Error(
+        "Withdrawal has an invalid financial transaction type."
+      );
+    }
+
+    if (
+      financialTransaction.status !==
+      "completed"
+    ) {
+      throw new Error(
+        "Withdrawal reservation transaction is not completed."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 9. Lock payment account
+     * ============================================================
+     *
+     * This is critical.
+     *
+     * Multiple admins may be processing different withdrawals
+     * using the same payment account.
+     *
+     * FOR UPDATE prevents two transactions from spending the
+     * same payment-account balance concurrently.
+     */
+    const accountResult =
+      await client.query(
+        `
+        SELECT
+          id,
+          payment_method_id,
+          account_number,
+          account_name,
+          balance,
+          is_active,
+          is_removed
+        FROM payment_accounts
+        WHERE id = $1
+        FOR UPDATE
+        `,
+        [accountId]
+      );
+
+    if (accountResult.rowCount !== 1) {
+      throw new Error(
+        "Payment account not found."
+      );
+    }
+
+    const account =
+      accountResult.rows[0];
+
+    /*
+     * ============================================================
+     * 10. Validate payment account
+     * ============================================================
+     */
+    if (
+      !account.is_active ||
+      account.is_removed
+    ) {
+      throw new Error(
+        "Selected payment account is inactive or removed."
+      );
+    }
+
+    /*
+     * The payment account must belong to the same payment method
+     * selected by the user.
+     */
+    if (
+      Number(account.payment_method_id) !==
+      Number(withdrawal.payment_method_id)
+    ) {
+      throw new Error(
+        "Payment account does not match the withdrawal payment method."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 11. Check payment account balance
+     * ============================================================
+     */
+    const accountBalance =
+      Number(account.balance);
+
+    if (
+      !Number.isFinite(accountBalance) ||
+      accountBalance < 0
+    ) {
+      throw new Error(
+        "Payment account has an invalid balance."
+      );
+    }
+
+    if (accountBalance < amount) {
+      throw new Error(
+        "Insufficient payment-account balance."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 12. Deduct payment account
+     * ============================================================
+     *
+     * The payment account is already locked with FOR UPDATE.
+     *
+     * We also use RETURNING to obtain the actual resulting balance
+     * from PostgreSQL.
+     */
+    const accountUpdateResult =
+      await client.query(
+        `
+        UPDATE payment_accounts
+        SET
+          balance = balance - $1,
+          updated_at = NOW()
+        WHERE id = $2
+          AND balance >= $1
+        RETURNING
+          id,
+          balance
+        `,
+        [
+          amount,
+          account.id
+        ]
+      );
+
+    if (accountUpdateResult.rowCount !== 1) {
+      throw new Error(
+        "Payment account balance could not be updated."
+      );
+    }
+
+    const updatedAccount =
+      accountUpdateResult.rows[0];
+
+    const accountBalanceAfter =
+      Number(updatedAccount.balance);
+
+    /*
+     * ============================================================
+     * 13. Approve withdrawal
+     * ============================================================
+     *
+     * The WHERE conditions provide another layer of protection.
+     */
+    const updateResult =
+      await client.query(
+        `
+        UPDATE withdrawals
+        SET
+          payment_account_id = $1,
+          approved_by_id = $2,
+          rejected_by_id = NULL,
+          status = 'approved',
+          rejection_reason = NULL,
+          claimed_by_id = NULL,
+          claimed_at = NULL,
+          processed_at = NOW(),
+          updated_at = NOW()
+        WHERE id = $3
+          AND status = 'processing'
+          AND claimed_by_id = $2
+          AND claimed_at IS NOT NULL
+          AND claimed_at >= NOW() - INTERVAL '5 minutes'
+        RETURNING *
+        `,
+        [
+          account.id,
+          admin.id,
+          withdrawalIdNum
+        ]
+      );
+
+    /*
+     * If this fails, throw.
+     *
+     * Because everything is inside the same DB transaction,
+     * the payment-account deduction will also be rolled back.
+     */
+    if (updateResult.rowCount !== 1) {
+      throw new Error(
+        "Withdrawal could not be approved. The claim may have expired or changed."
+      );
+    }
+
+    const approvedWithdrawal =
+      updateResult.rows[0];
+
+    /*
+     * ============================================================
+     * 14. Commit
+     * ============================================================
+     *
+     * At this point:
+     *
+     *   withdrawal       = approved
+     *   payment account  = amount deducted
+     *   user funds       = already reserved
+     *
+     * All three changes are committed together.
+     */
+    await client.query("COMMIT");
+
+	/*
+	 * Read the user's current wallet balance.
+	 */
+	const balanceResult = await pool.query(
+	  `
+	  SELECT
+	    main_balance,
+	    play_balance,
+	    total_balance
+	  FROM user_wallet_balances
+	  WHERE user_id = $1
+	  `,
+	  [withdrawal.user_id]
+	);
+	
+	if (balanceResult.rowCount !== 1) {
+	  throw new Error(
+	    "User wallet balance record not found."
+	  );
+	}
+	
+	const balances = balanceResult.rows[0];
+	
+	const mainBalance =
+	  Number(balances.main_balance);
+	
+	const playBalance =
+	  Number(balances.play_balance);
+	
+	const totalBalance =
+	  Number(balances.total_balance);
+
+    /*
+     * ============================================================
+     * 15. Return result
+     * ============================================================
+     */
+    return {
+      success: true,
+
+      withdrawal_id:
+        approvedWithdrawal.id,
+
+      user_id:
+        withdrawal.user_id,
+
+      telegram_id:
+        withdrawal.telegram_id,
+
+      user_name:
+        withdrawal.name,
+
+      amount,
+
+      account_number:
+        withdrawal.account_number,
+
+      payment_method_id:
+        withdrawal.payment_method_id,
+
+      payment_account_id:
+        account.id,
+
+      payment_account_number:
+        account.account_number,
+
+      payment_account_name:
+        account.account_name,
+
+      payment_account_balance_before:
+        accountBalance,
+
+      payment_account_balance_after:
+        accountBalanceAfter,
+
+      transaction_id:
+        withdrawal.transaction_id,
+
+      withdrawal:
+        approvedWithdrawal,
+	  mainBalance:
+		mainBalance,  
+	  playBalance:
+		playBalance,
+	  totalBalance:
+		totalBalance		
+    };
+
+  } catch (err) {
+    /*
+     * ============================================================
+     * ROLLBACK
+     * ============================================================
+     *
+     * This is extremely important.
+     *
+     * If payment_account.balance was deducted but the withdrawal
+     * UPDATE failed, ROLLBACK restores the payment account.
+     */
+    await safeRollback(client);
+
+    console.error(
+      "approveWithdrawal error:",
+      err
+    );
+
+    return {
+      success: false,
+      message:
+        err?.message ||
+        "Withdrawal approval failed."
+    };
+
+  } finally {
+    client.release();
+  }
+},
+
+
+async rejectWithdrawal(
+  withdrawalId,
+  adminTelegramId,
+  reason
+) {
+  const withdrawalIdNum =
+    toPositiveInteger(
+      withdrawalId,
+      "withdrawalId"
+    );
+
+  const cleanReason =
+    String(
+      reason || "Rejected by admin"
+    )
+      .trim()
+      .slice(0, 100);
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    /*
+     * ============================================================
+     * 1. Verify admin
+     * ============================================================
+     */
+    const adminResult = await client.query(
+      `
+      SELECT
+        id,
+        telegram_id,
+        name
+      FROM users
+      WHERE telegram_id = $1
+        AND is_admin = TRUE
+        AND is_active = TRUE
+        AND is_blocked = FALSE
+      LIMIT 1
+      `,
+      [adminTelegramId]
+    );
+
+    if (adminResult.rowCount !== 1) {
+      throw new Error(
+        "Admin account not found."
+      );
+    }
+
+    const admin =
+      adminResult.rows[0];
+
+    /*
+     * ============================================================
+     * 2. Lock the withdrawal
+     * ============================================================
+     *
+     * We lock ONLY the withdrawal row.
+     *
+     * The user's wallet does not need to be independently locked
+     * here because refund_withdrawal() is responsible for the
+     * wallet/ledger operation.
+     */
+    const withdrawalResult =
+      await client.query(
+        `
+        SELECT
+          w.*,
+          u.telegram_id,
+          u.name
+        FROM withdrawals w
+        JOIN users u
+          ON u.id = w.user_id
+        WHERE w.id = $1
+        FOR UPDATE OF w
+        `,
+        [withdrawalIdNum]
+      );
+
+    if (withdrawalResult.rowCount !== 1) {
+      throw new Error(
+        "Withdrawal request not found."
+      );
+    }
+
+    const withdrawal =
+      withdrawalResult.rows[0];
+
+    /*
+     * ============================================================
+     * 3. Verify withdrawal state
+     * ============================================================
+     *
+     * Only a withdrawal currently being processed can be rejected.
+     */
+    if (withdrawal.status !== "processing") {
+      throw new Error(
+        `Withdrawal is not being processed. Current status: ${withdrawal.status}`
+      );
+    }
+
+    /*
+     * ============================================================
+     * 4. Verify admin owns the claim
+     * ============================================================
+     */
+    if (
+      Number(withdrawal.claimed_by_id) !==
+      Number(admin.id)
+    ) {
+      throw new Error(
+        "This withdrawal is assigned to another admin."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 5. Validate claim timestamp
+     * ============================================================
+     */
+    const claimedAt =
+      withdrawal.claimed_at
+        ? new Date(withdrawal.claimed_at)
+        : null;
+
+    if (
+      !claimedAt ||
+      Number.isNaN(claimedAt.getTime())
+    ) {
+      throw new Error(
+        "This withdrawal has an invalid claim timestamp."
+      );
+    }
+
+    const CLAIM_TIMEOUT_MS =
+      5 * 60 * 1000;
+
+    const claimAge =
+      Date.now() -
+      claimedAt.getTime();
+
+    if (claimAge > CLAIM_TIMEOUT_MS) {
+      throw new Error(
+        "This withdrawal claim has expired. Please claim it again."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 6. Validate withdrawal transaction
+     * ============================================================
+     *
+     * createWithdrawal() should have already created and linked
+     * the original withdrawal reservation transaction.
+     */
+    if (!withdrawal.transaction_id) {
+      throw new Error(
+        "Withdrawal has no financial transaction to refund."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 7. Validate original financial transaction
+     * ============================================================
+     */
+    const transactionResult =
+      await client.query(
+        `
+        SELECT
+          id,
+          type,
+          status
+        FROM financial_transactions
+        WHERE id = $1
+        FOR UPDATE
+        `,
+        [withdrawal.transaction_id]
+      );
+
+    if (transactionResult.rowCount !== 1) {
+      throw new Error(
+        "Original withdrawal transaction not found."
+      );
+    }
+
+    const originalTransaction =
+      transactionResult.rows[0];
+
+    if (
+      originalTransaction.type !==
+      "withdrawal"
+    ) {
+      throw new Error(
+        "Original transaction is not a withdrawal transaction."
+      );
+    }
+
+    if (
+      originalTransaction.status !==
+      "completed"
+    ) {
+      throw new Error(
+        "Original withdrawal transaction is not completed."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 8. Refund the withdrawal
+     * ============================================================
+     *
+     * refund_withdrawal() should atomically:
+     *
+     *   - lock the user's appropriate wallet row
+     *   - verify the original withdrawal transaction
+     *   - prevent duplicate refunds
+     *   - restore the user's wallet balance
+     *   - create the refund ledger transaction
+     *   - return the refund transaction ID
+     *
+     * The idempotency key is unique per withdrawal.
+     */
+    const refundResult =
+      await client.query(
+        `
+        SELECT refund_withdrawal(
+          $1,
+          $2,
+          $3,
+          $4,
+          $5
+        ) AS transaction_id
+        `,
+        [
+          withdrawal.user_id,
+          withdrawal.id,
+          withdrawal.transaction_id,
+          `withdrawal:refund:${withdrawal.id}`,
+          `Withdrawal #${withdrawal.id} rejected`
+        ]
+      );
+
+    const refundTransactionId =
+      refundResult.rows[0]?.transaction_id;
+
+    if (!refundTransactionId) {
+      throw new Error(
+        "Could not create withdrawal refund transaction."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 9. Validate refund transaction
+     * ============================================================
+     */
+    const refundTransactionResult =
+      await client.query(
+        `
+        SELECT
+          id,
+          type,
+          status
+        FROM financial_transactions
+        WHERE id = $1
+        FOR UPDATE
+        `,
+        [refundTransactionId]
+      );
+
+    if (refundTransactionResult.rowCount !== 1) {
+      throw new Error(
+        "Refund transaction was not found."
+      );
+    }
+
+    const refundTransaction =
+      refundTransactionResult.rows[0];
+
+    if (
+      refundTransaction.status !==
+      "completed"
+    ) {
+      throw new Error(
+        "Refund transaction was not completed."
+      );
+    }
+
+    /*
+     * ============================================================
+     * 10. Reject the withdrawal
+     * ============================================================
+     *
+     * The claim is cleared because the withdrawal is no longer
+     * being processed.
+     *
+     * The database also verifies the 5-minute lease here.
+     */
+    const updateResult =
+      await client.query(
+        `
+        UPDATE withdrawals
+        SET
+          rejected_by_id = $1,
+          approved_by_id = NULL,
+          status = 'rejected',
+          rejection_reason = $2,
+          claimed_by_id = NULL,
+          claimed_at = NULL,
+          processed_at = NOW(),
+          updated_at = NOW()
+        WHERE id = $3
+          AND status = 'processing'
+          AND claimed_by_id = $1
+          AND claimed_at IS NOT NULL
+          AND claimed_at >= NOW() - INTERVAL '5 minutes'
+        RETURNING *
+        `,
+        [
+          admin.id,
+          cleanReason,
+          withdrawalIdNum
+        ]
+      );
+
+    if (updateResult.rowCount !== 1) {
+      throw new Error(
+        "Withdrawal could not be rejected. The claim may have expired or changed."
+      );
+    }
+
+    const rejectedWithdrawal =
+      updateResult.rows[0];
+
+    /*
+     * ============================================================
+     * 11. Read the user's current wallet balances
+     * ============================================================
+     *
+     * refund_withdrawal() has already restored the user's funds.
+     *
+     * We now read the resulting balances.
+     */
+    const walletResult =
+      await client.query(
+        `
+        SELECT
+          main_balance,
+          play_balance,
+          total_balance
+        FROM user_wallet_balances
+        WHERE user_id = $1
+        `,
+        [withdrawal.user_id]
+      );
+
+    if (walletResult.rowCount !== 1) {
+      throw new Error(
+        "User wallet balance record not found."
+      );
+    }
+
+    const walletBalances =
+      walletResult.rows[0];
+
+    /*
+     * ============================================================
+     * 12. Commit
+     * ============================================================
+     *
+     * Everything succeeds or everything rolls back:
+     *
+     *   - refund
+     *   - wallet balance
+     *   - refund ledger transaction
+     *   - withdrawal rejection
+     */
+    await client.query("COMMIT");
+
+    /*
+     * ============================================================
+     * 13. Return result
+     * ============================================================
+     */
+    return {
+      success: true,
+
+      withdrawal_id:
+        rejectedWithdrawal.id,
+
+      telegram_id:
+        withdrawal.telegram_id,
+
+      user_id:
+        withdrawal.user_id,
+
+      user_name:
+        withdrawal.name,
+
+      amount:
+        Number(withdrawal.amount),
+
+      rejection_reason:
+        cleanReason,
+
+      /*
+       * Original reservation transaction.
+       */
+      transaction_id:
+        withdrawal.transaction_id,
+
+      /*
+       * New refund transaction.
+       */
+      refund_transaction_id:
+        refundTransactionId,
+
+      /*
+       * Current user wallet balances after refund.
+       */
+      main_balance:
+        Number(
+          walletBalances.main_balance || 0
+        ),
+
+      play_balance:
+        Number(
+          walletBalances.play_balance || 0
+        ),
+
+      total_balance:
+        Number(
+          walletBalances.total_balance || 0
+        ),
+
+      /*
+       * Kept for compatibility with your existing API.
+       */
+      balance_after:
+        Number(
+          walletBalances.total_balance || 0
+        ),
+
+      withdrawal:
+        rejectedWithdrawal
+    };
+
+  } catch (err) {
+    /*
+     * ============================================================
+     * ROLLBACK
+     * ============================================================
+     *
+     * If the refund succeeds but anything afterward fails,
+     * the refund itself is rolled back too.
+     */
+    await safeRollback(client);
+
+    console.error(
+      "rejectWithdrawal error:",
+      err
+    );
+
+    return {
+      success: false,
+      message:
+        err?.message ||
+        "Withdrawal rejection failed."
+    };
+
+  } finally {
+    client.release();
+  }
+},
+  
+  // ============================================================
+// BROADCAST DRAFTS
+// ============================================================
+
+async createBroadcastDraft(adminId) {
+  await pool.query(
+    `
+    INSERT INTO broadcast_drafts (
+      admin_id,
+      image_url,
+      message,
+      button_title,
+      include_image,
+      include_text,
+      include_button,
+      status
+    )
+    VALUES (
+      $1,
+      NULL,
+      NULL,
+      NULL,
+      FALSE,
+      FALSE,
+      FALSE,
+      'selecting_content'
+    )
+    ON CONFLICT (admin_id)
+    DO UPDATE SET
+      image_url = NULL,
+      message = NULL,
+      button_title = NULL,
+      include_image = FALSE,
+      include_text = FALSE,
+      include_button = FALSE,
+      status = 'selecting_content',
+      created_at = NOW()
+    `,
+    [adminId]
+  );
+},
+
+async getBroadcastDraft(adminId) {
+  const { rows } = await pool.query(
+    `
+    SELECT *
+    FROM broadcast_drafts
+    WHERE admin_id = $1
+    LIMIT 1
+    `,
+    [adminId]
+  );
+
+  return rows[0] || null;
+},
+
+async updateBroadcastOptions(
+  adminId,
+  includeImage,
+  includeText,
+  includeButton
+) {
+  await pool.query(
+    `
+    UPDATE broadcast_drafts
+    SET
+      include_image = $2,
+      include_text = $3,
+      include_button = $4,
+      status = 'building'
+    WHERE admin_id = $1
+    `,
+    [
+      adminId,
+      Boolean(includeImage),
+      Boolean(includeText),
+      Boolean(includeButton)
+    ]
+  );
+},
+
+async updateBroadcastImage(adminId, imageUrl) {
+  await pool.query(
+    `
+    UPDATE broadcast_drafts
+    SET image_url = $2
+    WHERE admin_id = $1
+    `,
+    [
+      adminId,
+      imageUrl
+    ]
+  );
+},
+
+async updateBroadcastMessage(adminId, message) {
+  await pool.query(
+    `
+    UPDATE broadcast_drafts
+    SET message = $2
+    WHERE admin_id = $1
+    `,
+    [
+      adminId,
+      message
+    ]
+  );
+},
+
+async updateBroadcastButtonTitle(adminId, buttonTitle) {
+  await pool.query(
+    `
+    UPDATE broadcast_drafts
+    SET button_title = $2
+    WHERE admin_id = $1
+    `,
+    [
+      adminId,
+      buttonTitle
+    ]
+  );
+},
+
+async updateBroadcastStatus(adminId, status) {
+  await pool.query(
+    `
+    UPDATE broadcast_drafts
+    SET status = $2
+    WHERE admin_id = $1
+    `,
+    [
+      adminId,
+      status
+    ]
+  );
+},
+
+async deleteBroadcastDraft(adminId) {
+  await pool.query(
+    `
+    DELETE FROM broadcast_drafts
+    WHERE admin_id = $1
+    `,
+    [adminId]
+  );
+},
+
+async getAllActiveUsers() {
+  const { rows } = await pool.query(
+    `
+    SELECT telegram_id
+    FROM users
+    WHERE is_active = TRUE
+      AND is_blocked = FALSE
+    `
+  );
+
+  return rows;
+},
+
+  // ============================================================
+  // PAYMENT TYPES / METHODS / ACCOUNTS
+  // ============================================================
+
+  async getPaymentMethodTypes() {
+
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+          pt.id,
+          pt.name,
+          pt.amharic_name,
+          pt.emoji,
+          pt.maximum_balance,
+          pt."order",
+          pt.is_active
+
+        FROM payment_types pt
+
+        WHERE pt.is_active = TRUE
+
+          AND EXISTS (
+            SELECT 1
+            FROM payment_methods pm
+            WHERE pm.type_id = pt.id
+              AND pm.is_active = TRUE
+          )
+
+        ORDER BY
+          pt."order" NULLS LAST,
+          pt.id
+        `
+      );
+
+    return rows;
+  },
+
+    async getPaymentMethodTypesById(paymentTypeId) {
+
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+          pt.id,          
+          pt.name,
+          pt.amharic_name,
+          pt.emoji,
+          pt.maximum_balance,
+          pt."order",
+          pt.is_active
+
+        FROM payment_types pt
+
+        WHERE pt.is_active = TRUE
+              AND pt.id = $1
+
+          AND EXISTS (
+            SELECT 1
+            FROM payment_methods pm
+            WHERE pm.type_id = pt.id
+              AND pm.is_active = TRUE
+          )
+
+        ORDER BY
+          pt."order" NULLS LAST,
+          pt.id
+        `,
+        [paymentTypeId]
+      );
+
+    return rows[0] || null;
+  },
+
+  async getPaymentMethods() {
+
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+          pm.id,
+          pm.type_id,
+          pm.name,
+          pm.amharic_name,
+          pm.emoji,
+
+          pt.name
+            AS type_name,
+
+          pt.amharic_name
+            AS am_type_name,
+
+          pt.emoji
+            AS type_emoji
+
+        FROM payment_methods pm
+
+        JOIN payment_types pt
+          ON pt.id = pm.type_id
+
+        WHERE pm.is_active = TRUE
+          AND pt.is_active = TRUE
+
+        ORDER BY
+          pm."order",
+          pm.id
+        `
+      );
+
+    return rows;
+  },
+
+  async getPaymentMethodById(
+    pmId
+  ) {
+
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+          pm.id,
+          pm.type_id,
+          pm.name,
+          pm.amharic_name,
+          pm.emoji,
+
+          pt.name
+            AS type_name,
+
+          pt.amharic_name
+            AS am_type_name,
+
+          pt.emoji
+            AS type_emoji,
+
+          pt.maximum_balance
+
+        FROM payment_methods pm
+
+        JOIN payment_types pt
+          ON pt.id = pm.type_id
+
+        WHERE pm.id = $1
+          AND pm.is_active = TRUE
+          AND pt.is_active = TRUE
+
+        LIMIT 1
+        `,
+        [pmId]
+      );
+
+    return rows[0] || null;
+  },
+
+  async getPaymentAccount(
+    paymentMethodId
+  ) {
+
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+          pa.*,
+
+          pm.name
+            AS pm_name,
+
+          pm.amharic_name
+            AS pm_amharic_name,
+
+          pm.emoji
+            AS pm_emoji,
+
+          pt.name
+            AS pt_name,
+
+          pt.amharic_name
+            AS pt_amharic_name,
+
+          pt.emoji
+            AS pt_emoji,
+
+          pt.maximum_balance
+
+        FROM payment_accounts pa
+
+        JOIN payment_methods pm
+          ON pm.id =
+             pa.payment_method_id
+
+        JOIN payment_types pt
+          ON pt.id =
+             pm.type_id
+
+        WHERE pa.payment_method_id = $1
+          AND pa.is_active = TRUE
+          AND pa.is_removed = FALSE
+          AND pm.is_active = TRUE
+          AND pt.is_active = TRUE
+          AND (
+            pt.maximum_balance IS NULL
+            OR pa.balance <
+               pt.maximum_balance
+          )
+
+        ORDER BY
+          pa.balance ASC,
+          pa.id ASC
+
+        LIMIT 1
+        `,
+        [paymentMethodId]
+      );
+
+    return rows[0] || null;
+  },
+
+  async getPaymentAccountsByMethod(
+    paymentMethodId
+  ) {
+
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+          pa.id,
+          pa.payment_method_id,
+          pa.account_number,
+          pa.account_name,
+          pa.balance,
+          pa.is_active,
+          pa.is_removed,
+
+          pm.name
+            AS pm_name,
+
+          pm.amharic_name
+            AS pm_amharic_name,
+
+          pm.emoji
+            AS pm_emoji,
+
+          pt.name
+            AS pt_name,
+
+          pt.amharic_name
+            AS pt_amharic_name,
+
+          pt.emoji
+            AS pt_emoji
+
+        FROM payment_accounts pa
+
+        JOIN payment_methods pm
+          ON pm.id =
+             pa.payment_method_id
+
+        JOIN payment_types pt
+          ON pt.id =
+             pm.type_id
+
+        WHERE pa.payment_method_id = $1
+          AND pa.is_active = TRUE
+          AND pa.is_removed = FALSE
+          AND pm.is_active = TRUE
+          AND pt.is_active = TRUE
+
+        ORDER BY
+          pa.account_number ASC,
+          pa.id ASC
+        `,
+        [paymentMethodId]
+      );
+
+    return rows;
+  },
+
+  async getPaymentAccountById(
+    paymentAccountId
+  ) {
+
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+          pa.id,
+          pa.payment_method_id,
+          pa.account_number,
+          pa.account_name,
+          pa.balance,
+          pa.is_active,
+          pa.is_removed,
+
+          pm.name
+            AS pm_name,
+
+          pm.amharic_name
+            AS pm_amharic_name,
+
+          pm.emoji
+            AS pm_emoji,
+
+          pt.name
+            AS pt_name,
+
+          pt.amharic_name
+            AS pt_amharic_name,
+
+          pt.emoji
+            AS pt_emoji
+
+        FROM payment_accounts pa
+
+        JOIN payment_methods pm
+          ON pm.id =
+             pa.payment_method_id
+
+        JOIN payment_types pt
+          ON pt.id =
+             pm.type_id
+
+        WHERE pa.id = $1
+          AND pa.is_active = TRUE
+          AND pa.is_removed = FALSE
+          AND pm.is_active = TRUE
+          AND pt.is_active = TRUE
+
+        LIMIT 1
+        `,
+        [paymentAccountId]
+      );
+
+    return rows[0] || null;
+  },
+
+  // ============================================================
+// GET PAYMENT ACCOUNT BY ID — ADMIN
+// Includes inactive and removed accounts.
+// ============================================================
+
+async getPaymentAccountByIdForAdmin(
+  paymentAccountId
+) {
+
+  const id =
+    Number(paymentAccountId);
+
+  if (
+    !Number.isInteger(id) ||
+    id <= 0
+  ) {
+    return null;
+  }
+
+  const { rows } =
+    await pool.query(
+      `
+      SELECT
+        pa.id,
+        pa.payment_method_id,
+        pa.account_number,
+        pa.account_name,
+        pa.balance,
+        pa.is_active,
+        pa.is_removed,
+
+        pm.name
+          AS pm_name,
+
+        pm.amharic_name
+          AS pm_amharic_name,
+
+        pm.emoji
+          AS pm_emoji,
+
+        pt.name
+          AS pt_name,
+
+        pt.amharic_name
+          AS pt_amharic_name,
+
+        pt.emoji
+          AS pt_emoji
+
+      FROM payment_accounts pa
+
+      JOIN payment_methods pm
+        ON pm.id =
+           pa.payment_method_id
+
+      JOIN payment_types pt
+        ON pt.id =
+           pm.type_id
+
+      WHERE pa.id = $1
+
+      LIMIT 1
+      `,
+      [id]
+    );
+
+  return rows[0] || null;
+},
+  // ============================================================
+// DELETE / UNDELETE PAYMENT ACCOUNT
+// Soft delete using is_removed.
+// ============================================================
+
+async setPaymentAccountRemoved(
+  paymentAccountId,
+  isRemoved
+) {
+
+  const id =
+    Number(paymentAccountId);
+
+  if (
+    !Number.isInteger(id) ||
+    id <= 0
+  ) {
+    return null;
+  }
+
+  const { rows } =
+    await pool.query(
+      `
+      UPDATE payment_accounts
+
+      SET
+        is_removed = $1
+
+      WHERE id = $2
+
+      RETURNING
+        id,
+        payment_method_id,
+        account_number,
+        account_name,
+        balance,
+        is_active,
+        is_removed
+      `,
+      [
+        Boolean(isRemoved),
+        id
+      ]
+    );
+
+  return rows[0] || null;
+},
+  // ============================================================
+// UPDATE PAYMENT ACCOUNT
+// ============================================================
+
+async updatePaymentAccount(
+  paymentAccountId,
+  accountName,
+  accountNumber,
+  balance
+) {
+
+  const id =
+    Number(paymentAccountId);
+
+  if (
+    !Number.isInteger(id) ||
+    id <= 0
+  ) {
+    return null;
+  }
+
+  const name =
+    String(
+      accountName ?? ""
+    ).trim();
+
+  const number =
+    String(
+      accountNumber ?? ""
+    ).trim();
+
+  const numericBalance =
+    Number(balance);
+
+  if (!name || name.length > 100) {
+    throw new Error(
+      "Invalid account name."
+    );
+  }
+
+  if (!number || number.length > 100) {
+    throw new Error(
+      "Invalid account number."
+    );
+  }
+
+  if (
+    !Number.isFinite(numericBalance) ||
+    numericBalance < 0
+  ) {
+    throw new Error(
+      "Invalid account balance."
+    );
+  }
+
+  const { rows } =
+    await pool.query(
+      `
+      UPDATE payment_accounts
+
+      SET
+        account_name = $1,
+        account_number = $2,
+        balance = $3
+
+      WHERE id = $4
+
+      RETURNING
+        id,
+        payment_method_id,
+        account_number,
+        account_name,
+        balance,
+        is_active,
+        is_removed
+      `,
+      [
+        name,
+        number,
+        numericBalance,
+        id
+      ]
+    );
+
+  return rows[0] || null;
+},
+
+  // ============================================================
+// PAYMENT ACCOUNTS — ADMIN LIST
+// Includes removed accounts so admin can undelete them.
+// ============================================================
+
+async getAllPaymentAccountsForAdmin() {
+
+  const { rows } =
+    await pool.query(
+      `
+      SELECT
+        pa.id,
+        pa.payment_method_id,
+        pa.account_number,
+        pa.account_name,
+        pa.balance,
+        pa.is_active,
+        pa.is_removed,
+
+        pm.name
+          AS pm_name,
+
+        pm.amharic_name
+          AS pm_amharic_name,
+
+        pm.emoji
+          AS pm_emoji,
+
+        pt.name
+          AS pt_name,
+
+        pt.amharic_name
+          AS pt_amharic_name,
+
+        pt.emoji
+          AS pt_emoji
+
+      FROM payment_accounts pa
+
+      JOIN payment_methods pm
+        ON pm.id =
+           pa.payment_method_id
+
+      JOIN payment_types pt
+        ON pt.id =
+           pm.type_id
+
+      WHERE pm.is_active = TRUE
+        AND pt.is_active = TRUE
+
+      ORDER BY
+        pa.is_removed ASC,
+        pm."order" ASC,
+        pa.id ASC
+      `
+    );
+
+  return rows;
+},
+
+  async setPaymentAccountActive(
+    paymentAccountId,
+    isActive
+  ) {
+
+    const id =
+      Number(paymentAccountId);
+
+    if (
+      !Number.isInteger(id) ||
+      id <= 0
+    ) {
+      return null;
+    }
+
+    const { rows } =
+      await pool.query(
+        `
+        UPDATE payment_accounts
+
+        SET
+          is_active = $1
+
+        WHERE id = $2
+          AND is_removed = FALSE
+
+        RETURNING
+          id,
+          payment_method_id,
+          account_number,
+          account_name,
+          balance,
+          is_active,
+          is_removed
+        `,
+        [
+          Boolean(isActive),
+          id
+        ]
+      );
+
+    return rows[0] || null;
+  },
+
+  async createPaymentAccount(
+    paymentMethodId,
+    accountName,
+    accountNumber
+  ) {
+
+    const methodId =
+      toPositiveInteger(
+        paymentMethodId,
+        "paymentMethodId"
+      );
+
+    const name =
+      String(
+        accountName ?? ""
+      ).trim();
+
+    const number =
+      String(
+        accountNumber ?? ""
+      ).trim();
+
+    if (
+      !name ||
+      name.length > 100
+    ) {
+
+      return {
+        success: false,
+        message:
+          "Invalid account name."
+      };
+    }
+
+    if (
+      !number ||
+      number.length > 100
+    ) {
+
+      return {
+        success: false,
+        message:
+          "Invalid account number."
+      };
+    }
+
+    const client =
+      await pool.connect();
+
+    try {
+
+      await client.query(
+        "BEGIN"
+      );
+
+      const method =
+        await client.query(
+          `
+          SELECT
+            pm.id,
+            pt.name
+              AS type_name,
+            pt.amharic_name
+              AS type_amharic_name
+
+          FROM payment_methods pm
+
+          JOIN payment_types pt
+            ON pt.id =
+               pm.type_id
+
+          WHERE pm.id = $1
+            AND pm.is_active = TRUE
+            AND pt.is_active = TRUE
+
+          FOR SHARE
+          `,
+          [methodId]
+        );
+
+      if (
+        !method.rows.length
+      ) {
+
+        await client.query(
+          "ROLLBACK"
+        );
+
+        return {
+          success: false,
+          message:
+            "Payment method not found or inactive."
+        };
       }
-      else leaveRoom(c,room.roomId);
-    });
-    if(keepClient) return;
-    delete clients[ws._pid]; broadcastLobby();
-  });
-  ws.on('error',()=>{});
-});
 
-// ─── PROFILE (db.js: getBingoUserDashboard) ───────────────────
-// get_bingo_user_dashboard(user_id) returns (see database.sql):
-//   { status:'active'|'blocked'|'inactive', user:{...},
-//     balances:[{wallet_type:'main'|'play'|'bonus', balance, ...}],
-//     summary:{games_played, games_won, total_earned},
-//     stakes:[{stake_id, amount, games_played, games_won, total_earned, rooms:[...]}] }
-// Everything the profile needs is fetched ONCE per request, in parallel, and cached for 10 seconds
-// (a round start / end clears the cache for the players involved).
-let dashboardShapeLogged=false;
-async function getBingoProfile(tid){
-  const hit=profileCache.get(tid);
-  if(hit&&Date.now()-hit.t<PROFILE_TTL_MS) return hit.data;
+      const duplicate =
+        await client.query(
+          `
+          SELECT id
+          FROM payment_accounts
+          WHERE payment_method_id = $1
+            AND account_number = $2
+            AND is_removed = FALSE
+          LIMIT 1
+          `,
+          [
+            methodId,
+            number
+          ]
+        );
 
-  // A signed-in player is already in userCache (userId, name): start the dashboard at once,
-  // no extra wallet query first. Only an unknown user is loaded from the database.
-  let u=userCache[tid];
-  if(!u||!u.userId) u=await loadUser(tid,3,300);
-  if(!u||!u.userId) return null;
+      if (
+        duplicate.rows.length
+      ) {
 
-  // ONE database call: get_bingo_user_dashboard has balances, totals and per-stake totals.
-  // The three extra stats queries only run if the dashboard failed.
-  let dash=null, stats=null;
-  try{ dash=await bingoDb.getBingoUserDashboard(u.userId); }
-  catch(e){
-    console.error('getBingoUserDashboard:',e.message);
-    stats=await bingoDb.getBingoProfileStats(u.userId).catch(e2=>{ console.error('getBingoProfileStats:',e2.message); return null; });
+        await client.query(
+          "ROLLBACK"
+        );
+
+        return {
+          success: false,
+          message:
+            "This payment account already exists."
+        };
+      }
+
+      const inserted =
+        await client.query(
+          `
+          INSERT INTO payment_accounts (
+            payment_method_id,
+            account_name,
+            account_number,
+            balance,
+            is_active,
+            is_removed
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            0,
+            TRUE,
+            FALSE
+          )
+          RETURNING *
+          `,
+          [
+            methodId,
+            name,
+            number
+          ]
+        );
+
+      await client.query(
+        "COMMIT"
+      );
+
+      return {
+        success: true,
+        account:
+          inserted.rows[0]
+      };
+
+    } catch (err) {
+
+      await safeRollback(
+        client
+      );
+
+      console.error(
+        "createPaymentAccount error:",
+        err
+      );
+
+      return {
+        success: false,
+        message:
+          err.message ||
+          "Could not create payment account."
+      };
+
+    } finally {
+
+      client.release();
+
+    }
+  },
+
+  // ============================================================
+  // DEPOSITS
+  // ============================================================
+
+  /*
+   * IMPORTANT:
+   * Keep this function name because the current bot.js
+   * calls approveDeposit().
+   */
+
+async approveDeposit(receipt, telegramId) {
+    const client = await pool.connect();
+	let awardedBonuses = [];
+
+    try {
+        // ------------------------------------------------------------
+        // 1. Validate request input
+        // ------------------------------------------------------------
+
+        const parsedTelegramId = Number(telegramId);
+		
+
+        if (
+            !Number.isSafeInteger(parsedTelegramId) ||
+            parsedTelegramId <= 0
+        ) {
+            throw new Error("Invalid Telegram user ID.");
+        }
+
+        const receiptNo = String(receipt?.receiptNo ?? "").trim();
+
+        if (!receiptNo) {
+            throw new Error("Receipt number is required.");
+        }
+
+        if (receiptNo.length > 100) {
+            throw new Error("Receipt number is too long.");
+        }
+
+        const amount = toPositiveAmount(
+            amountFromReceipt(receipt)
+        );
+
+        if (!amount || amount <= 0) {
+            throw new Error("Invalid deposit amount.");
+        }
+
+        const creditedAccount = String(
+            receipt?.creditedPartyAccountNo ?? ""
+        ).replace(/\D/g, "");
+
+        if (creditedAccount.length < 4) {
+            throw new Error("Invalid credited account number.");
+        }
+
+        const creditedName = String(
+            receipt?.creditedPartyName ?? ""
+        ).trim();
+
+        if (!creditedName) {
+            throw new Error("Credited account name is required.");
+        }
+
+        const payerName = String(
+            receipt?.payerName ?? ""
+        ).trim();
+
+        if (!payerName) {
+            throw new Error("Payer name is required.");
+        }
+
+        const payerAccount = String(
+            receipt?.payerTelebirrNo ?? ""
+        ).replace(/\D/g, "");
+
+        if (
+            payerAccount.length < 4 ||
+            payerAccount.length > 20
+        ) {
+            throw new Error("Invalid payer account number.");
+        }
+
+        const creditedAccountLast4 =
+            creditedAccount.slice(-4);
+
+        // ------------------------------------------------------------
+        // 2. Begin transaction
+        // ------------------------------------------------------------
+
+        await client.query("BEGIN");
+
+        // ------------------------------------------------------------
+        // 3. Lock the user
+        // ------------------------------------------------------------
+
+        const userResult = await client.query(
+            `
+            SELECT
+                id,
+                telegram_id,
+                name,
+                is_active,
+                is_blocked
+            FROM users
+            WHERE telegram_id = $1
+            FOR UPDATE
+            `,
+            [parsedTelegramId]
+        );
+
+        if (userResult.rowCount !== 1) {
+            throw new Error("User not found.");
+        }
+
+        const user = userResult.rows[0];
+
+        if (!user.is_active) {
+            throw new Error("User account is inactive.");
+        }
+
+        if (user.is_blocked) {
+            throw new Error("User is blocked.");
+        }
+
+        // ------------------------------------------------------------
+        // 4. Protect against duplicate receipt
+        //
+        // The UNIQUE index is the final protection.
+        // This check simply gives a cleaner error.
+        // ------------------------------------------------------------
+
+        const duplicateResult = await client.query(
+            `
+            SELECT
+                id,
+                status,
+                transaction_id
+            FROM deposits
+            WHERE reference = $1
+            LIMIT 1
+            FOR UPDATE
+            `,
+            [receiptNo]
+        );
+
+        if (duplicateResult.rowCount > 0) {
+            throw new Error(
+                `Receipt ${receiptNo} has already been processed.`
+            );
+        }
+
+        // ------------------------------------------------------------
+        // 5. Find the payment account from the receipt
+        // ------------------------------------------------------------
+
+        const paymentAccountResult = await client.query(
+            `
+            SELECT
+                pa.id,
+                pa.payment_method_id,
+                pa.account_name,
+                pa.account_number,
+                pa.balance,
+                pa.is_active,
+                pa.is_removed,
+
+                pm.name AS payment_method_name,
+                pm.is_active AS payment_method_active
+
+            FROM payment_accounts pa
+
+            JOIN payment_methods pm
+                ON pm.id = pa.payment_method_id
+
+            WHERE pa.is_active = TRUE
+              AND pa.is_removed = FALSE
+              AND pm.is_active = TRUE
+              AND RIGHT(
+                    REGEXP_REPLACE(pa.account_number, '\\D', '', 'g'),
+                    4
+                  ) = $1
+
+            FOR UPDATE OF pa
+            `,
+            [creditedAccountLast4]
+        );
+
+        if (paymentAccountResult.rowCount === 0) {
+            throw new Error(
+                "No active payment account matches the credited account."
+            );
+        }
+
+        // ------------------------------------------------------------
+        // 6. Match the credited account name
+        //
+        // There may theoretically be multiple accounts with the
+        // same last 4 digits, so the account name must disambiguate.
+        // ------------------------------------------------------------
+
+        const normalizedCreditedName =
+            creditedName.replace(/\s+/g, " ").trim().toLowerCase();
+
+        const matchingAccounts =
+            paymentAccountResult.rows.filter((account) => {
+                const normalizedAccountName =
+                    String(account.account_name ?? "")
+                        .replace(/\s+/g, " ")
+                        .trim()
+                        .toLowerCase();
+
+                return normalizedAccountName === normalizedCreditedName;
+            });
+
+        if (matchingAccounts.length === 0) {
+            throw new Error(
+                "The credited account name does not match any active payment account."
+            );
+        }
+
+        if (matchingAccounts.length > 1) {
+            throw new Error(
+                "Multiple payment accounts match this receipt. Deposit cannot be safely processed."
+            );
+        }
+
+        const paymentAccount = matchingAccounts[0];
+
+        // ------------------------------------------------------------
+        // 7. Ask PostgreSQL for the applicable deposit rule
+        //
+        // get_active_deposit_rule() checks:
+        //   - active status
+        //   - start/end dates
+        //   - payment method
+        //   - payment account
+        //   - minimum amount
+        //   - maximum amount
+        //
+        // It also applies the database's priority ordering.
+        // ------------------------------------------------------------
+
+        const ruleResult = await client.query(
+            `
+            SELECT *
+            FROM get_active_deposit_rule(
+                $1,
+                $2,
+                $3
+            )
+            `,
+            [
+                paymentAccount.payment_method_id,
+                paymentAccount.id,
+                amount
+            ]
+        );
+
+        if (ruleResult.rowCount !== 1) {
+            throw new Error(
+                "No active deposit rule allows this deposit."
+            );
+        }
+
+        const rule = ruleResult.rows[0];
+
+        if (!rule.id) {
+            throw new Error(
+                "No valid deposit rule was found for this deposit."
+            );
+        }
+
+        // ------------------------------------------------------------
+        // 8. Save the deposit as pending first
+        //
+        // rule_id is stored so we know exactly which rule authorized
+        // this deposit.
+        // ------------------------------------------------------------
+
+        const depositResult = await client.query(
+            `
+            INSERT INTO deposits (
+                user_id,
+                payment_account_id,
+                deposit_method_id,
+                depositor_name,
+                depositor_account,
+                amount,
+                reference,
+                rule_id,
+                status,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                $1,
+                $2,
+                $3,
+                $4,
+                $5,
+                $6,
+                $7,
+                $8,
+                'pending',
+                NOW(),
+                NOW()
+            )
+            RETURNING
+                id,
+                user_id,
+                payment_account_id,
+                deposit_method_id,
+                depositor_name,
+                depositor_account,
+                amount,
+                reference,
+                rule_id,
+                status,
+                created_at
+            `,
+            [
+                user.id,
+                paymentAccount.id,
+                // This column is the deposit_method_id, while
+                // get_active_deposit_rule uses payment_method_id.
+                paymentAccount.payment_method_id,
+                payerName,
+                payerAccount,
+                amount,
+                receiptNo,
+                rule.id
+            ]
+        );
+
+        if (depositResult.rowCount !== 1) {
+            throw new Error("Failed to create deposit record.");
+        }
+
+        const deposit = depositResult.rows[0];
+
+        // ------------------------------------------------------------
+        // 9. Credit ONLY the Play wallet
+        //
+        // users.balance is intentionally NOT updated.
+        // ------------------------------------------------------------
+
+        const transactionResult = await client.query(
+            `
+            SELECT credit_deposit_to_wallet(
+                $1,
+                $2,
+                $3,
+                $4,
+                NULL,
+                $5
+            ) AS transaction_id
+            `,
+            [
+                user.id,
+                amount,
+                deposit.id,
+                `deposit:credit:${deposit.id}`,
+                `Deposit ${receiptNo}`
+            ]
+        );
+
+        if (transactionResult.rowCount !== 1) {
+            throw new Error(
+                "Failed to create deposit financial transaction."
+            );
+        }
+
+        const transactionId =
+            transactionResult.rows[0].transaction_id;
+
+        if (!transactionId) {
+            throw new Error(
+                "Deposit financial transaction was not created."
+            );
+        }
+
+        // ------------------------------------------------------------
+        // 10. Verify the financial transaction
+        // ------------------------------------------------------------
+
+        const transactionCheck = await client.query(
+            `
+            SELECT
+                id,
+                user_id,
+                type,
+                status,
+                source_type,
+                source_id
+            FROM financial_transactions
+            WHERE id = $1
+            FOR UPDATE
+            `,
+            [transactionId]
+        );
+
+        if (transactionCheck.rowCount !== 1) {
+            throw new Error(
+                "Deposit financial transaction could not be verified."
+            );
+        }
+
+        const transaction =
+            transactionCheck.rows[0];
+
+        if (Number(transaction.user_id) !== Number(user.id)) {
+            throw new Error(
+                "Deposit transaction user mismatch."
+            );
+        }
+
+        if (transaction.type !== "deposit") {
+            throw new Error(
+                "Invalid financial transaction type for deposit."
+            );
+        }
+
+        if (transaction.status !== "completed") {
+            throw new Error(
+                "Deposit financial transaction is not completed."
+            );
+        }
+
+        if (transaction.source_type !== "deposit") {
+            throw new Error(
+                "Deposit transaction source mismatch."
+            );
+        }
+
+        if (String(transaction.source_id) !== String(deposit.id)) {
+            throw new Error(
+                "Deposit transaction source ID mismatch."
+            );
+        }
+
+        // ------------------------------------------------------------
+        // 11. Verify the ledger entry belongs to the PLAY wallet
+        // ------------------------------------------------------------
+
+        const ledgerResult = await client.query(
+            `
+            SELECT
+                le.id,
+                le.wallet_id,
+                le.amount,
+                w.wallet_type
+            FROM ledger_entries le
+            JOIN wallets w
+                ON w.id = le.wallet_id
+            WHERE le.transaction_id = $1
+            FOR UPDATE
+            `,
+            [transactionId]
+        );
+
+        if (ledgerResult.rowCount !== 1) {
+            throw new Error(
+                "Deposit must create exactly one wallet ledger entry."
+            );
+        }
+
+        const ledger = ledgerResult.rows[0];
+
+        if (ledger.wallet_type !== "play") {
+            throw new Error(
+                "Deposit attempted to credit a non-play wallet."
+            );
+        }
+
+        if (Number(ledger.amount) !== Number(amount)) {
+            throw new Error(
+                "Deposit ledger amount does not match the receipt amount."
+            );
+        }
+
+        // ------------------------------------------------------------
+        // 12. Increase the payment account balance
+        //
+        // This is separate from the user's wallet.
+        // Both operations remain inside the same DB transaction.
+        // ------------------------------------------------------------
+
+        const paymentAccountUpdate = await client.query(
+            `
+            UPDATE payment_accounts
+            SET
+                balance = balance + $1
+            WHERE id = $2
+              AND is_active = TRUE
+              AND is_removed = FALSE
+            RETURNING
+                id,
+                balance
+            `,
+            [
+                amount,
+                paymentAccount.id
+            ]
+        );
+
+        if (paymentAccountUpdate.rowCount !== 1) {
+            throw new Error(
+                "Payment account could not be updated."
+            );
+        }
+
+        const updatedPaymentAccount =
+            paymentAccountUpdate.rows[0];
+
+        // ------------------------------------------------------------
+        // 13. Mark deposit completed
+        // ------------------------------------------------------------
+
+        const completedDepositResult = await client.query(
+            `
+            UPDATE deposits
+            SET
+                transaction_id = $1,
+                status = 'completed',
+                approved_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $2
+              AND status = 'pending'
+            RETURNING
+                id,
+                status,
+                transaction_id,
+                rule_id,
+                approved_at,
+                updated_at
+            `,
+            [
+                transactionId,
+                deposit.id
+            ]
+        );
+
+        if (completedDepositResult.rowCount !== 1) {
+            throw new Error(
+                "Deposit could not be marked as completed."
+            );
+        }
+
+		// ------------------------------------------------------------
+		// 14. Evaluate and award eligible deposit bonuses
+		//
+		// IMPORTANT:
+		// This happens inside the SAME database transaction as the
+		// deposit. If any bonus award fails, the entire deposit is
+		// rolled back.
+		// ------------------------------------------------------------
+		
+		const eligibleBonusesResult = await client.query(
+		    `
+		    SELECT
+		        campaign_id,
+		        campaign_code,
+		        campaign_name,
+		        bonus_type,
+		        game_system_id,
+		        amount,
+		        percentage,
+		        multiplier,
+		        wagering_multiplier,
+		        min_deposit_amount,
+		        max_bonus_amount,
+		        validity_hours,
+		        stackable,
+		        stack_group,
+		        priority
+		    FROM public.get_eligible_deposit_bonus_campaigns(
+		        $1::integer,
+		        $2::integer,
+		        $3::numeric
+		    )
+		    ORDER BY
+		        priority DESC,
+		        campaign_id ASC
+		    `,
+		    [
+		        user.id,
+		        deposit.id,
+		        amount
+		    ]
+		);
+		
+		for (const campaign of eligibleBonusesResult.rows) {
+		
+		    const idempotencyKey =
+		        `deposit-bonus:${deposit.id}:${campaign.campaign_id}`;
+		
+		    const bonusResult = await client.query(
+		        `
+		        SELECT
+		            bonus_id,
+		            transaction_id
+		        FROM public.award_bonus(
+		            $1,
+		            $2,
+		            $3,
+		            $4,
+		            $5,
+		            $6,
+		            $7,
+		            $8::jsonb
+		        )
+		        `,
+		        [
+		            user.id,
+		            campaign.campaign_id,
+		            amount,
+		            "deposit",
+		            String(deposit.id),
+		            idempotencyKey,
+		            `Deposit bonus: ${campaign.campaign_name}`,
+		            JSON.stringify({
+		                deposit_id: deposit.id,
+		                deposit_reference: deposit.reference,
+		                deposit_amount: amount,
+		                campaign_id: campaign.campaign_id,
+		                campaign_code: campaign.campaign_code,
+		                campaign_name: campaign.campaign_name,
+		                bonus_type: campaign.bonus_type,
+		                stackable: campaign.stackable,
+		                stack_group: campaign.stack_group,
+		                priority: campaign.priority
+		            })
+		        ]
+		    );
+		
+		    if (bonusResult.rowCount !== 1) {
+		        throw new Error(
+		            `Failed to award bonus campaign ${campaign.campaign_id}.`
+		        );
+		    }
+		
+		    const awardedBonus = bonusResult.rows[0];
+		
+		    awardedBonuses.push({
+		        campaignId: Number(campaign.campaign_id),
+		        campaignCode: campaign.campaign_code,
+		        campaignName: campaign.campaign_name,
+		        bonusType: campaign.bonus_type,
+		        bonusId: Number(awardedBonus.bonus_id),
+		        transactionId: Number(awardedBonus.transaction_id)
+		    });
+		}
+
+        // ------------------------------------------------------------
+		// 15. Read final wallet balances
+		// ------------------------------------------------------------
+
+        const balancesResult = await client.query(
+            `
+            SELECT
+                user_id,
+                telegram_id,
+                name,
+                main_wallet_id,
+                main_balance,
+                play_wallet_id,
+                play_balance,
+                total_balance
+            FROM user_wallet_balances
+            WHERE telegram_id = $1
+            `,
+            [parsedTelegramId]
+        );
+
+        if (balancesResult.rowCount !== 1) {
+            throw new Error(
+                "Could not verify final wallet balances."
+            );
+        }
+
+        const balances = balancesResult.rows[0];
+
+		// ------------------------------------------------------------
+		// 16. Commit everything atomically
+		// ------------------------------------------------------------
+
+        await client.query("COMMIT");
+
+        return {
+            success: true,
+            message: "Deposit approved successfully.",
+
+            deposit: {
+                id: deposit.id,
+                reference: deposit.reference,
+                amount: Number(deposit.amount),
+                status: completedDepositResult.rows[0].status,
+                ruleId: completedDepositResult.rows[0].rule_id,
+                approvedAt:
+                    completedDepositResult.rows[0].approved_at
+            },
+
+            transaction: {
+                id: transactionId,
+                type: transaction.type,
+                status: transaction.status
+            },
+
+            rule: {
+                id: rule.id,
+                code: rule.code,
+                name: rule.name,
+                minimumAmount:
+                    rule.minimum_amount !== null
+                        ? Number(rule.minimum_amount)
+                        : null,
+                maximumAmount:
+                    rule.maximum_amount !== null
+                        ? Number(rule.maximum_amount)
+                        : null
+            },
+
+            paymentAccount: {
+                id: paymentAccount.id,
+                paymentMethodId:
+                    paymentAccount.payment_method_id,
+                paymentMethodName:
+                    paymentAccount.payment_method_name,
+                balance:
+                    Number(updatedPaymentAccount.balance)
+            },
+
+            wallet: {
+                mainBalance:
+                    Number(balances.main_balance),
+                playBalance:
+                    Number(balances.play_balance),
+                totalBalance:
+                    Number(balances.total_balance)
+            },
+			bonuses: {
+					    count: awardedBonuses.length,
+					    awarded: awardedBonuses
+					}
+        };
+    } catch (error) {
+        await safeRollback(client);
+
+        if (error?.code === "23505") {
+            if (
+                String(error.constraint ?? "")
+                    .includes("deposits_reference_unique_idx")
+            ) {
+                throw new Error(
+                    `Receipt ${String(
+                        receipt?.receiptNo ?? ""
+                    ).trim()} has already been processed.`
+                );
+            }
+
+            throw error;
+        }
+
+        console.error("approveDeposit failed:", error);
+
+        throw error;
+    } finally {
+        client.release();
+    }
+},
+
+  // ============================================================
+  // GAMES
+  // ============================================================
+
+    async createBingoGame(
+    roomId,
+    stakeId,
+    selectedCards
+  ) {
+    const room = toPositiveInteger(
+      roomId,
+      "roomId"
+    );
+
+    if (
+      stakeId === null ||
+      stakeId === undefined ||
+      String(stakeId).trim() === ""
+    ) {
+      throw new Error("stakeId is required.");
+    }
+
+    const stake = String(stakeId).trim();
+
+    if (!Array.isArray(selectedCards)) {
+      throw new Error(
+        "selectedCards must be an array."
+      );
+    }
+
+    if (selectedCards.length === 0) {
+      throw new Error(
+        "At least one selected card is required."
+      );
+    }
+
+    /*
+     * The PostgreSQL function is now responsible for:
+     *
+     * - validating the room
+     * - validating the stake
+     * - validating room/stake availability
+     * - reading card_count from bingo_rooms
+     * - reading max_cards_per_player from bingo_rooms
+     * - reading commission_rule_id from bingo_rooms
+     * - reading commission_rate from bingo_commission_rules
+     * - reading stake amount from bingo_stakes
+     * - reading Bingo game-system configuration
+     * - generating the game code
+     * - generating the internal idempotency key
+     * - charging each accepted card
+     * - creating participants
+     * - creating participant cards
+     * - calculating gross pot
+     * - calculating commission
+     * - calculating prize pool
+     *
+     * Node.js should NOT duplicate any of that logic.
+     */
+
+    const { rows } = await pool.query(
+      `
+      SELECT public.create_bingo_game_from_selections(
+        $1::bigint,
+        $2::varchar,
+        $3::jsonb
+      ) AS result
+      `,
+      [
+        room,
+        stake,
+        JSON.stringify(selectedCards)
+      ]
+    );
+
+    const result =
+      rows[0]?.result;
+
+    if (!result) {
+      throw new Error(
+        "Failed to create Bingo game."
+      );
+    }
+
+    return result;
+  },
+
+  async getBingoGameByCode(
+  gameCode
+) {
+  const code =
+    String(gameCode || "")
+      .trim()
+      .toUpperCase();
+
+  if (!code) {
+    throw new Error(
+      "gameCode is required."
+    );
   }
-  const d=(dash&&typeof dash==='object')?dash:null;
-  if(d&&!dashboardShapeLogged){ dashboardShapeLogged=true; console.log('ℹ️ getBingoUserDashboard keys:',Object.keys(d).join(', ')); }
-  if(d&&d.status&&d.status!=='active') return {blocked:true,status:d.status};
 
-  const num=v=>{const x=Number(v);return Number.isFinite(x)?x:undefined;};
-  const walletOf=type=>{
-    const row=(d&&Array.isArray(d.balances))?d.balances.find(b=>b&&b.wallet_type===type):null;
-    return row?num(row.balance):undefined;
-  };
-  const wallets={
-    main:round2(walletOf('main')??u.wallets.main),
-    play:round2(walletOf('play')??u.wallets.play),
-    bonus:round2(walletOf('bonus')??u.wallets.bonus)
-  };
-  if(Math.abs(wallets.main-u.wallets.main)>0.009||Math.abs(wallets.play-u.wallets.play)>0.009){
-    console.warn(`⚠️ dashboard wallets differ from the wallet view for user ${u.userId}:`,wallets,u.wallets);
+  const { rows } =
+    await pool.query(
+      `
+      SELECT *
+      FROM bingo_games
+      WHERE game_code = $1
+      LIMIT 1
+      `,
+      [code]
+    );
+
+  return rows[0] || null;
+},
+
+  /**
+   * One cartela of a player in a game (bingo_participant_cards) together with his participant row.
+   */
+  async getBingoParticipant(
+  gameId,
+  userId,
+  cardId
+) {
+  const game = toPositiveInteger(gameId, "gameId");
+  const user = toPositiveInteger(userId, "userId");
+  const card = toPositiveInteger(cardId, "cardId");
+
+  const { rows } =
+    await pool.query(
+      `
+      SELECT
+        bp.*,
+        pc.id          AS participant_card_id,
+        pc.card_id     AS card_id,
+        pc.card_data   AS card_data,
+        pc.transaction_id AS card_transaction_id,
+        pc.is_disqualified AS card_disqualified,
+        g.game_code,
+        g.status AS game_status
+      FROM bingo_participants bp
+      JOIN bingo_participant_cards pc
+        ON pc.participant_id = bp.id
+      JOIN bingo_games g
+        ON g.id = bp.game_id
+      WHERE bp.game_id = $1
+        AND bp.user_id = $2
+        AND pc.card_id = $3
+      LIMIT 1
+      `,
+      [game, user, card]
+    );
+
+  return rows[0] || null;
+},
+
+  /**
+   * Every cartela a player has in a game (one row per cartela).
+   */
+  async getBingoUserParticipants(
+  gameId,
+  userId
+) {
+  const game = toPositiveInteger(gameId, "gameId");
+  const user = toPositiveInteger(userId, "userId");
+
+  const { rows } =
+    await pool.query(
+      `
+      SELECT
+        pc.id              AS id,
+        bp.id              AS participant_id,
+        bp.game_id,
+        bp.user_id,
+        pc.card_id,
+        pc.card_data,
+        pc.transaction_id,
+        bp.amount_paid,
+        bp.status,
+        EXISTS (
+          SELECT 1
+          FROM bingo_winners w
+          WHERE w.game_id = pc.game_id
+            AND w.participant_id = pc.participant_id
+            AND w.card_id = pc.card_id
+        )                  AS is_winner,
+        (bp.is_disqualified OR pc.is_disqualified) AS is_disqualified,
+        bp.amount_won,
+        bp.joined_at
+      FROM bingo_participants bp
+      JOIN bingo_participant_cards pc
+        ON pc.participant_id = bp.id
+      WHERE bp.game_id = $1
+        AND bp.user_id = $2
+      ORDER BY pc.card_id
+      `,
+      [game, user]
+    );
+
+  return rows;
+},
+
+  /**
+   * Every cartela of the players who are still in a game (active and not disqualified).
+   */
+  async getActiveBingoParticipants(
+  gameId
+) {
+  const game = toPositiveInteger(gameId, "gameId");
+
+  const { rows } =
+    await pool.query(
+      `
+      SELECT
+        pc.id              AS id,
+        bp.id              AS participant_id,
+        bp.game_id,
+        bp.user_id,
+        pc.card_id,
+        pc.card_data,
+        pc.transaction_id,
+        bp.amount_paid,
+        bp.status,
+        bp.is_disqualified,
+        bp.amount_won,
+        bp.joined_at
+      FROM bingo_participants bp
+      JOIN bingo_participant_cards pc
+        ON pc.participant_id = bp.id
+      WHERE bp.game_id = $1
+        AND bp.status = 'active'
+        AND bp.is_disqualified = FALSE
+        AND pc.is_disqualified = FALSE
+      ORDER BY pc.id
+      `,
+      [game]
+    );
+
+  return rows;
+},
+
+ 
+
+     async endBingoGame(
+  gameId,
+  winnerParticipantCardIds,
+  calledNumbers
+) {
+  const game = toPositiveInteger(
+    gameId,
+    "gameId"
+  );
+
+  if (!Array.isArray(winnerParticipantCardIds)) {
+    throw new Error(
+      "winnerParticipantCardIds must be an array."
+    );
   }
 
-  const sum=(d&&d.summary)||{};
-  const games=num(sum.games_played)??stats?.games??0;
-  const wins=num(sum.games_won)??stats?.wins??0;
-  const earning=num(sum.total_earned)??stats?.earning??0;
-
-  // one row per ACTIVE stake (even with 0 wins), straight from the dashboard
-  let stakeRows=[];
-  if(d&&Array.isArray(d.stakes)){
-    stakeRows=d.stakes.map(st=>({
-      stake:num(st.amount)||0,
-      wins:Math.trunc(num(st.games_won)||0),
-      win_amount:num(st.total_earned)||0
-    })).filter(r=>r.stake>0).sort((a,b)=>a.stake-b.stake);
+  if (winnerParticipantCardIds.length === 0) {
+    throw new Error(
+      "At least one winning card is required."
+    );
   }
-  if(!stakeRows.length&&stats?.by_stake) stakeRows=stats.by_stake;
 
-  const out={
-    telegramId:String(tid),
-    name:u.name||'',
-    balance:round2(wallets.main+wallets.play),          // header amount (main + play)
-    main_wallet:wallets.main,
-    play_wallet:wallets.play,
-    bonus:wallets.bonus,
-    wallets,
-    total_games:Math.max(0,Math.trunc(games)),
-    total_wins:Math.max(0,Math.trunc(wins)),
-    total_winnings:Math.max(0,earning),
-    stake_stats:stakeRows,
-    latest_earnings:0,
-    source:{dashboard:!!d,stats:!!stats}
-  };
-  profileCache.set(tid,{t:Date.now(),data:out});
-  return out;
-}
+  const winnerIds =
+    winnerParticipantCardIds.map((id) =>
+      toPositiveInteger(
+        id,
+        "winnerParticipantCardId"
+      )
+    );
 
-app.get('/api/user/:tid', async(req,res)=>{
-  const tid=String(req.params.tid||'').trim();
-  if(!tid) return res.status(400).json({error:'Missing Telegram ID'});
-  // a profile is only served to the player it belongs to (signed initData in the X-Telegram-Init-Data header)
-  const who=resolveTelegramId(req.headers['x-telegram-init-data'],tid);
-  if(!who||who!==tid) return res.status(401).json({error:'Open the game from Telegram'});
-  try{
-    const out=await getBingoProfile(tid);
-    if(!out) return res.status(404).json({error:'Not found'});
-    if(out.blocked) return res.status(403).json({error:`Account is ${out.status}`,status:out.status});
-    return res.json(out);
-  }catch(e){
-    console.error('GET /api/user (db.js):',e.stack||e.message);
-    return res.status(500).json({error:'Database query failed'});
+  if (!Array.isArray(calledNumbers)) {
+    throw new Error(
+      "calledNumbers must be an array."
+    );
   }
-});
 
-// ─── START ────────────────────────────────────────────────────
-server.listen(PORT,()=>{
-  console.log(`\n🎱 Mela Bingo v1 on port ${PORT}\n`);
-});
+  if (calledNumbers.length === 0) {
+    throw new Error(
+      "At least one called number is required."
+    );
+  }
+
+  const numbersCalled =
+    calledNumbers.map((number) =>
+      toPositiveInteger(
+        number,
+        "calledNumber"
+      )
+    );
+
+  const { rows } = await pool.query(
+    `
+    SELECT public.end_bingo_game(
+      $1::integer,
+      $2::integer[],
+      $3::integer[]
+    ) AS result
+    `,
+    [
+      game,
+      winnerIds,
+      numbersCalled
+    ]
+  );
+
+  return rows[0]?.result || null;
+},
+
+  /**
+   * The game of a room that is still open (waiting / selection / playing), with its players and their cartelas.
+   */
+  async getActiveBingoGame(
+  roomId
+) {
+  const { rows } = await pool.query(
+    `
+    SELECT
+      g.*,
+
+      COALESCE(
+        (
+          SELECT json_agg(
+            json_build_object(
+              'id',              bp.id,
+              'user_id',         bp.user_id,
+              'amount_paid',     bp.amount_paid,
+              'status',          bp.status,
+              'is_disqualified', bp.is_disqualified,
+              'amount_won',      bp.amount_won,
+              'joined_at',       bp.joined_at,
+              'cards', COALESCE(
+                (
+                  SELECT json_agg(
+                    json_build_object(
+                      'id',              pc.id,
+                      'card_id',         pc.card_id,
+                      'card_data',       pc.card_data,
+                      'transaction_id',  pc.transaction_id,
+                      'is_disqualified', pc.is_disqualified
+                    )
+                    ORDER BY pc.id
+                  )
+                  FROM bingo_participant_cards pc
+                  WHERE pc.participant_id = bp.id
+                ),
+                '[]'::json
+              )
+            )
+            ORDER BY bp.id
+          )
+          FROM bingo_participants bp
+          WHERE bp.game_id = g.id
+        ),
+        '[]'::json
+      ) AS participants
+
+    FROM bingo_games g
+
+    WHERE g.room_id = $1
+      AND g.status IN (
+        'waiting',
+        'selection',
+        'playing'
+      )
+
+    ORDER BY g.created_at DESC
+
+    LIMIT 1
+    `,
+    [roomId]
+  );
+
+  return rows[0] || null;
+},
+
+
+
+  // ============================================================
+  // LEADERBOARD
+  // ============================================================
+
+  async getLeaderboard(
+    limit = 10
+  ) {
+
+    const safeLimit =
+      Math.min(
+        Math.max(
+          Number(limit) || 10,
+          1
+        ),
+        100
+      );
+
+    // Built from the game tables: total won, games played, games won and win rate per player.
+    const { rows } =
+      await pool.query(
+        `
+        SELECT
+          u.name,
+          COUNT(DISTINCT bp.game_id) FILTER (WHERE bp.amount_won > 0)::int AS total_wins,
+          COUNT(DISTINCT bp.game_id)::int                                  AS total_games,
+          COALESCE(SUM(bp.amount_won), 0)::numeric                         AS total_winnings,
+          COALESCE(
+            ROUND(
+              100.0
+              * COUNT(DISTINCT bp.game_id) FILTER (WHERE bp.amount_won > 0)
+              / NULLIF(COUNT(DISTINCT bp.game_id), 0),
+              2
+            ),
+            0
+          )::numeric                                                       AS win_rate
+        FROM bingo_participants bp
+        JOIN bingo_games g
+          ON g.id = bp.game_id
+         AND g.status = 'completed'
+        JOIN users u
+          ON u.id = bp.user_id
+        WHERE u.is_active = TRUE
+          AND u.is_blocked = FALSE
+        GROUP BY u.id, u.name
+        ORDER BY total_winnings DESC, total_wins DESC, u.id
+        LIMIT $1
+        `,
+        [safeLimit]
+      );
+
+    return rows;
+  },
+
+	async getUserWalletBalances(telegramId) {
+    const { rows }  = await pool.query(
+        `
+        SELECT *
+        FROM get_user_wallet_balances($1::bigint)
+        `,
+        [telegramId]
+    );
+
+      return rows[0] || null;
+},
+
+  // ============================================================
+  // GAME-SERVER HELPERS (read-only) - added for the Node game server
+  // ============================================================
+
+  /**
+   * Account flags the game server needs (admin / blocked / inactive).
+   * Reads only columns that exist in users, so it works with the current schema
+   * (getAdminByTelegramId / getUserByTelegramId also read * columns).
+   *
+   * @param {number|string} telegramId
+   * @returns {Promise<{id:number,is_admin:boolean,admin_role:string|null,is_active:boolean,is_blocked:boolean}|null>}
+   */
+  /**
+   * Which of these Telegram ids belong to a blocked or deactivated account (one query for all of them).
+   * @param {Array<string|number>} telegramIds
+   * @returns {Promise<string[]>} the blocked / inactive ids, as strings
+   */
+  async getBlockedTelegramIds(telegramIds) {
+    const ids = (telegramIds || []).map(String).filter((x) => /^\d+$/.test(x));
+    if (!ids.length) return [];
+    const { rows } = await pool.query(
+      `
+      SELECT telegram_id::text AS telegram_id
+      FROM users
+      WHERE telegram_id = ANY($1::bigint[])
+        AND (is_blocked = TRUE OR is_active = FALSE)
+      `,
+      [ids]
+    );
+    return rows.map((r) => r.telegram_id);
+  },
+
+  async getBingoUserFlags(telegramId) {
+    const { rows } = await pool.query(
+      `
+      SELECT
+        id,
+        is_admin,
+        admin_role,
+        is_active,
+        is_blocked
+      FROM users
+      WHERE telegram_id = $1::bigint
+      LIMIT 1
+      `,
+      [telegramId]
+    );
+
+    return rows[0] || null;
+  },
+
+  /**
+   * Database ids of the cartelas of a game.
+   * end_bingo_game() expects THESE ids (bingo_participant_cards.id), not the
+   * cartela numbers (1-400), so the game server loads them once after the game
+   * is created.
+   *
+   * @param {number} gameId
+   * @returns {Promise<Array<{participant_card_id:number,user_id:number,card_id:number}>>}
+   */
+  async getBingoGameCardIds(gameId) {
+    const game = toPositiveInteger(gameId, "gameId");
+
+    const mapRows = (rows) =>
+      rows.map((r) => ({
+        participant_card_id: Number(r.participant_card_id),
+        user_id: Number(r.user_id),
+        card_id: Number(r.card_id),
+      }));
+
+    const { rows } = await pool.query(
+      `
+      SELECT
+        pc.id::bigint        AS participant_card_id,
+        bp.user_id::integer  AS user_id,
+        pc.card_id::integer  AS card_id
+      FROM bingo_participant_cards pc
+      JOIN bingo_participants bp
+        ON bp.id = pc.participant_id
+      WHERE pc.game_id = $1
+      ORDER BY pc.id
+      `,
+      [game]
+    );
+
+    return mapRows(rows);
+  },
+
+  /**
+   * Store the numbers drawn in a game, in the order they were called (bingo_games.called_numbers).
+   * This is the audit trail needed to settle a dispute ("number X was never called").
+   *
+   * @param {number} gameId
+   * @param {number[]} numbers
+   */
+  async saveBingoCalledNumbers(gameId, numbers) {
+    const game = toPositiveInteger(gameId, "gameId");
+
+    const list = (Array.isArray(numbers) ? numbers : [])
+      .map((n) => Number(n))
+      .filter((n) => Number.isInteger(n) && n >= 1 && n <= 75);
+
+    await pool.query(
+      `
+      UPDATE public.bingo_games
+      SET called_numbers = $2::integer[]
+      WHERE id = $1::integer
+      `,
+      [game, list]
+    );
+  },
+
+  /**
+   * Games that were created but never finished (status waiting / selection).
+   * While one is open, no new game can be created for the same room + stake.
+   *
+   * @param {number|null} roomId   optional
+   * @param {string|null} stakeId  optional database stake id (e.g. "S5")
+   * @returns {Promise<Array<{id:number,game_code:string,room_id:number,stake_id:string,
+   *   status:string,age_seconds:number,winners:number}>>}
+   */
+  async getUnfinishedBingoGames(roomId = null, stakeId = null) {
+    const { rows } = await pool.query(
+      `
+      SELECT
+        g.id::integer     AS id,
+        g.game_code       AS game_code,
+        g.room_id::bigint AS room_id,
+        g.stake_id        AS stake_id,
+        g.status          AS status,
+        EXTRACT(EPOCH FROM (NOW() - g.created_at))::integer AS age_seconds,
+        (
+          SELECT COUNT(*)
+          FROM public.bingo_winners w
+          WHERE w.game_id = g.id
+        )::integer        AS winners
+      FROM public.bingo_games g
+      WHERE g.status IN ('waiting', 'selection')
+        AND ($1::bigint  IS NULL OR g.room_id  = $1::bigint)
+        AND ($2::varchar IS NULL OR g.stake_id = $2::varchar)
+      ORDER BY g.created_at
+      `,
+      [roomId, stakeId]
+    );
+
+    return rows.map((r) => ({
+      id: Number(r.id),
+      game_code: r.game_code,
+      room_id: Number(r.room_id),
+      stake_id: r.stake_id,
+      status: r.status,
+      age_seconds: Number(r.age_seconds) || 0,
+      winners: Number(r.winners) || 0,
+    }));
+  },
+
+  /**
+   * Cancel an unfinished game and refund every player (see cancel_bingo_game.sql).
+   *
+   * @param {number} gameId
+   * @param {string} reason
+   * @returns {Promise<object|null>}
+   */
+  async cancelBingoGame(gameId, reason = "game_cancelled") {
+    const game = toPositiveInteger(gameId, "gameId");
+
+    const { rows } = await pool.query(
+      `
+      SELECT public.cancel_bingo_game(
+        $1::integer,
+        $2::text
+      ) AS result
+      `,
+      [game, String(reason || "game_cancelled")]
+    );
+
+    return rows[0]?.result || null;
+  },
+
+  /**
+   * Bonus wallet balance vs. the bonus awards that can actually be spent, per user.
+   * place_stake() charges the Bonus wallet first and then requires every cent of it to be
+   * covered by an ACTIVE, unexpired row in user_bonuses; otherwise it raises
+   * "Bonus consumption mismatch" and the whole game cannot be created.
+   *
+   * @param {number[]} userIds
+   * @returns {Promise<Array<{user_id:number,bonus_balance:number,usable:number}>>}
+   */
+  async getBingoBonusStatus(userIds) {
+    const ids = (Array.isArray(userIds) ? userIds : [])
+      .map((n) => Number(n))
+      .filter((n) => Number.isInteger(n) && n > 0);
+
+    if (ids.length === 0) return [];
+
+    const { rows } = await pool.query(
+      `
+      SELECT
+        u.id AS user_id,
+        COALESCE(wb.balance, 0)::numeric AS bonus_balance,
+        COALESCE(
+          (
+            SELECT SUM(ub.remaining_amount)
+            FROM public.user_bonuses ub
+            WHERE ub.user_id = u.id
+              AND ub.status = 'active'
+              AND ub.remaining_amount > 0
+              AND (ub.expires_at IS NULL OR ub.expires_at >= NOW())
+          ),
+          0
+        )::numeric AS usable
+      FROM public.users u
+      JOIN public.wallets w
+        ON w.user_id = u.id
+       AND w.wallet_type = 'bonus'
+      LEFT JOIN public.wallet_balances wb
+        ON wb.wallet_id = w.id
+      WHERE u.id = ANY($1::int[])
+      `,
+      [ids]
+    );
+
+    return rows.map((r) => ({
+      user_id: Number(r.user_id),
+      bonus_balance: Number(r.bonus_balance) || 0,
+      usable: Number(r.usable) || 0,
+    }));
+  },
+
+  /**
+   * The wallets the active stake funding policy may charge, in charging order,
+   * e.g. ["bonus", "play", "main"]. place_stake() only counts wallets that are in
+   * this list, so the game server uses it to decide whether a player can afford a cartela.
+   *
+   * @returns {Promise<string[]>}
+   */
+  /**
+   * Takes unusable bonus money (completed / expired awards) out of the Bonus wallet.
+   * Needs public.expire_bonuses() from forfeit_bonus.sql.
+   * @returns {Promise<{forfeited_awards:number,forfeited_total:number,errors:number}>}
+   */
+  async expireBonuses(limit = 200) {
+    const n = Math.max(1, Math.min(1000, Number(limit) || 200));
+    const { rows } = await pool.query("SELECT public.expire_bonuses($1::integer) AS result", [n]);
+    return rows[0].result;
+  },
+
+  async getBingoFundingWallets() {
+    const { rows } = await pool.query(
+      `
+      SELECT w.wallet_type
+      FROM public.stake_funding_policy_wallets w
+      WHERE w.is_active = TRUE
+        AND w.policy_id = (
+          SELECT p.id
+          FROM public.get_stake_funding_policy(
+            (
+              SELECT gs.id
+              FROM public.game_systems gs
+              WHERE gs.code = 'bingo'
+                AND gs.status = 'active'
+              LIMIT 1
+            )
+          ) AS p
+        )
+      ORDER BY w.funding_order
+      `
+    );
+
+    return rows.map((r) => String(r.wallet_type));
+  },
+
+  /**
+   * Profile counters, read straight from the game tables. The profile page uses
+   * getBingoUserDashboard() first and falls back to these numbers for anything
+   * the dashboard does not return.
+   *
+   * @param {number} userId
+   * @returns {Promise<{games:number,wins:number,earning:number,
+   *   by_stake:Array<{stake:number,wins:number,win_amount:number}>}>}
+   */
+  async getBingoProfileStats(userId) {
+    const id = toPositiveInteger(userId, "userId");
+
+    const [played, won, byStake] = await Promise.all([
+      pool.query(
+        `
+        SELECT COUNT(DISTINCT bp.game_id)::int AS games
+        FROM bingo_participants bp
+        JOIN bingo_games g
+          ON g.id = bp.game_id
+        WHERE bp.user_id = $1
+          AND g.status = 'completed'
+        `,
+        [id]
+      ),
+
+      pool.query(
+        `
+        SELECT
+          COUNT(DISTINCT game_id)::int          AS wins,
+          COALESCE(SUM(payout), 0)::numeric     AS earning
+        FROM bingo_winners
+        WHERE user_id = $1
+        `,
+        [id]
+      ),
+
+      pool.query(
+        `
+        SELECT
+          g.stake_amount::numeric                AS stake,
+          COUNT(DISTINCT w.game_id)::int         AS wins,
+          COALESCE(SUM(w.payout), 0)::numeric    AS win_amount
+        FROM bingo_winners w
+        JOIN bingo_games g
+          ON g.id = w.game_id
+        WHERE w.user_id = $1
+        GROUP BY g.stake_amount
+        ORDER BY g.stake_amount
+        `,
+        [id]
+      ),
+    ]);
+
+    return {
+      games: Number(played.rows[0]?.games) || 0,
+      wins: Number(won.rows[0]?.wins) || 0,
+      earning: Number(won.rows[0]?.earning) || 0,
+      by_stake: byStake.rows.map((r) => ({
+        stake: Number(r.stake) || 0,
+        wins: Number(r.wins) || 0,
+        win_amount: Number(r.win_amount) || 0,
+      })),
+    };
+  },
+
+};
